@@ -40,7 +40,7 @@ impl Explorer {
     pub fn ui(&mut self, ui: &mut egui::Ui, active_file: Option<&Path>) -> Option<PathBuf> {
         let Some(root) = self.root.clone() else {
             ui.add_space(8.0);
-            ui.label(RichText::new("You have not yet opened a folder.").color(theme::TEXT_DIM));
+            ui.label(RichText::new("You have not yet opened a folder.").color(theme::colors().text_dim));
             ui.add_space(6.0);
             return None;
         };
@@ -100,23 +100,24 @@ impl Explorer {
 
 /// A full-width clickable row with indentation and hover/selection highlight.
 fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool) -> egui::Response {
-    let height = 22.0;
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let height = (font.size * 1.7).round();
     let (rect, response) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
     if selected {
         ui.painter()
-            .rect_filled(rect, 0.0, egui::Color32::from_rgb(0x04, 0x39, 0x5e));
+            .rect_filled(rect, 0.0, theme::colors().selection);
     } else if response.hovered() {
         ui.painter()
-            .rect_filled(rect, 0.0, egui::Color32::from_rgb(0x2a, 0x2d, 0x2e));
+            .rect_filled(rect, 0.0, theme::colors().hover_bg);
     }
     let pos = rect.left_center() + egui::vec2(8.0 + depth as f32 * 12.0, 0.0);
     ui.painter().text(
         pos,
         egui::Align2::LEFT_CENTER,
         text,
-        egui::FontId::proportional(13.0),
-        theme::TEXT,
+        font,
+        theme::colors().text,
     );
     response
 }

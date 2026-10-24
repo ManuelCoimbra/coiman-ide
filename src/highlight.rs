@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use egui::Color32;
-use syntect::highlighting::{
-    FontStyle, HighlightIterator, HighlightState, Highlighter as SynHighlighter, Theme, ThemeSet,
-};
+use std::sync::{Arc, RwLock};
+
+use syntect::highlighting::{FontStyle, HighlightIterator, HighlightState, Highlighter as SynHighlighter, Theme};
 use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
 
 use crate::buffer::Buffer;
@@ -36,6 +36,8 @@ pub struct Highlighter {
     /// State at the start of `tail.0`, from the last highlighting pass.
     tail: Option<(usize, State)>,
     cache: HashMap<usize, Vec<Span>>,
+    /// Theme generation the cached colors were computed with.
+    theme_generation: u64,
 }
 
 fn syntaxes() -> &'static SyntaxSet {
@@ -43,12 +45,20 @@ fn syntaxes() -> &'static SyntaxSet {
     SET.get_or_init(SyntaxSet::load_defaults_newlines)
 }
 
-fn theme() -> &'static Theme {
-    static THEME: OnceLock<Theme> = OnceLock::new();
-    THEME.get_or_init(|| {
-        let mut set = ThemeSet::load_defaults();
-        set.themes.remove("base16-mocha.dark").unwrap_or_default()
-    })
+/// The current color theme as a syntect theme, rebuilt when the theme changes.
+fn theme() -> Arc<Theme> {
+    static CACHE: RwLock<Option<(u64, Arc<Theme>)>> = RwLock::new(None);
+    let generation = crate::theme::generation();
+    if let Some((g, t)) = CACHE.read().ok().and_then(|c| c.clone())
+        && g == generation
+    {
+        return t;
+    }
+    let t = Arc::new(crate::theme::syntect_theme(&crate::theme::current()));
+    if let Ok(mut c) = CACHE.write() {
+        *c = Some((generation, t.clone()));
+    }
+    t
 }
 
 impl Highlighter {
@@ -59,7 +69,7 @@ impl Highlighter {
             .flatten()
             .filter(|s| s.name != "Plain Text")
             .map(|s| s.name.clone());
-        Self { syntax_name, checkpoints: Vec::new(), tail: None, cache: HashMap::new() }
+        Self { syntax_name, checkpoints: Vec::new(), tail: None, cache: HashMap::new(), theme_generation: crate::theme::generation() }
     }
 
     #[cfg(test)]
@@ -79,10 +89,18 @@ impl Highlighter {
     /// Highlighted spans for `line` (char lengths, excluding the line ending).
     pub fn spans(&mut self, buf: &Buffer, line: usize) -> Option<&[Span]> {
         let name = self.syntax_name.as_ref()?;
+        // Highlight states embed theme styles; start over after a theme change.
+        if self.theme_generation != crate::theme::generation() {
+            self.theme_generation = crate::theme::generation();
+            self.checkpoints.clear();
+            self.cache.clear();
+            self.tail = None;
+        }
         if !self.cache.contains_key(&line) {
             let set = syntaxes();
             let syntax = set.find_syntax_by_name(name)?;
-            let highlighter = SynHighlighter::new(theme());
+            let theme = theme();
+            let highlighter = SynHighlighter::new(&theme);
             if self.checkpoints.is_empty() {
                 self.checkpoints.push((ParseState::new(syntax), HighlightState::new(&highlighter, ScopeStack::new())));
             }

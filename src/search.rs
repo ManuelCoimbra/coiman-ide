@@ -28,7 +28,7 @@ impl SearchPanel {
     /// Draws the panel. Returns `(file, line)` when the user clicks a result.
     pub fn ui(&mut self, ui: &mut egui::Ui, root: Option<&Path>) -> Option<(PathBuf, usize)> {
         let Some(root) = root else {
-            ui.label(RichText::new("Open a folder to search in files.").color(theme::TEXT_DIM));
+            ui.label(RichText::new("Open a folder to search in files.").color(theme::colors().text_dim));
             return None;
         };
 
@@ -67,7 +67,7 @@ impl SearchPanel {
                     self.searched_files
                 ))
                 .small()
-                .color(theme::TEXT_DIM),
+                .color(theme::colors().text_dim),
             );
         }
         ui.separator();

@@ -9,9 +9,11 @@ mod edit_ops;
 mod editor_view;
 mod explorer;
 mod highlight;
+mod keymap;
 mod palette;
 mod search;
 mod session;
+mod settings;
 mod syntax;
 mod terminal;
 mod theme;
@@ -34,8 +36,7 @@ fn main() -> eframe::Result {
         "Rust Code",
         options,
         Box::new(move |cc| {
-            theme::apply(&cc.egui_ctx);
-            Ok(Box::new(app::CodeApp::new(start_path)))
+            Ok(Box::new(app::CodeApp::new(start_path, &cc.egui_ctx)))
         }),
     )
 }

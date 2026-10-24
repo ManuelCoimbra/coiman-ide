@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 
 use egui::{Key, RichText};
 
+use crate::keymap::Keymap;
 use crate::theme;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Command {
     CommandPalette,
     QuickOpen,
@@ -55,57 +56,71 @@ pub enum Command {
     ToggleWordWrap,
     ToggleZenMode,
     ReopenClosedEditor,
+    NextEditor,
+    PreviousEditor,
+    // Preferences.
+    OpenUserSettings,
+    OpenWorkspaceSettings,
+    OpenKeybindings,
+    SelectTheme,
 }
 
-pub const COMMANDS: &[(Command, &str, &str)] = &[
-    (Command::NewFile, "File: New Untitled File", "Ctrl+N"),
-    (Command::OpenFile, "File: Open File...", "Ctrl+O"),
-    (Command::OpenFolder, "File: Open Folder...", "Ctrl+K Ctrl+O"),
-    (Command::Save, "File: Save", "Ctrl+S"),
-    (Command::SaveAs, "File: Save As...", "Ctrl+Shift+S"),
-    (Command::SaveAll, "File: Save All", "Ctrl+Alt+S"),
-    (Command::CloseTab, "View: Close Editor", "Ctrl+W"),
-    (Command::ToggleSidebar, "View: Toggle Primary Side Bar Visibility", "Ctrl+B"),
-    (Command::ToggleTerminal, "View: Toggle Terminal", "Ctrl+`"),
-    (Command::ShowExplorer, "View: Show Explorer", "Ctrl+Shift+E"),
-    (Command::ShowSearch, "View: Show Search", "Ctrl+Shift+F"),
-    (Command::Find, "Find", "Ctrl+F"),
-    (Command::GoToLine, "Go to Line...", "Ctrl+G"),
-    (Command::ZoomIn, "View: Zoom In", "Ctrl+="),
-    (Command::ZoomOut, "View: Zoom Out", "Ctrl+-"),
-    (Command::ResetZoom, "View: Reset Zoom", "Ctrl+0"),
-    (Command::RefreshExplorer, "File: Refresh Explorer", ""),
-    (Command::Quit, "File: Exit", ""),
-    (Command::ToggleLineComment, "Toggle Line Comment", "Ctrl+/"),
-    (Command::MoveLinesUp, "Move Line Up", "Alt+Up"),
-    (Command::MoveLinesDown, "Move Line Down", "Alt+Down"),
-    (Command::CopyLinesUp, "Copy Line Up", "Shift+Alt+Up"),
-    (Command::CopyLinesDown, "Copy Line Down", "Shift+Alt+Down"),
-    (Command::DeleteLines, "Delete Line", "Ctrl+Shift+K"),
-    (Command::IndentLines, "Indent Line", "Ctrl+]"),
-    (Command::OutdentLines, "Outdent Line", "Ctrl+["),
-    (Command::SelectNextOccurrence, "Add Selection to Next Find Match", "Ctrl+D"),
-    (Command::AddCursorAbove, "Add Cursor Above", "Ctrl+Alt+Up"),
-    (Command::AddCursorBelow, "Add Cursor Below", "Ctrl+Alt+Down"),
-    (Command::JumpToBracket, "Go to Bracket", "Ctrl+Shift+\\"),
-    (Command::JoinLines, "Join Lines", ""),
-    (Command::DuplicateSelection, "Duplicate Selection", ""),
-    (Command::SortLinesAscending, "Sort Lines Ascending", ""),
-    (Command::SortLinesDescending, "Sort Lines Descending", ""),
-    (Command::RemoveDuplicateLines, "Delete Duplicate Lines", ""),
-    (Command::ReverseLines, "Reverse Lines", ""),
-    (Command::TransformToUppercase, "Transform to Uppercase", ""),
-    (Command::TransformToLowercase, "Transform to Lowercase", ""),
-    (Command::TransformToTitlecase, "Transform to Title Case", ""),
-    (Command::ToggleWordWrap, "View: Toggle Word Wrap", "Alt+Z"),
-    (Command::ToggleZenMode, "View: Toggle Zen Mode", "Ctrl+K Z"),
-    (Command::ReopenClosedEditor, "View: Reopen Closed Editor", "Ctrl+Shift+T"),
+pub const COMMANDS: &[(Command, &str)] = &[
+    (Command::NewFile, "File: New Untitled File"),
+    (Command::OpenFile, "File: Open File..."),
+    (Command::OpenFolder, "File: Open Folder..."),
+    (Command::Save, "File: Save"),
+    (Command::SaveAs, "File: Save As..."),
+    (Command::SaveAll, "File: Save All"),
+    (Command::CloseTab, "View: Close Editor"),
+    (Command::ToggleSidebar, "View: Toggle Primary Side Bar Visibility"),
+    (Command::ToggleTerminal, "View: Toggle Terminal"),
+    (Command::ShowExplorer, "View: Show Explorer"),
+    (Command::ShowSearch, "View: Show Search"),
+    (Command::Find, "Find"),
+    (Command::GoToLine, "Go to Line..."),
+    (Command::ZoomIn, "View: Zoom In"),
+    (Command::ZoomOut, "View: Zoom Out"),
+    (Command::ResetZoom, "View: Reset Zoom"),
+    (Command::RefreshExplorer, "File: Refresh Explorer"),
+    (Command::Quit, "File: Exit"),
+    (Command::ToggleLineComment, "Toggle Line Comment"),
+    (Command::MoveLinesUp, "Move Line Up"),
+    (Command::MoveLinesDown, "Move Line Down"),
+    (Command::CopyLinesUp, "Copy Line Up"),
+    (Command::CopyLinesDown, "Copy Line Down"),
+    (Command::DeleteLines, "Delete Line"),
+    (Command::IndentLines, "Indent Line"),
+    (Command::OutdentLines, "Outdent Line"),
+    (Command::SelectNextOccurrence, "Add Selection to Next Find Match"),
+    (Command::AddCursorAbove, "Add Cursor Above"),
+    (Command::AddCursorBelow, "Add Cursor Below"),
+    (Command::JumpToBracket, "Go to Bracket"),
+    (Command::JoinLines, "Join Lines"),
+    (Command::DuplicateSelection, "Duplicate Selection"),
+    (Command::SortLinesAscending, "Sort Lines Ascending"),
+    (Command::SortLinesDescending, "Sort Lines Descending"),
+    (Command::RemoveDuplicateLines, "Delete Duplicate Lines"),
+    (Command::ReverseLines, "Reverse Lines"),
+    (Command::TransformToUppercase, "Transform to Uppercase"),
+    (Command::TransformToLowercase, "Transform to Lowercase"),
+    (Command::TransformToTitlecase, "Transform to Title Case"),
+    (Command::ToggleWordWrap, "View: Toggle Word Wrap"),
+    (Command::ToggleZenMode, "View: Toggle Zen Mode"),
+    (Command::ReopenClosedEditor, "View: Reopen Closed Editor"),
+    (Command::NextEditor, "View: Open Next Editor"),
+    (Command::PreviousEditor, "View: Open Previous Editor"),
+    (Command::OpenUserSettings, "Preferences: Open User Settings (TOML)"),
+    (Command::OpenWorkspaceSettings, "Preferences: Open Workspace Settings (TOML)"),
+    (Command::OpenKeybindings, "Preferences: Open Keyboard Shortcuts (TOML)"),
+    (Command::SelectTheme, "Preferences: Color Theme"),
 ];
 
 pub enum PaletteResult {
     OpenFile(PathBuf),
     Run(Command),
     GoToLine(usize),
+    Theme(String),
 }
 
 #[derive(Default)]
@@ -114,6 +129,8 @@ pub struct Palette {
     query: String,
     selected: usize,
     just_opened: bool,
+    /// When set, the palette is the Color Theme picker over these labels.
+    themes: Option<Vec<String>>,
 }
 
 impl Palette {
@@ -122,6 +139,14 @@ impl Palette {
         self.query = prefix.to_owned();
         self.selected = 0;
         self.just_opened = true;
+        self.themes = None;
+    }
+
+    /// Opens the Color Theme picker with `current` preselected.
+    pub fn show_themes(&mut self, labels: Vec<String>, current: &str) {
+        self.show_with("");
+        self.selected = labels.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
+        self.themes = Some(labels);
     }
 
     pub fn ui(
@@ -129,6 +154,7 @@ impl Palette {
         ctx: &egui::Context,
         root: Option<&Path>,
         files: &[PathBuf],
+        keymap: &Keymap,
     ) -> Option<PaletteResult> {
         if !self.open {
             return None;
@@ -140,11 +166,16 @@ impl Palette {
 
         // Build the candidate list: (label, detail, result).
         let mut items: Vec<(String, String, PaletteResult)> = Vec::new();
-        if let Some(q) = self.query.strip_prefix('>') {
+        if let Some(themes) = &self.themes {
+            let q = self.query.trim();
+            for t in themes.iter().filter(|t| fuzzy_match(t, q)) {
+                items.push((t.clone(), String::new(), PaletteResult::Theme(t.clone())));
+            }
+        } else if let Some(q) = self.query.strip_prefix('>') {
             let q = q.trim();
-            for (cmd, name, keys) in COMMANDS {
+            for (cmd, name) in COMMANDS {
                 if fuzzy_match(name, q) {
-                    items.push((name.to_string(), keys.to_string(), PaletteResult::Run(*cmd)));
+                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd)));
                 }
             }
         } else if let Some(q) = self.query.strip_prefix(':') {
@@ -194,13 +225,17 @@ impl Palette {
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style())
-                    .fill(egui::Color32::from_rgb(0x22, 0x22, 0x22))
+                    .fill(theme::colors().sidebar_bg)
                     .inner_margin(6.0)
                     .show(ui, |ui| {
                         ui.set_width(width);
                         let edit = ui.add(
                             egui::TextEdit::singleline(&mut self.query)
-                                .hint_text("Search files by name (> for commands, : for line)")
+                                .hint_text(if self.themes.is_some() {
+                                    "Select Color Theme"
+                                } else {
+                                    "Search files by name (> for commands, : for line)"
+                                })
                                 .desired_width(f32::INFINITY),
                         );
                         if self.just_opened {
@@ -223,7 +258,7 @@ impl Palette {
                                 let selected = i == self.selected;
                                 let resp = ui.horizontal(|ui| {
                                     let r = ui.selectable_label(selected, label);
-                                    ui.label(RichText::new(detail).small().color(theme::TEXT_DIM));
+                                    ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
                                     r
                                 });
                                 if selected && (up || down) {
@@ -235,7 +270,7 @@ impl Palette {
                                 }
                             }
                             if items.is_empty() {
-                                ui.label(RichText::new("No matching results").color(theme::TEXT_DIM));
+                                ui.label(RichText::new("No matching results").color(theme::colors().text_dim));
                             }
                         });
                     });

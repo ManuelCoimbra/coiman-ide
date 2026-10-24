@@ -26,7 +26,7 @@ cargo run --release -- [folder-or-file]
 - Quick Open (`Ctrl+P`), Command Palette (`Ctrl+Shift+P`), Go to Line (`Ctrl+G`)
 - Find in file (`Ctrl+F`), Find in files (`Ctrl+Shift+F`)
 - Integrated terminal (`` Ctrl+` ``) with history and `cd`
-- Save / Save As / Save All
+- Save / Save As / Save All (`Ctrl+K S`)
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
   (backed up every second to `%APPDATA%\rust-code\session.json`; no "save changes?" prompt on exit)
 - Zoom (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`), toggle side bar (`Ctrl+B`)
@@ -51,3 +51,18 @@ shipped `workbench.desktop.main.js` and `nls.messages.json`.
 
 Palette only: Join Lines, Duplicate Selection, Sort Lines Ascending/Descending,
 Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Case.
+
+### Settings, keybindings and themes
+
+- **Settings** (`Ctrl+,`): TOML, layered defaults → user
+  (`%APPDATA%\rust-code\settings.toml`) → workspace (`<folder>/.rust-code/settings.toml`).
+  Files can `extends = "other.toml"` and have `[windows]` / `[macos]` / `[linux]` tables.
+  Unknown keys and errors show in the status bar; saving a settings file applies it.
+  Separate `editor.font_size` and `workbench.ui_font_size`.
+- **Keybindings** (`Ctrl+K Ctrl+S`): `%APPDATA%\rust-code\keybindings.toml` with VS Code
+  command IDs, two-key chords, `when = "editorTextFocus"`, and `-command` to remove a
+  default. Menus and the palette show the active shortcuts.
+- **Color themes** (`Ctrl+K Ctrl+T`): any VS Code theme. The picker lists themes from the
+  installed VS Code (bundled and `~/.vscode/extensions`) and `%APPDATA%\rust-code\themes`;
+  `workbench.color_theme` also accepts a path to a theme `.json`. Theme files may use
+  comments and `include`; token colors apply to tree-sitter and syntect highlighting.

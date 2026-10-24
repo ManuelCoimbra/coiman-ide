@@ -69,56 +69,8 @@ struct Style {
     italic: bool,
 }
 
-const DEFAULT_STYLE: Style = Style { color: Color32::from_rgb(0xd4, 0xd4, 0xd4), italic: false };
-
-/// VS Code Dark+ colors for tree-sitter capture names. A capture uses the
-/// longest matching dotted prefix (`function.method` falls back to `function`).
-const CAPTURE_STYLES: &[(&str, Color32, bool)] = &[
-    ("comment", Color32::from_rgb(0x6a, 0x99, 0x55), false),
-    ("string", Color32::from_rgb(0xce, 0x91, 0x78), false),
-    ("string.special.key", Color32::from_rgb(0x9c, 0xdc, 0xfe), false),
-    ("string.escape", Color32::from_rgb(0xd7, 0xba, 0x7d), false),
-    ("escape", Color32::from_rgb(0xd7, 0xba, 0x7d), false),
-    ("character", Color32::from_rgb(0xce, 0x91, 0x78), false),
-    ("number", Color32::from_rgb(0xb5, 0xce, 0xa8), false),
-    ("boolean", Color32::from_rgb(0x56, 0x9c, 0xd6), false),
-    ("keyword", Color32::from_rgb(0x56, 0x9c, 0xd6), false),
-    ("function", Color32::from_rgb(0xdc, 0xdc, 0xaa), false),
-    ("type", Color32::from_rgb(0x4e, 0xc9, 0xb0), false),
-    ("constructor", Color32::from_rgb(0x4e, 0xc9, 0xb0), false),
-    ("variable", Color32::from_rgb(0x9c, 0xdc, 0xfe), false),
-    ("variable.builtin", Color32::from_rgb(0x56, 0x9c, 0xd6), false),
-    ("property", Color32::from_rgb(0x9c, 0xdc, 0xfe), false),
-    ("constant", Color32::from_rgb(0x4f, 0xc1, 0xff), false),
-    ("constant.builtin", Color32::from_rgb(0x56, 0x9c, 0xd6), false),
-    ("attribute", Color32::from_rgb(0xdc, 0xdc, 0xaa), false),
-    ("label", Color32::from_rgb(0xc8, 0xc8, 0xc8), false),
-    ("operator", Color32::from_rgb(0xd4, 0xd4, 0xd4), false),
-    ("punctuation.special", Color32::from_rgb(0x56, 0x9c, 0xd6), false),
-    ("text.title", Color32::from_rgb(0x56, 0x9c, 0xd6), false),
-    ("text.literal", Color32::from_rgb(0xce, 0x91, 0x78), false),
-    ("text.uri", Color32::from_rgb(0x37, 0x94, 0xff), false),
-    ("text.reference", Color32::from_rgb(0x37, 0x94, 0xff), false),
-];
-
-/// Bracket colors by nesting depth (VS Code's default bracket pair colorization).
-const RAINBOW: [Color32; 3] =
-    [Color32::from_rgb(0xff, 0xd7, 0x00), Color32::from_rgb(0xda, 0x70, 0xd6), Color32::from_rgb(0x17, 0x9f, 0xff)];
-
-fn style_for_capture(name: &str) -> Option<Style> {
-    let mut name = name;
-    loop {
-        if let Some(&(_, color, italic)) = CAPTURE_STYLES.iter().find(|(n, _, _)| *n == name) {
-            return Some(Style { color, italic });
-        }
-        name = &name[..name.rfind('.')?];
-    }
-}
-
 struct LangConfig {
     query: Query,
-    /// Style per capture index (`None`: leave the enclosing color).
-    styles: Vec<Option<Style>>,
     /// Captures whose text is a string or comment: brackets inside stay uncolored.
     literal: Vec<bool>,
 }
@@ -130,9 +82,8 @@ fn config(lang: Lang) -> Option<&'static LangConfig> {
         .get_or_init(|| {
             let query = Query::new(&lang.language(), lang.highlights()).ok()?;
             let names = query.capture_names();
-            let styles = names.iter().map(|n| style_for_capture(n)).collect();
             let literal = names.iter().map(|n| n.starts_with("string") || n.starts_with("comment")).collect();
-            Some(LangConfig { query, styles, literal })
+            Some(LangConfig { query, literal })
         })
         .as_ref()
 }
@@ -257,8 +208,9 @@ pub struct TsState {
     inflight: Vec<(u64, Vec<SyntaxEdit>)>,
     /// Latest parsed tree and the buffer version it matches.
     tree: Option<(u64, Tree)>,
-    /// (buffer version, tree version, first line, last line) of `lines`.
-    computed_for: Option<(u64, u64, usize, usize)>,
+    /// (buffer version, tree version, first line, last line, theme generation,
+    /// rainbow brackets) that `lines` was computed for.
+    computed_for: Option<(u64, u64, usize, usize, u64, bool)>,
     /// Highlighted spans for the lines last prepared.
     pub lines: HashMap<usize, Vec<Span>>,
 }
@@ -292,12 +244,12 @@ impl TsState {
     }
 
     /// Computes highlighted spans for `first..=last` (char-based, per line).
-    pub fn prepare(&mut self, buf: &Buffer, first: usize, last: usize) {
+    pub fn prepare(&mut self, buf: &Buffer, first: usize, last: usize, rainbow: bool) {
         let Some((tree_version, tree)) = &self.tree else {
             self.lines.clear();
             return;
         };
-        let key = (buf.version(), *tree_version, first, last);
+        let key = (buf.version(), *tree_version, first, last, crate::theme::generation(), rainbow);
         if self.computed_for == Some(key) {
             return;
         }
@@ -328,7 +280,7 @@ impl TsState {
         let last = last.min(buf.len_lines() - 1);
         let start = rope.line_to_byte(first);
         let end = if last + 1 < rope.len_lines() { rope.line_to_byte(last + 1) } else { rope.len_bytes() };
-        let styles = highlight_bytes(cfg, &tree, rope, start, end);
+        let styles = highlight_bytes(cfg, &tree, rope, start, end, rainbow);
 
         for line in first..=last {
             let line_start = rope.line_to_byte(line);
@@ -348,9 +300,16 @@ impl TsState {
 }
 
 /// Style of every byte in `[start, end)`.
-fn highlight_bytes(cfg: &LangConfig, tree: &Tree, rope: &Rope, start: usize, end: usize) -> Vec<Style> {
+fn highlight_bytes(cfg: &LangConfig, tree: &Tree, rope: &Rope, start: usize, end: usize, rainbow: bool) -> Vec<Style> {
+    let theme = crate::theme::current();
+    let capture_styles: Vec<Option<Style>> = cfg
+        .query
+        .capture_names()
+        .iter()
+        .map(|n| crate::theme::capture_style(&theme, n).map(|(color, italic)| Style { color, italic }))
+        .collect();
     let len = end - start;
-    let mut styles = vec![DEFAULT_STYLE; len];
+    let mut styles = vec![Style { color: theme.palette.editor_fg, italic: false }; len];
     let mut literal = vec![false; len];
 
     // Collect captures, then paint larger nodes first so inner nodes win;
@@ -372,7 +331,7 @@ fn highlight_bytes(cfg: &LangConfig, tree: &Tree, rope: &Rope, start: usize, end
         if s >= e {
             continue;
         }
-        if let Some(style) = cfg.styles[idx as usize] {
+        if let Some(style) = capture_styles[idx as usize] {
             styles[s..e].fill(style);
         }
         if cfg.literal[idx as usize] {
@@ -380,13 +339,23 @@ fn highlight_bytes(cfg: &LangConfig, tree: &Tree, rope: &Rope, start: usize, end
         }
     }
 
-    paint_brackets(tree.root_node(), 0, start, end, &mut styles, &literal);
+    if rainbow {
+        paint_brackets(tree.root_node(), 0, start, end, &mut styles, &literal, theme.palette.rainbow);
+    }
     styles
 }
 
 /// Rainbow brackets in one walk over the nodes overlapping `[start, end)`.
 /// A bracket's depth is the number of enclosing nodes that open with a bracket.
-fn paint_brackets(node: Node, depth: usize, start: usize, end: usize, styles: &mut [Style], literal: &[bool]) {
+fn paint_brackets(
+    node: Node,
+    depth: usize,
+    start: usize,
+    end: usize,
+    styles: &mut [Style],
+    literal: &[bool],
+    colors: [Color32; 3],
+) {
     let opens = node.child(0).is_some_and(|c| matches!(c.kind(), "(" | "[" | "{"));
     let depth = depth + usize::from(opens);
     let mut cursor = node.walk();
@@ -399,11 +368,11 @@ fn paint_brackets(node: Node, depth: usize, start: usize, end: usize, styles: &m
             break;
         }
         if child.child_count() > 0 {
-            paint_brackets(child, depth, start, end, styles, literal);
+            paint_brackets(child, depth, start, end, styles, literal, colors);
         } else if depth > 0 && !child.is_named() && matches!(child.kind(), "(" | ")" | "[" | "]" | "{" | "}") {
             let i = child.start_byte();
             if (start..end).contains(&i) && !literal[i - start] {
-                styles[i - start] = Style { color: RAINBOW[(depth - 1) % RAINBOW.len()], italic: false };
+                styles[i - start] = Style { color: colors[(depth - 1) % colors.len()], italic: false };
             }
         }
         if !cursor.goto_next_sibling() {
@@ -424,7 +393,7 @@ mod tests {
         let tree = parser.parse(src, None).unwrap();
         buf.take_syntax_edits();
         ts.tree = Some((buf.version(), tree));
-        ts.prepare(&buf, 0, buf.len_lines() - 1);
+        ts.prepare(&buf, 0, buf.len_lines() - 1, true);
         let text: Vec<char> = buf.line_text(line).chars().collect();
         let mut out = Vec::new();
         let mut i = 0;
@@ -458,10 +427,11 @@ mod tests {
         let per_char: Vec<Color32> =
             colors(Lang::Rust, src, 0).iter().flat_map(|(s, c)| std::iter::repeat_n(*c, s.chars().count())).collect();
         let at = |i: usize| per_char[i];
+        let rainbow = crate::theme::colors().rainbow;
         // f( ) at 4,5 and { } at 7,22: depth 1. g( ) at 10,19: depth 2. ( ) at 11,13: depth 3.
-        assert_eq!((at(4), at(5), at(7), at(22)), (RAINBOW[0], RAINBOW[0], RAINBOW[0], RAINBOW[0]));
-        assert_eq!((at(10), at(19)), (RAINBOW[1], RAINBOW[1]));
-        assert_eq!((at(11), at(13)), (RAINBOW[2], RAINBOW[2]));
+        assert_eq!((at(4), at(5), at(7), at(22)), (rainbow[0], rainbow[0], rainbow[0], rainbow[0]));
+        assert_eq!((at(10), at(19)), (rainbow[1], rainbow[1]));
+        assert_eq!((at(11), at(13)), (rainbow[2], rainbow[2]));
         // The "(" inside the string literal keeps the string color.
         assert_eq!(at(17), Color32::from_rgb(0xce, 0x91, 0x78));
     }
@@ -488,7 +458,7 @@ mod tests {
         // Insert at the top; the tree is now stale but `prepare` applies the edit.
         buf.set_single(crate::buffer::Selection::cursor(0));
         buf.insert("// x\n");
-        ts.prepare(&buf, 0, buf.len_lines() - 1);
+        ts.prepare(&buf, 0, buf.len_lines() - 1, true);
         let line2: usize = ts.lines[&2].iter().map(|s| s.len).sum();
         assert_eq!(line2, buf.line_text(2).chars().count());
         // "fn" on the shifted line is still a keyword.

@@ -12,12 +12,17 @@ use crate::theme;
 const SCROLLBAR: f32 = 12.0;
 /// How far to look for a matching bracket around the cursor.
 const BRACKET_SEARCH_LIMIT: usize = 20_000;
-const CURSOR_COLOR: Color32 = Color32::from_rgb(0xae, 0xaf, 0xad);
-const SELECTION_COLOR: Color32 = Color32::from_rgb(0x26, 0x4f, 0x78);
-const BRACKET_COLOR: Color32 = Color32::from_rgb(0x88, 0x88, 0x88);
-const INDENT_GUIDE_COLOR: Color32 = Color32::from_rgb(0x40, 0x40, 0x40);
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
 const GUIDE_SEARCH_LINES: usize = 100;
+
+/// Display options from settings.
+#[derive(Clone, Copy)]
+pub struct Options {
+    pub font_size: f32,
+    pub word_wrap: bool,
+    pub indent_guides: bool,
+    pub rainbow_brackets: bool,
+}
 
 pub fn editor_id(uid: u64) -> egui::Id {
     egui::Id::unique(("editor", uid))
@@ -162,7 +167,8 @@ struct Metrics {
 }
 
 /// Draws and runs the editor for `doc` in all remaining space of `ui`.
-pub fn show(ui: &mut egui::Ui, doc: &mut Document, font_size: f32, word_wrap: bool) {
+pub fn show(ui: &mut egui::Ui, doc: &mut Document, opts: Options) {
+    let (font_size, word_wrap) = (opts.font_size, opts.word_wrap);
     let id = editor_id(doc.uid);
     let rect = ui.available_rect_before_wrap();
     ui.allocate_rect(rect, Sense::hover());
@@ -256,7 +262,7 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, font_size: f32, word_wrap: bo
     doc.view.scroll.x = doc.view.scroll.x.clamp(0.0, max_x);
 
     // ----- paint ---------------------------------------------------------------
-    paint(ui, doc, &layout, &m, rect, text_rect, has_focus);
+    paint(ui, doc, &layout, &m, rect, text_rect, has_focus, opts);
     paint_scrollbars(ui, doc, rect, text_rect, content_h, max_x);
 
     if has_focus {
@@ -598,9 +604,11 @@ fn paint(
     rect: Rect,
     text_rect: Rect,
     has_focus: bool,
+    opts: Options,
 ) {
+    let pal = theme::colors();
     let painter = ui.painter_at(rect);
-    painter.rect_filled(rect, 0.0, theme::EDITOR_BG);
+    painter.rect_filled(rect, 0.0, theme::colors().editor_bg);
     let text_painter = painter.with_clip_rect(text_rect);
 
     let scroll = doc.view.scroll;
@@ -623,7 +631,7 @@ fn paint(
         let first_line = layout.row(doc, first_row).line;
         let last_line = layout.row(doc, last_row - 1).line;
         if let Some(ts) = &mut doc.ts {
-            ts.prepare(&doc.buffer, first_line, last_line);
+            ts.prepare(&doc.buffer, first_line, last_line, opts.rainbow_brackets);
         }
     }
 
@@ -633,10 +641,10 @@ fn paint(
         let buf = &doc.buffer;
 
         // Indent guides: one line per indentation level, also across blank lines.
-        let levels = indent_cols(buf, row.line) / TAB_WIDTH;
+        let levels = if opts.indent_guides { indent_cols(buf, row.line) / TAB_WIDTH } else { 0 };
         for level in 0..levels {
             let x = (x0 + (level * TAB_WIDTH) as f32 * m.char_w).round() + 0.5;
-            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, INDENT_GUIDE_COLOR));
+            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, pal.indent_guide));
         }
 
         // Current line highlight.
@@ -644,7 +652,7 @@ fn paint(
             text_painter.rect_stroke(
                 Rect::from_min_max(Pos2::new(text_rect.left(), y), Pos2::new(text_rect.right(), y + m.row_h)),
                 0.0,
-                Stroke::new(1.0, Color32::from_rgb(0x28, 0x28, 0x28)),
+                Stroke::new(1.0, pal.current_line),
                 egui::StrokeKind::Inside,
             );
         }
@@ -663,7 +671,7 @@ fn paint(
                 xb += m.char_w * 0.6;
             }
             if xb > xa {
-                text_painter.rect_filled(Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)), 0.0, SELECTION_COLOR);
+                text_painter.rect_filled(Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)), 0.0, pal.selection);
             }
         }
 
@@ -675,7 +683,7 @@ fn paint(
                     text_painter.rect_stroke(
                         Rect::from_min_size(Pos2::new(x, y), Vec2::new(m.char_w, m.row_h)),
                         0.0,
-                        Stroke::new(1.0, BRACKET_COLOR),
+                        Stroke::new(1.0, pal.bracket_match),
                         egui::StrokeKind::Inside,
                     );
                 }
@@ -685,11 +693,11 @@ fn paint(
         // Text.
         let job = row_job(doc, &row, m);
         let galley = ui.fonts_mut(|f| f.layout_job(job));
-        text_painter.galley(Pos2::new(x0, y), galley, theme::TEXT);
+        text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
 
         // Line number.
         if row.first {
-            let color = if row.line == primary_line { theme::LINE_NUMBER_ACTIVE } else { theme::LINE_NUMBER };
+            let color = if row.line == primary_line { theme::colors().line_number_active } else { theme::colors().line_number };
             painter.text(
                 Pos2::new(text_rect.left() - 18.0, y),
                 egui::Align2::RIGHT_TOP,
@@ -710,13 +718,13 @@ fn paint(
             let row = layout.row(doc, row_idx);
             let x = x0 + col_x(&doc.buffer, row.start, s.head, m);
             let y = rect.top() + y_offset + (row_idx - first_row) as f32 * m.row_h;
-            text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, m.row_h)), 0.0, CURSOR_COLOR);
+            text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, m.row_h)), 0.0, pal.cursor);
             if *s == primary && !doc.view.preedit.is_empty() {
-                let galley = ui.fonts_mut(|f| f.layout_no_wrap(doc.view.preedit.clone(), m.font_id.clone(), Color32::WHITE));
+                let galley = ui.fonts_mut(|f| f.layout_no_wrap(doc.view.preedit.clone(), m.font_id.clone(), pal.editor_fg));
                 let w = galley.size().x;
-                text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, m.row_h)), 0.0, theme::EDITOR_BG);
-                text_painter.galley(Pos2::new(x, y), galley, Color32::WHITE);
-                text_painter.hline(x..=x + w, y + m.row_h - 1.0, Stroke::new(1.0, Color32::WHITE));
+                text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, m.row_h)), 0.0, theme::colors().editor_bg);
+                text_painter.galley(Pos2::new(x, y), galley, pal.editor_fg);
+                text_painter.hline(x..=x + w, y + m.row_h - 1.0, Stroke::new(1.0, pal.editor_fg));
             }
         }
     }
@@ -764,7 +772,7 @@ fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
                 runs.push((end, s.color, s.italic));
             }
         }
-        None => runs.push((chars.len(), theme::TEXT, false)),
+        None => runs.push((chars.len(), theme::colors().editor_fg, false)),
     }
 
     let mut job = LayoutJob::default();

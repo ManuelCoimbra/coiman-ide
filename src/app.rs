@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use egui::{Align, Color32, FontId, Key, KeyboardShortcut, Modifiers, RichText, Sense, Stroke};
+use egui::{Align, FontId, Key, KeyboardShortcut, Modifiers, RichText, Sense, Stroke};
 
 use crate::document::Document;
 use crate::edit_ops::{self, CaseTransform, Edit, Sel};
@@ -10,7 +10,9 @@ use crate::editor_view::{self, editor_id};
 use crate::explorer::{self, Explorer};
 use crate::palette::{Command, Palette, PaletteResult};
 use crate::search::SearchPanel;
+use crate::keymap::Keymap;
 use crate::session::{self, Session};
+use crate::settings::{self, Settings};
 use crate::syntax::SyntaxWorker;
 use crate::terminal::{Terminal, strip_verbatim};
 use crate::theme;
@@ -66,8 +68,16 @@ pub struct CodeApp {
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
-    /// Set after Ctrl+K, for the Ctrl+K Ctrl+O chord.
-    chord_k: bool,
+    /// First stroke of a pending two-key chord (e.g. Ctrl+K).
+    chord: Option<KeyboardShortcut>,
+    settings: Settings,
+    keymap: Keymap,
+    /// Themes found for the Color Theme picker (scanned on first use).
+    themes: Vec<theme::ThemeEntry>,
+    /// Reload settings at the start of the next frame (a config file was saved).
+    settings_reload: bool,
+    /// Whether settings have been applied once (first load applies everything).
+    settings_applied: bool,
     status: Option<String>,
     /// Last session JSON written, to skip unchanged backups.
     last_session_json: String,
@@ -79,7 +89,7 @@ pub struct CodeApp {
 }
 
 impl CodeApp {
-    pub fn new(start_path: Option<PathBuf>) -> Self {
+    pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut app = Self {
             docs: Vec::new(),
@@ -101,7 +111,12 @@ impl CodeApp {
             closed_editors: Vec::new(),
             pending_close: None,
             allow_close: false,
-            chord_k: false,
+            chord: None,
+            settings: Settings::default(),
+            keymap: Keymap::defaults(),
+            themes: Vec::new(),
+            settings_reload: false,
+            settings_applied: false,
             status: None,
             last_session_json: String::new(),
             last_backup_time: 0.0,
@@ -121,7 +136,98 @@ impl CodeApp {
                 app.open_file(&path);
             }
         }
+        app.reload_settings(ctx);
         app
+    }
+
+    // ----- settings ------------------------------------------------------------
+
+    /// Opens a settings/keybindings file, creating it with `initial` contents first.
+    fn open_config_file(&mut self, path: Option<PathBuf>, initial: String) {
+        let Some(path) = path else {
+            self.status = Some("No config directory available".to_owned());
+            return;
+        };
+        if !path.exists() {
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            if let Err(e) = std::fs::write(&path, initial) {
+                self.status = Some(format!("Could not create {}: {e}", path.display()));
+                return;
+            }
+        }
+        self.open_file(&path);
+    }
+
+    fn is_config_file(&self, path: &Path) -> bool {
+        let mut files: Vec<PathBuf> =
+            [settings::user_settings_path(), settings::user_keybindings_path()].into_iter().flatten().collect();
+        if let Some(root) = &self.explorer.root {
+            files.push(settings::workspace_settings_path(root));
+        }
+        files.iter().any(|f| f == path)
+    }
+
+    /// Reloads settings, keybindings and the color theme, applying what changed.
+    fn reload_settings(&mut self, ctx: &egui::Context) {
+        let loaded = settings::load(self.explorer.root.as_deref());
+        let (keymap, key_problems) = Keymap::load(settings::user_keybindings_path().as_deref());
+        let mut problems = loaded.problems;
+        problems.extend(key_problems);
+        let first = !self.settings_applied;
+        let old = std::mem::replace(&mut self.settings, loaded.settings);
+        let new = self.settings.clone();
+        if first || new.editor.font_size != old.editor.font_size {
+            self.font_size = new.editor.font_size.clamp(6.0, 72.0);
+        }
+        if first || new.editor.word_wrap != old.editor.word_wrap {
+            self.word_wrap = new.editor.word_wrap;
+        }
+        if first || new.workbench.color_theme != old.workbench.color_theme {
+            // The built-in theme needs no scan of installed VS Code themes.
+            if self.themes.is_empty() && !new.workbench.color_theme.eq_ignore_ascii_case("Dark Modern") {
+                self.themes = theme::discover();
+            }
+            let (t, err) = theme::resolve(&new.workbench.color_theme, &self.themes);
+            theme::set(ctx, t);
+            problems.extend(err);
+        }
+        theme::apply_style(ctx, new.workbench.ui_font_size);
+        self.keymap = keymap;
+        self.settings_applied = true;
+        if !problems.is_empty() {
+            self.status = Some(format!("Settings: {}", problems.join("; ")));
+        }
+    }
+
+    /// Saves the picked theme into the user settings file (keeping its comments) and applies it.
+    fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
+        let Some(path) = settings::user_settings_path() else { return };
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|_| settings::default_file_contents());
+        let value = toml::Value::String(label.to_owned()).to_string();
+        let updated = settings::set_value_in_text(&text, "workbench", "color_theme", &value);
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        match std::fs::write(&path, updated) {
+            Ok(()) => {
+                // An open, unmodified tab of the file would otherwise show stale text
+                // (and saving it would undo the change).
+                if let Some(i) = self.docs.iter().position(|d| d.path.as_deref() == Some(path.as_path()) && !d.is_dirty())
+                    && let Ok(fresh) = Document::open(&path)
+                {
+                    let uid = self.docs[i].uid;
+                    self.docs[i] = fresh;
+                    self.docs[i].uid = uid;
+                }
+                self.reload_settings(ctx);
+                if self.settings.workbench.color_theme != label {
+                    self.status = Some("Theme saved, but workspace settings override it".to_owned());
+                }
+            }
+            Err(e) => self.status = Some(format!("Could not save theme: {e}")),
+        }
     }
 
     // ----- syntax --------------------------------------------------------------
@@ -159,7 +265,8 @@ impl CodeApp {
 
     /// Writes the session if it changed. Returns false if writing failed.
     fn save_session(&mut self) -> bool {
-        let json = session::to_json(&Session::capture(self.explorer.root.as_deref(), &self.docs, self.active));
+        let session = Session::capture(self.explorer.root.as_deref(), &self.docs, self.active, self.settings.files.hot_exit);
+        let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
         }
@@ -219,6 +326,8 @@ impl CodeApp {
     }
 
     fn open_folder(&mut self, path: PathBuf) {
+        // The workspace settings layer depends on the folder.
+        self.settings_reload = true;
         self.terminal.set_cwd(&path);
         self.explorer.set_root(path);
         self.file_index.clear();
@@ -230,7 +339,11 @@ impl CodeApp {
         let Some(doc) = self.docs.get_mut(index) else { return false };
         match doc.save() {
             Ok(true) => {
-                self.status = Some(format!("Saved {}", doc.title()));
+                let (title, path) = (doc.title(), doc.path.clone());
+                self.status = Some(format!("Saved {title}"));
+                if path.is_some_and(|p| self.is_config_file(&p)) {
+                    self.settings_reload = true;
+                }
                 true
             }
             Ok(false) => self.save_doc_as(index),
@@ -358,7 +471,7 @@ impl CodeApp {
             Command::GoToLine => self.palette.show_with(":"),
             Command::ZoomIn => self.font_size = (self.font_size + 1.0).min(40.0),
             Command::ZoomOut => self.font_size = (self.font_size - 1.0).max(8.0),
-            Command::ResetZoom => self.font_size = DEFAULT_FONT_SIZE,
+            Command::ResetZoom => self.font_size = self.settings.editor.font_size,
             Command::RefreshExplorer => {
                 self.explorer.refresh();
                 self.file_index.clear();
@@ -422,6 +535,37 @@ impl CodeApp {
                 self.zen_mode = !self.zen_mode;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.zen_mode));
             }
+            Command::NextEditor | Command::PreviousEditor => {
+                let n = self.docs.len();
+                if n > 0 {
+                    let step = if cmd == Command::NextEditor { 1 } else { n - 1 };
+                    self.active = (self.active + step) % n;
+                    self.docs[self.active].request_focus = true;
+                }
+            }
+            Command::OpenUserSettings => {
+                self.open_config_file(settings::user_settings_path(), settings::default_file_contents());
+            }
+            Command::OpenWorkspaceSettings => match self.explorer.root.clone() {
+                Some(root) => {
+                    self.open_config_file(Some(settings::workspace_settings_path(&root)), settings::default_file_contents());
+                }
+                None => self.status = Some("Open a folder to use workspace settings".to_owned()),
+            },
+            Command::OpenKeybindings => {
+                let contents = Keymap::defaults().default_file_contents();
+                self.open_config_file(settings::user_keybindings_path(), contents);
+            }
+            Command::SelectTheme => {
+                if self.themes.is_empty() {
+                    self.themes = theme::discover();
+                }
+                let mut labels: Vec<String> = self.themes.iter().map(|t| t.label.clone()).collect();
+                if !labels.iter().any(|l| l == "Dark Modern") {
+                    labels.insert(0, "Dark Modern".to_owned());
+                }
+                self.palette.show_themes(labels, &self.settings.workbench.color_theme);
+            }
             Command::ReopenClosedEditor => {
                 if let Some(path) = self.closed_editors.pop() {
                     self.open_file(&path);
@@ -442,92 +586,17 @@ impl CodeApp {
     // ----- input ---------------------------------------------------------------
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
-        let ctrl = Modifiers::COMMAND;
-        let ctrl_shift = Modifiers::COMMAND | Modifiers::SHIFT;
-        let ctrl_alt = Modifiers::COMMAND | Modifiers::ALT;
-        let sc = |m, k| KeyboardShortcut::new(m, k);
-
-        // Shortcuts with more modifiers must be checked first.
-        let table: &[(KeyboardShortcut, Command)] = &[
-            (sc(ctrl_shift, Key::S), Command::SaveAs),
-            (sc(ctrl_alt, Key::S), Command::SaveAll),
-            (sc(ctrl_shift, Key::E), Command::ShowExplorer),
-            (sc(ctrl_shift, Key::F), Command::ShowSearch),
-            (sc(ctrl_shift, Key::T), Command::ReopenClosedEditor),
-            (sc(Modifiers::ALT, Key::Z), Command::ToggleWordWrap),
-            (sc(ctrl, Key::S), Command::Save),
-            (sc(ctrl, Key::N), Command::NewFile),
-            (sc(ctrl, Key::W), Command::CloseTab),
-            (sc(ctrl, Key::B), Command::ToggleSidebar),
-            (sc(ctrl, Key::Backtick), Command::ToggleTerminal),
-            (sc(ctrl, Key::F), Command::Find),
-            (sc(ctrl, Key::G), Command::GoToLine),
-            (sc(ctrl, Key::Equals), Command::ZoomIn),
-            (sc(ctrl, Key::Plus), Command::ZoomIn),
-            (sc(ctrl, Key::Minus), Command::ZoomOut),
-            (sc(ctrl, Key::Num0), Command::ResetZoom),
-        ];
-
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl_shift, Key::P))) {
-            self.run_command(ctx, Command::CommandPalette);
-            return;
-        }
-        // The chord stays armed across idle frames until the next key press.
-        // egui reports modifiers separately, so any Key press is a real key.
-        let key_pressed = ctx.input(|i| {
-            i.events.iter().any(|e| matches!(e, egui::Event::Key { pressed: true, .. }))
-        });
-        if self.chord_k && key_pressed {
-            self.chord_k = false;
-            let chord_cmd = if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::O))) {
-                Some(Command::OpenFolder)
-            } else if ctx.input_mut(|i| i.consume_shortcut(&sc(Modifiers::NONE, Key::Z))) {
-                Some(Command::ToggleZenMode)
-            } else {
-                None
-            };
-            if let Some(c) = chord_cmd {
-                // Drop the typed character so the chord key isn't inserted into the editor.
-                ctx.input_mut(|i| i.events.retain(|e| !matches!(e, egui::Event::Text(_))));
-                self.run_command(ctx, c);
-                return;
-            }
-        }
         if self.zen_mode
             && !self.find.open
+            && self.chord.is_none()
             && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
         {
             self.run_command(ctx, Command::ToggleZenMode);
             return;
         }
-
-        // Editor actions only fire while the editor has focus ("editorTextFocus" in VS Code).
-        // Variants with Shift come first because shortcut matching ignores extra Shift.
-        if self.editor_focused(ctx) {
-            let alt = Modifiers::ALT;
-            let shift_alt = Modifiers::SHIFT | Modifiers::ALT;
-            let editor_table: &[(KeyboardShortcut, Command)] = &[
-                (sc(ctrl_alt, Key::ArrowUp), Command::AddCursorAbove),
-                (sc(ctrl_alt, Key::ArrowDown), Command::AddCursorBelow),
-                (sc(shift_alt, Key::ArrowUp), Command::CopyLinesUp),
-                (sc(shift_alt, Key::ArrowDown), Command::CopyLinesDown),
-                (sc(alt, Key::ArrowUp), Command::MoveLinesUp),
-                (sc(alt, Key::ArrowDown), Command::MoveLinesDown),
-                (sc(ctrl_shift, Key::K), Command::DeleteLines),
-                (sc(ctrl_shift, Key::Backslash), Command::JumpToBracket),
-                (sc(ctrl, Key::Slash), Command::ToggleLineComment),
-                (sc(ctrl, Key::CloseBracket), Command::IndentLines),
-                (sc(ctrl, Key::OpenBracket), Command::OutdentLines),
-                (sc(ctrl, Key::D), Command::SelectNextOccurrence),
-                (sc(Modifiers::SHIFT, Key::Tab), Command::OutdentLines),
-            ];
-            for (shortcut, cmd) in editor_table {
-                if ctx.input_mut(|i| i.consume_shortcut(shortcut)) {
-                    self.run_command(ctx, *cmd);
-                    return;
-                }
-            }
-            // Tab with a multi-line selection indents the lines instead of replacing them.
+        let editor_focused = self.editor_focused(ctx);
+        // Tab with a multi-line selection indents the lines instead of replacing them.
+        if editor_focused && self.chord.is_none() {
             let multi_line = self.docs.get(self.active).is_some_and(|d| {
                 let p = d.buffer.primary();
                 d.buffer.char_to_line(p.start()) != d.buffer.char_to_line(p.end())
@@ -537,32 +606,8 @@ impl CodeApp {
                 return;
             }
         }
-        if !ctx.input(|i| i.modifiers.shift) && ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::K))) {
-            self.chord_k = true;
-            return;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::O))) {
-            self.run_command(ctx, Command::OpenFile);
-            return;
-        }
-        if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::P))) {
-            self.run_command(ctx, Command::QuickOpen);
-            return;
-        }
-        // Ctrl+Tab / Ctrl+Shift+Tab cycle through tabs.
-        if !self.docs.is_empty() {
-            let n = self.docs.len();
-            if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl_shift, Key::Tab))) {
-                self.active = (self.active + n - 1) % n;
-            } else if ctx.input_mut(|i| i.consume_shortcut(&sc(ctrl, Key::Tab))) {
-                self.active = (self.active + 1) % n;
-            }
-        }
-        for (shortcut, cmd) in table {
-            if ctx.input_mut(|i| i.consume_shortcut(shortcut)) {
-                self.run_command(ctx, *cmd);
-                return;
-            }
+        if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused) {
+            self.run_command(ctx, cmd);
         }
     }
 
@@ -572,7 +617,8 @@ impl CodeApp {
         if !ctx.input(|i| i.viewport().close_requested()) || self.allow_close {
             return;
         }
-        if !self.save_session() && self.docs.iter().any(Document::is_dirty) {
+        let saved = self.save_session();
+        if (!saved || !self.settings.files.hot_exit) && self.docs.iter().any(Document::is_dirty) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.pending_close = Some(PendingClose::App);
         }
@@ -582,66 +628,74 @@ impl CodeApp {
 
     fn menu_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
         let mut cmd = None;
+        let keymap = &self.keymap;
         egui::MenuBar::new().ui(ui, |ui| {
-            let mut item = |ui: &mut egui::Ui, label: &str, keys: &str, c: Command| {
-                if ui.add(egui::Button::new(label).shortcut_text(keys)).clicked() {
+            let mut item = |ui: &mut egui::Ui, label: &str, c: Command| {
+                if ui.add(egui::Button::new(label).shortcut_text(keymap.shortcut_text(c))).clicked() {
                     cmd = Some(c);
                 }
             };
             ui.menu_button("File", |ui| {
-                item(ui, "New Text File", "Ctrl+N", Command::NewFile);
+                item(ui, "New Text File", Command::NewFile);
                 ui.separator();
-                item(ui, "Open File...", "Ctrl+O", Command::OpenFile);
-                item(ui, "Open Folder...", "Ctrl+K Ctrl+O", Command::OpenFolder);
+                item(ui, "Open File...", Command::OpenFile);
+                item(ui, "Open Folder...", Command::OpenFolder);
                 ui.separator();
-                item(ui, "Save", "Ctrl+S", Command::Save);
-                item(ui, "Save As...", "Ctrl+Shift+S", Command::SaveAs);
-                item(ui, "Save All", "Ctrl+Alt+S", Command::SaveAll);
+                item(ui, "Save", Command::Save);
+                item(ui, "Save As...", Command::SaveAs);
+                item(ui, "Save All", Command::SaveAll);
                 ui.separator();
-                item(ui, "Close Editor", "Ctrl+W", Command::CloseTab);
-                item(ui, "Reopen Closed Editor", "Ctrl+Shift+T", Command::ReopenClosedEditor);
-                item(ui, "Exit", "", Command::Quit);
+                ui.menu_button("Preferences", |ui| {
+                    item(ui, "Settings", Command::OpenUserSettings);
+                    item(ui, "Workspace Settings", Command::OpenWorkspaceSettings);
+                    item(ui, "Keyboard Shortcuts", Command::OpenKeybindings);
+                    item(ui, "Color Theme", Command::SelectTheme);
+                });
+                ui.separator();
+                item(ui, "Close Editor", Command::CloseTab);
+                item(ui, "Reopen Closed Editor", Command::ReopenClosedEditor);
+                item(ui, "Exit", Command::Quit);
             });
             ui.menu_button("Edit", |ui| {
-                item(ui, "Find", "Ctrl+F", Command::Find);
-                item(ui, "Find in Files", "Ctrl+Shift+F", Command::ShowSearch);
+                item(ui, "Find", Command::Find);
+                item(ui, "Find in Files", Command::ShowSearch);
                 ui.separator();
-                item(ui, "Toggle Line Comment", "Ctrl+/", Command::ToggleLineComment);
+                item(ui, "Toggle Line Comment", Command::ToggleLineComment);
             });
             ui.menu_button("Selection", |ui| {
-                item(ui, "Copy Line Up", "Shift+Alt+Up", Command::CopyLinesUp);
-                item(ui, "Copy Line Down", "Shift+Alt+Down", Command::CopyLinesDown);
-                item(ui, "Move Line Up", "Alt+Up", Command::MoveLinesUp);
-                item(ui, "Move Line Down", "Alt+Down", Command::MoveLinesDown);
-                item(ui, "Duplicate Selection", "", Command::DuplicateSelection);
+                item(ui, "Copy Line Up", Command::CopyLinesUp);
+                item(ui, "Copy Line Down", Command::CopyLinesDown);
+                item(ui, "Move Line Up", Command::MoveLinesUp);
+                item(ui, "Move Line Down", Command::MoveLinesDown);
+                item(ui, "Duplicate Selection", Command::DuplicateSelection);
                 ui.separator();
-                item(ui, "Add Next Occurrence", "Ctrl+D", Command::SelectNextOccurrence);
+                item(ui, "Add Next Occurrence", Command::SelectNextOccurrence);
                 ui.separator();
-                item(ui, "Sort Lines Ascending", "", Command::SortLinesAscending);
-                item(ui, "Sort Lines Descending", "", Command::SortLinesDescending);
-                item(ui, "Join Lines", "", Command::JoinLines);
+                item(ui, "Sort Lines Ascending", Command::SortLinesAscending);
+                item(ui, "Sort Lines Descending", Command::SortLinesDescending);
+                item(ui, "Join Lines", Command::JoinLines);
             });
             ui.menu_button("View", |ui| {
-                item(ui, "Command Palette...", "Ctrl+Shift+P", Command::CommandPalette);
+                item(ui, "Command Palette...", Command::CommandPalette);
                 ui.separator();
-                item(ui, "Explorer", "Ctrl+Shift+E", Command::ShowExplorer);
-                item(ui, "Search", "Ctrl+Shift+F", Command::ShowSearch);
-                item(ui, "Terminal", "Ctrl+`", Command::ToggleTerminal);
-                item(ui, "Toggle Side Bar", "Ctrl+B", Command::ToggleSidebar);
-                item(ui, "Zen Mode", "Ctrl+K Z", Command::ToggleZenMode);
-                item(ui, "Word Wrap", "Alt+Z", Command::ToggleWordWrap);
+                item(ui, "Explorer", Command::ShowExplorer);
+                item(ui, "Search", Command::ShowSearch);
+                item(ui, "Terminal", Command::ToggleTerminal);
+                item(ui, "Toggle Side Bar", Command::ToggleSidebar);
+                item(ui, "Zen Mode", Command::ToggleZenMode);
+                item(ui, "Word Wrap", Command::ToggleWordWrap);
                 ui.separator();
-                item(ui, "Zoom In", "Ctrl+=", Command::ZoomIn);
-                item(ui, "Zoom Out", "Ctrl+-", Command::ZoomOut);
-                item(ui, "Reset Zoom", "Ctrl+0", Command::ResetZoom);
+                item(ui, "Zoom In", Command::ZoomIn);
+                item(ui, "Zoom Out", Command::ZoomOut);
+                item(ui, "Reset Zoom", Command::ResetZoom);
             });
             ui.menu_button("Go", |ui| {
-                item(ui, "Go to File...", "Ctrl+P", Command::QuickOpen);
-                item(ui, "Go to Bracket", "Ctrl+Shift+\\", Command::JumpToBracket);
-                item(ui, "Go to Line...", "Ctrl+G", Command::GoToLine);
+                item(ui, "Go to File...", Command::QuickOpen);
+                item(ui, "Go to Bracket", Command::JumpToBracket);
+                item(ui, "Go to Line...", Command::GoToLine);
             });
             ui.menu_button("Terminal", |ui| {
-                item(ui, "Toggle Terminal", "Ctrl+`", Command::ToggleTerminal);
+                item(ui, "Toggle Terminal", Command::ToggleTerminal);
             });
         });
         cmd
@@ -651,16 +705,16 @@ impl CodeApp {
         let mut cmd = None;
         ui.add_space(6.0);
         let mut icon = |ui: &mut egui::Ui, glyph: &str, tip: &str, active: bool, c: Command| {
-            let color = if active { Color32::WHITE } else { theme::TEXT_DIM };
+            let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(48.0, 44.0), Sense::click());
             if active {
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(rect.min, egui::vec2(2.0, rect.height())),
                     0.0,
-                    theme::ACCENT,
+                    theme::colors().accent,
                 );
             }
-            let color = if resp.hovered() { Color32::WHITE } else { color };
+            let color = if resp.hovered() { theme::colors().tab_active_fg } else { color };
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -699,7 +753,7 @@ impl CodeApp {
                         || root.display().to_string(),
                         |n| n.to_string_lossy().to_uppercase(),
                     );
-                    ui.label(RichText::new(name).strong().size(12.0));
+                    ui.label(RichText::new(name).strong().size(small_size(ui)));
                 }
                 if self.explorer.root.is_none() && ui.button("Open Folder").clicked() {
                     if let Some(path) = rfd::FileDialog::new().pick_folder() {
@@ -734,13 +788,13 @@ impl CodeApp {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     for (i, doc) in self.docs.iter().enumerate() {
                         let active = i == self.active;
-                        let fill = if active { theme::TAB_ACTIVE_BG } else { theme::TAB_INACTIVE_BG };
+                        let fill = if active { theme::colors().tab_active_bg } else { theme::colors().tab_inactive_bg };
                         let resp = egui::Frame::new()
                             .fill(fill)
                             .inner_margin(egui::Margin::symmetric(10, 7))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    let color = if active { Color32::WHITE } else { theme::TEXT_DIM };
+                                    let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
                                     let label = ui.add(
                                         egui::Label::new(RichText::new(doc.title()).color(color))
                                             .sense(Sense::click())
@@ -754,7 +808,7 @@ impl CodeApp {
                                     }
                                     let close_glyph = if doc.is_dirty() { "●" } else { "×" };
                                     let close_color =
-                                        if doc.is_dirty() { theme::MODIFIED } else { theme::TEXT_DIM };
+                                        if doc.is_dirty() { theme::colors().modified } else { theme::colors().text_dim };
                                     if ui
                                         .add(
                                             egui::Button::new(RichText::new(close_glyph).color(close_color))
@@ -770,10 +824,10 @@ impl CodeApp {
                             .response;
                         if active {
                             let r = resp.rect;
-                            ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, theme::ACCENT));
+                            ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, theme::colors().accent));
                         } else {
                             let r = resp.rect;
-                            ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::BORDER));
+                            ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::colors().border));
                         }
                     }
                 });
@@ -793,6 +847,8 @@ impl CodeApp {
                 .strip_prefix(root)
                 .unwrap_or(p)
                 .components()
+                // Skip the root "\" component so absolute paths read "C: › Users › …".
+                .filter(|c| !matches!(c, std::path::Component::RootDir))
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
                 .collect::<Vec<_>>()
                 .join("  ›  "),
@@ -801,7 +857,7 @@ impl CodeApp {
         };
         ui.horizontal(|ui| {
             ui.add_space(14.0);
-            ui.label(RichText::new(text).size(12.0).color(theme::TEXT_DIM));
+            ui.label(RichText::new(text).size(small_size(ui)).color(theme::colors().text_dim));
         });
     }
 
@@ -846,7 +902,7 @@ impl CodeApp {
                     let shown = current.map_or(matches.len(), |c| c + 1);
                     format!("{shown} of {}", matches.len())
                 };
-                ui.label(RichText::new(count).small().color(theme::TEXT_DIM));
+                ui.label(RichText::new(count).small().color(theme::colors().text_dim));
                 if ui
                     .selectable_label(self.find.match_case, "Aa")
                     .on_hover_text("Match Case")
@@ -899,26 +955,27 @@ impl CodeApp {
         let mut cmd = None;
         ui.vertical_centered(|ui| {
             ui.add_space(ui.available_height() * 0.2);
-            ui.label(RichText::new("Rust Code").size(44.0).color(theme::TEXT_DIM));
-            ui.label(RichText::new("Editing evolved, in Rust").size(16.0).color(theme::TEXT_DIM));
+            ui.label(RichText::new("Rust Code").size(44.0).color(theme::colors().text_dim));
+            ui.label(RichText::new("Editing evolved, in Rust").size(16.0).color(theme::colors().text_dim));
             ui.add_space(24.0);
-            let rows: &[(&str, &str, Command)] = &[
-                ("New File", "Ctrl+N", Command::NewFile),
-                ("Open File...", "Ctrl+O", Command::OpenFile),
-                ("Open Folder...", "Ctrl+K Ctrl+O", Command::OpenFolder),
-                ("Show All Commands", "Ctrl+Shift+P", Command::CommandPalette),
-                ("Go to File...", "Ctrl+P", Command::QuickOpen),
-                ("Toggle Terminal", "Ctrl+`", Command::ToggleTerminal),
+            let keymap = &self.keymap;
+            let rows: &[(&str, Command)] = &[
+                ("New File", Command::NewFile),
+                ("Open File...", Command::OpenFile),
+                ("Open Folder...", Command::OpenFolder),
+                ("Show All Commands", Command::CommandPalette),
+                ("Go to File...", Command::QuickOpen),
+                ("Toggle Terminal", Command::ToggleTerminal),
             ];
             // Grids don't center themselves, so pad to roughly center a ~300px block.
             ui.horizontal(|ui| {
                 ui.add_space(((ui.available_width() - 300.0) / 2.0).max(0.0));
                 egui::Grid::new("welcome").num_columns(2).spacing([40.0, 10.0]).show(ui, |ui| {
-                    for (label, keys, c) in rows {
+                    for (label, c) in rows {
                         if ui.link(*label).clicked() {
                             cmd = Some(*c);
                         }
-                        ui.label(RichText::new(*keys).monospace().color(theme::TEXT_DIM));
+                        ui.label(RichText::new(keymap.shortcut_text(*c)).monospace().color(theme::colors().text_dim));
                         ui.end_row();
                     }
                 });
@@ -930,7 +987,8 @@ impl CodeApp {
     fn status_bar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 16.0;
-            let white = |s: String| RichText::new(s).size(12.0).color(Color32::WHITE);
+            let size = small_size(ui);
+            let white = |s: String| RichText::new(s).size(size).color(theme::colors().status_fg);
             if let Some(root) = &self.explorer.root {
                 let name = root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
                 ui.label(white(format!("📁 {name}")));
@@ -957,7 +1015,7 @@ impl CodeApp {
                     };
                     ui.label(white(format!("Ln {line}, Col {col}{sel}")));
                 }
-                if (self.font_size - DEFAULT_FONT_SIZE).abs() > f32::EPSILON {
+                if (self.font_size - self.settings.editor.font_size).abs() > f32::EPSILON {
                     ui.label(white(format!("🔍 {}px", self.font_size)));
                 }
             });
@@ -984,7 +1042,7 @@ impl CodeApp {
             .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
             .show(ctx, |ui| {
                 ui.label(&message);
-                ui.label(RichText::new("Your changes will be lost if you don't save them.").color(theme::TEXT_DIM));
+                ui.label(RichText::new("Your changes will be lost if you don't save them.").color(theme::colors().text_dim));
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if ui.button("Save").clicked() {
@@ -1062,6 +1120,9 @@ impl eframe::App for CodeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.handle_close_request(&ctx);
+        if std::mem::take(&mut self.settings_reload) {
+            self.reload_settings(&ctx);
+        }
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
         if self.pending_close.is_none() && !self.palette.open {
@@ -1074,20 +1135,20 @@ impl eframe::App for CodeApp {
         // Zen mode hides all workbench chrome around the editor.
         if !zen {
             egui::Panel::top("menu_bar")
-                .frame(egui::Frame::new().fill(theme::ACTIVITY_BG).inner_margin(egui::Margin::symmetric(6, 3)))
+                .frame(egui::Frame::new().fill(theme::colors().activity_bg).inner_margin(egui::Margin::symmetric(6, 3)))
                 .show(ui, |ui| {
                     cmd = cmd.or(self.menu_bar(ui));
                 });
 
             egui::Panel::bottom("status_bar")
-                .frame(egui::Frame::new().fill(theme::STATUS_BG).inner_margin(egui::Margin::symmetric(8, 2)))
+                .frame(egui::Frame::new().fill(theme::colors().status_bg).inner_margin(egui::Margin::symmetric(8, 2)))
                 .show_separator_line(false)
                 .show(ui, |ui| self.status_bar(ui));
 
             egui::Panel::left("activity_bar")
                 .exact_size(48.0)
                 .resizable(false)
-                .frame(egui::Frame::new().fill(theme::ACTIVITY_BG))
+                .frame(egui::Frame::new().fill(theme::colors().activity_bg))
                 .show(ui, |ui| {
                     cmd = cmd.or(self.activity_bar(ui));
                 });
@@ -1097,7 +1158,7 @@ impl eframe::App for CodeApp {
             egui::Panel::left("side_bar")
                 .default_size(260.0)
                 .resizable(true)
-                .frame(egui::Frame::new().fill(theme::SIDEBAR_BG).inner_margin(egui::Margin::symmetric(8, 6)))
+                .frame(egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::symmetric(8, 6)))
                 .show(ui, |ui| self.sidebar(ui));
         }
 
@@ -1105,18 +1166,18 @@ impl eframe::App for CodeApp {
             egui::Panel::bottom("terminal")
                 .default_size(220.0)
                 .resizable(true)
-                .frame(egui::Frame::new().fill(theme::EDITOR_BG).inner_margin(egui::Margin::symmetric(12, 6)))
+                .frame(egui::Frame::new().fill(theme::colors().editor_bg).inner_margin(egui::Margin::symmetric(12, 6)))
                 .show(ui, |ui| self.terminal.ui(ui));
         }
 
         egui::CentralPanel::no_frame()
-            .frame(egui::Frame::new().fill(theme::EDITOR_BG))
+            .frame(egui::Frame::new().fill(theme::colors().editor_bg))
             .show(ui, |ui| {
                 if self.docs.is_empty() {
                     cmd = cmd.or(self.welcome(ui));
                     return;
                 }
-                egui::Frame::new().fill(theme::TAB_INACTIVE_BG).show(ui, |ui| {
+                egui::Frame::new().fill(theme::colors().tab_inactive_bg).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     self.tab_bar(ui);
                 });
@@ -1124,16 +1185,23 @@ impl eframe::App for CodeApp {
                     self.breadcrumbs(ui);
                 }
                 self.find_bar(ui);
-                let (font_size, word_wrap) = (self.font_size, self.word_wrap);
+                let opts = editor_view::Options {
+                    font_size: self.font_size,
+                    word_wrap: self.word_wrap,
+                    indent_guides: self.settings.editor.indent_guides,
+                    rainbow_brackets: self.settings.editor.bracket_pair_colorization,
+                };
                 if let Some(doc) = self.docs.get_mut(self.active) {
-                    editor_view::show(ui, doc, font_size, word_wrap && !doc.large);
+                    let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, ..opts };
+                    editor_view::show(ui, doc, opts);
                 }
             });
 
         let root = self.explorer.root.clone();
-        match self.palette.ui(&ctx, root.as_deref(), &self.file_index) {
+        match self.palette.ui(&ctx, root.as_deref(), &self.file_index, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
+            Some(PaletteResult::Theme(label)) => self.set_color_theme(&ctx, &label),
             Some(PaletteResult::GoToLine(line)) if line > 0 => {
                 if let Some(doc) = self.active_doc() {
                     doc.goto_line(line);
@@ -1152,6 +1220,11 @@ impl eframe::App for CodeApp {
 }
 
 // ----- editor widget -----------------------------------------------------------
+
+/// Size for secondary workbench text (breadcrumbs, status bar): 12/13 of the UI font.
+fn small_size(ui: &egui::Ui) -> f32 {
+    egui::TextStyle::Body.resolve(ui.style()).size * 12.0 / 13.0
+}
 
 /// All matches of `query` in `text`, as `[start, end)` char index ranges.
 fn find_matches(text: &str, query: &str, match_case: bool) -> Vec<(usize, usize)> {

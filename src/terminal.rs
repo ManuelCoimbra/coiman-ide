@@ -184,7 +184,7 @@ impl Terminal {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 for line in &self.lines {
                     let (text, color) = match line {
-                        Line::Out(s) => (s, theme::TEXT),
+                        Line::Out(s) => (s, theme::colors().text),
                         Line::Err(s) => (s, Color32::from_rgb(0xf1, 0x4c, 0x4c)),
                         Line::Info(s) => (s, Color32::from_rgb(0x3b, 0x8e, 0xea)),
                     };
@@ -194,7 +194,7 @@ impl Terminal {
 
         ui.horizontal(|ui| {
             let prompt = if running { "…".to_owned() } else { format!("{}>", self.cwd.display()) };
-            ui.label(RichText::new(prompt).monospace().color(theme::TEXT_DIM));
+            ui.label(RichText::new(prompt).monospace().color(theme::colors().text_dim));
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.input)
                     .font(egui::TextStyle::Monospace)
