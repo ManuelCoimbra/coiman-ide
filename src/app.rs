@@ -11,6 +11,7 @@ use crate::explorer::{self, Explorer};
 use crate::palette::{Command, Palette, PaletteResult};
 use crate::search::SearchPanel;
 use crate::session::{self, Session};
+use crate::syntax::SyntaxWorker;
 use crate::terminal::{Terminal, strip_verbatim};
 use crate::theme;
 
@@ -73,6 +74,8 @@ pub struct CodeApp {
     last_backup_time: f64,
     /// Window title last sent to the OS.
     last_title: String,
+    /// Background tree-sitter parser, started on the first frame.
+    syntax: Option<SyntaxWorker>,
 }
 
 impl CodeApp {
@@ -103,6 +106,7 @@ impl CodeApp {
             last_session_json: String::new(),
             last_backup_time: 0.0,
             last_title: String::new(),
+            syntax: None,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -118,6 +122,25 @@ impl CodeApp {
             }
         }
         app
+    }
+
+    // ----- syntax --------------------------------------------------------------
+
+    /// Collects finished parses and sends the active document's latest text.
+    fn pump_syntax(&mut self, ctx: &egui::Context) {
+        let worker = self.syntax.get_or_insert_with(|| SyntaxWorker::spawn(ctx.clone()));
+        while let Some(parsed) = worker.try_recv() {
+            if let Some(doc) = self.docs.iter_mut().find(|d| d.uid == parsed.uid)
+                && let Some(ts) = &mut doc.ts
+            {
+                ts.accept(parsed);
+            }
+        }
+        if let Some(doc) = self.docs.get_mut(self.active)
+            && let Some(ts) = &mut doc.ts
+        {
+            ts.sync(doc.uid, &mut doc.buffer, worker);
+        }
     }
 
     // ----- hot exit --------------------------------------------------------------
@@ -252,6 +275,11 @@ impl CodeApp {
             return;
         }
         let doc = self.docs.remove(index);
+        if let Some(worker) = &self.syntax
+            && doc.ts.is_some()
+        {
+            worker.close(doc.uid);
+        }
         if let Some(path) = doc.path {
             self.closed_editors.retain(|p| p != &path);
             self.closed_editors.push(path);
@@ -1035,6 +1063,7 @@ impl eframe::App for CodeApp {
         let ctx = ui.ctx().clone();
         self.handle_close_request(&ctx);
         self.periodic_backup(&ctx);
+        self.pump_syntax(&ctx);
         if self.pending_close.is_none() && !self.palette.open {
             self.handle_shortcuts(&ctx);
         }

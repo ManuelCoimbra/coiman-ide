@@ -14,7 +14,10 @@ cargo run --release -- [folder-or-file]
 - Custom editor widget on a rope (`ropey`): only visible rows are laid out and drawn, so
   million-line files stay responsive; files over 16 MB / 100k lines open in large-file mode
   (no highlighting or wrap)
-- Incremental syntax highlighting (syntect, parser checkpoints every 32 lines), line numbers,
+- Tree-sitter highlighting for Rust, JSON, TOML, YAML and Markdown: incremental parsing on a
+  background thread, queries only over the visible lines, VS Code Dark+ colors
+- Other languages: syntect highlighting with parser checkpoints every 32 lines
+- Rainbow brackets by nesting depth (tree-sitter languages), indent guides, line numbers,
   current-line and matching-bracket highlight
 - Multi-cursor: `Ctrl+D` adds the next match, `Ctrl+Alt+Up/Down` adds cursors, `Alt+Click`,
   `Esc` returns to one cursor; per-document undo/redo (`Ctrl+Z`, `Ctrl+Y`) grouped by word

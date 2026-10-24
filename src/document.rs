@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::buffer::{Buffer, Selection};
 use crate::editor_view::ViewState;
 use crate::highlight::Highlighter;
+use crate::syntax::{Lang, TsState};
 
 /// Files above either limit open in large-file mode: no syntax highlighting.
 const LARGE_FILE_BYTES: usize = 16 * 1024 * 1024;
@@ -20,7 +21,10 @@ pub struct Document {
     /// Index used to name untitled buffers ("Untitled-1", …).
     untitled_index: usize,
     pub view: ViewState,
+    /// syntect highlighting, used for languages without a tree-sitter grammar.
     pub highlighter: Highlighter,
+    /// Tree-sitter highlighting for supported languages.
+    pub ts: Option<TsState>,
     /// Large-file mode: highlighting off to keep huge files responsive.
     pub large: bool,
     /// Give the editor keyboard focus the next time it is shown.
@@ -34,18 +38,30 @@ impl Document {
         let buffer = Buffer::from_str(text);
         let large = text.len() > LARGE_FILE_BYTES || buffer.len_lines() > LARGE_FILE_LINES;
         let ext = extension_of(path.as_deref());
-        Self {
+        let mut doc = Self {
             uid: 0,
             saved_version: buffer.version(),
             buffer,
-            highlighter: Highlighter::new(&ext, !large),
+            highlighter: Highlighter::new(&ext, false),
+            ts: None,
             path,
             untitled_index,
             view: ViewState::default(),
             large,
             request_focus: false,
             reveal: false,
+        };
+        doc.set_language(&ext);
+        doc
+    }
+
+    /// Picks tree-sitter for supported languages, syntect otherwise; nothing in large-file mode.
+    fn set_language(&mut self, ext: &str) {
+        self.ts = Lang::from_extension(ext).filter(|_| !self.large).and_then(TsState::new);
+        if self.ts.is_some() {
+            self.buffer.track_syntax_edits();
         }
+        self.highlighter = Highlighter::new(ext, !self.large && self.ts.is_none());
     }
 
     pub fn untitled(index: usize) -> Self {
@@ -105,7 +121,7 @@ impl Document {
     }
 
     pub fn save_as(&mut self, path: PathBuf) -> std::io::Result<()> {
-        self.highlighter = Highlighter::new(&extension_of(Some(&path)), !self.large);
+        self.set_language(&extension_of(Some(&path)));
         self.path = Some(path);
         self.save().map(|_| ())
     }

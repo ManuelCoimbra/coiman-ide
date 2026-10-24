@@ -5,6 +5,7 @@
 //! its `\r` as the last visible-but-skipped char; see [`Buffer::line_end`].
 
 use ropey::Rope;
+use tree_sitter::{InputEdit, Point};
 
 pub const TAB_WIDTH: usize = 4;
 const MAX_UNDO: usize = 1000;
@@ -56,6 +57,13 @@ struct Snapshot {
     version: u64,
 }
 
+/// A change for the tree-sitter parser: an exact edit, or "reparse from scratch".
+#[derive(Clone, Debug)]
+pub enum SyntaxEdit {
+    Edit(InputEdit),
+    Reset,
+}
+
 /// One replacement: `[start, end)` becomes `text`, and the selection that
 /// produced it lands at `start + cursor_offset` (defaults to the end of `text`).
 pub struct Change {
@@ -82,6 +90,8 @@ pub struct Buffer {
     edited_from_line: Option<usize>,
     /// Line ending used for new lines ("\n" or "\r\n").
     pub line_ending: &'static str,
+    /// Edits not yet sent to the syntax parser; only recorded when enabled.
+    syntax_edits: Option<Vec<SyntaxEdit>>,
 }
 
 impl Buffer {
@@ -99,6 +109,7 @@ impl Buffer {
             last_typed_space: false,
             edited_from_line: None,
             line_ending,
+            syntax_edits: None,
         }
     }
 
@@ -194,6 +205,34 @@ impl Buffer {
 
     pub fn selected_texts(&self) -> Vec<String> {
         self.selections.iter().map(|s| self.slice_string(s.start(), s.end())).collect()
+    }
+
+    /// Starts recording [`SyntaxEdit`]s for an incremental parser.
+    pub fn track_syntax_edits(&mut self) {
+        self.syntax_edits = Some(vec![SyntaxEdit::Reset]);
+    }
+
+    /// Edits recorded since the last call (oldest first).
+    pub fn take_syntax_edits(&mut self) -> Vec<SyntaxEdit> {
+        self.syntax_edits.as_mut().map(std::mem::take).unwrap_or_default()
+    }
+
+    /// Edits recorded but not yet taken.
+    pub fn peek_syntax_edits(&self) -> &[SyntaxEdit] {
+        self.syntax_edits.as_deref().unwrap_or(&[])
+    }
+
+    fn record_reset(&mut self) {
+        if let Some(edits) = &mut self.syntax_edits {
+            edits.clear();
+            edits.push(SyntaxEdit::Reset);
+        }
+    }
+
+    /// Tree-sitter position of a byte offset (row, byte column).
+    pub fn point_at_byte(&self, byte: usize) -> Point {
+        let row = self.rope.byte_to_line(byte);
+        Point { row, column: byte - self.rope.line_to_byte(row) }
     }
 
     /// Smallest edited line since the last call, for incremental re-highlighting.
@@ -555,12 +594,31 @@ impl Buffer {
         for c in changes {
             let start = (c.start as isize + delta) as usize;
             let end = (c.end as isize + delta) as usize;
+            let tracking = self.syntax_edits.is_some();
+            let before = tracking.then(|| {
+                let (sb, eb) = (self.rope.char_to_byte(start), self.rope.char_to_byte(end));
+                (sb, eb, self.point_at_byte(sb), self.point_at_byte(eb))
+            });
             if end > start {
                 self.rope.remove(start..end);
             }
             let inserted = c.text.chars().count();
             if inserted > 0 {
                 self.rope.insert(start, &c.text);
+            }
+            if let Some((start_byte, old_end_byte, start_position, old_end_position)) = before {
+                let new_end_byte = start_byte + c.text.len();
+                let edit = InputEdit {
+                    start_byte,
+                    old_end_byte,
+                    new_end_byte,
+                    start_position,
+                    old_end_position,
+                    new_end_position: self.point_at_byte(new_end_byte),
+                };
+                if let Some(edits) = &mut self.syntax_edits {
+                    edits.push(SyntaxEdit::Edit(edit));
+                }
             }
             // An offset past the inserted text points into the text that followed it.
             let cursor = (start + c.cursor_offset.unwrap_or(inserted)).min(self.rope.len_chars());
@@ -687,6 +745,7 @@ impl Buffer {
         let common = old.chars().zip(text.chars()).take_while(|(a, b)| a == b).count();
         let first_line = self.char_to_line(common);
         self.rope = Rope::from_str(text);
+        self.record_reset();
         self.set_single(sel);
         self.last_edit = EditKind::Other;
         self.finish_edit(first_line);
@@ -700,6 +759,7 @@ impl Buffer {
         self.last_edit = EditKind::None;
         // Undo can change any line; re-highlight everything after the first line.
         self.edited_from_line = Some(0);
+        self.record_reset();
     }
 
     pub fn undo(&mut self) -> bool {
@@ -824,6 +884,31 @@ mod tests {
         assert_eq!(b.next_word_boundary(0), 3);
         assert_eq!(b.next_word_boundary(3), 11);
         assert_eq!(b.prev_word_boundary(11), 4);
+    }
+
+    #[test]
+    fn recorded_syntax_edits_match_a_fresh_parse() {
+        let mut parser = tree_sitter::Parser::new();
+        parser.set_language(&tree_sitter_rust::LANGUAGE.into()).unwrap();
+        let mut b = Buffer::from_str("fn a() {\n    let x = 1;\n}\n");
+        b.track_syntax_edits();
+        b.take_syntax_edits();
+        let mut tree = parser.parse(b.text(), None).unwrap();
+
+        b.set_selections(vec![Selection::cursor(13), Selection::cursor(24)], 0);
+        b.insert("é");
+        b.delete_backward(false);
+        b.insert("yy");
+        for e in b.take_syntax_edits() {
+            match e {
+                SyntaxEdit::Edit(e) => tree.edit(&e),
+                SyntaxEdit::Reset => panic!("unexpected reset"),
+            }
+        }
+        let text = b.text();
+        let incremental = parser.parse(&text, Some(&tree)).unwrap();
+        let fresh = parser.parse(&text, None).unwrap();
+        assert_eq!(incremental.root_node().to_sexp(), fresh.root_node().to_sexp());
     }
 
     #[test]

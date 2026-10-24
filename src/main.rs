@@ -12,6 +12,7 @@ mod highlight;
 mod palette;
 mod search;
 mod session;
+mod syntax;
 mod terminal;
 mod theme;
 

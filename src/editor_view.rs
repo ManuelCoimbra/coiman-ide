@@ -5,7 +5,7 @@
 use egui::text::LayoutJob;
 use egui::{Color32, Event, EventFilter, FontId, Key, Modifiers, Pos2, Rect, Sense, Stroke, TextFormat, Vec2};
 
-use crate::buffer::{Buffer, Change, Selection, char_width, visual_width};
+use crate::buffer::{Buffer, Change, Selection, TAB_WIDTH, char_width, visual_width};
 use crate::document::Document;
 use crate::theme;
 
@@ -15,6 +15,9 @@ const BRACKET_SEARCH_LIMIT: usize = 20_000;
 const CURSOR_COLOR: Color32 = Color32::from_rgb(0xae, 0xaf, 0xad);
 const SELECTION_COLOR: Color32 = Color32::from_rgb(0x26, 0x4f, 0x78);
 const BRACKET_COLOR: Color32 = Color32::from_rgb(0x88, 0x88, 0x88);
+const INDENT_GUIDE_COLOR: Color32 = Color32::from_rgb(0x40, 0x40, 0x40);
+/// How far to look for a non-blank line when sizing indent guides on blank lines.
+const GUIDE_SEARCH_LINES: usize = 100;
 
 pub fn editor_id(uid: u64) -> egui::Id {
     egui::Id::unique(("editor", uid))
@@ -615,10 +618,26 @@ fn paint(
         .flatten();
     let x0 = text_rect.left() - scroll.x;
 
+    // Highlight the visible lines in one pass (tree-sitter documents).
+    if last_row > first_row {
+        let first_line = layout.row(doc, first_row).line;
+        let last_line = layout.row(doc, last_row - 1).line;
+        if let Some(ts) = &mut doc.ts {
+            ts.prepare(&doc.buffer, first_line, last_line);
+        }
+    }
+
     for (i, row_idx) in (first_row..last_row).enumerate() {
         let row = layout.row(doc, row_idx);
         let y = rect.top() + y_offset + i as f32 * m.row_h;
         let buf = &doc.buffer;
+
+        // Indent guides: one line per indentation level, also across blank lines.
+        let levels = indent_cols(buf, row.line) / TAB_WIDTH;
+        for level in 0..levels {
+            let x = (x0 + (level * TAB_WIDTH) as f32 * m.char_w).round() + 0.5;
+            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, INDENT_GUIDE_COLOR));
+        }
 
         // Current line highlight.
         if row_idx == primary_row {
@@ -703,6 +722,22 @@ fn paint(
     }
 }
 
+/// Visual columns of leading whitespace; blank lines take the smaller indent of
+/// the nearest non-blank lines above and below (as VS Code does for guides).
+fn indent_cols(buf: &Buffer, line: usize) -> usize {
+    let leading = |l: usize| -> Option<usize> {
+        let text = buf.line_text(l);
+        let ws: String = text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+        (ws.len() < text.len()).then(|| visual_width(ws.chars()))
+    };
+    if let Some(cols) = leading(line) {
+        return cols;
+    }
+    let above = (line.saturating_sub(GUIDE_SEARCH_LINES)..line).rev().find_map(leading);
+    let below = (line + 1..(line + GUIDE_SEARCH_LINES).min(buf.len_lines())).find_map(leading);
+    above.unwrap_or(0).min(below.unwrap_or(0))
+}
+
 /// Builds the text for one row: syntax colors, tabs expanded to spaces.
 fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
     let line_start = doc.buffer.line_start(row.line);
@@ -717,7 +752,11 @@ fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
 
     // (end char index within line, color, italic) runs.
     let mut runs: Vec<(usize, Color32, bool)> = Vec::new();
-    match doc.highlighter.spans(&doc.buffer, row.line) {
+    let spans = match &doc.ts {
+        Some(ts) => ts.lines.get(&row.line).map(Vec::as_slice),
+        None => doc.highlighter.spans(&doc.buffer, row.line),
+    };
+    match spans {
         Some(spans) => {
             let mut end = 0;
             for s in spans {
