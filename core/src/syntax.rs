@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use egui::Color32;
+use crate::theme::Color;
 use ropey::Rope;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Language, Node, Parser, Query, QueryCursor, Tree};
@@ -65,7 +65,7 @@ impl Lang {
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 struct Style {
-    color: Color32,
+    color: Color,
     italic: bool,
 }
 
@@ -108,13 +108,13 @@ pub struct SyntaxWorker {
 }
 
 impl SyntaxWorker {
-    /// Spawns the worker; it requests a repaint of `ctx` whenever a parse finishes.
-    pub fn spawn(ctx: egui::Context) -> Self {
+    /// Spawns the worker; `notify` is called whenever a parse finishes.
+    pub fn spawn(notify: impl Fn() + Send + 'static) -> Self {
         let (tx, jobs) = channel();
         let (done, rx) = channel();
         std::thread::Builder::new()
             .name("syntax".to_owned())
-            .spawn(move || worker_loop(&jobs, &done, &ctx))
+            .spawn(move || worker_loop(&jobs, &done, &notify))
             .expect("failed to start syntax thread");
         Self { tx, rx }
     }
@@ -129,7 +129,7 @@ impl SyntaxWorker {
     }
 }
 
-fn worker_loop(jobs: &Receiver<Msg>, done: &Sender<Parsed>, ctx: &egui::Context) {
+fn worker_loop(jobs: &Receiver<Msg>, done: &Sender<Parsed>, notify: &dyn Fn()) {
     let mut docs: HashMap<u64, (Parser, Option<Tree>, Lang)> = HashMap::new();
     while let Ok(first) = jobs.recv() {
         // Coalesce everything queued: per document, concatenate the edits and
@@ -182,7 +182,7 @@ fn worker_loop(jobs: &Receiver<Msg>, done: &Sender<Parsed>, ctx: &egui::Context)
             if done.send(Parsed { uid, version, tree: new_tree }).is_err() {
                 return;
             }
-            ctx.request_repaint();
+            notify();
         }
     }
 }
@@ -218,7 +218,14 @@ pub struct TsState {
 impl TsState {
     pub fn new(lang: Lang) -> Option<Self> {
         config(lang)?;
-        Some(Self { lang, sent_version: None, inflight: Vec::new(), tree: None, computed_for: None, lines: HashMap::new() })
+        Some(Self {
+            lang,
+            sent_version: None,
+            inflight: Vec::new(),
+            tree: None,
+            computed_for: None,
+            lines: HashMap::new(),
+        })
     }
 
     /// Sends the buffer to the worker if it changed since the last send.
@@ -354,7 +361,7 @@ fn paint_brackets(
     end: usize,
     styles: &mut [Style],
     literal: &[bool],
-    colors: [Color32; 3],
+    colors: [Color; 3],
 ) {
     let opens = node.child(0).is_some_and(|c| matches!(c.kind(), "(" | "[" | "{"));
     let depth = depth + usize::from(opens);
@@ -385,8 +392,8 @@ fn paint_brackets(
 mod tests {
     use super::*;
 
-    fn colors(lang: Lang, src: &str, line: usize) -> Vec<(String, Color32)> {
-        let mut buf = Buffer::from_str(src);
+    fn colors(lang: Lang, src: &str, line: usize) -> Vec<(String, Color)> {
+        let mut buf = Buffer::new(src);
         let mut ts = TsState::new(lang).expect("query compiles");
         let mut parser = Parser::new();
         parser.set_language(&lang.language()).unwrap();
@@ -415,25 +422,25 @@ mod tests {
     fn rust_keywords_functions_and_strings() {
         let spans = colors(Lang::Rust, "fn main() { let s = \"hi\"; }", 0);
         let color_of = |t: &str| spans.iter().find(|(s, _)| s.contains(t)).map(|(_, c)| *c);
-        assert_eq!(color_of("fn"), Some(Color32::from_rgb(0x56, 0x9c, 0xd6)));
-        assert_eq!(color_of("main"), Some(Color32::from_rgb(0xdc, 0xdc, 0xaa)));
-        assert_eq!(color_of("\"hi\""), Some(Color32::from_rgb(0xce, 0x91, 0x78)));
+        assert_eq!(color_of("fn"), Some(Color::from_rgb(0x56, 0x9c, 0xd6)));
+        assert_eq!(color_of("main"), Some(Color::from_rgb(0xdc, 0xdc, 0xaa)));
+        assert_eq!(color_of("\"hi\""), Some(Color::from_rgb(0xce, 0x91, 0x78)));
     }
 
     #[test]
     fn rainbow_brackets_by_depth_and_not_in_strings() {
         let src = "fn f() { g((1), \"(\"); }";
         // Expand spans to one color per char.
-        let per_char: Vec<Color32> =
+        let per_char: Vec<Color> =
             colors(Lang::Rust, src, 0).iter().flat_map(|(s, c)| std::iter::repeat_n(*c, s.chars().count())).collect();
         let at = |i: usize| per_char[i];
-        let rainbow = crate::theme::colors().rainbow;
+        let rainbow = crate::theme::current().palette.rainbow;
         // f( ) at 4,5 and { } at 7,22: depth 1. g( ) at 10,19: depth 2. ( ) at 11,13: depth 3.
         assert_eq!((at(4), at(5), at(7), at(22)), (rainbow[0], rainbow[0], rainbow[0], rainbow[0]));
         assert_eq!((at(10), at(19)), (rainbow[1], rainbow[1]));
         assert_eq!((at(11), at(13)), (rainbow[2], rainbow[2]));
         // The "(" inside the string literal keeps the string color.
-        assert_eq!(at(17), Color32::from_rgb(0xce, 0x91, 0x78));
+        assert_eq!(at(17), Color::from_rgb(0xce, 0x91, 0x78));
     }
 
     #[test]
@@ -441,14 +448,14 @@ mod tests {
         let spans = colors(Lang::Json, "{\"a\": 1}", 0);
         let key = spans.iter().find(|(s, _)| s.contains("\"a\"")).unwrap().1;
         let num = spans.iter().find(|(s, _)| s.contains('1')).unwrap().1;
-        assert_eq!(key, Color32::from_rgb(0x9c, 0xdc, 0xfe));
-        assert_eq!(num, Color32::from_rgb(0xb5, 0xce, 0xa8));
+        assert_eq!(key, Color::from_rgb(0x9c, 0xdc, 0xfe));
+        assert_eq!(num, Color::from_rgb(0xb5, 0xce, 0xa8));
     }
 
     #[test]
     fn stale_tree_is_adjusted_for_unparsed_edits() {
         let src = "fn a() {}\nfn b() {}\n";
-        let mut buf = Buffer::from_str(src);
+        let mut buf = Buffer::new(src);
         buf.track_syntax_edits();
         let mut ts = TsState::new(Lang::Rust).unwrap();
         let mut parser = Parser::new();
@@ -462,6 +469,6 @@ mod tests {
         let line2: usize = ts.lines[&2].iter().map(|s| s.len).sum();
         assert_eq!(line2, buf.line_text(2).chars().count());
         // "fn" on the shifted line is still a keyword.
-        assert_eq!(ts.lines[&2][0].color, Color32::from_rgb(0x56, 0x9c, 0xd6));
+        assert_eq!(ts.lines[&2][0].color, Color::from_rgb(0x56, 0x9c, 0xd6));
     }
 }

@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use egui::Color32;
+use crate::theme::Color;
 use std::sync::{Arc, RwLock};
 
 use syntect::highlighting::{FontStyle, HighlightIterator, HighlightState, Highlighter as SynHighlighter, Theme};
@@ -23,7 +23,7 @@ const MAX_CACHED_LINES: usize = 20_000;
 
 pub struct Span {
     pub len: usize,
-    pub color: Color32,
+    pub color: Color,
     pub italic: bool,
 }
 
@@ -65,11 +65,19 @@ impl Highlighter {
     /// `enabled: false` (large-file mode) never highlights.
     pub fn new(extension: &str, enabled: bool) -> Self {
         let syntax_name = enabled
-            .then(|| syntaxes().find_syntax_by_extension(extension).or_else(|| syntaxes().find_syntax_by_token(extension)))
+            .then(|| {
+                syntaxes().find_syntax_by_extension(extension).or_else(|| syntaxes().find_syntax_by_token(extension))
+            })
             .flatten()
             .filter(|s| s.name != "Plain Text")
             .map(|s| s.name.clone());
-        Self { syntax_name, checkpoints: Vec::new(), tail: None, cache: HashMap::new(), theme_generation: crate::theme::generation() }
+        Self {
+            syntax_name,
+            checkpoints: Vec::new(),
+            tail: None,
+            cache: HashMap::new(),
+            theme_generation: crate::theme::generation(),
+        }
     }
 
     #[cfg(test)]
@@ -132,10 +140,16 @@ impl Highlighter {
     }
 }
 
-fn highlight_line(buf: &Buffer, line: usize, state: &mut State, highlighter: &SynHighlighter, set: &SyntaxSet) -> Vec<Span> {
+fn highlight_line(
+    buf: &Buffer,
+    line: usize,
+    state: &mut State,
+    highlighter: &SynHighlighter,
+    set: &SyntaxSet,
+) -> Vec<Span> {
     let mut text = buf.line_text(line);
     let plain_len = text.chars().count();
-    let fallback = || vec![Span { len: plain_len, color: Color32::from_rgb(0xd0, 0xd0, 0xd0), italic: false }];
+    let fallback = || vec![Span { len: plain_len, color: Color::from_rgb(0xd0, 0xd0, 0xd0), italic: false }];
     if plain_len > MAX_LINE_CHARS {
         return fallback();
     }
@@ -148,7 +162,7 @@ fn highlight_line(buf: &Buffer, line: usize, state: &mut State, highlighter: &Sy
             let len = piece.trim_end_matches('\n').chars().count();
             (len > 0).then(|| Span {
                 len,
-                color: Color32::from_rgb(style.foreground.r, style.foreground.g, style.foreground.b),
+                color: Color::from_rgb(style.foreground.r, style.foreground.g, style.foreground.b),
                 italic: style.font_style.contains(FontStyle::ITALIC),
             })
         })
@@ -161,7 +175,7 @@ mod tests {
 
     #[test]
     fn block_comment_state_carries_across_lines_and_edits() {
-        let mut buf = Buffer::from_str("let a = 1;\n/* start\nstill comment\n*/\nlet b = 2;");
+        let mut buf = Buffer::new("let a = 1;\n/* start\nstill comment\n*/\nlet b = 2;");
         let mut hl = Highlighter::new("rs", true);
         assert!(hl.is_active());
         let comment_color = hl.spans(&buf, 2).unwrap()[0].color;
@@ -177,7 +191,7 @@ mod tests {
 
     #[test]
     fn spans_cover_the_whole_line() {
-        let buf = Buffer::from_str("fn main() { println!(\"hi\"); }");
+        let buf = Buffer::new("fn main() { println!(\"hi\"); }");
         let mut hl = Highlighter::new("rs", true);
         let total: usize = hl.spans(&buf, 0).unwrap().iter().map(|s| s.len).sum();
         assert_eq!(total, buf.line_text(0).chars().count());

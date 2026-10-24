@@ -16,6 +16,7 @@ use toml::{Table, Value};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Settings {
     pub editor: EditorSettings,
     pub workbench: WorkbenchSettings,
@@ -45,12 +46,6 @@ pub struct WorkbenchSettings {
 pub struct FilesSettings {
     /// Restore unsaved changes on the next launch instead of asking on exit.
     pub hot_exit: bool,
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self { editor: EditorSettings::default(), workbench: WorkbenchSettings::default(), files: FilesSettings::default() }
-    }
 }
 
 impl Default for EditorSettings {

@@ -3,24 +3,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-mod buffer;
-mod document;
-mod edit_ops;
 mod editor_view;
 mod explorer;
-mod finder;
-mod highlight;
 mod keymap;
 mod palette;
-mod search;
-mod session;
-mod settings;
-mod syntax;
+mod search_panel;
 mod terminal;
 mod theme;
-mod watcher;
 
 use std::path::PathBuf;
+
+// Core modules, re-exported so `crate::buffer::...` paths keep working.
+pub(crate) use rust_code_core::{buffer, commands, document, edit_ops, finder, session, settings, syntax, watcher};
 
 fn main() -> eframe::Result {
     // Optional first argument: a folder (opened in the explorer) or a file.
@@ -37,8 +31,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Rust Code",
         options,
-        Box::new(move |cc| {
-            Ok(Box::new(app::CodeApp::new(start_path, &cc.egui_ctx)))
-        }),
+        Box::new(move |cc| Ok(Box::new(app::CodeApp::new(start_path, &cc.egui_ctx)))),
     )
 }

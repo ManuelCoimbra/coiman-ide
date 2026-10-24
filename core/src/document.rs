@@ -3,7 +3,6 @@
 use std::path::{Path, PathBuf};
 
 use crate::buffer::{Buffer, Selection};
-use crate::editor_view::ViewState;
 use crate::highlight::Highlighter;
 use crate::syntax::{Lang, TsState};
 
@@ -29,7 +28,6 @@ pub struct Document {
     saved_version: u64,
     /// Index used to name untitled buffers ("Untitled-1", …).
     untitled_index: usize,
-    pub view: ViewState,
     /// syntect highlighting, used for languages without a tree-sitter grammar.
     pub highlighter: Highlighter,
     /// Tree-sitter highlighting for supported languages.
@@ -45,7 +43,7 @@ pub struct Document {
 
 impl Document {
     fn from_text(path: Option<PathBuf>, untitled_index: usize, text: &str) -> Self {
-        let buffer = Buffer::from_str(text);
+        let buffer = Buffer::new(text);
         let large = text.len() > LARGE_FILE_BYTES || buffer.len_lines() > LARGE_FILE_LINES;
         let ext = extension_of(path.as_deref());
         let mut doc = Self {
@@ -56,7 +54,6 @@ impl Document {
             ts: None,
             path,
             untitled_index,
-            view: ViewState::default(),
             large,
             request_focus: false,
             reveal: false,
@@ -102,10 +99,9 @@ impl Document {
 
     pub fn title(&self) -> String {
         match &self.path {
-            Some(p) => p
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| p.display().to_string()),
+            Some(p) => {
+                p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| p.display().to_string())
+            }
             None => format!("Untitled-{}", self.untitled_index),
         }
     }
@@ -211,12 +207,6 @@ impl Document {
         self.reveal = true;
     }
 
-    /// Replaces the whole text (line commands) as one undo step.
-    pub fn replace_all(&mut self, text: &str, (anchor, head): (usize, usize)) {
-        self.buffer.replace_all(text, Selection::new(anchor, head));
-        self.reveal = true;
-    }
-
     /// Selects the given 1-based line and scrolls to it.
     pub fn goto_line(&mut self, line: usize) {
         let line = line.saturating_sub(1).min(self.buffer.len_lines() - 1);
@@ -226,9 +216,7 @@ impl Document {
 }
 
 fn extension_of(path: Option<&Path>) -> String {
-    path.and_then(|p| p.extension())
-        .map(|e| e.to_string_lossy().to_lowercase())
-        .unwrap_or_else(|| "txt".to_owned())
+    path.and_then(|p| p.extension()).map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_else(|| "txt".to_owned())
 }
 
 pub fn language_name(ext: &str) -> &'static str {

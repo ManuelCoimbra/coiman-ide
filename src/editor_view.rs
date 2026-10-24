@@ -101,13 +101,13 @@ struct Layout {
 }
 
 impl Layout {
-    fn new(doc: &mut Document, wrap_cols: Option<usize>) -> Self {
+    fn new(doc: &Document, view: &mut ViewState, wrap_cols: Option<usize>) -> Self {
         let buf = &doc.buffer;
         let Some(cols) = wrap_cols else {
-            doc.view.rows = None;
+            view.rows = None;
             return Self { wrap_cols: None, total_rows: buf.len_lines() };
         };
-        let stale = doc.view.rows.as_ref().is_none_or(|r| r.version != buf.version() || r.cols != cols);
+        let stale = view.rows.as_ref().is_none_or(|r| r.version != buf.version() || r.cols != cols);
         if stale {
             let mut first_row = Vec::with_capacity(buf.len_lines() + 1);
             let mut row = 0;
@@ -116,15 +116,15 @@ impl Layout {
                 row += wrap_segments(&buf.line_text(line), cols).len();
             }
             first_row.push(row);
-            doc.view.rows = Some(RowMap { version: buf.version(), cols, first_row });
+            view.rows = Some(RowMap { version: buf.version(), cols, first_row });
         }
-        let total_rows = *doc.view.rows.as_ref().unwrap().first_row.last().unwrap();
+        let total_rows = *view.rows.as_ref().unwrap().first_row.last().unwrap();
         Self { wrap_cols: Some(cols), total_rows }
     }
 
-    fn row(&self, doc: &Document, row: usize) -> Row {
+    fn row(&self, doc: &Document, view: &ViewState, row: usize) -> Row {
         let buf = &doc.buffer;
-        match (self.wrap_cols, &doc.view.rows) {
+        match (self.wrap_cols, &view.rows) {
             (Some(cols), Some(map)) => {
                 let line = map.first_row.partition_point(|&r| r <= row).saturating_sub(1).min(buf.len_lines() - 1);
                 let seg = row - map.first_row[line];
@@ -144,10 +144,10 @@ impl Layout {
     }
 
     /// Visual row containing `pos`.
-    fn row_of(&self, doc: &Document, pos: usize) -> usize {
+    fn row_of(&self, doc: &Document, view: &ViewState, pos: usize) -> usize {
         let buf = &doc.buffer;
         let line = buf.char_to_line(pos);
-        match (self.wrap_cols, &doc.view.rows) {
+        match (self.wrap_cols, &view.rows) {
             (Some(cols), Some(map)) => {
                 let starts = wrap_segments(&buf.line_text(line), cols);
                 let col = pos - buf.line_start(line);
@@ -167,7 +167,7 @@ struct Metrics {
 }
 
 /// Draws and runs the editor for `doc` in all remaining space of `ui`.
-pub fn show(ui: &mut egui::Ui, doc: &mut Document, opts: Options) {
+pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: Options) {
     let (font_size, word_wrap) = (opts.font_size, opts.word_wrap);
     let id = editor_id(doc.uid);
     let rect = ui.available_rect_before_wrap();
@@ -211,20 +211,20 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, opts: Options) {
     }
 
     // ----- input ---------------------------------------------------------------
-    let mut layout = Layout::new(doc, wrap_cols);
+    let mut layout = Layout::new(doc, view, wrap_cols);
     let visible_rows = (text_rect.height() / row_h).floor().max(1.0) as usize;
     let mut reveal = std::mem::take(&mut doc.reveal);
 
-    handle_scrolling(ui, doc, &layout, &m, rect, text_rect, &response);
-    reveal |= handle_mouse(ui, doc, &layout, &m, text_rect, &response);
+    handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response);
+    reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response);
     if has_focus {
         let version = doc.buffer.version();
-        reveal |= handle_keyboard(ui, doc, &m, visible_rows);
+        reveal |= handle_keyboard(ui, doc, view, &m, visible_rows);
         if doc.buffer.version() != version {
             if let Some(line) = doc.buffer.take_edited_from_line() {
                 doc.highlighter.invalidate_from(line);
             }
-            layout = Layout::new(doc, wrap_cols);
+            layout = Layout::new(doc, view, wrap_cols);
         }
     }
 
@@ -232,42 +232,44 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, opts: Options) {
     let content_h = layout.total_rows as f32 * row_h;
     let max_y = (content_h - row_h).max(0.0);
     let primary = doc.buffer.primary();
-    let cursor_row = layout.row_of(doc, primary.head);
-    let cursor_row_start = layout.row(doc, cursor_row).start;
+    let cursor_row = layout.row_of(doc, view, primary.head);
+    let cursor_row_start = layout.row(doc, view, cursor_row).start;
     let cursor_x = col_x(&doc.buffer, cursor_row_start, primary.head, &m);
     if reveal {
         let top = cursor_row as f32 * row_h;
         let view_h = text_rect.height();
-        if top < doc.view.scroll.y {
-            doc.view.scroll.y = top;
-        } else if top + row_h > doc.view.scroll.y + view_h {
-            doc.view.scroll.y = top + row_h - view_h;
+        if top < view.scroll.y {
+            view.scroll.y = top;
+        } else if top + row_h > view.scroll.y + view_h {
+            view.scroll.y = top + row_h - view_h;
         }
         if wrap_cols.is_none() {
             let view_w = text_rect.width();
             let margin = 4.0 * char_w;
-            if cursor_x < doc.view.scroll.x + margin {
-                doc.view.scroll.x = (cursor_x - margin).max(0.0);
-            } else if cursor_x > doc.view.scroll.x + view_w - margin {
-                doc.view.scroll.x = cursor_x - view_w + margin;
+            if cursor_x < view.scroll.x + margin {
+                view.scroll.x = (cursor_x - margin).max(0.0);
+            } else if cursor_x > view.scroll.x + view_w - margin {
+                view.scroll.x = cursor_x - view_w + margin;
             }
         }
     }
     let max_x = if wrap_cols.is_some() {
         0.0
     } else {
-        (doc.view.max_cols_seen as f32 * char_w - text_rect.width() + 4.0 * char_w).max(cursor_x - text_rect.width() + 4.0 * char_w).max(0.0)
+        (view.max_cols_seen as f32 * char_w - text_rect.width() + 4.0 * char_w)
+            .max(cursor_x - text_rect.width() + 4.0 * char_w)
+            .max(0.0)
     };
-    doc.view.scroll.y = doc.view.scroll.y.clamp(0.0, max_y);
-    doc.view.scroll.x = doc.view.scroll.x.clamp(0.0, max_x);
+    view.scroll.y = view.scroll.y.clamp(0.0, max_y);
+    view.scroll.x = view.scroll.x.clamp(0.0, max_x);
 
     // ----- paint ---------------------------------------------------------------
-    paint(ui, doc, &layout, &m, rect, text_rect, has_focus, opts);
-    paint_scrollbars(ui, doc, rect, text_rect, content_h, max_x);
+    paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts });
+    paint_scrollbars(ui, view, rect, text_rect, content_h, max_x);
 
     if has_focus {
-        let row_y = text_rect.top() + cursor_row as f32 * row_h - doc.view.scroll.y;
-        let x = text_rect.left() + cursor_x - doc.view.scroll.x;
+        let row_y = text_rect.top() + cursor_row as f32 * row_h - view.scroll.y;
+        let x = text_rect.left() + cursor_x - view.scroll.x;
         let cursor_rect = Rect::from_min_size(Pos2::new(x, row_y), Vec2::new(2.0, row_h));
         let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
         ui.output_mut(|o| {
@@ -291,14 +293,14 @@ fn col_x(buf: &Buffer, row_start: usize, pos: usize, m: &Metrics) -> f32 {
 }
 
 /// Document position under a screen point.
-fn pos_at(doc: &Document, layout: &Layout, m: &Metrics, text_rect: Rect, p: Pos2) -> usize {
-    let y = p.y - text_rect.top() + doc.view.scroll.y;
+fn pos_at(doc: &Document, view: &ViewState, layout: &Layout, m: &Metrics, text_rect: Rect, p: Pos2) -> usize {
+    let y = p.y - text_rect.top() + view.scroll.y;
     let row_idx = ((y / m.row_h).floor().max(0.0) as usize).min(layout.total_rows.saturating_sub(1));
-    let row = layout.row(doc, row_idx);
+    let row = layout.row(doc, view, row_idx);
     let buf = &doc.buffer;
     let line_start = buf.line_start(row.line);
     let row_col = visual_width(buf.rope().slice(line_start..row.start).chars());
-    let x = p.x - text_rect.left() + doc.view.scroll.x;
+    let x = p.x - text_rect.left() + view.scroll.x;
     let col = (x / m.char_w).round().max(0.0) as usize;
     let pos = buf.pos_at_visual_col(row.line, row_col + col);
     pos.clamp(row.start, row.end)
@@ -306,7 +308,7 @@ fn pos_at(doc: &Document, layout: &Layout, m: &Metrics, text_rect: Rect, p: Pos2
 
 fn handle_scrolling(
     ui: &mut egui::Ui,
-    doc: &mut Document,
+    view: &mut ViewState,
     layout: &Layout,
     m: &Metrics,
     rect: Rect,
@@ -316,7 +318,7 @@ fn handle_scrolling(
     if response.contains_pointer() {
         let delta = ui.input(|i| i.smooth_scroll_delta);
         if delta != Vec2::ZERO {
-            doc.view.scroll -= delta;
+            view.scroll -= delta;
             // Don't let parent scroll areas also react.
             ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         }
@@ -325,7 +327,7 @@ fn handle_scrolling(
     // Scrollbar dragging: decide on press whether the drag belongs to a scrollbar.
     let pointer = ui.input(|i| i.pointer.interact_pos());
     if response.drag_started() {
-        doc.view.dragging_scrollbar = pointer.and_then(|p| {
+        view.dragging_scrollbar = pointer.and_then(|p| {
             if p.x >= text_rect.right() {
                 Some(true)
             } else if p.y >= rect.bottom() - SCROLLBAR && layout.wrap_cols.is_none() {
@@ -337,17 +339,17 @@ fn handle_scrolling(
     }
     if !response.dragged() {
         if !response.drag_started() {
-            doc.view.dragging_scrollbar = None;
+            view.dragging_scrollbar = None;
         }
         return;
     }
     let content_h = layout.total_rows as f32 * m.row_h;
     let d = response.drag_delta();
-    match doc.view.dragging_scrollbar {
-        Some(true) => doc.view.scroll.y += d.y * content_h.max(text_rect.height()) / text_rect.height(),
+    match view.dragging_scrollbar {
+        Some(true) => view.scroll.y += d.y * content_h.max(text_rect.height()) / text_rect.height(),
         Some(false) => {
-            let content_w = doc.view.max_cols_seen as f32 * m.char_w;
-            doc.view.scroll.x += d.x * content_w.max(text_rect.width()) / text_rect.width();
+            let content_w = view.max_cols_seen as f32 * m.char_w;
+            view.scroll.x += d.x * content_w.max(text_rect.width()) / text_rect.width();
         }
         None => {}
     }
@@ -357,18 +359,19 @@ fn handle_scrolling(
 fn handle_mouse(
     ui: &mut egui::Ui,
     doc: &mut Document,
+    view: &mut ViewState,
     layout: &Layout,
     m: &Metrics,
     text_rect: Rect,
     response: &egui::Response,
 ) -> bool {
-    if doc.view.dragging_scrollbar.is_some() {
+    if view.dragging_scrollbar.is_some() {
         return false;
     }
     let Some(p) = ui.input(|i| i.pointer.interact_pos()) else { return false };
     let pressed = response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed());
     let mods = ui.input(|i| i.modifiers);
-    let pos = pos_at(doc, layout, m, text_rect, p);
+    let pos = pos_at(doc, view, layout, m, text_rect, p);
 
     if pressed && p.x >= text_rect.left() - m.gutter_w && p.x < text_rect.right() {
         if p.x < text_rect.left() {
@@ -391,7 +394,8 @@ fn handle_mouse(
     if response.triple_clicked() {
         let line = doc.buffer.char_to_line(pos);
         let next = (line + 1 < doc.buffer.len_lines()).then(|| doc.buffer.line_start(line + 1));
-        doc.buffer.set_single(Selection::new(doc.buffer.line_start(line), next.unwrap_or_else(|| doc.buffer.len_chars())));
+        doc.buffer
+            .set_single(Selection::new(doc.buffer.line_start(line), next.unwrap_or_else(|| doc.buffer.len_chars())));
         return false;
     }
     if response.double_clicked() {
@@ -421,7 +425,13 @@ fn handle_mouse(
 }
 
 /// Returns true if the cursor moved or text changed (keep cursor in view).
-fn handle_keyboard(ui: &mut egui::Ui, doc: &mut Document, m: &Metrics, visible_rows: usize) -> bool {
+fn handle_keyboard(
+    ui: &mut egui::Ui,
+    doc: &mut Document,
+    view: &mut ViewState,
+    m: &Metrics,
+    visible_rows: usize,
+) -> bool {
     let events = ui.input(|i| i.events.clone());
     let mut moved = false;
     for event in events {
@@ -432,25 +442,25 @@ fn handle_keyboard(ui: &mut egui::Ui, doc: &mut Document, m: &Metrics, visible_r
                     moved = true;
                 }
             }
-            Event::Ime(egui::ImeEvent::Preedit { text, .. }) => doc.view.preedit = text,
+            Event::Ime(egui::ImeEvent::Preedit { text, .. }) => view.preedit = text,
             Event::Ime(egui::ImeEvent::Commit(text)) => {
-                doc.view.preedit.clear();
+                view.preedit.clear();
                 if !text.is_empty() {
                     doc.buffer.insert(&text);
                     moved = true;
                 }
             }
-            Event::Copy => copy(ui, doc, false),
+            Event::Copy => copy(ui, doc, view, false),
             Event::Cut => {
-                copy(ui, doc, true);
+                copy(ui, doc, view, true);
                 moved = true;
             }
             Event::Paste(text) => {
-                paste(doc, &text);
+                paste(doc, view, &text);
                 moved = true;
             }
             Event::Key { key, pressed: true, modifiers, .. } => {
-                moved |= handle_key(doc, key, modifiers, m, visible_rows);
+                moved |= handle_key(doc, view, key, modifiers, m, visible_rows);
             }
             _ => {}
         }
@@ -458,7 +468,14 @@ fn handle_keyboard(ui: &mut egui::Ui, doc: &mut Document, m: &Metrics, visible_r
     moved
 }
 
-fn handle_key(doc: &mut Document, key: Key, mods: Modifiers, m: &Metrics, visible_rows: usize) -> bool {
+fn handle_key(
+    doc: &mut Document,
+    view: &mut ViewState,
+    key: Key,
+    mods: Modifiers,
+    m: &Metrics,
+    visible_rows: usize,
+) -> bool {
     let b = &mut doc.buffer;
     let (ctrl, shift) = (mods.command, mods.shift);
     match key {
@@ -467,7 +484,7 @@ fn handle_key(doc: &mut Document, key: Key, mods: Modifiers, m: &Metrics, visibl
             let dir = if key == Key::ArrowDown { 1.0 } else { -1.0 };
             if ctrl {
                 // Ctrl+Up/Down scrolls without moving the cursor.
-                doc.view.scroll.y += dir * m.row_h;
+                view.scroll.y += dir * m.row_h;
                 return false;
             }
             b.move_vertical(dir as isize, shift);
@@ -475,7 +492,7 @@ fn handle_key(doc: &mut Document, key: Key, mods: Modifiers, m: &Metrics, visibl
         Key::PageUp | Key::PageDown => {
             let dir: isize = if key == Key::PageDown { 1 } else { -1 };
             b.move_vertical(dir * visible_rows as isize, shift);
-            doc.view.scroll.y += dir as f32 * visible_rows as f32 * m.row_h;
+            view.scroll.y += dir as f32 * visible_rows as f32 * m.row_h;
         }
         Key::Home if ctrl => b.move_doc_edge(false, shift),
         Key::End if ctrl => b.move_doc_edge(true, shift),
@@ -534,7 +551,7 @@ fn select_lines(b: &mut Buffer) {
 
 /// Copy (or cut) the selections. With nothing selected the whole line is copied,
 /// like VS Code.
-fn copy(ui: &egui::Ui, doc: &mut Document, cut: bool) {
+fn copy(ui: &egui::Ui, doc: &mut Document, view: &mut ViewState, cut: bool) {
     let b = &doc.buffer;
     let nl = b.line_ending;
     let line_mode = b.selections().iter().all(Selection::is_empty);
@@ -546,7 +563,7 @@ fn copy(ui: &egui::Ui, doc: &mut Document, cut: bool) {
         b.selected_texts().join(nl)
     };
     ui.ctx().copy_text(text.clone());
-    doc.view.line_clipboard = line_mode.then_some(text);
+    view.line_clipboard = line_mode.then_some(text);
 
     if !cut {
         return;
@@ -569,12 +586,12 @@ fn copy(ui: &egui::Ui, doc: &mut Document, cut: bool) {
     }
 }
 
-fn paste(doc: &mut Document, text: &str) {
+fn paste(doc: &mut Document, view: &mut ViewState, text: &str) {
     let nl = doc.buffer.line_ending;
     let normalized = text.replace("\r\n", "\n").replace('\n', nl);
     let b = &mut doc.buffer;
     let all_empty = b.selections().iter().all(Selection::is_empty);
-    if all_empty && doc.view.line_clipboard.as_deref() == Some(text) {
+    if all_empty && view.line_clipboard.as_deref() == Some(text) {
         // Whole-line paste goes above the current line, keeping the cursor column.
         let inserted = normalized.chars().count();
         let changes = b
@@ -596,22 +613,25 @@ fn paste(doc: &mut Document, text: &str) {
     }
 }
 
-fn paint(
-    ui: &mut egui::Ui,
-    doc: &mut Document,
-    layout: &Layout,
-    m: &Metrics,
+/// Everything [`paint`] needs besides the document and its view state.
+#[derive(Clone, Copy)]
+struct PaintCtx<'a> {
+    layout: &'a Layout,
+    m: &'a Metrics,
     rect: Rect,
     text_rect: Rect,
     has_focus: bool,
     opts: Options,
-) {
+}
+
+fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: PaintCtx) {
+    let PaintCtx { layout, m, rect, text_rect, has_focus, opts } = ctx;
     let pal = theme::colors();
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, theme::colors().editor_bg);
     let text_painter = painter.with_clip_rect(text_rect);
 
-    let scroll = doc.view.scroll;
+    let scroll = view.scroll;
     let first_row = (scroll.y / m.row_h).floor() as usize;
     let y_offset = first_row as f32 * m.row_h - scroll.y;
     let rows_on_screen = (rect.height() / m.row_h).ceil() as usize + 1;
@@ -619,24 +639,21 @@ fn paint(
 
     let primary = doc.buffer.primary();
     let primary_line = doc.buffer.char_to_line(primary.head);
-    let primary_row = layout.row_of(doc, primary.head);
-    let bracket = primary
-        .is_empty()
-        .then(|| doc.buffer.matching_bracket(primary.head, BRACKET_SEARCH_LIMIT))
-        .flatten();
+    let primary_row = layout.row_of(doc, view, primary.head);
+    let bracket = primary.is_empty().then(|| doc.buffer.matching_bracket(primary.head, BRACKET_SEARCH_LIMIT)).flatten();
     let x0 = text_rect.left() - scroll.x;
 
     // Highlight the visible lines in one pass (tree-sitter documents).
     if last_row > first_row {
-        let first_line = layout.row(doc, first_row).line;
-        let last_line = layout.row(doc, last_row - 1).line;
+        let first_line = layout.row(doc, view, first_row).line;
+        let last_line = layout.row(doc, view, last_row - 1).line;
         if let Some(ts) = &mut doc.ts {
             ts.prepare(&doc.buffer, first_line, last_line, opts.rainbow_brackets);
         }
     }
 
     for (i, row_idx) in (first_row..last_row).enumerate() {
-        let row = layout.row(doc, row_idx);
+        let row = layout.row(doc, view, row_idx);
         let y = rect.top() + y_offset + i as f32 * m.row_h;
         let buf = &doc.buffer;
 
@@ -671,7 +688,11 @@ fn paint(
                 xb += m.char_w * 0.6;
             }
             if xb > xa {
-                text_painter.rect_filled(Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)), 0.0, pal.selection);
+                text_painter.rect_filled(
+                    Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)),
+                    0.0,
+                    pal.selection,
+                );
             }
         }
 
@@ -691,13 +712,14 @@ fn paint(
         }
 
         // Text.
-        let job = row_job(doc, &row, m);
+        let job = row_job(doc, view, &row, m);
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
 
         // Line number.
         if row.first {
-            let color = if row.line == primary_line { theme::colors().line_number_active } else { theme::colors().line_number };
+            let color =
+                if row.line == primary_line { theme::colors().line_number_active } else { theme::colors().line_number };
             painter.text(
                 Pos2::new(text_rect.left() - 18.0, y),
                 egui::Align2::RIGHT_TOP,
@@ -711,18 +733,22 @@ fn paint(
     // Cursors.
     if has_focus {
         for s in doc.buffer.selections() {
-            let row_idx = layout.row_of(doc, s.head);
+            let row_idx = layout.row_of(doc, view, s.head);
             if row_idx < first_row || row_idx >= last_row {
                 continue;
             }
-            let row = layout.row(doc, row_idx);
+            let row = layout.row(doc, view, row_idx);
             let x = x0 + col_x(&doc.buffer, row.start, s.head, m);
             let y = rect.top() + y_offset + (row_idx - first_row) as f32 * m.row_h;
             text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, m.row_h)), 0.0, pal.cursor);
-            if *s == primary && !doc.view.preedit.is_empty() {
-                let galley = ui.fonts_mut(|f| f.layout_no_wrap(doc.view.preedit.clone(), m.font_id.clone(), pal.editor_fg));
+            if *s == primary && !view.preedit.is_empty() {
+                let galley = ui.fonts_mut(|f| f.layout_no_wrap(view.preedit.clone(), m.font_id.clone(), pal.editor_fg));
                 let w = galley.size().x;
-                text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, m.row_h)), 0.0, theme::colors().editor_bg);
+                text_painter.rect_filled(
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, m.row_h)),
+                    0.0,
+                    theme::colors().editor_bg,
+                );
                 text_painter.galley(Pos2::new(x, y), galley, pal.editor_fg);
                 text_painter.hline(x..=x + w, y + m.row_h - 1.0, Stroke::new(1.0, pal.editor_fg));
             }
@@ -747,7 +773,7 @@ fn indent_cols(buf: &Buffer, line: usize) -> usize {
 }
 
 /// Builds the text for one row: syntax colors, tabs expanded to spaces.
-fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
+fn row_job(doc: &mut Document, view: &mut ViewState, row: &Row, m: &Metrics) -> LayoutJob {
     let line_start = doc.buffer.line_start(row.line);
     let line_text = doc.buffer.line_text(row.line);
     let chars: Vec<char> = line_text.chars().collect();
@@ -756,7 +782,7 @@ fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
     // Visual column of the row start (tab stops are relative to the line start).
     let mut col = visual_width(chars[..seg_a].iter().copied());
     let width = col + visual_width(chars[seg_a..seg_b].iter().copied());
-    doc.view.max_cols_seen = doc.view.max_cols_seen.max(width);
+    view.max_cols_seen = view.max_cols_seen.max(width);
 
     // (end char index within line, color, italic) runs.
     let mut runs: Vec<(usize, Color32, bool)> = Vec::new();
@@ -769,7 +795,7 @@ fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
             let mut end = 0;
             for s in spans {
                 end += s.len;
-                runs.push((end, s.color, s.italic));
+                runs.push((end, theme::c32(s.color), s.italic));
             }
         }
         None => runs.push((chars.len(), theme::colors().editor_fg, false)),
@@ -795,7 +821,11 @@ fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
             }
             col += w;
         }
-        job.append(&piece, 0.0, TextFormat { font_id: m.font_id.clone(), color, italics: italic, ..Default::default() });
+        job.append(
+            &piece,
+            0.0,
+            TextFormat { font_id: m.font_id.clone(), color, italics: italic, ..Default::default() },
+        );
         idx = stop;
         if idx >= seg_b {
             break;
@@ -805,22 +835,26 @@ fn row_job(doc: &mut Document, row: &Row, m: &Metrics) -> LayoutJob {
     job
 }
 
-fn paint_scrollbars(ui: &mut egui::Ui, doc: &Document, rect: Rect, text_rect: Rect, content_h: f32, max_x: f32) {
+fn paint_scrollbars(ui: &mut egui::Ui, view: &ViewState, rect: Rect, text_rect: Rect, content_h: f32, max_x: f32) {
     let painter = ui.painter_at(rect);
     let thumb = Color32::from_rgba_unmultiplied(0x79, 0x79, 0x79, 0x66);
     let view_h = text_rect.height();
     if content_h > view_h {
         let track = Rect::from_min_max(Pos2::new(text_rect.right(), rect.top()), rect.max);
         let h = (view_h / content_h * track.height()).max(20.0);
-        let t = doc.view.scroll.y / (content_h - view_h).max(1.0);
+        let t = view.scroll.y / (content_h - view_h).max(1.0);
         let top = track.top() + t.clamp(0.0, 1.0) * (track.height() - h);
-        painter.rect_filled(Rect::from_min_size(Pos2::new(track.left() + 2.0, top), Vec2::new(SCROLLBAR - 4.0, h)), 3.0, thumb);
+        painter.rect_filled(
+            Rect::from_min_size(Pos2::new(track.left() + 2.0, top), Vec2::new(SCROLLBAR - 4.0, h)),
+            3.0,
+            thumb,
+        );
     }
     if max_x > 0.0 {
         let view_w = text_rect.width();
         let content_w = view_w + max_x;
         let w = (view_w / content_w * view_w).max(20.0);
-        let left = text_rect.left() + (doc.view.scroll.x / max_x).clamp(0.0, 1.0) * (view_w - w);
+        let left = text_rect.left() + (view.scroll.x / max_x).clamp(0.0, 1.0) * (view_w - w);
         painter.rect_filled(
             Rect::from_min_size(Pos2::new(left, rect.bottom() - SCROLLBAR + 3.0), Vec2::new(w, SCROLLBAR - 6.0)),
             3.0,

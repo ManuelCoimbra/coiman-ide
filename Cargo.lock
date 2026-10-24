@@ -3139,13 +3139,22 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "rfd",
+ "rust-code-core",
+ "serde",
+ "toml",
+]
+
+[[package]]
+name = "rust-code-core"
+version = "0.1.0"
+dependencies = [
  "grep-matcher",
  "grep-regex",
  "grep-searcher",
  "ignore",
  "notify",
  "nucleo",
- "rfd",
  "ropey",
  "serde",
  "serde_json",

@@ -17,61 +17,7 @@ use std::path::Path;
 use egui::{Key, KeyboardShortcut, Modifiers};
 use serde::Deserialize;
 
-use crate::palette::Command;
-
-/// VS Code command ID of each command.
-pub const COMMAND_IDS: &[(Command, &str)] = &[
-    (Command::CommandPalette, "workbench.action.showCommands"),
-    (Command::QuickOpen, "workbench.action.quickOpen"),
-    (Command::NewFile, "workbench.action.files.newUntitledFile"),
-    (Command::OpenFile, "workbench.action.files.openFile"),
-    (Command::OpenFolder, "workbench.action.files.openFolder"),
-    (Command::Save, "workbench.action.files.save"),
-    (Command::SaveAs, "workbench.action.files.saveAs"),
-    (Command::SaveAll, "workbench.action.files.saveAll"),
-    (Command::CloseTab, "workbench.action.closeActiveEditor"),
-    (Command::ToggleSidebar, "workbench.action.toggleSidebarVisibility"),
-    (Command::ToggleTerminal, "workbench.action.terminal.toggleTerminal"),
-    (Command::ShowExplorer, "workbench.view.explorer"),
-    (Command::ShowSearch, "workbench.view.search"),
-    (Command::Find, "actions.find"),
-    (Command::GoToLine, "workbench.action.gotoLine"),
-    (Command::ZoomIn, "editor.action.fontZoomIn"),
-    (Command::ZoomOut, "editor.action.fontZoomOut"),
-    (Command::ResetZoom, "editor.action.fontZoomReset"),
-    (Command::RefreshExplorer, "workbench.files.action.refreshFilesExplorer"),
-    (Command::Quit, "workbench.action.quit"),
-    (Command::ToggleLineComment, "editor.action.commentLine"),
-    (Command::MoveLinesUp, "editor.action.moveLinesUpAction"),
-    (Command::MoveLinesDown, "editor.action.moveLinesDownAction"),
-    (Command::CopyLinesUp, "editor.action.copyLinesUpAction"),
-    (Command::CopyLinesDown, "editor.action.copyLinesDownAction"),
-    (Command::DeleteLines, "editor.action.deleteLines"),
-    (Command::IndentLines, "editor.action.indentLines"),
-    (Command::OutdentLines, "editor.action.outdentLines"),
-    (Command::SelectNextOccurrence, "editor.action.addSelectionToNextFindMatch"),
-    (Command::AddCursorAbove, "editor.action.insertCursorAbove"),
-    (Command::AddCursorBelow, "editor.action.insertCursorBelow"),
-    (Command::JumpToBracket, "editor.action.jumpToBracket"),
-    (Command::JoinLines, "editor.action.joinLines"),
-    (Command::DuplicateSelection, "editor.action.duplicateSelection"),
-    (Command::SortLinesAscending, "editor.action.sortLinesAscending"),
-    (Command::SortLinesDescending, "editor.action.sortLinesDescending"),
-    (Command::RemoveDuplicateLines, "editor.action.removeDuplicateLines"),
-    (Command::ReverseLines, "editor.action.reverseLines"),
-    (Command::TransformToUppercase, "editor.action.transformToUppercase"),
-    (Command::TransformToLowercase, "editor.action.transformToLowercase"),
-    (Command::TransformToTitlecase, "editor.action.transformToTitlecase"),
-    (Command::ToggleWordWrap, "editor.action.toggleWordWrap"),
-    (Command::ToggleZenMode, "workbench.action.toggleZenMode"),
-    (Command::ReopenClosedEditor, "workbench.action.reopenClosedEditor"),
-    (Command::NextEditor, "workbench.action.nextEditor"),
-    (Command::PreviousEditor, "workbench.action.previousEditor"),
-    (Command::OpenUserSettings, "workbench.action.openSettings"),
-    (Command::OpenWorkspaceSettings, "workbench.action.openWorkspaceSettings"),
-    (Command::OpenKeybindings, "workbench.action.openGlobalKeybindings"),
-    (Command::SelectTheme, "workbench.action.selectTheme"),
-];
+use crate::commands::{Command, command_from_id, command_id};
 
 /// VS Code's default keybindings on Windows for the commands we have.
 /// `true` = only while the editor has focus (`editorTextFocus`).
@@ -121,14 +67,6 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+alt+down", Command::AddCursorBelow, true),
     ("ctrl+shift+\\", Command::JumpToBracket, true),
 ];
-
-pub fn command_id(cmd: Command) -> &'static str {
-    COMMAND_IDS.iter().find(|(c, _)| *c == cmd).map_or("", |(_, id)| id)
-}
-
-pub fn command_from_id(id: &str) -> Option<Command> {
-    COMMAND_IDS.iter().find(|(_, i)| *i == id).map(|(c, _)| *c)
-}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
@@ -242,18 +180,28 @@ impl Keymap {
 
     /// Consumes a matching shortcut from this frame's input. `chord` holds the
     /// first stroke of a two-stroke binding between frames.
-    pub fn process(&self, ctx: &egui::Context, chord: &mut Option<KeyboardShortcut>, editor_focused: bool) -> Option<Command> {
+    pub fn process(
+        &self,
+        ctx: &egui::Context,
+        chord: &mut Option<KeyboardShortcut>,
+        editor_focused: bool,
+    ) -> Option<Command> {
         let applies = |b: &Binding| !b.editor_only || editor_focused;
         if let Some(first) = *chord {
             // Wait across idle frames; resolve on the next real key press.
-            let key_pressed = ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { pressed: true, .. })));
+            let key_pressed =
+                ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { pressed: true, .. })));
             if !key_pressed {
                 return None;
             }
             *chord = None;
             for &i in &self.order {
                 let b = &self.bindings[i];
-                if b.keys.len() == 2 && b.keys[0] == first && applies(b) && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[1])) {
+                if b.keys.len() == 2
+                    && b.keys[0] == first
+                    && applies(b)
+                    && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[1]))
+                {
                     // The second stroke may also have produced text (e.g. "z"); drop it.
                     ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Text(_))));
                     return Some(b.command);
@@ -316,9 +264,9 @@ fn parse_stroke(s: &str) -> Result<KeyboardShortcut, String> {
     }
     for part in parts {
         match part {
-            "ctrl" | "cmd" | "meta" => mods = mods | Modifiers::COMMAND,
-            "shift" => mods = mods | Modifiers::SHIFT,
-            "alt" | "option" => mods = mods | Modifiers::ALT,
+            "ctrl" | "cmd" | "meta" => mods |= Modifiers::COMMAND,
+            "shift" => mods |= Modifiers::SHIFT,
+            "alt" | "option" => mods |= Modifiers::ALT,
             name => {
                 if key.is_some() {
                     return Err(format!("`{s}`: more than one key"));
@@ -415,10 +363,10 @@ mod tests {
 
     #[test]
     fn every_command_has_an_id_and_round_trips() {
-        for (cmd, id) in COMMAND_IDS {
+        for (cmd, id) in crate::commands::COMMAND_IDS {
             assert_eq!(command_from_id(id), Some(*cmd));
         }
-        for (cmd, _) in crate::palette::COMMANDS {
+        for (cmd, _) in crate::commands::COMMANDS {
             assert!(!command_id(*cmd).is_empty(), "{cmd:?} has no VS Code id");
         }
     }
@@ -446,7 +394,8 @@ mod tests {
     #[test]
     fn more_modifiers_are_matched_first() {
         let km = Keymap::defaults();
-        let first_ctrl_k = km.order.iter().position(|&i| km.bindings[i].keys[0] == parse_keys("ctrl+k").unwrap()[0]).unwrap();
+        let first_ctrl_k =
+            km.order.iter().position(|&i| km.bindings[i].keys[0] == parse_keys("ctrl+k").unwrap()[0]).unwrap();
         let ctrl_shift_k = km.order.iter().position(|&i| km.bindings[i].command == Command::DeleteLines).unwrap();
         assert!(ctrl_shift_k < first_ctrl_k);
     }

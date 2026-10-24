@@ -10,7 +10,7 @@ use ignore::{WalkBuilder, WalkState};
 use nucleo::pattern::{CaseMatching, Normalization};
 use nucleo::{Config, Matcher, Nucleo, Utf32Str};
 
-use crate::explorer::IGNORED_DIRS;
+use crate::workspace::IGNORED_DIRS;
 
 pub struct Entry {
     pub path: PathBuf,
@@ -48,8 +48,9 @@ pub fn walker(root: &Path) -> WalkBuilder {
 }
 
 impl FileFinder {
-    pub fn new(ctx: egui::Context) -> Self {
-        let notify = Arc::new(move || ctx.request_repaint());
+    /// `notify` is called (from worker threads) when new results are ready.
+    pub fn new(notify: impl Fn() + Send + Sync + 'static) -> Self {
+        let notify = Arc::new(notify);
         Self {
             nucleo: Nucleo::new(Config::DEFAULT.match_paths(), notify, None, 1),
             root: None,
@@ -177,7 +178,7 @@ mod tests {
         std::fs::write(dir.join("target/debug/junk.rs"), "").unwrap();
         std::fs::write(dir.join("ignored/secret.rs"), "").unwrap();
 
-        let mut f = FileFinder::new(egui::Context::default());
+        let mut f = FileFinder::new(|| {});
         f.set_root(Some(dir.clone()));
         let start = Instant::now();
         while (f.is_scanning() || f.file_count() < 4) && start.elapsed() < Duration::from_secs(5) {

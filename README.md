@@ -8,6 +8,26 @@ A lightweight VS Code–style editor written in Rust with [egui](https://github.
 cargo run --release -- [folder-or-file]
 ```
 
+## Project structure
+
+A Cargo workspace with two crates:
+
+- **`core/` (`rust-code-core`)** — everything that doesn't need a UI, so it can be tested
+  and benchmarked headlessly: `buffer` (rope, selections, undo), `edit_ops` (line commands),
+  `document`, `syntax` (tree-sitter worker) and `highlight` (syntect), `theme` (data, VS Code
+  import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`.
+- **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
+  `dispatch`, `files`, `config`, `workbench`), `editor_view` (the editor widget), `palette`,
+  `search_panel`, `explorer`, `terminal`, `keymap`, `theme` (egui colors and visuals).
+
+Checks (formatting, clippy with warnings as errors, tests):
+
+```
+powershell -File scripts/check.ps1
+```
+
+`cargo lint` runs just clippy for the workspace.
+
 ## Features
 
 - File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs

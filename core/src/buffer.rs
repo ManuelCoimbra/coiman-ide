@@ -5,6 +5,8 @@
 //! its `\r` as the last visible-but-skipped char; see [`Buffer::line_end`].
 
 use ropey::Rope;
+
+use crate::edit_ops::{Edit, Sel};
 use tree_sitter::{InputEdit, Point};
 
 pub const TAB_WIDTH: usize = 4;
@@ -95,7 +97,7 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn from_str(text: &str) -> Self {
+    pub fn new(text: &str) -> Self {
         let line_ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
         Self {
             rope: Rope::from_str(text),
@@ -542,7 +544,12 @@ impl Buffer {
     // ----- editing ---------------------------------------------------------------
 
     fn snapshot(&self) -> Snapshot {
-        Snapshot { rope: self.rope.clone(), selections: self.selections.clone(), primary: self.primary, version: self.version }
+        Snapshot {
+            rope: self.rope.clone(),
+            selections: self.selections.clone(),
+            primary: self.primary,
+            version: self.version,
+        }
     }
 
     /// Records an undo step unless this edit continues the previous one.
@@ -566,10 +573,7 @@ impl Buffer {
 
     /// Applies non-overlapping changes (one per selection) and moves each
     /// selection to its change's cursor position.
-    pub fn apply_changes(&mut self, mut changes: Vec<Change>, kind_typing: bool) {
-        if changes.is_empty() {
-            return;
-        }
+    pub fn apply_changes(&mut self, changes: Vec<Change>, kind_typing: bool) {
         let kind = if kind_typing {
             EditKind::Typing
         } else if changes.iter().all(|c| c.text.is_empty()) {
@@ -577,6 +581,13 @@ impl Buffer {
         } else {
             EditKind::Other
         };
+        self.apply_changes_as(changes, kind);
+    }
+
+    fn apply_changes_as(&mut self, mut changes: Vec<Change>, kind: EditKind) {
+        if changes.is_empty() {
+            return;
+        }
         // A word typed after whitespace starts a new undo step, like VS Code.
         let typed_space = changes.iter().all(|c| c.text.chars().all(char::is_whitespace));
         if kind == EditKind::Typing && self.last_typed_space && !typed_space {
@@ -669,7 +680,8 @@ impl Buffer {
                 let before = (s.start() > 0).then(|| self.rope.char(s.start() - 1));
                 let after = (s.end() < self.len_chars()).then(|| self.rope.char(s.end()));
                 let opens = matches!(before, Some('{' | '(' | '['));
-                let closes = matches!((before, after), (Some('{'), Some('}')) | (Some('('), Some(')')) | (Some('['), Some(']')));
+                let closes =
+                    matches!((before, after), (Some('{'), Some('}')) | (Some('('), Some(')')) | (Some('['), Some(']')));
                 let inner = if opens { format!("{indent}{}", " ".repeat(TAB_WIDTH)) } else { indent.clone() };
                 let mut text = format!("{nl}{inner}");
                 let cursor = text.chars().count();
@@ -734,21 +746,55 @@ impl Buffer {
         self.apply_changes(changes, false);
     }
 
-    /// Replaces the whole text (used by line commands) and sets one selection.
+    /// Replaces the whole text (e.g. reload from disk) and sets one selection.
+    /// Only the span that actually differs is edited, so undo and incremental
+    /// parsing stay cheap.
     pub fn replace_all(&mut self, text: &str, sel: Selection) {
         let old = self.text();
-        if old == text {
-            self.set_single(sel);
+        self.replace_range_minimal(0, &old, text);
+        self.set_single(sel);
+    }
+
+    /// Replaces `old` (which starts at char `start`) with `new`, editing only
+    /// the part between their common prefix and suffix, as one command step.
+    fn replace_range_minimal(&mut self, start: usize, old: &str, new: &str) {
+        let o: Vec<char> = old.chars().collect();
+        let n: Vec<char> = new.chars().collect();
+        let prefix = o.iter().zip(&n).take_while(|(a, b)| a == b).count();
+        let max_suffix = o.len().min(n.len()) - prefix;
+        let suffix = o.iter().rev().zip(n.iter().rev()).take(max_suffix).take_while(|(a, b)| a == b).count();
+        if prefix == o.len() && prefix == n.len() {
             return;
         }
-        self.begin_edit(EditKind::Other);
-        let common = old.chars().zip(text.chars()).take_while(|(a, b)| a == b).count();
-        let first_line = self.char_to_line(common);
-        self.rope = Rope::from_str(text);
-        self.record_reset();
-        self.set_single(sel);
-        self.last_edit = EditKind::Other;
-        self.finish_edit(first_line);
+        let text: String = n[prefix..n.len() - suffix].iter().collect();
+        let change = Change { start: start + prefix, end: start + o.len() - suffix, text, cursor_offset: None };
+        self.apply_changes_as(vec![change], EditKind::Other);
+    }
+
+    /// Runs a line command from [`crate::edit_ops`] on just the lines around
+    /// the primary selection (one line of context on each side, or the whole
+    /// document when `whole_doc`), then applies the difference as one small
+    /// edit. Returns false if the command did nothing.
+    pub fn apply_line_op(&mut self, whole_doc: bool, op: impl FnOnce(&str, Sel) -> Option<Edit>) -> bool {
+        let p = self.primary();
+        let last_line = self.len_lines() - 1;
+        let (first, last) = if whole_doc {
+            (0, last_line)
+        } else {
+            let first = self.char_to_line(p.start());
+            let mut last = self.char_to_line(p.end());
+            if last > first && self.line_start(last) == p.end() {
+                last -= 1;
+            }
+            (first.saturating_sub(1), (last + 1).min(last_line))
+        };
+        let start = self.line_start(first);
+        let end = self.line_end(last).max(p.end());
+        let window = self.slice_string(start, end);
+        let Some(edit) = op(&window, (p.anchor - start, p.head - start)) else { return false };
+        self.replace_range_minimal(start, &window, &edit.text);
+        self.set_single(Selection::new(start + edit.sel.0, start + edit.sel.1));
+        true
     }
 
     fn restore(&mut self, snap: Snapshot) {
@@ -802,7 +848,7 @@ mod tests {
 
     #[test]
     fn typing_groups_into_one_undo_step_until_space() {
-        let mut b = Buffer::from_str("");
+        let mut b = Buffer::new("");
         for c in "hello world".chars() {
             b.insert(&c.to_string());
         }
@@ -817,7 +863,7 @@ mod tests {
 
     #[test]
     fn undo_restores_version_for_dirty_tracking() {
-        let mut b = Buffer::from_str("x");
+        let mut b = Buffer::new("x");
         let saved = b.version();
         b.insert("y");
         assert_ne!(b.version(), saved);
@@ -827,7 +873,7 @@ mod tests {
 
     #[test]
     fn multi_cursor_insert_and_backspace() {
-        let mut b = Buffer::from_str("ab\ncd\nef");
+        let mut b = Buffer::new("ab\ncd\nef");
         b.set_selections(vec![Selection::cursor(1), Selection::cursor(4), Selection::cursor(7)], 0);
         b.insert("X");
         assert_eq!(b.text(), "aXb\ncXd\neXf");
@@ -838,7 +884,7 @@ mod tests {
 
     #[test]
     fn ctrl_d_adds_next_occurrences() {
-        let mut b = Buffer::from_str("foo bar foo baz foo");
+        let mut b = Buffer::new("foo bar foo baz foo");
         b.set_single(Selection::cursor(1));
         b.add_next_occurrence();
         assert_eq!(b.selections(), &[Selection::new(0, 3)]);
@@ -851,7 +897,7 @@ mod tests {
 
     #[test]
     fn newline_keeps_indent_and_splits_braces() {
-        let mut b = Buffer::from_str("    fn a() {}");
+        let mut b = Buffer::new("    fn a() {}");
         b.set_single(Selection::cursor(12));
         b.insert_newline();
         assert_eq!(b.text(), "    fn a() {\n        \n    }");
@@ -860,7 +906,7 @@ mod tests {
 
     #[test]
     fn vertical_movement_keeps_goal_column() {
-        let mut b = Buffer::from_str("abcdef\nab\nabcdef");
+        let mut b = Buffer::new("abcdef\nab\nabcdef");
         b.set_single(Selection::cursor(5));
         b.move_vertical(1, false);
         assert_eq!(b.primary().head, 9);
@@ -870,7 +916,7 @@ mod tests {
 
     #[test]
     fn crlf_line_end_and_backspace() {
-        let mut b = Buffer::from_str("ab\r\ncd");
+        let mut b = Buffer::new("ab\r\ncd");
         assert_eq!(b.line_end(0), 2);
         assert_eq!(b.line_ending, "\r\n");
         b.set_single(Selection::cursor(4));
@@ -880,7 +926,7 @@ mod tests {
 
     #[test]
     fn word_movement() {
-        let b = Buffer::from_str("let foo_bar = 1;");
+        let b = Buffer::new("let foo_bar = 1;");
         assert_eq!(b.next_word_boundary(0), 3);
         assert_eq!(b.next_word_boundary(3), 11);
         assert_eq!(b.prev_word_boundary(11), 4);
@@ -890,7 +936,7 @@ mod tests {
     fn recorded_syntax_edits_match_a_fresh_parse() {
         let mut parser = tree_sitter::Parser::new();
         parser.set_language(&tree_sitter_rust::LANGUAGE.into()).unwrap();
-        let mut b = Buffer::from_str("fn a() {\n    let x = 1;\n}\n");
+        let mut b = Buffer::new("fn a() {\n    let x = 1;\n}\n");
         b.track_syntax_edits();
         b.take_syntax_edits();
         let mut tree = parser.parse(b.text(), None).unwrap();
@@ -912,8 +958,92 @@ mod tests {
     }
 
     #[test]
+    fn line_ops_edit_only_the_changed_lines() {
+        let text: String = (0..200)
+            .map(|i| {
+                format!(
+                    "let x{i} = {i};
+"
+                )
+            })
+            .collect();
+        let mut b = Buffer::new(&text);
+        b.track_syntax_edits();
+        b.take_syntax_edits();
+        let pos = b.line_start(100) + 2;
+        b.set_single(Selection::cursor(pos));
+        assert!(b.apply_line_op(false, |t, s| Some(crate::edit_ops::toggle_line_comment(t, s, "//"))));
+        assert_eq!(b.line_text(100), "// let x100 = 100;");
+        assert_eq!(b.line_text(99), "let x99 = 99;");
+        assert_eq!(b.primary().head, pos + 3, "cursor stays on the same character");
+        let edits = b.take_syntax_edits();
+        assert_eq!(edits.len(), 1);
+        match &edits[0] {
+            SyntaxEdit::Edit(e) => assert_eq!(e.new_end_byte - e.start_byte, 3, "only `// ` was inserted"),
+            SyntaxEdit::Reset => panic!("line commands must not force a full reparse"),
+        }
+        b.undo();
+        assert_eq!(b.text(), text);
+    }
+
+    #[test]
+    fn line_ops_at_document_edges_and_whole_document() {
+        let mut b = Buffer::new(
+            "a
+b
+c",
+        );
+        b.set_single(Selection::cursor(4));
+        assert!(b.apply_line_op(false, |t, s| Some(crate::edit_ops::delete_lines(t, s))));
+        assert_eq!(
+            b.text(),
+            "a
+b"
+        );
+        b.set_single(Selection::cursor(0));
+        assert!(!b.apply_line_op(false, |t, s| crate::edit_ops::move_lines(t, s, false)), "nothing above line 1");
+        assert!(b.apply_line_op(false, |t, s| crate::edit_ops::move_lines(t, s, true)));
+        assert_eq!(
+            b.text(),
+            "b
+a"
+        );
+        let mut b = Buffer::new(
+            "c
+a
+b",
+        );
+        assert!(b.apply_line_op(true, |t, s| Some(crate::edit_ops::sort_lines(t, s, false))));
+        assert_eq!(
+            b.text(),
+            "a
+b
+c"
+        );
+    }
+
+    #[test]
+    fn delete_line_is_its_own_undo_step() {
+        let mut b = Buffer::new(
+            "one
+two
+three",
+        );
+        b.set_single(Selection::cursor(5));
+        b.apply_line_op(false, |t, s| Some(crate::edit_ops::delete_lines(t, s)));
+        b.delete_backward(false);
+        b.undo();
+        assert_eq!(
+            b.text(),
+            "one
+three",
+            "backspace undone on its own"
+        );
+    }
+
+    #[test]
     fn bracket_matching_both_directions() {
-        let b = Buffer::from_str("f(a[1], {b})");
+        let b = Buffer::new("f(a[1], {b})");
         assert_eq!(b.matching_bracket(1, 1000), Some((1, 11)));
         assert_eq!(b.matching_bracket(12, 1000), Some((1, 11)));
         assert_eq!(b.matching_bracket(3, 1000), Some((3, 5)));
@@ -922,7 +1052,7 @@ mod tests {
 
     #[test]
     fn tabs_map_to_visual_columns() {
-        let b = Buffer::from_str("\tx");
+        let b = Buffer::new("\tx");
         assert_eq!(b.visual_col(1), 4);
         assert_eq!(b.pos_at_visual_col(0, 4), 1);
         assert_eq!(b.pos_at_visual_col(0, 1), 0);

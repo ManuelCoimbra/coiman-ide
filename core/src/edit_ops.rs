@@ -154,11 +154,11 @@ pub fn indent_lines(text: &str, sel: Sel, outdent: bool, tab: &str) -> Edit {
 /// Line comment token for a file extension, if the language has one.
 pub fn comment_token(ext: &str) -> Option<&'static str> {
     Some(match ext {
-        "rs" | "c" | "h" | "cpp" | "cc" | "hpp" | "cxx" | "cs" | "java" | "js" | "mjs" | "cjs"
-        | "ts" | "tsx" | "jsx" | "go" | "swift" | "kt" | "dart" | "scss" | "json" | "jsonc"
-        | "sii" | "sui" => "//",
-        "py" | "sh" | "bash" | "toml" | "yaml" | "yml" | "ps1" | "rb" | "pl" | "r" | "cfg"
-        | "conf" | "ini" | "txt" => "#",
+        "rs" | "c" | "h" | "cpp" | "cc" | "hpp" | "cxx" | "cs" | "java" | "js" | "mjs" | "cjs" | "ts" | "tsx"
+        | "jsx" | "go" | "swift" | "kt" | "dart" | "scss" | "json" | "jsonc" | "sii" | "sui" => "//",
+        "py" | "sh" | "bash" | "toml" | "yaml" | "yml" | "ps1" | "rb" | "pl" | "r" | "cfg" | "conf" | "ini" | "txt" => {
+            "#"
+        }
         "sql" | "lua" | "hs" => "--",
         "bat" | "cmd" => "REM",
         _ => return None,
@@ -174,10 +174,7 @@ pub fn toggle_line_comment(text: &str, sel: Sel, token: &str) -> Edit {
     let range = first..=last;
     let non_blank = |l: &String| !l.trim().is_empty();
 
-    let all_commented = lines[range.clone()]
-        .iter()
-        .filter(|l| non_blank(l))
-        .all(|l| l.trim_start().starts_with(token))
+    let all_commented = lines[range.clone()].iter().filter(|l| non_blank(l)).all(|l| l.trim_start().starts_with(token))
         && lines[range.clone()].iter().any(non_blank);
     let indent = lines[range.clone()]
         .iter()
@@ -226,11 +223,8 @@ pub fn toggle_line_comment(text: &str, sel: Sel, token: &str) -> Edit {
 /// `whole_doc_if_empty`) using `f`, then selects the result.
 fn transform_lines(text: &str, sel: Sel, whole_doc_if_empty: bool, f: impl FnOnce(Vec<String>) -> Vec<String>) -> Edit {
     let mut lines = split_lines(text);
-    let (first, last) = if sel.0 == sel.1 && whole_doc_if_empty {
-        (0, lines.len() - 1)
-    } else {
-        selected_lines(text, sel)
-    };
+    let (first, last) =
+        if sel.0 == sel.1 && whole_doc_if_empty { (0, lines.len() - 1) } else { selected_lines(text, sel) };
     let new_block = f(lines[first..=last].to_vec());
     lines.splice(first..=last, new_block.iter().cloned());
     let start = line_start_in(&lines, first);

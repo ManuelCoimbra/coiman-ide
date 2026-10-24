@@ -7,8 +7,7 @@ use egui::{RichText, Sense};
 
 use crate::theme;
 
-/// Folders that are never shown or indexed.
-pub const IGNORED_DIRS: &[&str] = &[".git", "target", "node_modules", ".idea", ".vs"];
+use rust_code_core::workspace::IGNORED_DIRS;
 
 struct Entry {
     path: PathBuf,
@@ -46,12 +45,10 @@ impl Explorer {
         };
 
         let mut clicked = None;
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                self.dir_ui(ui, &root, 0, active_file, &mut clicked);
-            });
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.0;
+            self.dir_ui(ui, &root, 0, active_file, &mut clicked);
+        });
         clicked
     }
 
@@ -67,10 +64,8 @@ impl Explorer {
             self.cache.insert(dir.to_path_buf(), read_dir_sorted(dir));
         }
         // Collect what we need so `self` can be borrowed mutably while recursing.
-        let entries: Vec<(PathBuf, String, bool)> = self.cache[dir]
-            .iter()
-            .map(|e| (e.path.clone(), e.name.clone(), e.is_dir))
-            .collect();
+        let entries: Vec<(PathBuf, String, bool)> =
+            self.cache[dir].iter().map(|e| (e.path.clone(), e.name.clone(), e.is_dir)).collect();
 
         for (path, name, is_dir) in entries {
             let expanded = self.expanded.contains(&path);
@@ -102,23 +97,14 @@ impl Explorer {
 fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool) -> egui::Response {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let height = (font.size * 1.7).round();
-    let (rect, response) =
-        ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
     if selected {
-        ui.painter()
-            .rect_filled(rect, 0.0, theme::colors().selection);
+        ui.painter().rect_filled(rect, 0.0, theme::colors().selection);
     } else if response.hovered() {
-        ui.painter()
-            .rect_filled(rect, 0.0, theme::colors().hover_bg);
+        ui.painter().rect_filled(rect, 0.0, theme::colors().hover_bg);
     }
     let pos = rect.left_center() + egui::vec2(8.0 + depth as f32 * 12.0, 0.0);
-    ui.painter().text(
-        pos,
-        egui::Align2::LEFT_CENTER,
-        text,
-        font,
-        theme::colors().text,
-    );
+    ui.painter().text(pos, egui::Align2::LEFT_CENTER, text, font, theme::colors().text);
     response
 }
 
@@ -138,10 +124,6 @@ fn read_dir_sorted(dir: &Path) -> Vec<Entry> {
         })
         .collect();
     // Folders first, then case-insensitive by name, like VS Code.
-    entries.sort_by(|a, b| {
-        b.is_dir
-            .cmp(&a.is_dir)
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-    });
+    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
     entries
 }

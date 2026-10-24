@@ -1,0 +1,235 @@
+//! Running commands: the command switch, keyboard shortcuts and line edits.
+
+use crate::commands::Command;
+use crate::document::Document;
+use crate::edit_ops::{self, CaseTransform, Edit, Sel};
+use crate::editor_view::editor_id;
+use crate::keymap::Keymap;
+use crate::settings;
+use crate::theme;
+use egui::{Key, Modifiers};
+
+use super::{CodeApp, INDENT, SidebarView};
+
+impl CodeApp {
+    /// Applies a text edit to the active document and moves its selection.
+    /// Runs a line command on the active document as a small, incremental edit.
+    pub(super) fn apply_edit(&mut self, f: impl FnOnce(&str, Sel) -> Option<Edit>) {
+        self.apply_line_op(false, f);
+    }
+
+    /// Like [`Self::apply_edit`], but with an empty selection the command
+    /// applies to the whole document (sort, reverse, remove duplicates).
+    pub(super) fn apply_edit_whole_if_empty(&mut self, f: impl FnOnce(&str, Sel) -> Option<Edit>) {
+        self.apply_line_op(true, f);
+    }
+
+    pub(super) fn apply_line_op(&mut self, whole_if_empty: bool, f: impl FnOnce(&str, Sel) -> Option<Edit>) {
+        let Some(doc) = self.docs.get_mut(self.active) else { return };
+        let whole = whole_if_empty && doc.buffer.primary().is_empty();
+        if doc.buffer.apply_line_op(whole, f) {
+            doc.reveal = true;
+        }
+    }
+
+    pub(super) fn editor_focused(&self, ctx: &egui::Context) -> bool {
+        self.docs.get(self.active).is_some_and(|d| ctx.memory(|m| m.has_focus(editor_id(d.uid))))
+    }
+
+    pub(super) fn run_command(&mut self, ctx: &egui::Context, cmd: Command) {
+        match cmd {
+            Command::CommandPalette => self.open_palette(">"),
+            Command::QuickOpen => self.open_palette(""),
+            Command::NewFile => self.new_file(),
+            Command::OpenFile => {
+                let mut dialog = rfd::FileDialog::new();
+                if let Some(root) = &self.explorer.root {
+                    dialog = dialog.set_directory(root);
+                }
+                if let Some(path) = dialog.pick_file() {
+                    self.open_file(&path);
+                }
+            }
+            Command::OpenFolder => {
+                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                    self.open_folder(path);
+                }
+            }
+            Command::Save => {
+                self.save_doc(self.active);
+            }
+            Command::SaveAs => {
+                self.save_doc_as(self.active);
+            }
+            Command::SaveAll => {
+                for i in 0..self.docs.len() {
+                    if self.docs[i].is_dirty() {
+                        self.save_doc(i);
+                    }
+                }
+            }
+            Command::CloseTab => self.request_close_tab(self.active),
+            Command::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
+            Command::ToggleTerminal => {
+                self.terminal_visible = !self.terminal_visible;
+                self.terminal.focus_requested = self.terminal_visible;
+            }
+            Command::ShowExplorer => {
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Explorer;
+            }
+            Command::ShowSearch => {
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Search;
+                self.search.focus_requested = true;
+            }
+            Command::Find => {
+                self.find.open = true;
+                self.find.focus_requested = true;
+            }
+            Command::GoToLine => self.palette.show_with(":"),
+            Command::ZoomIn => self.font_size = (self.font_size + 1.0).min(40.0),
+            Command::ZoomOut => self.font_size = (self.font_size - 1.0).max(8.0),
+            Command::ResetZoom => self.font_size = self.settings.editor.font_size,
+            Command::RefreshExplorer => {
+                self.explorer.refresh();
+                self.finder.mark_stale();
+            }
+            Command::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+
+            Command::ToggleLineComment => {
+                let ext = self.docs.get(self.active).map(Document::extension).unwrap_or_default();
+                match edit_ops::comment_token(&ext) {
+                    Some(token) => self.apply_edit(|t, s| Some(edit_ops::toggle_line_comment(t, s, token))),
+                    None => self.status = Some("No line comment syntax for this language".to_owned()),
+                }
+            }
+            Command::MoveLinesUp => self.apply_edit(|t, s| edit_ops::move_lines(t, s, false)),
+            Command::MoveLinesDown => self.apply_edit(|t, s| edit_ops::move_lines(t, s, true)),
+            Command::CopyLinesUp => self.apply_edit(|t, s| Some(edit_ops::copy_lines(t, s, false))),
+            Command::CopyLinesDown => self.apply_edit(|t, s| Some(edit_ops::copy_lines(t, s, true))),
+            Command::DeleteLines => self.apply_edit(|t, s| Some(edit_ops::delete_lines(t, s))),
+            Command::IndentLines => self.apply_edit(|t, s| Some(edit_ops::indent_lines(t, s, false, INDENT))),
+            Command::OutdentLines => self.apply_edit(|t, s| Some(edit_ops::indent_lines(t, s, true, INDENT))),
+            Command::SelectNextOccurrence => {
+                if let Some(doc) = self.active_doc() {
+                    doc.buffer.add_next_occurrence();
+                    doc.reveal = true;
+                }
+            }
+            Command::AddCursorAbove | Command::AddCursorBelow => {
+                if let Some(doc) = self.active_doc() {
+                    doc.buffer.add_cursor_vertical(cmd == Command::AddCursorBelow);
+                    doc.reveal = true;
+                }
+            }
+            Command::JumpToBracket => {
+                // Jump to the partner of the bracket next to the cursor.
+                if let Some(doc) = self.active_doc() {
+                    let head = doc.buffer.primary().head;
+                    if let Some((open, close)) = doc.buffer.matching_bracket(head, 1_000_000) {
+                        let target = if head == open || head == open + 1 { close } else { open };
+                        doc.select(target, target);
+                    }
+                }
+            }
+            Command::JoinLines => self.apply_edit(edit_ops::join_lines),
+            Command::DuplicateSelection => self.apply_edit(|t, s| Some(edit_ops::duplicate_selection(t, s))),
+            Command::SortLinesAscending => {
+                self.apply_edit_whole_if_empty(|t, s| Some(edit_ops::sort_lines(t, s, false)))
+            }
+            Command::SortLinesDescending => {
+                self.apply_edit_whole_if_empty(|t, s| Some(edit_ops::sort_lines(t, s, true)))
+            }
+            Command::RemoveDuplicateLines => {
+                self.apply_edit_whole_if_empty(|t, s| Some(edit_ops::remove_duplicate_lines(t, s)))
+            }
+            Command::ReverseLines => self.apply_edit_whole_if_empty(|t, s| Some(edit_ops::reverse_lines(t, s))),
+            Command::TransformToUppercase => {
+                self.apply_edit(|t, s| Some(edit_ops::transform_case(t, s, CaseTransform::Upper)));
+            }
+            Command::TransformToLowercase => {
+                self.apply_edit(|t, s| Some(edit_ops::transform_case(t, s, CaseTransform::Lower)));
+            }
+            Command::TransformToTitlecase => {
+                self.apply_edit(|t, s| Some(edit_ops::transform_case(t, s, CaseTransform::Title)));
+            }
+
+            Command::ToggleWordWrap => self.word_wrap = !self.word_wrap,
+            Command::ToggleZenMode => {
+                self.zen_mode = !self.zen_mode;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.zen_mode));
+            }
+            Command::NextEditor | Command::PreviousEditor => {
+                let n = self.docs.len();
+                if n > 0 {
+                    let step = if cmd == Command::NextEditor { 1 } else { n - 1 };
+                    self.active = (self.active + step) % n;
+                    self.docs[self.active].request_focus = true;
+                }
+            }
+            Command::OpenUserSettings => {
+                self.open_config_file(settings::user_settings_path(), settings::default_file_contents());
+            }
+            Command::OpenWorkspaceSettings => match self.explorer.root.clone() {
+                Some(root) => {
+                    self.open_config_file(
+                        Some(settings::workspace_settings_path(&root)),
+                        settings::default_file_contents(),
+                    );
+                }
+                None => self.status = Some("Open a folder to use workspace settings".to_owned()),
+            },
+            Command::OpenKeybindings => {
+                let contents = Keymap::defaults().default_file_contents();
+                self.open_config_file(settings::user_keybindings_path(), contents);
+            }
+            Command::SelectTheme => {
+                if self.themes.is_empty() {
+                    self.themes = theme::discover();
+                }
+                let mut labels: Vec<String> = self.themes.iter().map(|t| t.label.clone()).collect();
+                if !labels.iter().any(|l| l == "Dark Modern") {
+                    labels.insert(0, "Dark Modern".to_owned());
+                }
+                self.palette.show_themes(labels, &self.settings.workbench.color_theme);
+            }
+            Command::ReopenClosedEditor => {
+                if let Some(path) = self.closed_editors.pop() {
+                    self.open_file(&path);
+                }
+            }
+        }
+    }
+
+    pub(super) fn open_palette(&mut self, prefix: &str) {
+        self.finder.refresh_if_stale();
+        self.palette.show_with(prefix);
+    }
+
+    pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        if self.zen_mode
+            && !self.find.open
+            && self.chord.is_none()
+            && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape))
+        {
+            self.run_command(ctx, Command::ToggleZenMode);
+            return;
+        }
+        let editor_focused = self.editor_focused(ctx);
+        // Tab with a multi-line selection indents the lines instead of replacing them.
+        if editor_focused && self.chord.is_none() {
+            let multi_line = self.docs.get(self.active).is_some_and(|d| {
+                let p = d.buffer.primary();
+                d.buffer.char_to_line(p.start()) != d.buffer.char_to_line(p.end())
+            });
+            if multi_line && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab)) {
+                self.run_command(ctx, Command::IndentLines);
+                return;
+            }
+        }
+        if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused) {
+            self.run_command(ctx, cmd);
+        }
+    }
+}

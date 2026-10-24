@@ -8,7 +8,7 @@ use std::sync::mpsc::{Receiver, channel};
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
-use crate::explorer::IGNORED_DIRS;
+use crate::workspace::IGNORED_DIRS;
 
 /// What changed since the last [`FileWatcher::drain`].
 #[derive(Default, Debug)]
@@ -28,12 +28,12 @@ pub struct FileWatcher {
 }
 
 impl FileWatcher {
-    /// Starts the OS watcher; it requests a repaint of `ctx` on every event.
-    pub fn new(ctx: egui::Context) -> Self {
+    /// Starts the OS watcher; `notify` is called on every event.
+    pub fn new(notify: impl Fn() + Send + 'static) -> Self {
         let (tx, rx) = channel();
         let watcher = notify::recommended_watcher(move |res| {
             let _ = tx.send(res);
-            ctx.request_repaint();
+            notify();
         })
         .ok();
         Self { watcher, rx, root: None, extra_dirs: HashSet::new() }
@@ -133,7 +133,7 @@ mod tests {
         let file = dir.join("a.txt");
         std::fs::write(&file, "one").unwrap();
 
-        let mut w = FileWatcher::new(egui::Context::default());
+        let mut w = FileWatcher::new(|| {});
         w.set_root(Some(&dir));
         std::thread::sleep(Duration::from_millis(200));
         std::fs::write(&file, "two").unwrap();
@@ -142,9 +142,7 @@ mod tests {
         std::fs::write(dir.join("target/build.o"), "x").unwrap();
         std::fs::write(dir.join("b.txt"), "new").unwrap();
         let mut seen = Changes::default();
-        assert!(wait_for(&mut w, |c| {
-            c.structure && c.paths.iter().any(|p| p.ends_with("b.txt"))
-        }));
+        assert!(wait_for(&mut w, |c| { c.structure && c.paths.iter().any(|p| p.ends_with("b.txt")) }));
         seen.paths.extend(w.drain().paths);
         assert!(!seen.paths.iter().any(|p| in_ignored_dir(p)), "target/ events dropped");
         std::fs::remove_dir_all(&dir).unwrap();

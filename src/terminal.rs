@@ -116,10 +116,7 @@ impl Terminal {
             c.arg("-c").arg(trimmed);
             c
         };
-        cmd.current_dir(&self.cwd)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        cmd.current_dir(&self.cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
@@ -206,9 +203,7 @@ impl Terminal {
                 self.focus_requested = false;
             }
             if edit.has_focus() {
-                let (up, down) = ui.input(|i| {
-                    (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown))
-                });
+                let (up, down) = ui.input(|i| (i.key_pressed(egui::Key::ArrowUp), i.key_pressed(egui::Key::ArrowDown)));
                 if up && !self.history.is_empty() {
                     let pos = self.history_pos.map_or(self.history.len() - 1, |p| p.saturating_sub(1));
                     self.history_pos = Some(pos);

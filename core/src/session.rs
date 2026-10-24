@@ -62,12 +62,9 @@ impl Session {
                     }
                     (Some(path), None, Some(backup)) => Some(Document::restored(Some(path), 0, String::new(), backup)),
                     (Some(_), None, None) => None,
-                    (None, _, backup) => Some(Document::restored(
-                        None,
-                        d.untitled_index,
-                        String::new(),
-                        backup.unwrap_or_default(),
-                    )),
+                    (None, _, backup) => {
+                        Some(Document::restored(None, d.untitled_index, String::new(), backup.unwrap_or_default()))
+                    }
                 }
             })
             .collect()
