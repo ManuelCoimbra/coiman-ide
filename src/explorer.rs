@@ -145,28 +145,3 @@ fn read_dir_sorted(dir: &Path) -> Vec<Entry> {
     });
     entries
 }
-
-/// Recursively lists all files under `root` (for quick open and search).
-pub fn walk_files(root: &Path, limit: usize) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let Ok(read) = std::fs::read_dir(&dir) else { continue };
-        for e in read.filter_map(Result::ok) {
-            let Ok(ft) = e.file_type() else { continue };
-            if ft.is_dir() {
-                let name = e.file_name();
-                if !IGNORED_DIRS.contains(&name.to_string_lossy().as_ref()) {
-                    stack.push(e.path());
-                }
-            } else if ft.is_file() {
-                out.push(e.path());
-                if out.len() >= limit {
-                    return out;
-                }
-            }
-        }
-    }
-    out.sort();
-    out
-}

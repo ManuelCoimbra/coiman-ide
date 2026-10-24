@@ -23,8 +23,15 @@ cargo run --release -- [folder-or-file]
   `Esc` returns to one cursor; per-document undo/redo (`Ctrl+Z`, `Ctrl+Y`) grouped by word
 - VS Code editing behaviour: auto-indent on Enter (splits `{|}`), smart Home, `Ctrl+L` line
   select, copy/cut whole line with no selection, `Ctrl+Enter` line below
-- Quick Open (`Ctrl+P`), Command Palette (`Ctrl+Shift+P`), Go to Line (`Ctrl+G`)
-- Find in file (`Ctrl+F`), Find in files (`Ctrl+Shift+F`)
+- Quick Open (`Ctrl+P`): background index of the folder (respects `.gitignore`, skips
+  `target`/`node_modules`/`.git`) ranked by nucleo, with matched letters highlighted;
+  Command Palette (`Ctrl+Shift+P`), Go to Line (`Ctrl+G`)
+- Find in file (`Ctrl+F`); Find in files (`Ctrl+Shift+F`) with the ripgrep crates: search as
+  you type, results stream in grouped by file, match case / whole word / regex, files to
+  include/exclude globs, binary files skipped; clicking a result selects the match
+- External changes: files edited by other programs reload automatically when the tab has no
+  unsaved changes; otherwise a bar offers Reload or Keep mine. Deleted files are flagged
+  (saving recreates them). The explorer and Quick Open index follow created/deleted files
 - Integrated terminal (`` Ctrl+` ``) with history and `cd`
 - Save / Save As / Save All (`Ctrl+K S`)
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash

@@ -4,16 +4,18 @@ use std::path::{Path, PathBuf};
 
 use egui::{Align, FontId, Key, KeyboardShortcut, Modifiers, RichText, Sense, Stroke};
 
-use crate::document::Document;
+use crate::document::{DiskState, Document};
 use crate::edit_ops::{self, CaseTransform, Edit, Sel};
 use crate::editor_view::{self, editor_id};
-use crate::explorer::{self, Explorer};
+use crate::explorer::Explorer;
 use crate::palette::{Command, Palette, PaletteResult};
 use crate::search::SearchPanel;
+use crate::finder::FileFinder;
 use crate::keymap::Keymap;
 use crate::session::{self, Session};
 use crate::settings::{self, Settings};
 use crate::syntax::SyntaxWorker;
+use crate::watcher::{FileWatcher, same_path};
 use crate::terminal::{Terminal, strip_verbatim};
 use crate::theme;
 
@@ -54,8 +56,10 @@ pub struct CodeApp {
     terminal: Terminal,
     palette: Palette,
     find: FindBar,
-    /// Cached file list for Quick Open, rebuilt when the palette opens.
-    file_index: Vec<PathBuf>,
+    /// Quick Open index of the open folder.
+    finder: FileFinder,
+    /// Reports changes made to files by other programs.
+    watcher: FileWatcher,
 
     sidebar_visible: bool,
     sidebar_view: SidebarView,
@@ -101,7 +105,8 @@ impl CodeApp {
             terminal: Terminal::new(cwd),
             palette: Palette::default(),
             find: FindBar::default(),
-            file_index: Vec::new(),
+            finder: FileFinder::new(ctx.clone()),
+            watcher: FileWatcher::new(ctx.clone()),
             sidebar_visible: true,
             sidebar_view: SidebarView::Explorer,
             terminal_visible: false,
@@ -230,6 +235,66 @@ impl CodeApp {
         }
     }
 
+    // ----- external changes ----------------------------------------------------
+
+    /// Applies changes other programs made to files: reload clean tabs, flag
+    /// conflicts and deletions, refresh the explorer and Quick Open index.
+    fn pump_watcher(&mut self) {
+        let changes = self.watcher.drain();
+        if changes.structure {
+            self.explorer.refresh();
+            self.finder.mark_stale();
+        }
+        for path in &changes.paths {
+            if self.is_config_file(path) {
+                self.settings_reload = true;
+            }
+            for doc in &mut self.docs {
+                if doc.path.as_deref().is_some_and(|p| same_path(p, path)) {
+                    doc.check_disk();
+                }
+            }
+        }
+    }
+
+    /// Bar above the editor when the file changed or vanished on disk.
+    fn disk_conflict_bar(&mut self, ui: &mut egui::Ui) {
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let message = match doc.disk {
+            DiskState::InSync => return,
+            DiskState::Changed => "This file was changed on disk, and you have unsaved changes.",
+            DiskState::Deleted => "This file was deleted on disk. Save to recreate it.",
+        };
+        let deleted = doc.disk == DiskState::Deleted;
+        let mut action = None;
+        egui::Frame::new()
+            .fill(theme::colors().hover_bg)
+            .inner_margin(egui::Margin::symmetric(12, 6))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(message).color(theme::colors().modified));
+                    if !deleted && ui.button("Reload (discard my changes)").clicked() {
+                        action = Some(true);
+                    }
+                    if ui.button(if deleted { "Close" } else { "Keep mine" }).clicked() {
+                        action = Some(false);
+                    }
+                });
+            });
+        match (action, deleted) {
+            (Some(true), _) => {
+                let doc = &mut self.docs[self.active];
+                if let Err(e) = doc.reload_from_disk() {
+                    self.status = Some(format!("Reload failed: {e}"));
+                }
+            }
+            (Some(false), true) => self.close_tab(self.active),
+            // Keep mine: saving will overwrite the file on disk.
+            (Some(false), false) => self.docs[self.active].disk = DiskState::InSync,
+            (None, _) => {}
+        }
+    }
+
     // ----- syntax --------------------------------------------------------------
 
     /// Collects finished parses and sends the active document's latest text.
@@ -320,17 +385,22 @@ impl CodeApp {
             return;
         }
         match Document::open(path) {
-            Ok(doc) => self.add_doc(doc),
+            Ok(doc) => {
+                self.watcher.watch_file(path);
+                self.add_doc(doc);
+            }
             Err(e) => self.status = Some(format!("Could not open {}: {e}", path.display())),
         }
     }
 
     fn open_folder(&mut self, path: PathBuf) {
+        self.finder.set_root(Some(path.clone()));
+        self.watcher.set_root(Some(&path));
         // The workspace settings layer depends on the folder.
         self.settings_reload = true;
         self.terminal.set_cwd(&path);
         self.explorer.set_root(path);
-        self.file_index.clear();
+        self.finder.mark_stale();
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Explorer;
     }
@@ -365,7 +435,7 @@ impl CodeApp {
             Ok(()) => {
                 self.status = Some(format!("Saved {}", doc.title()));
                 self.explorer.refresh();
-                self.file_index.clear();
+                self.finder.mark_stale();
                 true
             }
             Err(e) => {
@@ -474,7 +544,7 @@ impl CodeApp {
             Command::ResetZoom => self.font_size = self.settings.editor.font_size,
             Command::RefreshExplorer => {
                 self.explorer.refresh();
-                self.file_index.clear();
+                self.finder.mark_stale();
             }
             Command::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
 
@@ -575,11 +645,7 @@ impl CodeApp {
     }
 
     fn open_palette(&mut self, prefix: &str) {
-        if self.file_index.is_empty()
-            && let Some(root) = &self.explorer.root
-        {
-            self.file_index = explorer::walk_files(root, 50_000);
-        }
+        self.finder.refresh_if_stale();
         self.palette.show_with(prefix);
     }
 
@@ -744,7 +810,7 @@ impl CodeApp {
                             && ui.small_button("⟳").on_hover_text("Refresh Explorer").clicked()
                         {
                             self.explorer.refresh();
-                            self.file_index.clear();
+                            self.finder.mark_stale();
                         }
                     });
                 });
@@ -766,10 +832,14 @@ impl CodeApp {
             }
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
-                if let Some((path, line)) = self.search.ui(ui, self.explorer.root.as_deref()) {
-                    self.open_file(&path);
+                if let Some(jump) = self.search.ui(ui, self.explorer.root.as_deref()) {
+                    self.open_file(&jump.path);
                     if let Some(doc) = self.active_doc() {
-                        doc.goto_line(line);
+                        // Select the match itself, not just the line.
+                        let line = jump.line.saturating_sub(1).min(doc.buffer.len_lines() - 1);
+                        let start = doc.buffer.line_start(line);
+                        let end = doc.buffer.line_end(line);
+                        doc.select((start + jump.cols.0).min(end), (start + jump.cols.1).min(end));
                     }
                 }
             }
@@ -1125,6 +1195,7 @@ impl eframe::App for CodeApp {
         }
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
+        self.pump_watcher();
         if self.pending_close.is_none() && !self.palette.open {
             self.handle_shortcuts(&ctx);
         }
@@ -1155,8 +1226,11 @@ impl eframe::App for CodeApp {
         }
 
         if self.sidebar_visible && !zen {
+            // Never let the side bar take more than half the window, whatever it contains.
+            let max_side = (ui.available_width() * 0.5).max(200.0);
             egui::Panel::left("side_bar")
                 .default_size(260.0)
+                .size_range(160.0..=max_side)
                 .resizable(true)
                 .frame(egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::symmetric(8, 6)))
                 .show(ui, |ui| self.sidebar(ui));
@@ -1184,6 +1258,7 @@ impl eframe::App for CodeApp {
                 if !zen {
                     self.breadcrumbs(ui);
                 }
+                self.disk_conflict_bar(ui);
                 self.find_bar(ui);
                 let opts = editor_view::Options {
                     font_size: self.font_size,
@@ -1197,8 +1272,7 @@ impl eframe::App for CodeApp {
                 }
             });
 
-        let root = self.explorer.root.clone();
-        match self.palette.ui(&ctx, root.as_deref(), &self.file_index, &self.keymap) {
+        match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
             Some(PaletteResult::Theme(label)) => self.set_color_theme(&ctx, &label),

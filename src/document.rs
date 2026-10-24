@@ -11,6 +11,15 @@ use crate::syntax::{Lang, TsState};
 const LARGE_FILE_BYTES: usize = 16 * 1024 * 1024;
 const LARGE_FILE_LINES: usize = 100_000;
 
+/// How the file on disk relates to the buffer.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DiskState {
+    InSync,
+    /// Changed by another program while the buffer had unsaved edits.
+    Changed,
+    Deleted,
+}
+
 pub struct Document {
     /// Unique id for the editor widget state; assigned by the app.
     pub uid: u64,
@@ -31,6 +40,7 @@ pub struct Document {
     pub request_focus: bool,
     /// Scroll the primary cursor into view the next time it is shown.
     pub reveal: bool,
+    pub disk: DiskState,
 }
 
 impl Document {
@@ -50,6 +60,7 @@ impl Document {
             large,
             request_focus: false,
             reveal: false,
+            disk: DiskState::InSync,
         };
         doc.set_language(&ext);
         doc
@@ -117,7 +128,45 @@ impl Document {
         self.buffer.rope().write_to(&mut writer)?;
         std::io::Write::flush(&mut writer)?;
         self.saved_version = self.buffer.version();
+        self.disk = DiskState::InSync;
         Ok(true)
+    }
+
+    /// Reacts to the file changing on disk: an unmodified buffer reloads
+    /// (keeping the cursor and undo history); a modified one is flagged so
+    /// the user can choose. Our own saves read back identical and are ignored.
+    pub fn check_disk(&mut self) {
+        let Some(path) = &self.path else { return };
+        match std::fs::read(path) {
+            Ok(bytes) => {
+                let text = String::from_utf8_lossy(&bytes);
+                if *self.buffer.rope() == *text {
+                    self.disk = DiskState::InSync;
+                } else if self.is_dirty() {
+                    self.disk = DiskState::Changed;
+                } else {
+                    self.load_text(&text);
+                }
+            }
+            Err(_) if !path.exists() => self.disk = DiskState::Deleted,
+            Err(_) => {}
+        }
+    }
+
+    /// Replaces the buffer with the file's current contents (as one undo step).
+    pub fn reload_from_disk(&mut self) -> std::io::Result<()> {
+        let Some(path) = &self.path else { return Ok(()) };
+        let bytes = std::fs::read(path)?;
+        self.load_text(&String::from_utf8_lossy(&bytes));
+        Ok(())
+    }
+
+    fn load_text(&mut self, text: &str) {
+        let (anchor, head) = self.selection();
+        let len = text.chars().count();
+        self.buffer.replace_all(text, Selection::new(anchor.min(len), head.min(len)));
+        self.saved_version = self.buffer.version();
+        self.disk = DiskState::InSync;
     }
 
     pub fn save_as(&mut self, path: PathBuf) -> std::io::Result<()> {

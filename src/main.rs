@@ -8,6 +8,7 @@ mod document;
 mod edit_ops;
 mod editor_view;
 mod explorer;
+mod finder;
 mod highlight;
 mod keymap;
 mod palette;
@@ -17,6 +18,7 @@ mod settings;
 mod syntax;
 mod terminal;
 mod theme;
+mod watcher;
 
 use std::path::PathBuf;
 

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use egui::{Key, RichText};
 
+use crate::finder::FileFinder;
 use crate::keymap::Keymap;
 use crate::theme;
 
@@ -152,8 +153,7 @@ impl Palette {
     pub fn ui(
         &mut self,
         ctx: &egui::Context,
-        root: Option<&Path>,
-        files: &[PathBuf],
+        finder: &mut FileFinder,
         keymap: &Keymap,
     ) -> Option<PaletteResult> {
         if !self.open {
@@ -164,18 +164,19 @@ impl Palette {
             return None;
         }
 
-        // Build the candidate list: (label, detail, result).
-        let mut items: Vec<(String, String, PaletteResult)> = Vec::new();
+        // Build the candidate list: (label, detail, result, highlighted label chars).
+        let mut items: Vec<(String, String, PaletteResult, Vec<usize>)> = Vec::new();
+        let mut empty_text = "No matching results";
         if let Some(themes) = &self.themes {
             let q = self.query.trim();
             for t in themes.iter().filter(|t| fuzzy_match(t, q)) {
-                items.push((t.clone(), String::new(), PaletteResult::Theme(t.clone())));
+                items.push((t.clone(), String::new(), PaletteResult::Theme(t.clone()), Vec::new()));
             }
         } else if let Some(q) = self.query.strip_prefix('>') {
             let q = q.trim();
             for (cmd, name) in COMMANDS {
                 if fuzzy_match(name, q) {
-                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd)));
+                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), Vec::new()));
                 }
             }
         } else if let Some(q) = self.query.strip_prefix(':') {
@@ -184,20 +185,22 @@ impl Palette {
                 Some(n) => format!("Go to line {n}"),
                 None => "Type a line number to go to".to_owned(),
             };
-            items.push((label, String::new(), PaletteResult::GoToLine(line.unwrap_or(0))));
+            items.push((label, String::new(), PaletteResult::GoToLine(line.unwrap_or(0)), Vec::new()));
         } else {
-            let q = self.query.trim();
-            for path in files {
-                let rel = root.and_then(|r| path.strip_prefix(r).ok()).unwrap_or(path);
-                let rel_s = rel.to_string_lossy();
-                if fuzzy_match(&rel_s, q) {
-                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                    let dir = rel.parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
-                    items.push((name, dir, PaletteResult::OpenFile(path.clone())));
-                    if items.len() >= 200 {
-                        break;
-                    }
-                }
+            finder.set_query(self.query.trim());
+            for m in finder.results(200) {
+                let name = m.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let dir = Path::new(&m.rel).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+                // Matched chars of the relative path that fall inside the file name.
+                let name_start = m.rel.chars().count() - name.chars().count();
+                let hl = m.indices.iter().filter_map(|&i| (i as usize).checked_sub(name_start)).collect();
+                items.push((name, dir, PaletteResult::OpenFile(m.path), hl));
+            }
+            if !finder.has_root() {
+                empty_text = "Open a folder to search files (> for commands, : for line)";
+            } else if finder.is_scanning() {
+                empty_text = "Indexing files…";
+                ctx.request_repaint_after(std::time::Duration::from_millis(50));
             }
         }
 
@@ -254,10 +257,10 @@ impl Palette {
                         ui.add_space(4.0);
 
                         egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-                            for (i, (label, detail, _)) in items.iter().enumerate() {
+                            for (i, (label, detail, _, hl)) in items.iter().enumerate() {
                                 let selected = i == self.selected;
                                 let resp = ui.horizontal(|ui| {
-                                    let r = ui.selectable_label(selected, label);
+                                    let r = ui.selectable_label(selected, highlight_label(ui, label, hl));
                                     ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
                                     r
                                 });
@@ -270,7 +273,7 @@ impl Palette {
                                 }
                             }
                             if items.is_empty() {
-                                ui.label(RichText::new("No matching results").color(theme::colors().text_dim));
+                                ui.label(RichText::new(empty_text).color(theme::colors().text_dim));
                             }
                         });
                     });
@@ -285,6 +288,18 @@ impl Palette {
         }
         picked
     }
+}
+
+/// The label with fuzzy-matched characters in the accent color.
+fn highlight_label(ui: &egui::Ui, label: &str, highlights: &[usize]) -> egui::text::LayoutJob {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let pal = theme::colors();
+    let mut job = egui::text::LayoutJob::default();
+    for (i, c) in label.chars().enumerate() {
+        let color = if highlights.contains(&i) { pal.accent } else { pal.text };
+        job.append(&c.to_string(), 0.0, egui::TextFormat { font_id: font.clone(), color, ..Default::default() });
+    }
+    job
 }
 
 /// Case-insensitive subsequence match ("mnrs" matches "main.rs").
