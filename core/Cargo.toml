@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 alacritty_terminal = "0.26.0"
+base64 = "0.23"
+ed25519-dalek = "3"
 encoding_rs = "0.8.42"
 grep-matcher = "0.1.9"
 grep-regex = "0.1.14"
@@ -17,6 +19,7 @@ portable-pty = "0.9.0"
 ropey = { version = "=1.6.1", default-features = false, features = ["simd"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11"
 similar = "2"
 streaming-iterator = "0.1"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
@@ -28,6 +31,7 @@ tree-sitter-rust = "0.24.2"
 tree-sitter-toml-ng = "0.7.0"
 tree-sitter-yaml = "0.7.2"
 url = "2"
+wasmtime = { version = "50", default-features = false, features = ["runtime", "cranelift", "component-model", "std"] }
 
 
 

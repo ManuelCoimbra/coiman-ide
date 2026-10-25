@@ -210,6 +210,8 @@ impl CodeApp {
         icon(ui, Icon::Beaker, "Testing", testing, Command::ShowTesting);
         let debugging = side == Some(SidebarView::Debug);
         icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
+        let extensions = side == Some(SidebarView::Extensions);
+        icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
         let terminal = self.panel_visible && self.panel_tab == PanelTab::Terminal;
         icon(ui, Icon::Terminal, "Terminal (Ctrl+`)", terminal, Command::ToggleTerminal);
         cmd
@@ -219,13 +221,16 @@ impl CodeApp {
     pub(super) fn panel(&mut self, ui: &mut egui::Ui) {
         let mut action = None;
         ui.horizontal(|ui| {
-            let tabs = [
+            let mut tabs = vec![
                 (PanelTab::Problems, self.problems_tab_label()),
                 (PanelTab::References, "REFERENCES".to_owned()),
                 (PanelTab::Output, "OUTPUT".to_owned()),
                 (PanelTab::DebugConsole, "DEBUG CONSOLE".to_owned()),
                 (PanelTab::Terminal, "TERMINAL".to_owned()),
             ];
+            for (i, p) in self.plugins.panels.iter().enumerate() {
+                tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
+            }
             for (tab, label) in tabs {
                 let active = self.panel_tab == tab;
                 let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
@@ -256,6 +261,7 @@ impl CodeApp {
             PanelTab::References => self.references_panel(ui),
             PanelTab::Output => self.output_panel(ui),
             PanelTab::DebugConsole => self.debug_console(ui),
+            PanelTab::Plugin(i) => self.plugin_panel(ui, i),
             PanelTab::Terminal if self.terminal.detached => {
                 ui.label(RichText::new("The terminal is in its own window.").color(theme::colors().text_dim));
                 if ui.button("Move It Back to the Panel").clicked() {
@@ -321,6 +327,7 @@ impl CodeApp {
         let active_path = self.docs.get(self.active).and_then(|d| d.path.clone());
         match self.sidebar_view {
             SidebarView::Explorer => {
+                self.plugin_tree_sections(ui);
                 let open = self.timeline_open;
                 let panel =
                     egui::Panel::bottom("timeline").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);
@@ -403,6 +410,7 @@ impl CodeApp {
             SidebarView::Git => self.source_control_view(ui),
             SidebarView::Testing => self.testing_view(ui),
             SidebarView::Debug => self.debug_view(ui),
+            SidebarView::Extensions => self.extensions_view(ui),
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
                 if let Some(jump) = self.search.ui(ui, self.explorer.root.as_deref()) {
@@ -685,6 +693,7 @@ impl CodeApp {
             if let Some(text) = self.debug_status() {
                 ui.label(white(text));
             }
+            self.plugin_status_items(ui, rust_code_core::plugin::manifest::Alignment::Left, size);
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
             }
@@ -726,6 +735,7 @@ impl CodeApp {
                     ui.label(white(format!("{}px", self.font_size)));
                     icons::show(ui, Icon::ZoomIn, size, theme::colors().status_fg);
                 }
+                self.plugin_status_items(ui, rust_code_core::plugin::manifest::Alignment::Right, size);
             });
         });
         status_cmd

@@ -1,0 +1,31 @@
+id = "example.word-count"
+name = "Word Count"
+version = "1.0.0"
+description = "Counts words in the active editor and lists TODO comments in the folder."
+permissions = ["editor-read", "workspace-read"]
+events = ["saved", "active-changed"]
+
+[[commands]]
+id = "report"
+title = "Word Count: Show Report"
+
+[[commands]]
+id = "refresh-todos"
+title = "Word Count: Refresh TODOs"
+
+[[commands]]
+id = "open"
+title = "Word Count: Open TODO"
+
+[[status_items]]
+id = "count"
+alignment = "right"
+command = "report"
+
+[[panels]]
+id = "report"
+title = "Word Count"
+
+[[tree_views]]
+id = "todos"
+title = "TODOs"

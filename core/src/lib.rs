@@ -14,6 +14,7 @@ pub mod git;
 pub mod highlight;
 pub mod history;
 pub mod lsp;
+pub mod plugin;
 pub mod pty;
 pub mod search;
 pub mod session;

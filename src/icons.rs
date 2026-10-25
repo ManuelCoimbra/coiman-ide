@@ -38,6 +38,9 @@ pub enum Icon {
     StepOver,
     StepInto,
     StepOut,
+    /// Plugins (four blocks, one lifted out).
+    Extensions,
+    Trash,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -182,6 +185,19 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Skip => {
             pen.circle(0.5, 0.5, 0.3);
             pen.line(&[(0.29, 0.71), (0.71, 0.29)]);
+        }
+        Icon::Extensions => {
+            pen.closed(&[(0.1, 0.42), (0.38, 0.42), (0.38, 0.7), (0.1, 0.7)]);
+            pen.closed(&[(0.1, 0.7), (0.38, 0.7), (0.38, 0.94), (0.1, 0.94)]);
+            pen.closed(&[(0.38, 0.7), (0.66, 0.7), (0.66, 0.94), (0.38, 0.94)]);
+            pen.closed(&[(0.56, 0.1), (0.86, 0.1), (0.86, 0.4), (0.56, 0.4)]);
+        }
+        Icon::Trash => {
+            pen.line(&[(0.16, 0.24), (0.84, 0.24)]);
+            pen.line(&[(0.4, 0.24), (0.4, 0.12), (0.6, 0.12), (0.6, 0.24)]);
+            pen.closed(&[(0.24, 0.24), (0.3, 0.9), (0.7, 0.9), (0.76, 0.24)]);
+            pen.line(&[(0.43, 0.38), (0.43, 0.76)]);
+            pen.line(&[(0.57, 0.38), (0.57, 0.76)]);
         }
         Icon::Bug => {
             pen.circle(0.5, 0.58, 0.24);

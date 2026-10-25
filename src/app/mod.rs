@@ -10,6 +10,7 @@ mod git;
 mod history;
 mod lsp;
 mod outline;
+mod plugins;
 mod workbench;
 
 use std::path::PathBuf;
@@ -42,6 +43,7 @@ enum SidebarView {
     Git,
     Testing,
     Debug,
+    Extensions,
 }
 
 /// Tabs of the bottom panel.
@@ -52,6 +54,8 @@ enum PanelTab {
     Output,
     DebugConsole,
     Terminal,
+    /// A panel contributed by a plugin (index into its panels).
+    Plugin(usize),
 }
 
 enum PendingClose {
@@ -151,6 +155,8 @@ pub struct CodeApp {
     vim_doc: Option<u64>,
     /// Debugger sessions, breakpoints, watches.
     debug: debug::DebugState,
+    /// Installed plugins and what they contribute.
+    plugins: plugins::PluginState,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -201,6 +207,7 @@ impl CodeApp {
             vim: None,
             vim_doc: None,
             debug: debug::DebugState::default(),
+            plugins: plugins::PluginState::default(),
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -234,6 +241,7 @@ impl eframe::App for CodeApp {
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
         self.pump_debug(&ctx);
+        self.pump_plugins(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.
         if self.terminal.pump(&ctx) {
             if self.panel_tab == PanelTab::Terminal {
@@ -372,9 +380,13 @@ impl eframe::App for CodeApp {
         self.git_popups(&ctx);
         self.terminal_window(&ctx);
 
+        if self.palette.open {
+            self.palette.plugin_commands = self.plugin_commands();
+        }
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
+            Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
             Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),
             Some(PaletteResult::Input(InputKind::NewBranch, name)) => self.switch_branch(&ctx, name, true),

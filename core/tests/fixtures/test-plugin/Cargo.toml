@@ -1,0 +1,21 @@
+[package]
+name = "test-plugin"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# A plugin that exercises the host API, for core/tests/plugins.rs.
+# Rebuild with scripts/build-plugins.ps1.
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+strip = true
+
+# Built on its own for wasm32, not part of the editor workspace.
+[workspace]

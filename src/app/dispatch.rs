@@ -134,6 +134,9 @@ impl CodeApp {
                 self.sidebar_view = SidebarView::Debug;
             }
             Command::ShowDebugConsole => self.toggle_panel(PanelTab::DebugConsole),
+            Command::ShowExtensions => self.show_extensions(),
+            Command::CheckPluginUpdates => self.check_registry(ctx),
+            Command::InstallPluginFromFolder => self.install_plugin_from_folder(ctx),
             Command::DebugTestAtCursor => match self.test_item_at_cursor() {
                 Some((target, item)) => self.debug_test(ctx, target, item),
                 None => self.status = Some("No test at the cursor".to_owned()),

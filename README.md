@@ -10,7 +10,7 @@ cargo run --release -- [folder-or-file]
 
 ## Project structure
 
-A Cargo workspace with two crates:
+A Cargo workspace with three crates:
 
 - **`core/` (`rust-code-core`)** — everything that doesn't need a UI, so it can be tested
   and benchmarked headlessly: `buffer` (rope, selections, undo), `edit_ops` (line commands),
@@ -20,11 +20,15 @@ A Cargo workspace with two crates:
   sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches), `cargo` (run
   configurations, test discovery, test/check output parsing), `structure` (folds, outline,
   smart selection, text objects), `history` (local history store), `vim` (Vim/Helix modal editing engine),
-  `dap` (debug adapter client for CodeLLDB: DAP over stdio, finding and installing CodeLLDB).
+  `dap` (debug adapter client for CodeLLDB: DAP over stdio, finding and installing CodeLLDB),
+  `plugin` (WebAssembly plugin runtime on Wasmtime, manifests and permissions, signed
+  registries, lockfile). The plugin API is `core/wit/plugin.wit`.
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`, `debug`), `editor_view` (the editor widget), `icons` (vector
+  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`, `debug`, `plugins`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
+- **`tools/rcplugin`** — the plugin publisher's tool: key generation, turning a built
+  module into a component, signing and publishing to a registry folder.
 
 Checks (no networking crates, formatting, clippy with warnings as errors, tests):
 
@@ -160,6 +164,53 @@ downloaded unless you click **Download**.
   it evaluates expressions in the selected frame. Prefix LLDB commands with `` ` ``.
 - **Not into std**: stepping skips `std`, `core` and `alloc`. Set
   `debug.step_into_std = true` to step into them.
+
+### Plugins (WebAssembly)
+
+Plugins are WebAssembly components written against `core/wit/plugin.wit` and run in
+[Wasmtime](https://wasmtime.dev/), on their own thread.
+
+- **Sandboxed**: a plugin gets only the editor's plugin API. It has no WASI, so it has no
+  file system, network, clock or environment of its own. File access stays inside the open
+  folder. Each call has a 2-second time limit and each plugin a 64 MB memory limit. A plugin
+  that crashes or runs too long is stopped, and the Extensions view shows why.
+- **Permissions**: `plugin.toml` lists what a plugin needs: `workspace-read`,
+  `workspace-write`, `editor-read`, `editor-write`. You approve them before it is
+  installed and can uncheck any of them, then or later. A call without its permission fails
+  with `permission denied`.
+- **Contribution points** are declared in `plugin.toml` and drawn by the editor:
+  - status bar items;
+  - bottom panel tabs (headings, text, code, lists, buttons);
+  - tree views in the Explorer;
+  - Command Palette commands.
+
+  Plugins fill them with data and receive the events they subscribe to: `opened`, `saved`
+  and `active-changed`.
+- **Registry**: `plugins.registry` is a folder or URL with a `registry.json`. Nothing is
+  fetched until you click refresh in the Extensions view (`Ctrl+Shift+X`). Each version is
+  signed with the publisher's Ed25519 key. A plugin installs only if its files match their
+  hashes and the signature verifies. The first install from a publisher shows the key's
+  fingerprint and asks you to trust it.
+- **Lockfile**: `%APPDATA%\rust-code\plugins\plugins.lock` records each plugin's version,
+  source, publisher key, file hashes and granted permissions. A plugin whose files changed
+  since install isn't loaded; **Reinstall…** fetches it again.
+- **Updates** are only looked for when you check the registry. Before updating you see:
+  - the version change and changelog;
+  - new and dropped permissions (new ones are marked);
+  - added and removed contributions;
+  - the size change;
+  - a warning if the signing key changed.
+- **Install from Folder…** installs an unsigned plugin you are developing (marked
+  unsigned).
+
+Writing one: see `examples/plugins/word-count`. It has a status item, a panel, a TODO tree
+view and commands. Build it with `scripts/build-plugins.ps1`, which needs
+`rustup target add wasm32-unknown-unknown`. Publish it with:
+
+```
+rcplugin keygen my.key
+rcplugin publish examples/plugins/word-count <registry-folder> --key my.key --changelog "..."
+```
 
 ### Rust language features (rust-analyzer)
 

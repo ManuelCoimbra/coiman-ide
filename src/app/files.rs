@@ -131,6 +131,7 @@ impl CodeApp {
             Ok(doc) => {
                 self.watcher.watch_file(path);
                 self.add_doc(doc);
+                self.plugins_opened(path);
             }
             Err(e) => self.status = Some(format!("Could not open {}: {e}", path.display())),
         }
@@ -159,6 +160,7 @@ impl CodeApp {
                 }
                 self.lsp_did_save(index);
                 self.history_record(index, rust_code_core::history::Source::Save);
+                self.plugins_saved(index);
                 true
             }
             Ok(false) => self.save_doc_as(index),
@@ -183,6 +185,7 @@ impl CodeApp {
                 self.finder.mark_stale();
                 self.lsp_did_save(index);
                 self.history_record(index, rust_code_core::history::Source::Save);
+                self.plugins_saved(index);
                 true
             }
             Err(e) => {

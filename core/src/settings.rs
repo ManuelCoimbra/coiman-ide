@@ -27,6 +27,7 @@ pub struct Settings {
     pub cargo: CargoSettings,
     pub history: HistorySettings,
     pub debug: DebugSettings,
+    pub plugins: PluginSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -122,6 +123,22 @@ pub struct DebugSettings {
     pub codelldb_path: String,
     /// Step into the standard library (`std`, `core`, `alloc`) instead of over it.
     pub step_into_std: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct PluginSettings {
+    /// Load installed plugins.
+    pub enabled: bool,
+    /// Plugin registry: a folder or an http(s)/file URL with a `registry.json`.
+    /// Only read when you check it from the Extensions view.
+    pub registry: String,
+}
+
+impl Default for PluginSettings {
+    fn default() -> Self {
+        Self { enabled: true, registry: String::new() }
+    }
 }
 
 impl Default for HistorySettings {

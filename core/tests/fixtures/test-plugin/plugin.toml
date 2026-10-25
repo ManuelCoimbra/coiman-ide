@@ -1,0 +1,21 @@
+id = "test.host-api"
+name = "Host API Test"
+version = "1.0.0"
+description = "Exercises every host call; used by the tests."
+permissions = ["workspace-read", "workspace-write", "editor-read", "editor-write"]
+events = ["saved"]
+
+[[commands]]
+id = "run"
+title = "Test: Run"
+
+[[status_items]]
+id = "state"
+
+[[panels]]
+id = "out"
+title = "Out"
+
+[[tree_views]]
+id = "files"
+title = "Files"

@@ -134,6 +134,10 @@ pub enum Command {
     ShowDebug,
     ShowDebugConsole,
     DebugTestAtCursor,
+    // Plugins.
+    ShowExtensions,
+    CheckPluginUpdates,
+    InstallPluginFromFolder,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -255,6 +259,9 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::AddLogpoint, "Debug: Add Logpoint..."),
     (Command::ShowDebug, "View: Show Run and Debug"),
     (Command::ShowDebugConsole, "View: Toggle Debug Console"),
+    (Command::ShowExtensions, "View: Show Extensions"),
+    (Command::CheckPluginUpdates, "Plugins: Check Registry for Plugins and Updates"),
+    (Command::InstallPluginFromFolder, "Plugins: Install from Folder..."),
     (Command::DebugTestAtCursor, "Test: Debug Test at Cursor"),
 ];
 
@@ -380,6 +387,9 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::AddLogpoint, "editor.debug.action.addLogPoint"),
     (Command::ShowDebug, "workbench.view.debug"),
     (Command::ShowDebugConsole, "workbench.debug.action.toggleRepl"),
+    (Command::ShowExtensions, "workbench.view.extensions"),
+    (Command::CheckPluginUpdates, "workbench.extensions.action.checkForUpdates"),
+    (Command::InstallPluginFromFolder, "workbench.extensions.action.installVSIX"),
     (Command::DebugTestAtCursor, "testing.debugAtCursor"),
 ];
 
@@ -403,6 +413,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | StartDebugging
             | StopDebugging
             | ShowDebug
+            | ShowExtensions
             | NextEditor
             | PreviousEditor
             | ZoomIn

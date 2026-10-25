@@ -30,6 +30,14 @@ from where:
   package). The download runs your system's `curl`, and the system `tar`
   unpacks it. Rust Code itself still opens no connection. Nothing is
   downloaded until you click **Download**.
+- **Plugin registries.** The Extensions view reads the registry set in
+  `plugins.registry` only when you click refresh, **Install…** or **Update…**.
+  There are no automatic update checks. A URL is fetched with your system's
+  `curl`; a folder is read directly. Nothing is installed until you approve the
+  plugin's permissions.
+- **Plugins themselves** have no network access. They run sandboxed with only
+  the editor's plugin API, and they reach your files and editor only through
+  the permissions you granted.
 
 ## What Rust Code reads and writes on your machine
 
@@ -40,6 +48,7 @@ from where:
 | `%APPDATA%\rust-code\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
 | `%APPDATA%\rust-code\themes\*.json` | yes | never | your extra color themes |
 | `%APPDATA%\rust-code\history\` | yes | on every save (and outside change) of a file | local history: earlier versions of your files (`history.enabled = false` turns it off) |
+| `%APPDATA%\rust-code\plugins\` (plugin files, `plugins.lock`) | yes | when you install, update, uninstall, enable or change a plugin's permissions | installed plugins, their hashes, trusted publisher keys and what you granted |
 | `%APPDATA%\rust-code\codelldb\` | yes | when you agree to download the debugger | CodeLLDB, the debug adapter |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |
 | Installed VS Code themes (`%LOCALAPPDATA%\Programs\Microsoft VS Code`, `~\.vscode\extensions`) | theme files only | never | the Color Theme picker |

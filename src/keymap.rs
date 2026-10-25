@@ -106,6 +106,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("f9", Command::ToggleBreakpoint, true),
     ("ctrl+shift+d", Command::ShowDebug, false),
     ("ctrl+shift+y", Command::ShowDebugConsole, false),
+    ("ctrl+shift+x", Command::ShowExtensions, false),
     ("ctrl+; ctrl+c", Command::DebugTestAtCursor, false),
 ];
 

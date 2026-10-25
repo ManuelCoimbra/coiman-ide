@@ -13,6 +13,8 @@ use crate::theme;
 pub enum PaletteResult {
     OpenFile(PathBuf),
     Run(Command),
+    /// A plugin command (its palette key).
+    RunPlugin(String),
     GoToLine(usize),
     /// An item chosen in a picker.
     Picked(PickerKind, String),
@@ -62,6 +64,8 @@ pub struct Palette {
     picker: Option<Picker>,
     /// When set, the palette is a plain input box.
     input: Option<(InputKind, &'static str)>,
+    /// Commands of running plugins: (title, key).
+    pub plugin_commands: Vec<(String, String)>,
 }
 
 impl Palette {
@@ -114,6 +118,11 @@ impl Palette {
             for (cmd, name) in COMMANDS {
                 if fuzzy_match(name, q) {
                     items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), Vec::new()));
+                }
+            }
+            for (title, key) in &self.plugin_commands {
+                if fuzzy_match(title, q) {
+                    items.push((title.clone(), "plugin".to_owned(), PaletteResult::RunPlugin(key.clone()), Vec::new()));
                 }
             }
         } else if let Some(q) = self.query.strip_prefix(':') {

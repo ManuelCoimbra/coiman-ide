@@ -1,0 +1,103 @@
+package rust-code:plugin@0.1.0;
+
+/// Data shared by the editor and plugins.
+interface types {
+    /// A row of a tree view declared in `plugin.toml`. Rows with an empty
+    /// `parent` are top level; `command` (if any) runs when the row is clicked,
+    /// with the row's `id` as its argument.
+    record tree-item {
+        id: string,
+        parent: string,
+        label: string,
+        description: string,
+        tooltip: string,
+        command: option<string>,
+    }
+
+    /// A button in a panel: runs `command` with `argument`.
+    record button {
+        label: string,
+        command: string,
+        argument: string,
+    }
+
+    /// A piece of a panel declared in `plugin.toml`. Panels are declarative:
+    /// the editor draws them with its own widgets.
+    variant block {
+        heading(string),
+        text(string),
+        code(string),
+        bullets(list<string>),
+        separator,
+        button(button),
+    }
+
+    /// The active editor.
+    record document {
+        /// Relative to the open folder ("" when the file is outside it or unsaved).
+        path: string,
+        language: string,
+        text: string,
+        /// 1-based cursor position.
+        line: u32,
+        column: u32,
+        dirty: bool,
+    }
+
+    /// Something that happened in the editor. A plugin receives the kinds
+    /// listed under `events` in its `plugin.toml`.
+    variant event {
+        /// A file was opened (relative path).
+        opened(string),
+        /// A file was saved (relative path).
+        saved(string),
+        /// Another editor became active (relative path, "" if none).
+        active-changed(string),
+    }
+}
+
+/// What the editor offers a plugin. Calls that read or change files or the
+/// editor need a permission the user granted at install; without it they
+/// return `permission denied: <permission>`.
+interface host {
+    use types.{tree-item, block, document};
+
+    /// A line in the plugin's log (Output panel).
+    log: func(message: string);
+    /// A short message in the status bar.
+    show-message: func(message: string);
+
+    /// Sets a status bar item declared in `plugin.toml`.
+    set-status-item: func(id: string, text: string, tooltip: string);
+    /// Replaces the rows of a tree view declared in `plugin.toml`.
+    set-tree-items: func(view: string, items: list<tree-item>);
+    /// Replaces the content of a panel declared in `plugin.toml`.
+    set-panel: func(panel: string, blocks: list<block>);
+    /// Opens a file of the open folder at a 1-based line.
+    open-location: func(path: string, line: u32) -> result<_, string>;
+
+    /// Needs `workspace-read`: a text file of the open folder (relative path).
+    read-file: func(path: string) -> result<string, string>;
+    /// Needs `workspace-read`: relative paths of the open folder's files whose
+    /// names end with `suffix` (all files for ""), at most `limit`.
+    /// Ignored files (.gitignore, target) are skipped.
+    list-files: func(suffix: string, limit: u32) -> result<list<string>, string>;
+    /// Needs `workspace-write`: writes a file of the open folder.
+    write-file: func(path: string, contents: string) -> result<_, string>;
+    /// Needs `editor-read`: the active editor, if any.
+    active-document: func() -> result<option<document>, string>;
+    /// Needs `editor-write`: types `text` at the cursor of the active editor.
+    insert-text: func(text: string) -> result<_, string>;
+}
+
+world plugin {
+    use types.{event};
+    import host;
+
+    /// Called once after loading.
+    export activate: func() -> result<_, string>;
+    /// Runs a command declared in `plugin.toml` (or a tree row's or button's).
+    export run-command: func(id: string, argument: string) -> result<_, string>;
+    /// Delivers an event the plugin subscribed to.
+    export on-event: func(event: event);
+}

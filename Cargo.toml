@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["core"]
+members = ["core", "tools/rcplugin"]
+exclude = ["examples/plugins", "core/tests/fixtures"]
 
 [dependencies]
 rust-code-core = { path = "core" }
