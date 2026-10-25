@@ -154,11 +154,11 @@ pub fn indent_lines(text: &str, sel: Sel, outdent: bool, tab: &str) -> Edit {
 /// Line comment token for a file extension, if the language has one.
 pub fn comment_token(ext: &str) -> Option<&'static str> {
     Some(match ext {
-        "rs" | "c" | "h" | "cpp" | "cc" | "hpp" | "cxx" | "cs" | "java" | "js" | "mjs" | "cjs" | "ts" | "tsx"
-        | "jsx" | "go" | "swift" | "kt" | "dart" | "scss" | "json" | "jsonc" | "sii" | "sui" => "//",
-        "py" | "sh" | "bash" | "toml" | "yaml" | "yml" | "ps1" | "rb" | "pl" | "r" | "cfg" | "conf" | "ini" | "txt" => {
-            "#"
-        }
+        "rs" | "c" | "h" | "cpp" | "cc" | "hpp" | "hh" | "hxx" | "cxx" | "c++" | "inl" | "cs" | "java" | "js"
+        | "mjs" | "cjs" | "ts" | "mts" | "cts" | "tsx" | "jsx" | "go" | "swift" | "kt" | "kts" | "dart" | "scala"
+        | "php" | "scss" | "json" | "jsonc" | "sii" | "sui" => "//",
+        "py" | "pyw" | "pyi" | "sh" | "bash" | "zsh" | "toml" | "yaml" | "yml" | "ps1" | "rb" | "pl" | "r" | "cfg"
+        | "conf" | "ini" | "txt" => "#",
         "sql" | "lua" | "hs" => "--",
         "bat" | "cmd" => "REM",
         _ => return None,

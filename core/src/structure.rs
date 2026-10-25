@@ -30,6 +30,9 @@ pub enum SymbolKind {
     Heading,
     Table,
     Key,
+    Class,
+    Interface,
+    Method,
 }
 
 impl SymbolKind {
@@ -50,6 +53,9 @@ impl SymbolKind {
             SymbolKind::Heading => "#",
             SymbolKind::Table => "table",
             SymbolKind::Key => "key",
+            SymbolKind::Class => "class",
+            SymbolKind::Interface => "interface",
+            SymbolKind::Method => "method",
         }
     }
 }
@@ -197,8 +203,65 @@ pub fn symbols(tree: &Tree, src: &str, lang: Lang) -> Vec<Symbol> {
         Lang::Rust => rust_symbols(tree.root_node(), src, 0, &mut out),
         Lang::Markdown => markdown_symbols(tree.root_node(), src, &mut out),
         Lang::Toml | Lang::Json | Lang::Yaml => key_symbols(tree.root_node(), src, lang, 0, &mut out),
+        _ => tag_symbols(tree, src, lang, &mut out),
     }
     out
+}
+
+/// The outline from a grammar's tags query: each `@definition.*` capture with
+/// its `@name`, nested by which definitions contain which.
+fn tag_symbols(tree: &Tree, src: &str, lang: Lang, out: &mut Vec<Symbol>) {
+    use std::sync::OnceLock;
+    use streaming_iterator::StreamingIterator;
+    static QUERIES: [OnceLock<Option<tree_sitter::Query>>; Lang::ALL.len()] =
+        [const { OnceLock::new() }; Lang::ALL.len()];
+    let Some(query) = QUERIES[lang as usize]
+        .get_or_init(|| lang.tags().and_then(|q| tree_sitter::Query::new(&lang.language(), &q).ok()))
+        .as_ref()
+    else {
+        return;
+    };
+    let names = query.capture_names();
+    let mut found: Vec<(Node, Node, SymbolKind)> = Vec::new();
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let mut matches = cursor.matches(query, tree.root_node(), src.as_bytes());
+    while let Some(m) = matches.next() {
+        let mut def = None;
+        let mut name = None;
+        for c in m.captures() {
+            let capture = names[c.index as usize];
+            if capture == "name" {
+                name = Some(c.node);
+            } else if let Some(kind) = capture.strip_prefix("definition.") {
+                let kind = match kind {
+                    "class" => SymbolKind::Class,
+                    "interface" => SymbolKind::Interface,
+                    "method" => SymbolKind::Method,
+                    "module" => SymbolKind::Module,
+                    "constant" => SymbolKind::Constant,
+                    "type" => SymbolKind::TypeAlias,
+                    "macro" => SymbolKind::Macro,
+                    _ => SymbolKind::Function,
+                };
+                def = Some((c.node, kind));
+            }
+        }
+        if let (Some((node, kind)), Some(name)) = (def, name)
+            && !found.iter().any(|(n, _, _)| n.id() == node.id())
+        {
+            found.push((node, name, kind));
+        }
+    }
+    found.sort_by_key(|(n, _, _)| (n.start_byte(), std::cmp::Reverse(n.end_byte())));
+    // Ends of the definitions enclosing the current one.
+    let mut open: Vec<usize> = Vec::new();
+    for (node, name, kind) in found {
+        while open.last().is_some_and(|&end| end <= node.start_byte()) {
+            open.pop();
+        }
+        push(out, node, text(name, src).to_owned(), kind, open.len(), Some(name));
+        open.push(node.end_byte());
+    }
 }
 
 fn push(out: &mut Vec<Symbol>, node: Node, name: String, kind: SymbolKind, depth: usize, name_node: Option<Node>) {
@@ -468,6 +531,21 @@ mod tests {
     }
 
     const SRC: &str = "/// Docs\n#[inline]\nfn add(a: i32, b: i32) -> i32 {\n    let s = a + b;\n    s\n}\n\nstruct P {\n    x: i32,\n    y: i32,\n}\n\nimpl Display for P {\n    fn fmt(&self) {}\n}\n";
+
+    #[test]
+    fn outline_from_tags_queries_nests_definitions() {
+        let outline = |src: &str, lang: Lang| -> Vec<(String, usize)> {
+            symbols(&parse(src, lang), src, lang).into_iter().map(|s| (s.name, s.depth)).collect()
+        };
+        let py = "class Shape:\n    def area(self):\n        pass\n\ndef main():\n    pass\n";
+        assert_eq!(outline(py, Lang::Python), [("Shape".into(), 0), ("area".into(), 1), ("main".into(), 0)]);
+        let java = "class App {\n  void run() {}\n  interface Job {}\n}\n";
+        let names = outline(java, Lang::Java);
+        assert_eq!(names[0], ("App".into(), 0));
+        assert!(names.contains(&("run".into(), 1)), "{names:?}");
+        let cpp = "namespace n { class V { void f(); }; }\nint main() { return 0; }\n";
+        assert!(outline(cpp, Lang::Cpp).contains(&("main".into(), 0)), "{:?}", outline(cpp, Lang::Cpp));
+    }
 
     #[test]
     fn folds_blocks_keeping_closing_lines() {

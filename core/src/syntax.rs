@@ -26,11 +26,45 @@ pub enum Lang {
     Toml,
     Yaml,
     Markdown,
+    Python,
+    JavaScript,
+    Jsx,
+    TypeScript,
+    Tsx,
+    Java,
+    C,
+    Cpp,
+    CSharp,
+    Html,
+    Css,
+    Go,
+    Bash,
 }
 
-const LANG_COUNT: usize = 5;
+const LANG_COUNT: usize = 18;
 
 impl Lang {
+    pub const ALL: [Lang; LANG_COUNT] = [
+        Lang::Rust,
+        Lang::Json,
+        Lang::Toml,
+        Lang::Yaml,
+        Lang::Markdown,
+        Lang::Python,
+        Lang::JavaScript,
+        Lang::Jsx,
+        Lang::TypeScript,
+        Lang::Tsx,
+        Lang::Java,
+        Lang::C,
+        Lang::Cpp,
+        Lang::CSharp,
+        Lang::Html,
+        Lang::Css,
+        Lang::Go,
+        Lang::Bash,
+    ];
+
     pub fn from_extension(ext: &str) -> Option<Self> {
         Some(match ext {
             "rs" => Self::Rust,
@@ -38,6 +72,19 @@ impl Lang {
             "toml" => Self::Toml,
             "yaml" | "yml" => Self::Yaml,
             "md" | "markdown" => Self::Markdown,
+            "py" | "pyw" | "pyi" => Self::Python,
+            "js" | "mjs" | "cjs" => Self::JavaScript,
+            "jsx" => Self::Jsx,
+            "ts" | "mts" | "cts" => Self::TypeScript,
+            "tsx" => Self::Tsx,
+            "java" => Self::Java,
+            "c" | "h" => Self::C,
+            "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "inl" => Self::Cpp,
+            "cs" => Self::CSharp,
+            "html" | "htm" | "xhtml" => Self::Html,
+            "css" => Self::Css,
+            "go" => Self::Go,
+            "sh" | "bash" | "zsh" => Self::Bash,
             _ => return None,
         })
     }
@@ -49,16 +96,66 @@ impl Lang {
             Self::Toml => tree_sitter_toml_ng::LANGUAGE.into(),
             Self::Yaml => tree_sitter_yaml::LANGUAGE.into(),
             Self::Markdown => tree_sitter_md::LANGUAGE.into(),
+            Self::Python => tree_sitter_python::LANGUAGE.into(),
+            Self::JavaScript | Self::Jsx => tree_sitter_javascript::LANGUAGE.into(),
+            Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+            Self::Tsx => tree_sitter_typescript::LANGUAGE_TSX.into(),
+            Self::Java => tree_sitter_java::LANGUAGE.into(),
+            Self::C => tree_sitter_c::LANGUAGE.into(),
+            Self::Cpp => tree_sitter_cpp::LANGUAGE.into(),
+            Self::CSharp => tree_sitter_c_sharp::LANGUAGE.into(),
+            Self::Html => tree_sitter_html::LANGUAGE.into(),
+            Self::Css => tree_sitter_css::LANGUAGE.into(),
+            Self::Go => tree_sitter_go::LANGUAGE.into(),
+            Self::Bash => tree_sitter_bash::LANGUAGE.into(),
         }
     }
 
-    fn highlights(self) -> &'static str {
+    /// The highlights query. Grammars that extend another (C++ on C,
+    /// TypeScript on JavaScript) list their own patterns first, since the
+    /// earlier pattern wins.
+    fn highlights(self) -> Cow<'static, str> {
+        use tree_sitter_javascript as js;
+        let join = |parts: &[&str]| Cow::Owned(parts.join("\n"));
         match self {
-            Self::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY,
-            Self::Json => tree_sitter_json::HIGHLIGHTS_QUERY,
-            Self::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY,
-            Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY,
-            Self::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK,
+            Self::Rust => tree_sitter_rust::HIGHLIGHTS_QUERY.into(),
+            Self::Json => tree_sitter_json::HIGHLIGHTS_QUERY.into(),
+            Self::Toml => tree_sitter_toml_ng::HIGHLIGHTS_QUERY.into(),
+            Self::Yaml => tree_sitter_yaml::HIGHLIGHTS_QUERY.into(),
+            Self::Markdown => tree_sitter_md::HIGHLIGHT_QUERY_BLOCK.into(),
+            Self::Python => tree_sitter_python::HIGHLIGHTS_QUERY.into(),
+            Self::JavaScript => js::HIGHLIGHT_QUERY.into(),
+            Self::Jsx => join(&[js::JSX_HIGHLIGHT_QUERY, js::HIGHLIGHT_QUERY]),
+            Self::TypeScript => join(&[tree_sitter_typescript::HIGHLIGHTS_QUERY, js::HIGHLIGHT_QUERY]),
+            Self::Tsx => {
+                join(&[tree_sitter_typescript::HIGHLIGHTS_QUERY, js::JSX_HIGHLIGHT_QUERY, js::HIGHLIGHT_QUERY])
+            }
+            Self::Java => tree_sitter_java::HIGHLIGHTS_QUERY.into(),
+            Self::C => tree_sitter_c::HIGHLIGHT_QUERY.into(),
+            Self::Cpp => join(&[tree_sitter_cpp::HIGHLIGHT_QUERY, tree_sitter_c::HIGHLIGHT_QUERY]),
+            Self::CSharp => tree_sitter_c_sharp::HIGHLIGHTS_QUERY.into(),
+            Self::Html => tree_sitter_html::HIGHLIGHTS_QUERY.into(),
+            Self::Css => tree_sitter_css::HIGHLIGHTS_QUERY.into(),
+            Self::Go => tree_sitter_go::HIGHLIGHTS_QUERY.into(),
+            Self::Bash => tree_sitter_bash::HIGHLIGHT_QUERY.into(),
+        }
+    }
+
+    /// The tags query (definitions of classes, functions…) for the outline,
+    /// for grammars that ship one.
+    pub fn tags(self) -> Option<Cow<'static, str>> {
+        use tree_sitter_javascript as js;
+        let join = |parts: &[&str]| Some(Cow::Owned(parts.join("\n")));
+        match self {
+            Self::Python => Some(tree_sitter_python::TAGS_QUERY.into()),
+            Self::JavaScript | Self::Jsx => Some(js::TAGS_QUERY.into()),
+            Self::TypeScript | Self::Tsx => join(&[tree_sitter_typescript::TAGS_QUERY, js::TAGS_QUERY]),
+            Self::Java => Some(tree_sitter_java::TAGS_QUERY.into()),
+            Self::C => Some(tree_sitter_c::TAGS_QUERY.into()),
+            Self::Cpp => join(&[tree_sitter_cpp::TAGS_QUERY, tree_sitter_c::TAGS_QUERY]),
+            Self::CSharp => Some(tree_sitter_c_sharp::TAGS_QUERY.into()),
+            Self::Go => Some(tree_sitter_go::TAGS_QUERY.into()),
+            _ => None,
         }
     }
 }
@@ -76,11 +173,10 @@ struct LangConfig {
 }
 
 fn config(lang: Lang) -> Option<&'static LangConfig> {
-    static CONFIGS: [OnceLock<Option<LangConfig>>; LANG_COUNT] =
-        [OnceLock::new(), OnceLock::new(), OnceLock::new(), OnceLock::new(), OnceLock::new()];
+    static CONFIGS: [OnceLock<Option<LangConfig>>; LANG_COUNT] = [const { OnceLock::new() }; LANG_COUNT];
     CONFIGS[lang as usize]
         .get_or_init(|| {
-            let query = Query::new(&lang.language(), lang.highlights()).ok()?;
+            let query = Query::new(&lang.language(), &lang.highlights()).ok()?;
             let names = query.capture_names();
             let literal = names.iter().map(|n| n.starts_with("string") || n.starts_with("comment")).collect();
             Some(LangConfig { query, literal })
@@ -464,8 +560,15 @@ mod tests {
 
     #[test]
     fn all_queries_compile() {
-        for lang in [Lang::Rust, Lang::Json, Lang::Toml, Lang::Yaml, Lang::Markdown] {
-            assert!(config(lang).is_some(), "{lang:?} highlights query failed to compile");
+        for lang in Lang::ALL {
+            if let Err(e) = Query::new(&lang.language(), &lang.highlights()) {
+                panic!("{lang:?} highlights query: {e}");
+            }
+            if let Some(tags) = lang.tags()
+                && let Err(e) = Query::new(&lang.language(), &tags)
+            {
+                panic!("{lang:?} tags query: {e}");
+            }
         }
     }
 

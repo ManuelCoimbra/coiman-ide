@@ -34,6 +34,9 @@ fn kind_badge(kind: SymbolKind) -> (&'static str, Color32) {
     match kind {
         SymbolKind::Function => ("f", PURPLE),
         SymbolKind::Struct => ("S", ORANGE),
+        SymbolKind::Class => ("C", ORANGE),
+        SymbolKind::Interface => ("I", BLUE),
+        SymbolKind::Method => ("m", PURPLE),
         SymbolKind::Enum => ("E", ORANGE),
         SymbolKind::Trait => ("T", BLUE),
         SymbolKind::Impl => ("I", BLUE),

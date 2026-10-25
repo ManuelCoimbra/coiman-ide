@@ -263,6 +263,11 @@ pub enum FileKind {
     JavaScript,
     TypeScript,
     Python,
+    Java,
+    C,
+    Cpp,
+    CSharp,
+    Go,
     Html,
     Css,
     Shell,
@@ -295,11 +300,16 @@ pub fn file_kind(name: &str) -> FileKind {
         "json" | "jsonc" => FileKind::Json,
         "yaml" | "yml" => FileKind::Yaml,
         "js" | "mjs" | "cjs" | "jsx" => FileKind::JavaScript,
-        "ts" | "tsx" => FileKind::TypeScript,
-        "py" => FileKind::Python,
+        "ts" | "mts" | "cts" | "tsx" => FileKind::TypeScript,
+        "py" | "pyw" | "pyi" => FileKind::Python,
+        "java" | "jar" => FileKind::Java,
+        "c" | "h" => FileKind::C,
+        "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "inl" => FileKind::Cpp,
+        "cs" => FileKind::CSharp,
+        "go" => FileKind::Go,
         "html" | "htm" | "xml" => FileKind::Html,
         "css" | "scss" => FileKind::Css,
-        "sh" | "bash" | "ps1" | "bat" | "cmd" => FileKind::Shell,
+        "sh" | "bash" | "zsh" | "ps1" | "bat" | "cmd" => FileKind::Shell,
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" | "bmp" | "webp" => FileKind::Image,
         "wasm" | "wit" | "wat" => FileKind::Wasm,
         "txt" | "log" | "csv" => FileKind::Text,
@@ -318,6 +328,11 @@ fn kind_color(kind: FileKind) -> Color32 {
         FileKind::JavaScript => Color32::from_rgb(0xE8, 0xC8, 0x4A),
         FileKind::TypeScript => Color32::from_rgb(0x31, 0x78, 0xC6),
         FileKind::Python => Color32::from_rgb(0x4B, 0x8B, 0xBE),
+        FileKind::Java => Color32::from_rgb(0xE7, 0x6F, 0x00),
+        FileKind::C => Color32::from_rgb(0x5C, 0x8D, 0xBC),
+        FileKind::Cpp => Color32::from_rgb(0x00, 0x86, 0xD4),
+        FileKind::CSharp => Color32::from_rgb(0x9B, 0x4F, 0x96),
+        FileKind::Go => Color32::from_rgb(0x00, 0xAD, 0xD8),
         FileKind::Html => Color32::from_rgb(0xE3, 0x7B, 0x3C),
         FileKind::Css => Color32::from_rgb(0x56, 0x9C, 0xD6),
         FileKind::Shell => Color32::from_rgb(0x89, 0xD1, 0x85),
@@ -392,6 +407,17 @@ pub fn paint_file(painter: &egui::Painter, rect: Rect, name: &str) {
         FileKind::JavaScript => badge("JS"),
         FileKind::TypeScript => badge("TS"),
         FileKind::Python => badge("PY"),
+        FileKind::C => badge("C"),
+        FileKind::Cpp => badge("C+"),
+        FileKind::CSharp => badge("C#"),
+        FileKind::Go => badge("GO"),
+        FileKind::Java => {
+            // A coffee cup with steam.
+            pen.closed(&[(0.18, 0.46), (0.74, 0.46), (0.68, 0.86), (0.24, 0.86)]);
+            pen.arc(0.76, 0.6, 0.1, -std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_2);
+            pen.line(&[(0.38, 0.38), (0.34, 0.26), (0.4, 0.12)]);
+            pen.line(&[(0.54, 0.38), (0.5, 0.26), (0.56, 0.12)]);
+        }
         FileKind::Wasm => badge("WA"),
         FileKind::Html => {
             pen.line(&[(0.36, 0.26), (0.12, 0.5), (0.36, 0.74)]);
@@ -453,5 +479,8 @@ mod tests {
         assert_eq!(file_kind("LICENSE-MIT"), FileKind::License);
         assert_eq!(file_kind("README.MD"), FileKind::Markdown);
         assert_eq!(file_kind("Makefile"), FileKind::Other);
+        assert_eq!(file_kind("Main.java"), FileKind::Java);
+        assert_eq!(file_kind("vec.hpp"), FileKind::Cpp);
+        assert_eq!(file_kind("Program.cs"), FileKind::CSharp);
     }
 }

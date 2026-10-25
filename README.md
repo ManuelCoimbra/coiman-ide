@@ -61,8 +61,12 @@ is read and written on your machine.
 - Custom editor widget on a rope (`ropey`): only visible rows are laid out and drawn, so
   million-line files stay responsive; files over 16 MB / 100k lines open in large-file mode
   (no highlighting or wrap)
-- Tree-sitter highlighting for Rust, JSON, TOML, YAML and Markdown: incremental parsing on a
-  background thread, queries only over the visible lines, VS Code Dark+ colors
+- Tree-sitter highlighting for Rust, Python, JavaScript/JSX, TypeScript/TSX, Java, C, C++,
+  C#, Go, HTML, CSS, Bash, JSON, TOML, YAML and Markdown: incremental parsing on a
+  background thread, queries only over the visible lines, VS Code Dark+ colors. Code
+  folding, rainbow brackets, expand/shrink selection and the Outline work in all of them
+  (for Python, JS/TS, Java, C/C++, C# and Go the Outline lists classes, interfaces,
+  functions and methods).
 - Other languages: syntect highlighting with parser checkpoints every 32 lines
 - Rainbow brackets by nesting depth (tree-sitter languages), indent guides, line numbers,
   current-line and matching-bracket highlight
