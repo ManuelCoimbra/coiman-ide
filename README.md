@@ -16,10 +16,11 @@ A Cargo workspace with two crates:
   and benchmarked headlessly: `buffer` (rope, selections, undo), `edit_ops` (line commands),
   `document`, `syntax` (tree-sitter worker) and `highlight` (syntect), `theme` (data, VS Code
   import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`, `lsp` (language
-  server client: JSON-RPC over stdio, position conversion, server discovery).
+  server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
+  sessions: portable-pty + alacritty_terminal).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
   `dispatch`, `files`, `config`, `workbench`, `lsp`), `editor_view` (the editor widget), `lsp_ui`, `palette`,
-  `search_panel`, `explorer`, `terminal`, `keymap`, `theme` (egui colors and visuals).
+  `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
 
 Checks (no networking crates, formatting, clippy with warnings as errors, tests):
 
@@ -68,7 +69,13 @@ is read and written on your machine.
 - External changes: files edited by other programs reload automatically when the tab has no
   unsaved changes; otherwise a bar offers Reload or Keep mine. Deleted files are flagged
   (saving recreates them). The explorer and Quick Open index follow created/deleted files
-- Integrated terminal (`` Ctrl+` ``) with history and `cd`
+- Integrated terminal (`` Ctrl+` ``): real shells in a pseudo-terminal (ConPTY on Windows) with
+  alacritty's emulator, so PowerShell/bash line editing, colors and full-screen programs (vim,
+  less, htop) work. Several terminals as tabs (`` Ctrl+Shift+` `` for a new one), 10,000 lines
+  of scrollback (wheel, `Shift+PageUp/Down`), drag to select, `Ctrl+C` copies a selection or
+  interrupts, right-click copies, `Ctrl+V` pastes (bracketed paste). **Pop Out** moves the
+  terminal into its own window; closing that window puts it back in the panel. The shell is
+  `terminal.shell` (default: PowerShell on Windows, `$SHELL` elsewhere)
 - Save / Save As / Save All (`Ctrl+K S`)
 - Encodings: files are detected from their BOM, then UTF-8, falling back to Windows 1252.
   Click the encoding in the status bar to Reopen with Encoding or Save with Encoding

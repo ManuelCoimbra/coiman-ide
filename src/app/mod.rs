@@ -21,7 +21,7 @@ use crate::search_panel::SearchPanel;
 use crate::session;
 use crate::settings::Settings;
 use crate::syntax::SyntaxWorker;
-use crate::terminal::{Terminal, strip_verbatim};
+use crate::terminal::{Terminals, strip_verbatim};
 use crate::theme;
 use crate::watcher::FileWatcher;
 
@@ -76,7 +76,7 @@ pub struct CodeApp {
 
     explorer: Explorer,
     search: SearchPanel,
-    terminal: Terminal,
+    terminal: Terminals,
     palette: Palette,
     find: FindBar,
     /// Editor view state (scroll, wrap layout, IME) per document uid.
@@ -133,7 +133,7 @@ impl CodeApp {
             untitled_counter: 0,
             explorer: Explorer::default(),
             search: SearchPanel::default(),
-            terminal: Terminal::new(cwd),
+            terminal: Terminals::new(cwd),
             palette: Palette::default(),
             find: FindBar::default(),
             views: std::collections::HashMap::new(),
@@ -192,6 +192,13 @@ impl eframe::App for CodeApp {
         self.pump_syntax(&ctx);
         self.pump_watcher();
         self.pump_lsp(&ctx);
+        // The last terminal's shell exited: close the panel, as VS Code does.
+        if self.terminal.pump(&ctx) {
+            if self.panel_tab == PanelTab::Terminal {
+                self.panel_visible = false;
+            }
+            self.terminal.detached = false;
+        }
         if self.pending_close.is_none() && !self.palette.open {
             if self.editor_focused(&ctx) {
                 self.lsp_keys(&ctx);
@@ -281,6 +288,7 @@ impl eframe::App for CodeApp {
             }
         });
         self.lsp_popups(&ctx);
+        self.terminal_window(&ctx);
 
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),

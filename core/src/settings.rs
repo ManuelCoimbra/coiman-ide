@@ -22,6 +22,7 @@ pub struct Settings {
     pub workbench: WorkbenchSettings,
     pub files: FilesSettings,
     pub lsp: LspSettings,
+    pub terminal: TerminalSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -64,6 +65,22 @@ pub struct LspSettings {
     pub rust_analyzer_path: String,
     /// Offer to install rust-analyzer with rustup when it is missing.
     pub ask_to_install: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct TerminalSettings {
+    /// Shell for new terminals, with arguments (e.g. "pwsh -NoLogo"); empty:
+    /// PowerShell on Windows, $SHELL elsewhere.
+    pub shell: String,
+    /// Lines of scrollback kept per terminal.
+    pub scrollback: usize,
+}
+
+impl Default for TerminalSettings {
+    fn default() -> Self {
+        Self { shell: String::new(), scrollback: 10_000 }
+    }
 }
 
 impl Default for LspSettings {

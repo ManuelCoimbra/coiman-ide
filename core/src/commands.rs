@@ -71,6 +71,11 @@ pub enum Command {
     NextProblem,
     PreviousProblem,
     RestartLanguageServer,
+    // Terminal.
+    NewTerminal,
+    KillTerminal,
+    ClearTerminal,
+    DetachTerminal,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -136,6 +141,10 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NextProblem, "Go to Next Problem (Error, Warning, Info)"),
     (Command::PreviousProblem, "Go to Previous Problem (Error, Warning, Info)"),
     (Command::RestartLanguageServer, "rust-analyzer: Restart Server"),
+    (Command::NewTerminal, "Terminal: Create New Terminal"),
+    (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
+    (Command::ClearTerminal, "Terminal: Clear"),
+    (Command::DetachTerminal, "Terminal: Move Terminal into New Window"),
 ];
 
 /// VS Code command ID of each command.
@@ -204,7 +213,35 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NextProblem, "editor.action.marker.nextInFiles"),
     (Command::PreviousProblem, "editor.action.marker.prevInFiles"),
     (Command::RestartLanguageServer, "rust-analyzer.restartServer"),
+    (Command::NewTerminal, "workbench.action.terminal.new"),
+    (Command::KillTerminal, "workbench.action.terminal.kill"),
+    (Command::ClearTerminal, "workbench.action.terminal.clear"),
+    (Command::DetachTerminal, "workbench.action.terminal.moveIntoNewWindow"),
 ];
+
+/// Commands whose shortcuts still work while the terminal has focus; every
+/// other key goes to the shell (like VS Code's `commandsToSkipShell`).
+pub fn runs_in_terminal(cmd: Command) -> bool {
+    use Command::*;
+    matches!(
+        cmd,
+        CommandPalette
+            | QuickOpen
+            | ToggleTerminal
+            | NewTerminal
+            | ShowExplorer
+            | ShowSearch
+            | ShowProblems
+            | NextEditor
+            | PreviousEditor
+            | ZoomIn
+            | ZoomOut
+            | ResetZoom
+            | ToggleZenMode
+            | NextProblem
+            | PreviousProblem
+    )
+}
 
 pub fn command_id(cmd: Command) -> &'static str {
     COMMAND_IDS.iter().find(|(c, _)| *c == cmd).map_or("", |(_, id)| id)

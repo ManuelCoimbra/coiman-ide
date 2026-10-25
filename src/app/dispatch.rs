@@ -76,8 +76,28 @@ impl CodeApp {
             Command::CloseTab => self.request_close_tab(self.active),
             Command::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
             Command::ToggleTerminal => {
-                self.toggle_panel(PanelTab::Terminal);
-                self.terminal.focus_requested = self.panel_visible;
+                if self.terminal.detached {
+                    self.terminal.focus_requested = true;
+                } else {
+                    self.toggle_panel(PanelTab::Terminal);
+                    self.terminal.focus_requested = self.panel_visible;
+                }
+                if self.panel_visible && self.panel_tab == PanelTab::Terminal && self.terminal.is_empty() {
+                    self.new_terminal(ctx);
+                }
+            }
+            Command::NewTerminal => self.new_terminal(ctx),
+            Command::KillTerminal => self.terminal.kill_active(),
+            Command::ClearTerminal => self.terminal.clear_active(),
+            Command::DetachTerminal => {
+                if self.terminal.is_empty() {
+                    self.new_terminal(ctx);
+                }
+                self.terminal.detached = true;
+                self.terminal.focus_requested = true;
+                if self.panel_tab == PanelTab::Terminal {
+                    self.panel_visible = false;
+                }
             }
             Command::ShowProblems => self.toggle_panel(PanelTab::Problems),
             Command::TriggerSuggest => self.request_completion(None),
@@ -245,6 +265,20 @@ impl CodeApp {
         }
     }
 
+    /// Starts a terminal with the configured shell and shows it.
+    pub(super) fn new_terminal(&mut self, ctx: &egui::Context) {
+        let (shell, scrollback) = (self.settings.terminal.shell.clone(), self.settings.terminal.scrollback);
+        match self.terminal.new_tab(ctx, &shell, scrollback) {
+            Ok(()) => {
+                if !self.terminal.detached {
+                    self.panel_visible = true;
+                    self.panel_tab = PanelTab::Terminal;
+                }
+            }
+            Err(e) => self.status = Some(format!("Terminal: {e}")),
+        }
+    }
+
     /// Shows the bottom panel on `tab`, or hides it if it already shows `tab`.
     fn toggle_panel(&mut self, tab: PanelTab) {
         if self.panel_visible && self.panel_tab == tab {
@@ -330,7 +364,8 @@ impl CodeApp {
                 return;
             }
         }
-        if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused) {
+        let terminal_focused = self.terminal.has_focus(ctx);
+        if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused, terminal_focused) {
             self.run_command(ctx, cmd);
         }
     }

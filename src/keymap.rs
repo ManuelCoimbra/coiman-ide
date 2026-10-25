@@ -17,7 +17,7 @@ use std::path::Path;
 use egui::{Key, KeyboardShortcut, Modifiers};
 use serde::Deserialize;
 
-use crate::commands::{Command, command_from_id, command_id};
+use crate::commands::{Command, command_from_id, command_id, runs_in_terminal};
 
 /// VS Code's default keybindings on Windows for the commands we have.
 /// `true` = only while the editor has focus (`editorTextFocus`).
@@ -77,6 +77,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+shift+m", Command::ShowProblems, false),
     ("f8", Command::NextProblem, false),
     ("shift+f8", Command::PreviousProblem, false),
+    ("ctrl+shift+`", Command::NewTerminal, false),
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -196,8 +197,10 @@ impl Keymap {
         ctx: &egui::Context,
         chord: &mut Option<KeyboardShortcut>,
         editor_focused: bool,
+        terminal_focused: bool,
     ) -> Option<Command> {
-        let applies = |b: &Binding| !b.editor_only || editor_focused;
+        let applies =
+            |b: &Binding| (!b.editor_only || editor_focused) && (!terminal_focused || runs_in_terminal(b.command));
         if let Some(first) = *chord {
             // Wait across idle frames; resolve on the next real key press.
             let key_pressed =

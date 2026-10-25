@@ -2,6 +2,7 @@
 
 use crate::commands::Command;
 use crate::document::{DiskState, Document};
+use crate::terminal::Action as TerminalAction;
 use crate::theme;
 use egui::{Align, FontId, Key, RichText, Sense, Stroke};
 
@@ -124,7 +125,12 @@ impl CodeApp {
                 item(ui, "Previous Problem", Command::PreviousProblem);
             });
             ui.menu_button("Terminal", |ui| {
+                item(ui, "New Terminal", Command::NewTerminal);
                 item(ui, "Toggle Terminal", Command::ToggleTerminal);
+                ui.separator();
+                item(ui, "Clear Terminal", Command::ClearTerminal);
+                item(ui, "Kill Terminal", Command::KillTerminal);
+                item(ui, "Move Terminal into New Window", Command::DetachTerminal);
             });
         });
         cmd
@@ -159,6 +165,7 @@ impl CodeApp {
 
     /// The bottom panel: Problems, References and Terminal tabs.
     pub(super) fn panel(&mut self, ui: &mut egui::Ui) {
+        let mut action = None;
         ui.horizontal(|ui| {
             let tabs = [
                 (PanelTab::Problems, self.problems_tab_label()),
@@ -183,14 +190,75 @@ impl CodeApp {
                 if ui.small_button("×").on_hover_text("Close Panel").clicked() {
                     self.panel_visible = false;
                 }
+                if self.panel_tab == PanelTab::Terminal {
+                    ui.add_space(8.0);
+                    action = self.terminal.header(ui);
+                }
             });
         });
         ui.add_space(4.0);
         match self.panel_tab {
             PanelTab::Problems => self.problems_panel(ui),
             PanelTab::References => self.references_panel(ui),
-            PanelTab::Terminal => self.terminal.ui(ui),
+            PanelTab::Terminal if self.terminal.detached => {
+                ui.label(RichText::new("The terminal is in its own window.").color(theme::colors().text_dim));
+                if ui.button("Move It Back to the Panel").clicked() {
+                    action = Some(TerminalAction::Attach);
+                }
+            }
+            PanelTab::Terminal => self.terminal.body(ui, self.font_size),
         }
+        self.terminal_action(ui.ctx(), action);
+    }
+
+    /// Applies a button from the terminal header.
+    pub(super) fn terminal_action(&mut self, ctx: &egui::Context, action: Option<TerminalAction>) {
+        match action {
+            Some(TerminalAction::New) => self.new_terminal(ctx),
+            Some(TerminalAction::Kill) => self.terminal.kill_active(),
+            Some(TerminalAction::Detach) => self.run_command(ctx, Command::DetachTerminal),
+            Some(TerminalAction::Attach) => {
+                self.terminal.detached = false;
+                self.panel_visible = true;
+                self.panel_tab = PanelTab::Terminal;
+                self.terminal.focus_requested = true;
+            }
+            None => {}
+        }
+    }
+
+    /// The terminal in its own window (when popped out of the panel).
+    pub(super) fn terminal_window(&mut self, ctx: &egui::Context) {
+        if !self.terminal.detached {
+            return;
+        }
+        let builder =
+            egui::ViewportBuilder::default().with_title("Terminal - Rust Code").with_inner_size([900.0, 520.0]);
+        let mut action = None;
+        let mut closed = false;
+        let font_size = self.font_size;
+        let terminal = &mut self.terminal;
+        ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("terminal_window"), builder, |ui, _class| {
+            if ui.ctx().input(|i| i.viewport().close_requested()) {
+                closed = true;
+            }
+            egui::Frame::new().fill(theme::colors().editor_bg).inner_margin(egui::Margin::symmetric(8, 6)).show(
+                ui,
+                |ui| {
+                    ui.set_min_size(ui.available_size());
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("TERMINAL").small().color(theme::colors().tab_active_fg));
+                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| action = terminal.header(ui));
+                    });
+                    ui.add_space(4.0);
+                    terminal.body(ui, font_size);
+                },
+            );
+        });
+        if closed {
+            action = Some(TerminalAction::Attach);
+        }
+        self.terminal_action(ctx, action);
     }
 
     pub(super) fn sidebar(&mut self, ui: &mut egui::Ui) {
