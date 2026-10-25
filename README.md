@@ -55,7 +55,9 @@ is read and written on your machine.
 
 ## Features
 
-- File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs
+- Integrated title bar, as in VS Code: menus, the window title and the window buttons share
+  one bar. Drag it to move the window, double-click it to maximize, resize from any edge.
+- File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons
 - Custom editor widget on a rope (`ropey`): only visible rows are laid out and drawn, so
   million-line files stay responsive; files over 16 MB / 100k lines open in large-file mode
   (no highlighting or wrap)

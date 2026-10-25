@@ -259,14 +259,13 @@ impl eframe::App for CodeApp {
         let mut cmd = None;
 
         let zen = self.zen_mode;
+        self.window_resize_edges(&ctx);
+        // The title bar stays in Zen mode: it holds the window buttons.
+        egui::Panel::top("title_bar").frame(egui::Frame::new().fill(theme::colors().activity_bg)).show(ui, |ui| {
+            cmd = cmd.or(self.title_bar(ui));
+        });
         // Zen mode hides all workbench chrome around the editor.
         if !zen {
-            egui::Panel::top("menu_bar")
-                .frame(egui::Frame::new().fill(theme::colors().activity_bg).inner_margin(egui::Margin::symmetric(6, 3)))
-                .show(ui, |ui| {
-                    cmd = cmd.or(self.menu_bar(ui));
-                });
-
             egui::Panel::bottom("status_bar")
                 .frame(egui::Frame::new().fill(theme::colors().status_bg).inner_margin(egui::Margin::symmetric(8, 2)))
                 .show_separator_line(false)

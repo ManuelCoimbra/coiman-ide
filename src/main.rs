@@ -38,7 +38,9 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_title("Rust Code")
             .with_inner_size([1280.0, 800.0])
-            .with_min_inner_size([640.0, 400.0]),
+            .with_min_inner_size([640.0, 400.0])
+            // The app draws its own title bar (menus, title, window buttons).
+            .with_decorations(false),
         ..Default::default()
     };
 

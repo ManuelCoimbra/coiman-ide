@@ -5,7 +5,7 @@ use crate::document::{DiskState, Document};
 use crate::icons::{self, Icon};
 use crate::terminal::Action as TerminalAction;
 use crate::theme;
-use egui::{Align, Key, RichText, Sense, Stroke};
+use egui::{Align, Color32, Key, RichText, Sense, Stroke};
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
@@ -45,8 +45,124 @@ impl CodeApp {
         }
     }
 
-    pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
+    /// The window's title bar: menus, the title, and minimize/maximize/close.
+    /// Dragging it moves the window; double-clicking maximizes or restores.
+    pub(super) fn title_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
+        const HEIGHT: f32 = 30.0;
+        const BUTTON: f32 = 46.0;
+        let ctx = ui.ctx().clone();
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let bar = egui::Rect::from_min_size(ui.max_rect().min, egui::vec2(ui.max_rect().width(), HEIGHT));
+        // The background first, so the menus and buttons drawn on top get their clicks.
+        let drag = ui.interact(bar, egui::Id::unique("title_bar_drag"), Sense::click_and_drag());
+        if drag.double_clicked() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+        } else if drag.drag_started_by(egui::PointerButton::Primary) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+        }
+        ui.set_min_height(HEIGHT);
+
         let mut cmd = None;
+        let menus_right = ui
+            .scope_builder(egui::UiBuilder::new().max_rect(bar.with_max_x(bar.max.x - 3.0 * BUTTON)), |ui| {
+                ui.horizontal_centered(|ui| {
+                    ui.add_space(10.0);
+                    let logo = egui::Rect::from_center_size(
+                        ui.cursor().min + egui::vec2(8.0, HEIGHT / 2.0),
+                        egui::vec2(16.0, 16.0),
+                    );
+                    paint_logo(ui.painter(), logo);
+                    ui.add_space(24.0);
+                    let (c, end) = self.menu_bar(ui);
+                    cmd = c;
+                    end
+                })
+                .inner
+            })
+            .inner;
+
+        // The title, centered in the window but never over the menus or buttons.
+        let pal = theme::colors();
+        let font = egui::FontId::proportional(small_size(ui));
+        let galley = ui.painter().layout_no_wrap(self.last_title.clone(), font, pal.text_dim);
+        let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - 16.0);
+        if room.span() > 40.0 {
+            let width = galley.size().x.min(room.span());
+            let x = (bar.center().x - width / 2.0).clamp(room.min, room.max - width);
+            let clip = egui::Rect::from_x_y_ranges(room, bar.y_range());
+            ui.painter().with_clip_rect(clip).galley(
+                egui::pos2(x, bar.center().y - galley.size().y / 2.0),
+                galley,
+                pal.text_dim,
+            );
+        }
+
+        // Window buttons.
+        let buttons = [WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close];
+        for (i, which) in buttons.into_iter().enumerate() {
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(bar.max.x - (3 - i) as f32 * BUTTON, bar.min.y),
+                egui::vec2(BUTTON, HEIGHT),
+            );
+            let resp = ui.interact(rect, egui::Id::unique(("window_button", i)), Sense::click());
+            let close = which == WindowButton::Close;
+            if resp.hovered() {
+                let fill = if close { Color32::from_rgb(0xE8, 0x11, 0x23) } else { pal.hover_bg };
+                ui.painter().rect_filled(rect, 0.0, fill);
+            }
+            let color = if close && resp.hovered() { Color32::WHITE } else { pal.text };
+            paint_window_button(ui.painter(), rect, which, maximized, color);
+            if resp.clicked() {
+                match which {
+                    WindowButton::Minimize => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+                    WindowButton::Maximize => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized)),
+                    WindowButton::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+                }
+            }
+        }
+        cmd
+    }
+
+    /// Resizes the borderless window from its edges and corners.
+    pub(super) fn window_resize_edges(&mut self, ctx: &egui::Context) {
+        use egui::viewport::ResizeDirection as Dir;
+        const EDGE: f32 = 5.0;
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let fullscreen = ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
+        if maximized || fullscreen {
+            return;
+        }
+        let Some(pos) = ctx.input(|i| i.pointer.hover_pos()) else { return };
+        let r = ctx.content_rect();
+        let (left, right) = (pos.x - r.min.x < EDGE, r.max.x - pos.x < EDGE);
+        let (top, bottom) = (pos.y - r.min.y < EDGE, r.max.y - pos.y < EDGE);
+        let dir = match (left, right, top, bottom) {
+            (true, _, true, _) => Dir::NorthWest,
+            (_, true, true, _) => Dir::NorthEast,
+            (true, _, _, true) => Dir::SouthWest,
+            (_, true, _, true) => Dir::SouthEast,
+            (true, ..) => Dir::West,
+            (_, true, ..) => Dir::East,
+            (_, _, true, _) => Dir::North,
+            (.., true) => Dir::South,
+            _ => return,
+        };
+        let icon = match dir {
+            Dir::North | Dir::South => egui::CursorIcon::ResizeVertical,
+            Dir::East | Dir::West => egui::CursorIcon::ResizeHorizontal,
+            Dir::NorthWest | Dir::SouthEast => egui::CursorIcon::ResizeNwSe,
+            Dir::NorthEast | Dir::SouthWest => egui::CursorIcon::ResizeNeSw,
+        };
+        ctx.set_cursor_icon(icon);
+        if ctx.input(|i| i.pointer.primary_pressed()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::BeginResize(dir));
+        }
+    }
+
+    /// The menus; also returns where the last one ends.
+    pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) -> (Option<Command>, f32) {
+        let mut cmd = None;
+        let mut end = 0.0;
         let keymap = &self.keymap;
         egui::MenuBar::new().ui(ui, |ui| {
             let mut item = |ui: &mut egui::Ui, label: &str, c: Command| {
@@ -149,7 +265,7 @@ impl CodeApp {
                 item(ui, "Kill Terminal", Command::KillTerminal);
                 item(ui, "Move Terminal into New Window", Command::DetachTerminal);
             });
-            ui.menu_button("Run", |ui| {
+            let run = ui.menu_button("Run", |ui| {
                 item(ui, "Start Debugging", Command::StartDebugging);
                 item(ui, "Stop Debugging", Command::StopDebugging);
                 item(ui, "Restart Debugging", Command::RestartDebugging);
@@ -173,8 +289,9 @@ impl CodeApp {
                 item(ui, "Cargo Check", Command::CargoCheck);
                 item(ui, "Cargo Clippy", Command::CargoClippy);
             });
+            end = run.response.rect.max.x;
         });
-        cmd
+        (cmd, end)
     }
 
     pub(super) fn activity_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
@@ -838,6 +955,77 @@ impl CodeApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(title));
         }
     }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WindowButton {
+    Minimize,
+    Maximize,
+    Close,
+}
+
+/// Minimize (a dash), maximize (a square) or restore (two squares), close (an ×).
+fn paint_window_button(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    which: WindowButton,
+    maximized: bool,
+    color: Color32,
+) {
+    let c = rect.center();
+    let s = 5.0;
+    let stroke = Stroke::new(1.0, color);
+    match which {
+        WindowButton::Minimize => {
+            painter.hline(egui::Rangef::new(c.x - s, c.x + s), c.y, stroke);
+        }
+        WindowButton::Maximize if maximized => {
+            let front =
+                egui::Rect::from_min_max(egui::pos2(c.x - s, c.y - s + 2.0), egui::pos2(c.x + s - 2.0, c.y + s));
+            painter.rect_stroke(front, 0.0, stroke, egui::StrokeKind::Inside);
+            painter.line(
+                vec![
+                    egui::pos2(c.x - s + 2.0, c.y - s + 2.0),
+                    egui::pos2(c.x - s + 2.0, c.y - s),
+                    egui::pos2(c.x + s, c.y - s),
+                    egui::pos2(c.x + s, c.y + s - 2.0),
+                    egui::pos2(c.x + s - 2.0, c.y + s - 2.0),
+                ],
+                stroke,
+            );
+        }
+        WindowButton::Maximize => {
+            let r = egui::Rect::from_center_size(c, egui::vec2(2.0 * s, 2.0 * s));
+            painter.rect_stroke(r, 0.0, stroke, egui::StrokeKind::Inside);
+        }
+        WindowButton::Close => {
+            painter.line_segment([egui::pos2(c.x - s, c.y - s), egui::pos2(c.x + s, c.y + s)], stroke);
+            painter.line_segment([egui::pos2(c.x - s, c.y + s), egui::pos2(c.x + s, c.y - s)], stroke);
+        }
+    }
+}
+
+/// The app mark in the title bar: Rust Code's cog with code brackets.
+fn paint_logo(painter: &egui::Painter, rect: egui::Rect) {
+    let color = theme::colors().accent;
+    let c = rect.center();
+    let r = rect.width() / 2.0;
+    painter.circle_stroke(c, r * 0.62, Stroke::new(1.5, color));
+    for i in 0..8 {
+        let (sin, cos) = (i as f32 * std::f32::consts::FRAC_PI_4).sin_cos();
+        let v = egui::vec2(cos, sin);
+        painter.line_segment([c + v * r * 0.62, c + v * r * 0.98], Stroke::new(2.0, color));
+    }
+    let k = r * 0.28;
+    let stroke = Stroke::new(1.3, color);
+    painter.line(
+        vec![egui::pos2(c.x - k * 0.2, c.y - k), egui::pos2(c.x - k * 1.1, c.y), egui::pos2(c.x - k * 0.2, c.y + k)],
+        stroke,
+    );
+    painter.line(
+        vec![egui::pos2(c.x + k * 0.2, c.y - k), egui::pos2(c.x + k * 1.1, c.y), egui::pos2(c.x + k * 0.2, c.y + k)],
+        stroke,
+    );
 }
 
 /// Size for secondary workbench text (breadcrumbs, status bar): 12/13 of the UI font.
