@@ -100,6 +100,22 @@ pub enum Command {
     CargoCheck,
     CargoClippy,
     ShowOutput,
+    // Structure.
+    Fold,
+    Unfold,
+    ToggleFold,
+    FoldAll,
+    UnfoldAll,
+    GoToSymbol,
+    ExpandSelection,
+    ShrinkSelection,
+    SelectFunction,
+    SelectFunctionBody,
+    SelectType,
+    SelectArgument,
+    SelectComment,
+    NextFunction,
+    PreviousFunction,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -191,6 +207,21 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::CargoCheck, "Cargo: Check"),
     (Command::CargoClippy, "Cargo: Clippy"),
     (Command::ShowOutput, "View: Toggle Output"),
+    (Command::Fold, "Fold"),
+    (Command::Unfold, "Unfold"),
+    (Command::ToggleFold, "Toggle Fold"),
+    (Command::FoldAll, "Fold All"),
+    (Command::UnfoldAll, "Unfold All"),
+    (Command::GoToSymbol, "Go to Symbol in Editor..."),
+    (Command::ExpandSelection, "Expand Selection"),
+    (Command::ShrinkSelection, "Shrink Selection"),
+    (Command::SelectFunction, "Select Function"),
+    (Command::SelectFunctionBody, "Select Function Body"),
+    (Command::SelectType, "Select Type (struct, enum, trait, impl)"),
+    (Command::SelectArgument, "Select Argument"),
+    (Command::SelectComment, "Select Comment"),
+    (Command::NextFunction, "Go to Next Function"),
+    (Command::PreviousFunction, "Go to Previous Function"),
 ];
 
 /// VS Code command ID of each command.
@@ -285,6 +316,21 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::CargoCheck, "rust-code.cargo.check"),
     (Command::CargoClippy, "rust-code.cargo.clippy"),
     (Command::ShowOutput, "workbench.action.output.toggleOutput"),
+    (Command::Fold, "editor.fold"),
+    (Command::Unfold, "editor.unfold"),
+    (Command::ToggleFold, "editor.toggleFold"),
+    (Command::FoldAll, "editor.foldAll"),
+    (Command::UnfoldAll, "editor.unfoldAll"),
+    (Command::GoToSymbol, "workbench.action.gotoSymbol"),
+    (Command::ExpandSelection, "editor.action.smartSelect.expand"),
+    (Command::ShrinkSelection, "editor.action.smartSelect.shrink"),
+    (Command::SelectFunction, "rust-code.select.function"),
+    (Command::SelectFunctionBody, "rust-code.select.functionBody"),
+    (Command::SelectType, "rust-code.select.type"),
+    (Command::SelectArgument, "rust-code.select.argument"),
+    (Command::SelectComment, "rust-code.select.comment"),
+    (Command::NextFunction, "rust-code.goto.nextFunction"),
+    (Command::PreviousFunction, "rust-code.goto.previousFunction"),
 ];
 
 /// Commands whose shortcuts still work while the terminal has focus; every

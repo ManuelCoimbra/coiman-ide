@@ -18,9 +18,10 @@ A Cargo workspace with two crates:
   import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`, `lsp` (language
   server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
   sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches), `cargo` (run
-  configurations, test discovery, test/check output parsing).
+  configurations, test discovery, test/check output parsing), `structure` (folds, outline,
+  smart selection, text objects).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`), `editor_view` (the editor widget), `icons` (vector
+  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
 
@@ -155,6 +156,25 @@ downloaded unless you click **Install** (**Don't Ask Again** sets `lsp.ask_to_in
 Edits are sent to the server as small incremental changes. `rust-analyzer: Restart Server`
 restarts it (e.g. after changing `lsp.rust_analyzer_path`); `lsp.enabled = false` turns
 language servers off.
+
+### Code structure
+
+From the tree-sitter syntax tree (Rust, JSON, TOML, YAML, Markdown); other files fold by
+indentation.
+
+- **Folding**: chevrons beside the line numbers (shown on hover; folded regions keep a `›`
+  and a `…` marker after the line). `Ctrl+Shift+[` / `Ctrl+Shift+]` fold/unfold at the
+  cursor, `Ctrl+K Ctrl+L` toggles, `Ctrl+K Ctrl+0` / `Ctrl+K Ctrl+J` fold/unfold everything.
+  Arrow keys step over folded regions; jumping into one (search, go to line) opens it.
+- **Outline**: an Outline section at the bottom of the Explorer (functions, types, impls,
+  fields, variants, modules; headings in Markdown; tables and keys in TOML/JSON/YAML), with
+  the symbol at the cursor highlighted. The breadcrumbs show the symbol path at the cursor
+  (`src › main.rs › mod tests › fn adds`); click a symbol to jump, or the file name for
+  **Go to Symbol in Editor** (`Ctrl+Shift+O`).
+- **Expand / Shrink Selection** (`Shift+Alt+Right` / `Shift+Alt+Left`): grow the selection
+  to the enclosing syntax node, and back.
+- **Text objects** (Selection menu and palette): Select Function (with its attributes and doc
+  comments), Function Body, Type, Argument, Comment; Go to Next/Previous Function.
 
 ### VS Code editor actions
 

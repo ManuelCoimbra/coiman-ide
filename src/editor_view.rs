@@ -14,6 +14,8 @@ const SCROLLBAR: f32 = 12.0;
 const CHANGE_ZONE: f32 = 12.0;
 /// Width of the strip at the gutter's left edge for test run buttons.
 const RUN_ZONE: f32 = 14.0;
+/// Width of the strip (left of the change markers) for fold chevrons.
+const FOLD_ZONE: f32 = 14.0;
 /// How far to look for a matching bracket around the cursor.
 const BRACKET_SEARCH_LIMIT: usize = 20_000;
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
@@ -66,6 +68,8 @@ pub struct Decorations {
     pub changes: Vec<ChangeMark>,
     /// Blame text shown after the end of this line.
     pub blame: Option<(usize, String)>,
+    /// Foldable regions (from the syntax tree or indentation).
+    pub folds: Vec<rust_code_core::structure::FoldRange>,
     /// Lines with a runnable test, and its last result (gutter run buttons).
     pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
 }
@@ -135,12 +139,51 @@ pub struct ViewState {
     change_click: Option<(usize, Pos2)>,
     /// Gutter run button clicked this frame.
     run_click: Option<usize>,
+    /// First lines of the folded regions.
+    folded: std::collections::BTreeSet<usize>,
+}
+
+impl ViewState {
+    pub fn folded(&self) -> &std::collections::BTreeSet<usize> {
+        &self.folded
+    }
+
+    pub fn set_folded(&mut self, start: usize, folded: bool) {
+        if folded {
+            self.folded.insert(start);
+        } else {
+            self.folded.remove(&start);
+        }
+    }
+
+    pub fn clear_folds(&mut self) {
+        self.folded.clear();
+    }
+}
+
+/// Hidden line ranges for the folded regions, merged and sorted.
+fn hidden_lines(
+    folded: &std::collections::BTreeSet<usize>,
+    folds: &[rust_code_core::structure::FoldRange],
+) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for f in folds.iter().filter(|f| folded.contains(&f.start) && f.end > f.start) {
+        let (a, b) = (f.start + 1, f.end);
+        match out.last_mut() {
+            Some(last) if a <= last.1 + 1 => last.1 = last.1.max(b),
+            _ => out.push((a, b)),
+        }
+    }
+    out
 }
 
 /// Word-wrap layout: `first_row[line]` is the first visual row of `line`.
 struct RowMap {
     version: u64,
+    /// Wrap width (`usize::MAX` when not wrapping).
     cols: usize,
+    /// Hidden (folded) line ranges the map was built for.
+    hidden: Vec<(usize, usize)>,
     first_row: Vec<usize>,
 }
 
@@ -189,64 +232,82 @@ fn wrap_segments(line: &str, cols: usize) -> Vec<usize> {
 struct Layout {
     wrap_cols: Option<usize>,
     total_rows: usize,
+    /// Hidden line ranges (inclusive), sorted and disjoint.
+    hidden: Vec<(usize, usize)>,
+}
+
+/// The hidden range containing `line`, if any.
+fn hidden_range(hidden: &[(usize, usize)], line: usize) -> Option<(usize, usize)> {
+    let i = hidden.partition_point(|r| r.1 < line);
+    hidden.get(i).copied().filter(|r| r.0 <= line)
 }
 
 impl Layout {
-    fn new(doc: &Document, view: &mut ViewState, wrap_cols: Option<usize>) -> Self {
+    fn new(doc: &Document, view: &mut ViewState, wrap_cols: Option<usize>, hidden: &[(usize, usize)]) -> Self {
         let buf = &doc.buffer;
-        let Some(cols) = wrap_cols else {
+        if wrap_cols.is_none() && hidden.is_empty() {
             view.rows = None;
-            return Self { wrap_cols: None, total_rows: buf.len_lines() };
-        };
-        let stale = view.rows.as_ref().is_none_or(|r| r.version != buf.version() || r.cols != cols);
+            return Self { wrap_cols: None, total_rows: buf.len_lines(), hidden: Vec::new() };
+        }
+        let cols = wrap_cols.unwrap_or(usize::MAX);
+        let stale =
+            view.rows.as_ref().is_none_or(|r| r.version != buf.version() || r.cols != cols || r.hidden != hidden);
         if stale {
             let mut first_row = Vec::with_capacity(buf.len_lines() + 1);
             let mut row = 0;
             for line in 0..buf.len_lines() {
                 first_row.push(row);
-                row += wrap_segments(&buf.line_text(line), cols).len();
+                if hidden_range(hidden, line).is_some() {
+                    continue;
+                }
+                row += match wrap_cols {
+                    Some(cols) => wrap_segments(&buf.line_text(line), cols).len(),
+                    None => 1,
+                };
             }
             first_row.push(row);
-            view.rows = Some(RowMap { version: buf.version(), cols, first_row });
+            view.rows = Some(RowMap { version: buf.version(), cols, hidden: hidden.to_vec(), first_row });
         }
         let total_rows = *view.rows.as_ref().unwrap().first_row.last().unwrap();
-        Self { wrap_cols: Some(cols), total_rows }
+        Self { wrap_cols, total_rows, hidden: hidden.to_vec() }
     }
 
     fn row(&self, doc: &Document, view: &ViewState, row: usize) -> Row {
         let buf = &doc.buffer;
-        match (self.wrap_cols, &view.rows) {
-            (Some(cols), Some(map)) => {
-                let line = map.first_row.partition_point(|&r| r <= row).saturating_sub(1).min(buf.len_lines() - 1);
+        let Some(map) = view.rows.as_ref() else {
+            let line = row.min(buf.len_lines() - 1);
+            return Row { line, start: buf.line_start(line), end: buf.line_end(line), first: true };
+        };
+        let line = map.first_row.partition_point(|&r| r <= row).saturating_sub(1).min(buf.len_lines() - 1);
+        let (ls, le) = (buf.line_start(line), buf.line_end(line));
+        match self.wrap_cols {
+            Some(cols) => {
                 let seg = row - map.first_row[line];
                 let starts = wrap_segments(&buf.line_text(line), cols);
-                let ls = buf.line_start(line);
-                let le = buf.line_end(line);
                 let seg = seg.min(starts.len() - 1);
                 let start = ls + starts[seg];
                 let end = starts.get(seg + 1).map_or(le, |s| ls + s);
                 Row { line, start, end, first: seg == 0 }
             }
-            _ => {
-                let line = row.min(buf.len_lines() - 1);
-                Row { line, start: buf.line_start(line), end: buf.line_end(line), first: true }
-            }
+            None => Row { line, start: ls, end: le, first: true },
         }
     }
 
-    /// Visual row containing `pos`.
+    /// Visual row containing `pos` (a position inside a fold maps to its first line).
     fn row_of(&self, doc: &Document, view: &ViewState, pos: usize) -> usize {
         let buf = &doc.buffer;
-        let line = buf.char_to_line(pos);
-        match (self.wrap_cols, &view.rows) {
-            (Some(cols), Some(map)) => {
-                let starts = wrap_segments(&buf.line_text(line), cols);
-                let col = pos - buf.line_start(line);
-                let seg = starts.partition_point(|&s| s <= col).saturating_sub(1);
-                map.first_row[line] + seg
-            }
-            _ => line,
+        let mut line = buf.char_to_line(pos);
+        let mut col = pos - buf.line_start(line);
+        if let Some((first, _)) = hidden_range(&self.hidden, line) {
+            line = first.saturating_sub(1);
+            col = 0;
         }
+        let Some(map) = view.rows.as_ref() else { return line };
+        let seg = match self.wrap_cols {
+            Some(cols) => wrap_segments(&buf.line_text(line), cols).partition_point(|&s| s <= col).saturating_sub(1),
+            None => 0,
+        };
+        map.first_row[line] + seg
     }
 }
 
@@ -269,7 +330,7 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
     let row_h = ui.fonts_mut(|f| f.row_height(&font_id));
     let char_w = ui.fonts_mut(|f| f.glyph_width(&font_id, '0'));
     let digits = doc.buffer.len_lines().to_string().len().max(3);
-    let m = Metrics { gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE, font_id, row_h, char_w };
+    let m = Metrics { gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE + FOLD_ZONE, font_id, row_h, char_w };
     let text_rect = Rect::from_min_max(
         Pos2::new(rect.left() + m.gutter_w, rect.top()),
         Pos2::new(rect.right() - SCROLLBAR, rect.bottom()),
@@ -302,9 +363,16 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
     }
 
     // ----- input ---------------------------------------------------------------
-    let mut layout = Layout::new(doc, view, wrap_cols);
+    // Forget folds whose region no longer exists (once the structure is known).
+    let mut folds = deco.folds.clone();
+    if !folds.is_empty() {
+        view.folded.retain(|s| folds.iter().any(|f| f.start == *s));
+    }
+    let mut layout = Layout::new(doc, view, wrap_cols, &hidden_lines(&view.folded, &folds));
     let visible_rows = (text_rect.height() / row_h).floor().max(1.0) as usize;
     let mut reveal = std::mem::take(&mut doc.reveal);
+    let line_before = doc.buffer.char_to_line(doc.buffer.primary().head);
+    let lines_before = doc.buffer.len_lines();
 
     handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response);
     reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response, deco);
@@ -315,9 +383,34 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
             if let Some(line) = doc.buffer.take_edited_from_line() {
                 doc.highlighter.invalidate_from(line);
             }
-            layout = Layout::new(doc, view, wrap_cols);
+            // Lines were added or removed: move folds below the edit along.
+            let delta = doc.buffer.len_lines() as isize - lines_before as isize;
+            if delta != 0 {
+                let shift = |l: usize| if l > line_before { (l as isize + delta).max(0) as usize } else { l };
+                view.folded = view.folded.iter().map(|&l| shift(l)).collect();
+                for f in &mut folds {
+                    (f.start, f.end) = (shift(f.start), shift(f.end));
+                }
+            }
         }
     }
+    // A folded region the cursor moved into: step over it when moving up or
+    // down, otherwise (go to line, search) open it.
+    let hidden = hidden_lines(&view.folded, &folds);
+    let line = doc.buffer.char_to_line(doc.buffer.primary().head);
+    if let Some((first, last)) = hidden_range(&hidden, line) {
+        let vertical =
+            ui.input(|i| [Key::ArrowUp, Key::ArrowDown, Key::PageUp, Key::PageDown].iter().any(|k| i.key_pressed(*k)));
+        if vertical && hidden_range(&hidden, line_before).is_none() {
+            let target = if line > line_before { (last + 1).min(doc.buffer.len_lines() - 1) } else { first - 1 };
+            let vcol = doc.buffer.visual_col(doc.buffer.primary().head);
+            let pos = doc.buffer.pos_at_visual_col(target, vcol);
+            doc.buffer.set_single(Selection::cursor(pos));
+        } else {
+            view.folded.retain(|s| !(first..=last).contains(&(s + 1)) && *s + 1 != first);
+        }
+    }
+    layout = Layout::new(doc, view, wrap_cols, &hidden_lines(&view.folded, &folds));
 
     // ----- scroll limits and reveal ---------------------------------------------
     let content_h = layout.total_rows as f32 * row_h;
@@ -488,6 +581,12 @@ fn handle_mouse(
         let gutter_left = text_rect.left() - m.gutter_w;
         if p.x < gutter_left + RUN_ZONE && deco.runnables.iter().any(|r| r.0 == line) {
             view.run_click = Some(line);
+            return false;
+        }
+        let fold_x = text_rect.left() - CHANGE_ZONE - FOLD_ZONE;
+        if (fold_x..fold_x + FOLD_ZONE).contains(&p.x) && deco.folds.iter().any(|f| f.start == line) {
+            let folded = view.folded.contains(&line);
+            view.set_folded(line, !folded);
             return false;
         }
         if p.x < text_rect.left() && p.x >= text_rect.left() - CHANGE_ZONE && deco.change_at(line).is_some() {
@@ -765,6 +864,9 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
     let primary_row = layout.row_of(doc, view, primary.head);
     let bracket = primary.is_empty().then(|| doc.buffer.matching_bracket(primary.head, BRACKET_SEARCH_LIMIT)).flatten();
     let x0 = text_rect.left() - scroll.x;
+    let gutter_hovered = ui
+        .input(|i| i.pointer.hover_pos())
+        .is_some_and(|p| p.x < text_rect.left() && p.x >= rect.left() && rect.contains(p));
 
     // Highlight the visible lines in one pass (tree-sitter documents).
     if last_row > first_row {
@@ -897,6 +999,29 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
         }
 
+        // Fold chevron: always for folded regions, on gutter hover for open ones.
+        if row.first
+            && let Some(f) = deco.folds.iter().find(|f| f.start == row.line)
+        {
+            let folded = view.folded.contains(&f.start);
+            if folded || gutter_hovered {
+                let size = (m.row_h * 0.7).min(FOLD_ZONE);
+                let center = Pos2::new(text_rect.left() - CHANGE_ZONE - FOLD_ZONE / 2.0, y + m.row_h / 2.0);
+                let icon = if folded { crate::icons::Icon::ChevronRight } else { crate::icons::Icon::ChevronDown };
+                crate::icons::paint(&painter, Rect::from_center_size(center, Vec2::splat(size)), icon, pal.line_number);
+            }
+            if folded && row.end == buf.line_end(row.line) {
+                // "…" box after the line, like VS Code's folded-region marker.
+                let x = x0 + col_x(buf, row.start, row.end, m) + m.char_w;
+                let pill = Rect::from_min_size(Pos2::new(x, y + 2.0), Vec2::new(3.0 * m.char_w, m.row_h - 4.0));
+                text_painter.rect_filled(pill, 3.0, pal.hover_bg);
+                for k in 0..3 {
+                    let dot = Pos2::new(pill.left() + (k as f32 + 0.5) * m.char_w, pill.center().y);
+                    text_painter.circle_filled(dot, 1.3, pal.text_dim);
+                }
+            }
+        }
+
         // Test run button (with the last result's icon and color).
         if row.first
             && let Some((_, icon, color)) = deco.runnables.iter().find(|r| r.0 == row.line)
@@ -914,7 +1039,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             let color =
                 if row.line == primary_line { theme::colors().line_number_active } else { theme::colors().line_number };
             painter.text(
-                Pos2::new(text_rect.left() - 18.0, y),
+                Pos2::new(text_rect.left() - 18.0 - FOLD_ZONE, y),
                 egui::Align2::RIGHT_TOP,
                 (row.line + 1).to_string(),
                 m.font_id.clone(),

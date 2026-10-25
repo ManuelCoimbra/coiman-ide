@@ -16,6 +16,7 @@ pub mod pty;
 pub mod search;
 pub mod session;
 pub mod settings;
+pub mod structure;
 pub mod syntax;
 pub mod theme;
 pub mod watcher;

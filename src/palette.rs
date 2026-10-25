@@ -39,6 +39,7 @@ pub enum PickerKind {
     CodeAction,
     Branch,
     RunConfig,
+    Symbol,
 }
 
 struct Picker {
@@ -185,7 +186,10 @@ impl Palette {
                     }
                     ui.add_space(4.0);
 
-                    egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+                    // Room for every item up to the cap (the list otherwise keeps its first, smaller size).
+                    let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    let wanted = (items.len().max(1) as f32 * row_h).min(360.0);
+                    egui::ScrollArea::vertical().max_height(360.0).min_scrolled_height(wanted).show(ui, |ui| {
                         for (i, (label, detail, _, hl)) in items.iter().enumerate() {
                             let selected = i == self.selected;
                             let resp = ui.horizontal(|ui| {

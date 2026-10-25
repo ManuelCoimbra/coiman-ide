@@ -88,6 +88,14 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+; f", Command::TestCurrentFile, false),
     ("ctrl+; a", Command::TestAll, false),
     ("ctrl+shift+u", Command::ShowOutput, false),
+    ("ctrl+shift+[", Command::Fold, true),
+    ("ctrl+shift+]", Command::Unfold, true),
+    ("ctrl+k ctrl+l", Command::ToggleFold, true),
+    ("ctrl+k ctrl+0", Command::FoldAll, true),
+    ("ctrl+k ctrl+j", Command::UnfoldAll, true),
+    ("ctrl+shift+o", Command::GoToSymbol, false),
+    ("shift+alt+right", Command::ExpandSelection, true),
+    ("shift+alt+left", Command::ShrinkSelection, true),
 ];
 
 #[derive(Clone, Debug, PartialEq)]

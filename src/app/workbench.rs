@@ -97,6 +97,14 @@ impl CodeApp {
                 item(ui, "Sort Lines Ascending", Command::SortLinesAscending);
                 item(ui, "Sort Lines Descending", Command::SortLinesDescending);
                 item(ui, "Join Lines", Command::JoinLines);
+                ui.separator();
+                item(ui, "Expand Selection", Command::ExpandSelection);
+                item(ui, "Shrink Selection", Command::ShrinkSelection);
+                item(ui, "Select Function", Command::SelectFunction);
+                item(ui, "Select Function Body", Command::SelectFunctionBody);
+                item(ui, "Select Type", Command::SelectType);
+                item(ui, "Select Argument", Command::SelectArgument);
+                item(ui, "Select Comment", Command::SelectComment);
             });
             ui.menu_button("View", |ui| {
                 item(ui, "Command Palette...", Command::CommandPalette);
@@ -109,6 +117,11 @@ impl CodeApp {
                 item(ui, "Zen Mode", Command::ToggleZenMode);
                 item(ui, "Word Wrap", Command::ToggleWordWrap);
                 ui.separator();
+                item(ui, "Fold", Command::Fold);
+                item(ui, "Unfold", Command::Unfold);
+                item(ui, "Fold All", Command::FoldAll);
+                item(ui, "Unfold All", Command::UnfoldAll);
+                ui.separator();
                 item(ui, "Zoom In", Command::ZoomIn);
                 item(ui, "Zoom Out", Command::ZoomOut);
                 item(ui, "Reset Zoom", Command::ResetZoom);
@@ -117,6 +130,9 @@ impl CodeApp {
                 item(ui, "Go to File...", Command::QuickOpen);
                 item(ui, "Go to Bracket", Command::JumpToBracket);
                 item(ui, "Go to Line...", Command::GoToLine);
+                item(ui, "Go to Symbol in Editor...", Command::GoToSymbol);
+                item(ui, "Next Function", Command::NextFunction);
+                item(ui, "Previous Function", Command::PreviousFunction);
                 ui.separator();
                 item(ui, "Go to Definition", Command::GoToDefinition);
                 item(ui, "Go to Implementations", Command::GoToImplementation);
@@ -290,6 +306,32 @@ impl CodeApp {
         let active_path = self.docs.get(self.active).and_then(|d| d.path.clone());
         match self.sidebar_view {
             SidebarView::Explorer => {
+                let open = self.outline_open;
+                let panel =
+                    egui::Panel::bottom("outline").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);
+                let panel =
+                    if open { panel.default_size(220.0).size_range(80.0..=600.0) } else { panel.exact_size(26.0) };
+                panel.show(ui, |ui| {
+                    let header = ui
+                        .horizontal(|ui| {
+                            let size = ui.text_style_height(&egui::TextStyle::Body);
+                            let chevron = if open { Icon::ChevronDown } else { Icon::ChevronRight };
+                            let a = icons::show(ui, chevron, size, theme::colors().text_dim)
+                                .interact(Sense::click())
+                                .clicked();
+                            let b = ui
+                                .add(egui::Label::new(RichText::new("OUTLINE").small().strong()).sense(Sense::click()))
+                                .clicked();
+                            a || b
+                        })
+                        .inner;
+                    if header {
+                        self.outline_open = !self.outline_open;
+                    }
+                    if open {
+                        self.outline_view(ui);
+                    }
+                });
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("EXPLORER").small().strong());
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
@@ -404,7 +446,8 @@ impl CodeApp {
         }
     }
 
-    pub(super) fn breadcrumbs(&self, ui: &mut egui::Ui) {
+    pub(super) fn breadcrumbs(&mut self, ui: &mut egui::Ui) {
+        let symbols = self.breadcrumb_symbols();
         let Some(doc) = self.docs.get(self.active) else { return };
         let text = match (&doc.path, &self.explorer.root) {
             (Some(p), Some(root)) => p
@@ -419,10 +462,30 @@ impl CodeApp {
             (Some(p), None) => p.display().to_string(),
             (None, _) => doc.title(),
         };
+        let mut jump = None;
+        let mut pick = false;
         ui.horizontal(|ui| {
             ui.add_space(14.0);
-            ui.label(RichText::new(text).size(small_size(ui)).color(theme::colors().text_dim));
+            let dim = theme::colors().text_dim;
+            let size = small_size(ui);
+            let file = ui.add(egui::Label::new(RichText::new(text).size(size).color(dim)).sense(Sense::click()));
+            if file.on_hover_text("Go to Symbol in Editor (Ctrl+Shift+O)").clicked() {
+                pick = true;
+            }
+            for (label, line) in symbols {
+                ui.label(RichText::new("›").size(size).color(dim));
+                let crumb = ui.add(egui::Label::new(RichText::new(label).size(size).color(dim)).sense(Sense::click()));
+                if crumb.clicked() {
+                    jump = Some(line);
+                }
+            }
         });
+        if let Some(line) = jump {
+            self.jump_to_symbol_line(line);
+        }
+        if pick {
+            self.go_to_symbol();
+        }
     }
 
     pub(super) fn find_bar(&mut self, ui: &mut egui::Ui) {

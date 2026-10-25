@@ -42,7 +42,7 @@ impl Lang {
         })
     }
 
-    fn language(self) -> Language {
+    pub fn language(self) -> Language {
         match self {
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
             Self::Json => tree_sitter_json::LANGUAGE.into(),
@@ -270,6 +270,35 @@ impl TsState {
         let Some(idx) = self.inflight.iter().position(|(v, _)| *v == parsed.version) else { return };
         self.inflight.drain(..=idx);
         self.tree = Some((parsed.version, parsed.tree));
+    }
+
+    /// Version of the latest parsed tree.
+    pub fn tree_version(&self) -> Option<u64> {
+        self.tree.as_ref().map(|(v, _)| *v)
+    }
+
+    /// The latest tree with edits it hasn't seen applied, so node positions
+    /// match the buffer (new text may not be reflected in its structure yet).
+    pub fn current_tree(&self, buf: &Buffer) -> Option<Tree> {
+        let (_, tree) = self.tree.as_ref()?;
+        let mut tree = tree.clone();
+        for e in self.inflight.iter().flat_map(|(_, e)| e.iter()).chain(buf.peek_syntax_edits()) {
+            match e {
+                SyntaxEdit::Reset => return None,
+                SyntaxEdit::Edit(e) => tree.edit(e),
+            }
+        }
+        Some(tree)
+    }
+
+    /// A tree exactly matching the buffer, reparsed incrementally on this
+    /// thread without disturbing the background worker.
+    pub fn fresh_tree(&self, buf: &Buffer) -> Option<Tree> {
+        let old = self.current_tree(buf);
+        let mut parser = Parser::new();
+        parser.set_language(&self.lang.language()).ok()?;
+        let rope = buf.rope();
+        parser.parse_with_options(&mut |byte, _| chunk_at(rope, byte), old.as_ref(), None)
     }
 
     /// Computes highlighted spans for `first..=last` (char-based, per line).

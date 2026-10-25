@@ -7,6 +7,7 @@ use encoding_rs::{Encoding, UTF_8};
 use crate::buffer::{Buffer, Selection};
 use crate::encoding;
 use crate::highlight::Highlighter;
+use crate::structure::{self, FoldRange, Symbol};
 use crate::syntax::{Lang, TsState};
 
 /// Files above either limit open in large-file mode: no syntax highlighting.
@@ -20,6 +21,14 @@ pub enum DiskState {
     /// Changed by another program while the buffer had unsaved edits.
     Changed,
     Deleted,
+}
+
+/// Folds and outline of a document, for one buffer and tree version.
+#[derive(Default)]
+pub struct Structure {
+    key: Option<(u64, Option<u64>)>,
+    pub folds: Vec<FoldRange>,
+    pub symbols: Vec<Symbol>,
 }
 
 pub struct Document {
@@ -46,6 +55,8 @@ pub struct Document {
     pub encoding: &'static Encoding,
     /// Whether the file starts with a byte order mark.
     pub bom: bool,
+    /// Folds and outline, recomputed when the text or syntax tree changes.
+    structure: Structure,
 }
 
 impl Document {
@@ -67,6 +78,7 @@ impl Document {
             disk: DiskState::InSync,
             encoding: UTF_8,
             bom: false,
+            structure: Structure::default(),
         };
         doc.set_language(&ext);
         doc
@@ -201,6 +213,30 @@ impl Document {
     pub fn set_line_ending(&mut self, nl: &'static str) {
         self.buffer.convert_line_endings(nl);
         self.reveal = true;
+    }
+
+    /// Fold ranges and outline symbols for the current text.
+    pub fn structure(&mut self) -> &Structure {
+        let key = (self.buffer.version(), self.ts.as_ref().and_then(TsState::tree_version));
+        if self.structure.key != Some(key) {
+            let (folds, symbols) = match &self.ts {
+                Some(ts) => match ts.current_tree(&self.buffer) {
+                    Some(tree) => {
+                        (structure::folds_from_tree(&tree, ts.lang), structure::symbols(&tree, &self.text(), ts.lang))
+                    }
+                    None => (Vec::new(), Vec::new()),
+                },
+                None if !self.large => (structure::indent_folds(self.buffer.rope()), Vec::new()),
+                None => (Vec::new(), Vec::new()),
+            };
+            self.structure = Structure { key: Some(key), folds, symbols };
+        }
+        &self.structure
+    }
+
+    /// A syntax tree exactly matching the text (for selection commands).
+    pub fn fresh_tree(&self) -> Option<tree_sitter::Tree> {
+        self.ts.as_ref()?.fresh_tree(&self.buffer)
     }
 
     fn load_text(&mut self, text: &str) {

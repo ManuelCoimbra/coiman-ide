@@ -11,7 +11,9 @@ use crate::theme;
 use egui::{Key, Modifiers};
 use rust_code_core::encoding;
 
+use super::outline::FoldAction;
 use super::{CodeApp, INDENT, PanelTab, SidebarView};
+use rust_code_core::structure::TextObject;
 
 impl CodeApp {
     /// Applies a text edit to the active document and moves its selection.
@@ -116,6 +118,20 @@ impl CodeApp {
             }
             Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
             Command::ShowSourceControl => self.show_source_control(),
+            Command::Fold => self.fold_command(FoldAction::Fold),
+            Command::Unfold => self.fold_command(FoldAction::Unfold),
+            Command::ToggleFold => self.fold_command(FoldAction::Toggle),
+            Command::FoldAll => self.fold_command(FoldAction::FoldAll),
+            Command::UnfoldAll => self.fold_command(FoldAction::UnfoldAll),
+            Command::GoToSymbol => self.go_to_symbol(),
+            Command::ExpandSelection => self.expand_selection(),
+            Command::ShrinkSelection => self.shrink_selection(),
+            Command::SelectFunction => self.select_text_object(TextObject::Function),
+            Command::SelectFunctionBody => self.select_text_object(TextObject::FunctionBody),
+            Command::SelectType => self.select_text_object(TextObject::Type),
+            Command::SelectArgument => self.select_text_object(TextObject::Argument),
+            Command::SelectComment => self.select_text_object(TextObject::Comment),
+            Command::NextFunction | Command::PreviousFunction => self.adjacent_function(cmd == Command::NextFunction),
             Command::RunWithoutDebugging => self.run_selected_config(ctx),
             Command::SelectRunConfig => self.select_run_config(ctx),
             Command::OpenRunConfigs => self.open_run_configs(),
@@ -346,6 +362,7 @@ impl CodeApp {
             PickerKind::CodeAction => self.pick_code_action(label),
             PickerKind::Branch => self.pick_branch(ctx, label),
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
+            PickerKind::Symbol => self.picked_symbol(label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

@@ -7,6 +7,7 @@ mod dispatch;
 mod files;
 mod git;
 mod lsp;
+mod outline;
 mod workbench;
 
 use std::path::PathBuf;
@@ -131,6 +132,12 @@ pub struct CodeApp {
     git: git::GitState,
     /// Run configurations, tests and cargo check results.
     cargo: cargo::CargoState,
+    /// Labels and lines offered by Go to Symbol.
+    symbol_pick: Vec<(String, usize)>,
+    /// Selections to return to with Shrink Selection.
+    selection_stack: outline::SelectionStack,
+    /// Whether the Outline section of the Explorer is open.
+    outline_open: bool,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -173,6 +180,9 @@ impl CodeApp {
             lsp: lsp::LspState::default(),
             git: git::GitState::default(),
             cargo: cargo::CargoState::default(),
+            symbol_pick: Vec::new(),
+            selection_stack: None,
+            outline_open: true,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -293,6 +303,9 @@ impl eframe::App for CodeApp {
             let mut deco = self.lsp_decorations(self.active);
             self.git_decorate(self.active, &mut deco);
             self.cargo_decorate(self.active, &mut deco);
+            if let Some(doc) = self.docs.get_mut(self.active) {
+                deco.folds = doc.structure().folds.clone();
+            }
             // Text typed this frame (the editor reads events without consuming them).
             let typed: String = ui.input(|i| {
                 i.events
