@@ -116,6 +116,9 @@ pub enum Command {
     SelectComment,
     NextFunction,
     PreviousFunction,
+    // Local history.
+    LocalHistory,
+    ShowTimeline,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -222,6 +225,8 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::SelectComment, "Select Comment"),
     (Command::NextFunction, "Go to Next Function"),
     (Command::PreviousFunction, "Go to Previous Function"),
+    (Command::LocalHistory, "Local History: Find Entry to Restore..."),
+    (Command::ShowTimeline, "View: Show Timeline"),
 ];
 
 /// VS Code command ID of each command.
@@ -331,6 +336,8 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::SelectComment, "rust-code.select.comment"),
     (Command::NextFunction, "rust-code.goto.nextFunction"),
     (Command::PreviousFunction, "rust-code.goto.previousFunction"),
+    (Command::LocalHistory, "workbench.action.localHistory.restoreViaPicker"),
+    (Command::ShowTimeline, "timeline.focus"),
 ];
 
 /// Commands whose shortcuts still work while the terminal has focus; every

@@ -24,9 +24,15 @@ impl CodeApp {
             if self.is_config_file(path) {
                 self.settings_reload = true;
             }
-            for doc in &mut self.docs {
+            for i in 0..self.docs.len() {
+                let doc = &mut self.docs[i];
                 if doc.path.as_deref().is_some_and(|p| same_path(p, path)) {
+                    let version = doc.buffer.version();
                     doc.check_disk();
+                    // Reloaded with another program's changes: keep that version too.
+                    if doc.buffer.version() != version && !doc.is_dirty() {
+                        self.history_record(i, rust_code_core::history::Source::External);
+                    }
                 }
             }
         }
@@ -152,6 +158,7 @@ impl CodeApp {
                     self.settings_reload = true;
                 }
                 self.lsp_did_save(index);
+                self.history_record(index, rust_code_core::history::Source::Save);
                 true
             }
             Ok(false) => self.save_doc_as(index),
@@ -175,6 +182,7 @@ impl CodeApp {
                 self.explorer.refresh();
                 self.finder.mark_stale();
                 self.lsp_did_save(index);
+                self.history_record(index, rust_code_core::history::Source::Save);
                 true
             }
             Err(e) => {

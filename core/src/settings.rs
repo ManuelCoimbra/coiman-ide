@@ -25,6 +25,7 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub git: GitSettings,
     pub cargo: CargoSettings,
+    pub history: HistorySettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -95,6 +96,25 @@ pub struct CargoSettings {
     pub check_command: String,
     /// Test runner: "auto" (nextest when installed), "cargo" or "nextest".
     pub test_runner: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct HistorySettings {
+    /// Keep a copy of a file every time it is saved or changed outside.
+    pub enabled: bool,
+    /// Versions kept per file.
+    pub max_entries: usize,
+    /// Versions older than this are dropped.
+    pub max_days: u64,
+    /// Larger files are not kept.
+    pub max_file_kb: usize,
+}
+
+impl Default for HistorySettings {
+    fn default() -> Self {
+        Self { enabled: true, max_entries: 50, max_days: 30, max_file_kb: 5120 }
+    }
 }
 
 impl Default for CargoSettings {

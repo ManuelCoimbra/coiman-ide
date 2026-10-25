@@ -40,6 +40,7 @@ pub enum PickerKind {
     Branch,
     RunConfig,
     Symbol,
+    History,
 }
 
 struct Picker {

@@ -65,6 +65,8 @@ pub(super) struct DiffView {
     rel: String,
     /// HEAD ↔ index (staged changes) instead of index ↔ working tree.
     staged: bool,
+    /// A local-history version (left) against the current text (right).
+    history: Option<rust_code_core::history::Entry>,
     left: String,
     right: String,
     /// The right side is the open document (kept live while editing).
@@ -240,6 +242,16 @@ impl CodeApp {
 
     /// Runs every frame: repository lookup, messages, refreshes, gutter, blame.
     pub(super) fn pump_git(&mut self, ctx: &egui::Context) {
+        // Keep a diff against the open document current while it is edited.
+        if let Some(view) = &mut self.git.diff
+            && let Some((uid, version)) = view.live
+            && let Some(doc) = self.docs.iter().find(|d| d.uid == uid)
+            && doc.buffer.version() != version
+        {
+            view.right = doc.text();
+            view.live = Some((uid, doc.buffer.version()));
+            view.rebuild();
+        }
         if !self.settings.git.enabled {
             if self.git.repo.is_some() {
                 self.git = super::git::GitState::default();
@@ -286,15 +298,6 @@ impl CodeApp {
         }
         self.update_gutter(ctx, now);
         self.update_blame(ctx, now);
-        if let Some(view) = &mut self.git.diff
-            && let Some((uid, version)) = view.live
-            && let Some(doc) = self.docs.iter().find(|d| d.uid == uid)
-            && doc.buffer.version() != version
-        {
-            view.right = doc.text();
-            view.live = Some((uid, doc.buffer.version()));
-            view.rebuild();
-        }
     }
 
     fn on_git_msg(&mut self, ctx: &egui::Context, msg: Msg) {
@@ -347,7 +350,7 @@ impl CodeApp {
                     Err(e) => self.status = Some(format!("Git: {e}")),
                 }
                 self.git_refresh_soon(ctx, 0.0);
-                if let Some(view) = &self.git.diff {
+                if let Some(view) = self.git.diff.as_ref().filter(|v| v.history.is_none()) {
                     let (path, staged) = (view.path.clone(), view.staged);
                     self.open_diff(ctx, &path, staged);
                 }
@@ -584,6 +587,7 @@ impl CodeApp {
             path: src.path,
             rel: src.rel,
             staged: src.staged,
+            history: None,
             left: src.left,
             right,
             live,
@@ -600,12 +604,48 @@ impl CodeApp {
         self.git.diff = Some(view);
     }
 
+    /// Shows a local-history version of `path` (document `i`) against its current text.
+    pub(super) fn show_history_diff(
+        &mut self,
+        path: PathBuf,
+        rel: String,
+        old: String,
+        entry: rust_code_core::history::Entry,
+        i: usize,
+    ) {
+        let doc = &self.docs[i];
+        let mut view = DiffView {
+            path,
+            rel,
+            staged: false,
+            history: Some(entry),
+            left: old,
+            right: doc.text(),
+            live: Some((doc.uid, doc.buffer.version())),
+            ignore_whitespace: false,
+            hunks: Vec::new(),
+            rows: Vec::new(),
+            scroll_to: None,
+            current: 0,
+        };
+        view.rebuild();
+        view.scroll_to = view.row_of_hunk(0);
+        self.git.diff = Some(view);
+    }
+
     /// Stage / unstage / revert hunk `k` of the open diff.
     fn diff_hunk_action(&mut self, ctx: &egui::Context, k: usize, revert: bool) {
         let Some(view) = &self.git.diff else { return };
         let Some(h) = view.hunks.get(k).cloned() else { return };
         let (path, staged, left, right, live) =
             (view.path.clone(), view.staged, view.left.clone(), view.right.clone(), view.live);
+        if view.history.is_some() {
+            // Bring the old version's lines back into the document (undoable).
+            if let Some(i) = live.and_then(|(uid, _)| self.docs.iter().position(|d| d.uid == uid)) {
+                self.revert_hunk_in_doc(i, &left, &h);
+            }
+            return;
+        }
         if staged {
             // Unstage: put HEAD's lines back into the index.
             let (head, index) = (git::lines(&left), git::lines(&right));
@@ -635,14 +675,32 @@ impl CodeApp {
         let pal = theme::colors();
         let mut action: Option<(usize, bool)> = None;
         let mut close = false;
+        let mut restore = false;
+        let history_label = view.history.as_ref().map(|e| {
+            let ms =
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
+            format!("{} {} vs Current", e.source.label(), git::relative_time((ms.saturating_sub(e.time) / 1000) as i64))
+        });
         ui.horizontal(|ui| {
-            let sides = if view.staged { "HEAD vs Index" } else { "Index vs Working Tree" };
+            let sides = match &history_label {
+                Some(label) => label.as_str(),
+                None if view.staged => "HEAD vs Index",
+                None => "Index vs Working Tree",
+            };
             ui.label(RichText::new(&view.rel).strong());
             ui.label(RichText::new(format!("({sides})")).small().color(pal.text_dim));
             ui.label(RichText::new(format!("{} change(s)", view.hunks.len())).small().color(pal.text_dim));
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 if ui.small_button("Close").clicked() {
                     close = true;
+                }
+                if view.history.is_some()
+                    && ui
+                        .small_button("Restore File")
+                        .on_hover_text("Replace the whole file with this version")
+                        .clicked()
+                {
+                    restore = true;
                 }
                 let n = view.hunks.len();
                 if ui.small_button("Next").on_hover_text("Next change").clicked() && n > 0 {
@@ -669,9 +727,10 @@ impl CodeApp {
             area = area.vertical_scroll_offset((row as f32 * row_h - 3.0 * row_h).max(0.0));
         }
         let staged = view.staged;
+        let history = view.history.is_some();
         area.show_rows(ui, row_h, view.rows.len(), |ui, range| {
             let width = ui.available_width();
-            let actions_w = if staged { 64.0 } else { 110.0 };
+            let actions_w = if staged || history { 64.0 } else { 110.0 };
             let num_w = 5.0 * char_w;
             let half = ((width - actions_w) / 2.0).max(50.0);
             for r in range {
@@ -715,7 +774,11 @@ impl CodeApp {
                     let mut child = ui.new_child(
                         egui::UiBuilder::new().max_rect(mid).layout(egui::Layout::left_to_right(Align::Center)),
                     );
-                    if staged {
+                    if history {
+                        if child.small_button("Revert").on_hover_text("Bring back these lines").clicked() {
+                            action = Some((k, true));
+                        }
+                    } else if staged {
                         if child.small_button("Unstage").clicked() {
                             action = Some((k, false));
                         }
@@ -730,7 +793,13 @@ impl CodeApp {
                 }
             }
         });
-        if close {
+        if restore
+            && let Some(view) = &self.git.diff
+            && let Some(entry) = view.history.clone()
+        {
+            let path = view.path.clone();
+            self.restore_history(&path, &entry);
+        } else if close {
             self.git.diff = None;
         } else if let Some((k, revert)) = action {
             self.diff_hunk_action(&ctx, k, revert);

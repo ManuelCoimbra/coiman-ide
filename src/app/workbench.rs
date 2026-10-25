@@ -306,6 +306,32 @@ impl CodeApp {
         let active_path = self.docs.get(self.active).and_then(|d| d.path.clone());
         match self.sidebar_view {
             SidebarView::Explorer => {
+                let open = self.timeline_open;
+                let panel =
+                    egui::Panel::bottom("timeline").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);
+                let panel =
+                    if open { panel.default_size(180.0).size_range(80.0..=500.0) } else { panel.exact_size(26.0) };
+                panel.show(ui, |ui| {
+                    let header = ui
+                        .horizontal(|ui| {
+                            let size = ui.text_style_height(&egui::TextStyle::Body);
+                            let chevron = if open { Icon::ChevronDown } else { Icon::ChevronRight };
+                            let a = icons::show(ui, chevron, size, theme::colors().text_dim)
+                                .interact(Sense::click())
+                                .clicked();
+                            let b = ui
+                                .add(egui::Label::new(RichText::new("TIMELINE").small().strong()).sense(Sense::click()))
+                                .clicked();
+                            a || b
+                        })
+                        .inner;
+                    if header {
+                        self.timeline_open = !self.timeline_open;
+                    }
+                    if open {
+                        self.timeline_view(ui);
+                    }
+                });
                 let open = self.outline_open;
                 let panel =
                     egui::Panel::bottom("outline").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);

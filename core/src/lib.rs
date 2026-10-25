@@ -11,6 +11,7 @@ pub mod encoding;
 pub mod finder;
 pub mod git;
 pub mod highlight;
+pub mod history;
 pub mod lsp;
 pub mod pty;
 pub mod search;

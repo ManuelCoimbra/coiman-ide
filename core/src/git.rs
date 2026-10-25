@@ -278,7 +278,8 @@ pub fn format_blame(b: &BlameLine, now: i64, me: Option<&str>) -> String {
     format!("{who}, {} • {}", relative_time(now - b.time), b.summary)
 }
 
-fn relative_time(secs: i64) -> String {
+/// "3 days ago", "just now".
+pub fn relative_time(secs: i64) -> String {
     let units = [
         (365 * 86_400, "year"),
         (30 * 86_400, "month"),

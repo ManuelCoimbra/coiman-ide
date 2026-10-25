@@ -34,6 +34,7 @@ from where:
 | `%APPDATA%\rust-code\settings.toml`, `keybindings.toml` | yes | when you edit them, pick a theme, or choose "Don't Ask Again" | your settings |
 | `%APPDATA%\rust-code\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
 | `%APPDATA%\rust-code\themes\*.json` | yes | never | your extra color themes |
+| `%APPDATA%\rust-code\history\` | yes | on every save (and outside change) of a file | local history: earlier versions of your files (`history.enabled = false` turns it off) |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |
 | Installed VS Code themes (`%LOCALAPPDATA%\Programs\Microsoft VS Code`, `~\.vscode\extensions`) | theme files only | never | the Color Theme picker |
 

@@ -118,6 +118,12 @@ impl CodeApp {
             }
             Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
             Command::ShowSourceControl => self.show_source_control(),
+            Command::LocalHistory => self.history_picker(ctx),
+            Command::ShowTimeline => {
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Explorer;
+                self.timeline_open = true;
+            }
             Command::Fold => self.fold_command(FoldAction::Fold),
             Command::Unfold => self.fold_command(FoldAction::Unfold),
             Command::ToggleFold => self.fold_command(FoldAction::Toggle),
@@ -363,6 +369,7 @@ impl CodeApp {
             PickerKind::Branch => self.pick_branch(ctx, label),
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::Symbol => self.picked_symbol(label),
+            PickerKind::History => self.picked_history(label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

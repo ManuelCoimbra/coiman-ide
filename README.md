@@ -19,9 +19,9 @@ A Cargo workspace with two crates:
   server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
   sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches), `cargo` (run
   configurations, test discovery, test/check output parsing), `structure` (folds, outline,
-  smart selection, text objects).
+  smart selection, text objects), `history` (local history store).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`), `editor_view` (the editor widget), `icons` (vector
+  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
 
@@ -156,6 +156,19 @@ downloaded unless you click **Install** (**Don't Ask Again** sets `lsp.ask_to_in
 Edits are sent to the server as small incremental changes. `rust-analyzer: Restart Server`
 restarts it (e.g. after changing `lsp.rust_analyzer_path`); `lsp.enabled = false` turns
 language servers off.
+
+### Local history
+
+A copy of each file is kept every time it is saved and when another program changes it,
+independently of Git, in `%APPDATA%\rust-code\history` (50 versions or 30 days per file by
+default; `history.enabled`, `history.max_entries`, `history.max_days`, `history.max_file_kb`).
+
+- The **Timeline** section of the Explorer lists the active file's versions ("Saved · 3
+  minutes ago"). Click one to compare it side by side with the current text and **Revert**
+  single changes, or **Restore File** to bring the whole version back.
+- **Local History: Find Entry to Restore...** picks a version from the palette.
+- Restoring is an unsaved, undoable edit, and the text it replaces is kept as a "Before
+  restore" version.
 
 ### Code structure
 

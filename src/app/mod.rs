@@ -6,6 +6,7 @@ mod config;
 mod dispatch;
 mod files;
 mod git;
+mod history;
 mod lsp;
 mod outline;
 mod workbench;
@@ -138,6 +139,10 @@ pub struct CodeApp {
     selection_stack: outline::SelectionStack,
     /// Whether the Outline section of the Explorer is open.
     outline_open: bool,
+    /// Local history: versions of files kept on save.
+    history: history::HistoryState,
+    /// Whether the Timeline section of the Explorer is open.
+    timeline_open: bool,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -183,6 +188,8 @@ impl CodeApp {
             symbol_pick: Vec::new(),
             selection_stack: None,
             outline_open: true,
+            history: history::HistoryState::default(),
+            timeline_open: false,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
