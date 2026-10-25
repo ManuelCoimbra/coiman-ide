@@ -56,6 +56,8 @@ pub enum Command {
     OpenWorkspaceSettings,
     OpenKeybindings,
     SelectTheme,
+    ChangeEncoding,
+    ChangeLineEnding,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -107,6 +109,8 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::OpenWorkspaceSettings, "Preferences: Open Workspace Settings (TOML)"),
     (Command::OpenKeybindings, "Preferences: Open Keyboard Shortcuts (TOML)"),
     (Command::SelectTheme, "Preferences: Color Theme"),
+    (Command::ChangeEncoding, "Change File Encoding"),
+    (Command::ChangeLineEnding, "Change End of Line Sequence"),
 ];
 
 /// VS Code command ID of each command.
@@ -161,6 +165,8 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::OpenWorkspaceSettings, "workbench.action.openWorkspaceSettings"),
     (Command::OpenKeybindings, "workbench.action.openGlobalKeybindings"),
     (Command::SelectTheme, "workbench.action.selectTheme"),
+    (Command::ChangeEncoding, "workbench.action.editor.changeEncoding"),
+    (Command::ChangeLineEnding, "workbench.action.editor.changeEOL"),
 ];
 
 pub fn command_id(cmd: Command) -> &'static str {

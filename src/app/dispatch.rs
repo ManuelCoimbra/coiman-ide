@@ -5,9 +5,11 @@ use crate::document::Document;
 use crate::edit_ops::{self, CaseTransform, Edit, Sel};
 use crate::editor_view::editor_id;
 use crate::keymap::Keymap;
+use crate::palette::PickerKind;
 use crate::settings;
 use crate::theme;
 use egui::{Key, Modifiers};
+use rust_code_core::encoding;
 
 use super::{CodeApp, INDENT, SidebarView};
 
@@ -192,7 +194,25 @@ impl CodeApp {
                 if !labels.iter().any(|l| l == "Dark Modern") {
                     labels.insert(0, "Dark Modern".to_owned());
                 }
-                self.palette.show_themes(labels, &self.settings.workbench.color_theme);
+                let current = self.settings.workbench.color_theme.clone();
+                self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
+            }
+            Command::ChangeLineEnding => {
+                if let Some(doc) = self.docs.get(self.active) {
+                    let current = doc.line_ending();
+                    let items = vec!["LF".to_owned(), "CRLF".to_owned()];
+                    self.palette.show_picker(PickerKind::LineEnding, items, current, "Select End of Line Sequence");
+                }
+            }
+            Command::ChangeEncoding => {
+                if let Some(doc) = self.docs.get(self.active) {
+                    if doc.path.is_some() {
+                        let items = vec!["Reopen with Encoding".to_owned(), "Save with Encoding".to_owned()];
+                        self.palette.show_picker(PickerKind::EncodingAction, items, "", "Select Action");
+                    } else {
+                        self.pick_encoding(PickerKind::SaveWithEncoding);
+                    }
+                }
             }
             Command::ReopenClosedEditor => {
                 if let Some(path) = self.closed_editors.pop() {
@@ -205,6 +225,54 @@ impl CodeApp {
     pub(super) fn open_palette(&mut self, prefix: &str) {
         self.finder.refresh_if_stale();
         self.palette.show_with(prefix);
+    }
+
+    /// Opens the encoding list for reopening or saving the active file.
+    fn pick_encoding(&mut self, kind: PickerKind) {
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let current = doc.encoding_name();
+        let items = encoding::CHOICES.iter().map(|(name, ..)| (*name).to_owned()).collect();
+        let placeholder = if kind == PickerKind::ReopenWithEncoding {
+            "Select File Encoding to Reopen File"
+        } else {
+            "Select File Encoding to Save with"
+        };
+        self.palette.show_picker(kind, items, &current, placeholder);
+    }
+
+    /// Applies an item chosen in a palette picker.
+    pub(super) fn handle_pick(&mut self, ctx: &egui::Context, kind: PickerKind, label: &str) {
+        match kind {
+            PickerKind::Theme => self.set_color_theme(ctx, label),
+            PickerKind::LineEnding => {
+                if let Some(doc) = self.active_doc() {
+                    doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });
+                }
+            }
+            PickerKind::EncodingAction => self.pick_encoding(if label.starts_with("Reopen") {
+                PickerKind::ReopenWithEncoding
+            } else {
+                PickerKind::SaveWithEncoding
+            }),
+            PickerKind::ReopenWithEncoding | PickerKind::SaveWithEncoding => {
+                let Some((enc, bom)) = encoding::from_display_name(label) else { return };
+                let Some(doc) = self.docs.get_mut(self.active) else { return };
+                if kind == PickerKind::ReopenWithEncoding {
+                    if let Err(e) = doc.reopen_with_encoding(enc) {
+                        self.status = Some(e);
+                    }
+                } else {
+                    let previous = (doc.encoding, doc.bom);
+                    (doc.encoding, doc.bom) = (enc, bom);
+                    if !self.save_doc(self.active)
+                        && let Some(doc) = self.docs.get_mut(self.active)
+                    {
+                        // Keep the old encoding if saving failed (e.g. unrepresentable characters).
+                        (doc.encoding, doc.bom) = previous;
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {

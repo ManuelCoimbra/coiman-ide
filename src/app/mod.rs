@@ -104,6 +104,9 @@ pub struct CodeApp {
     last_backup_time: f64,
     /// Window title last sent to the OS.
     last_title: String,
+    /// Set by `--measure-startup`: process start, time the window was ready,
+    /// and where to write the timings.
+    pub(crate) startup_probe: Option<(std::time::Instant, std::time::Duration, PathBuf)>,
     /// Background tree-sitter parser, started on the first frame.
     syntax: Option<SyntaxWorker>,
 }
@@ -142,6 +145,7 @@ impl CodeApp {
             last_session_json: String::new(),
             last_backup_time: 0.0,
             last_title: String::new(),
+            startup_probe: None,
             syntax: None,
         };
         // Always restore the previous session first so unsaved work is never
@@ -190,7 +194,9 @@ impl eframe::App for CodeApp {
             egui::Panel::bottom("status_bar")
                 .frame(egui::Frame::new().fill(theme::colors().status_bg).inner_margin(egui::Margin::symmetric(8, 2)))
                 .show_separator_line(false)
-                .show(ui, |ui| self.status_bar(ui));
+                .show(ui, |ui| {
+                    cmd = cmd.or(self.status_bar(ui));
+                });
 
             egui::Panel::left("activity_bar")
                 .exact_size(48.0)
@@ -249,7 +255,7 @@ impl eframe::App for CodeApp {
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
-            Some(PaletteResult::Theme(label)) => self.set_color_theme(&ctx, &label),
+            Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
             Some(PaletteResult::GoToLine(line)) if line > 0 => {
                 if let Some(doc) = self.active_doc() {
                     doc.goto_line(line);
@@ -264,6 +270,12 @@ impl eframe::App for CodeApp {
             self.run_command(&ctx, c);
         }
         self.update_title(&ctx);
+        if let Some((started, window_ready, file)) = self.startup_probe.take() {
+            // "<ms until window ready> <ms until first frame>"
+            let _ = std::fs::write(file, format!("{} {}", window_ready.as_millis(), started.elapsed().as_millis()));
+            self.allow_close = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
     }
 }
 

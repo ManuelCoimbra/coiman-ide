@@ -20,13 +20,28 @@ A Cargo workspace with two crates:
   `dispatch`, `files`, `config`, `workbench`), `editor_view` (the editor widget), `palette`,
   `search_panel`, `explorer`, `terminal`, `keymap`, `theme` (egui colors and visuals).
 
-Checks (formatting, clippy with warnings as errors, tests):
+Checks (no networking crates, formatting, clippy with warnings as errors, tests):
 
 ```
 powershell -File scripts/check.ps1
 ```
 
 `cargo lint` runs just clippy for the workspace.
+
+Benchmarks against the performance targets (keystroke latency, incremental reparse, line
+commands, large-file open, Quick Open over 100k files, startup time, idle memory):
+
+```
+powershell -File scripts/bench.ps1 [-Quick]
+```
+
+`cargo bench -p rust-code-core` runs only the headless part. Each row prints p50/p99 and
+PASS, FAIL or GAP; a GAP is a known shortfall tracked on the roadmap and doesn't fail the run.
+
+## Privacy
+
+No telemetry, no network access, no account, no AI. See [PRIVACY.md](PRIVACY.md) for what
+is read and written on your machine.
 
 ## Features
 
@@ -54,6 +69,12 @@ powershell -File scripts/check.ps1
   (saving recreates them). The explorer and Quick Open index follow created/deleted files
 - Integrated terminal (`` Ctrl+` ``) with history and `cd`
 - Save / Save As / Save All (`Ctrl+K S`)
+- Encodings: files are detected from their BOM, then UTF-8, falling back to Windows 1252.
+  Click the encoding in the status bar to Reopen with Encoding or Save with Encoding
+  (UTF-8 with/without BOM, UTF-16 LE/BE, Windows and ISO code pages, Shift JIS, GBK, Big5,
+  EUC-KR...). Saving refuses characters the encoding can't represent instead of losing them
+- Line endings: click `LF`/`CRLF` in the status bar to convert the file (undoable). New
+  files use `files.eol` (`"auto"`, `"lf"`, `"crlf"`) and `files.encoding`
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
   (backed up every second to `%APPDATA%\rust-code\session.json`; no "save changes?" prompt on exit)
 - Zoom (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`), toggle side bar (`Ctrl+B`)

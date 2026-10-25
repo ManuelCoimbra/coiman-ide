@@ -116,6 +116,11 @@ impl FileFinder {
         });
     }
 
+    /// Adds a path directly, bypassing the folder walk (benchmarks, tests).
+    pub fn inject(&self, path: PathBuf, rel: String) {
+        self.nucleo.injector().push(Entry { path, rel }, |e, cols| cols[0] = e.rel.as_str().into());
+    }
+
     pub fn set_query(&mut self, query: &str) {
         if query == self.query {
             return;
@@ -125,10 +130,10 @@ impl FileFinder {
         self.query = query.to_owned();
     }
 
-    /// Lets nucleo merge new results (at most `timeout_ms` of work) and returns
-    /// the top `max` matches.
+    /// Lets nucleo merge new results (waiting at most 2 ms, so a frame is never
+    /// held up) and returns the top `max` matches.
     pub fn results(&mut self, max: u32) -> Vec<FileMatch> {
-        self.nucleo.tick(10);
+        self.nucleo.tick(2);
         let snapshot = self.nucleo.snapshot();
         let n = snapshot.matched_item_count().min(max);
         let pattern = self.nucleo.pattern.column_pattern(0);
@@ -199,7 +204,15 @@ mod tests {
         assert!(!results[0].indices.is_empty());
 
         f.set_query("");
-        let all: Vec<String> = f.results(100).into_iter().map(|m| m.rel.replace('\\', "/")).collect();
+        // Matching runs on worker threads; poll until every indexed file is listed.
+        let mut all: Vec<String> = Vec::new();
+        for _ in 0..200 {
+            all = f.results(100).into_iter().map(|m| m.rel.replace('\\', "/")).collect();
+            if all.len() >= 4 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
         assert!(all.iter().any(|r| r == ".gitignore"), "hidden files are included");
         assert!(!all.iter().any(|r| r.starts_with("target/")), "target/ is skipped");
         assert!(!all.iter().any(|r| r.starts_with("ignored/")), ".gitignore is honoured");

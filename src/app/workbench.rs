@@ -395,7 +395,9 @@ impl CodeApp {
         cmd
     }
 
-    pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) {
+    /// Draws the status bar. Returns a command when a clickable item was clicked.
+    pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
+        let mut status_cmd = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 16.0;
             let size = small_size(ui);
@@ -415,8 +417,17 @@ impl CodeApp {
                         ui.label(white("Large file mode".to_owned()))
                             .on_hover_text("Syntax highlighting and word wrap are off for very large files");
                     }
-                    ui.label(white(doc.line_ending().to_owned()));
-                    ui.label(white("UTF-8".to_owned()));
+                    let clickable = |ui: &mut egui::Ui, text: String, tip: &str| {
+                        ui.add(egui::Label::new(white(text)).sense(Sense::click()).selectable(false))
+                            .on_hover_text(tip)
+                            .clicked()
+                    };
+                    if clickable(ui, doc.line_ending().to_owned(), "Select End of Line Sequence") {
+                        status_cmd = Some(Command::ChangeLineEnding);
+                    }
+                    if clickable(ui, doc.encoding_name(), "Select Encoding") {
+                        status_cmd = Some(Command::ChangeEncoding);
+                    }
                     ui.label(white("Spaces: 4".to_owned()));
                     let (line, col) = doc.cursor();
                     let count = doc.buffer.selections().len();
@@ -432,6 +443,7 @@ impl CodeApp {
                 }
             });
         });
+        status_cmd
     }
 
     pub(super) fn close_dialog(&mut self, ctx: &egui::Context) {

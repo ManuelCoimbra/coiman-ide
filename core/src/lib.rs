@@ -6,6 +6,7 @@ pub mod buffer;
 pub mod commands;
 pub mod document;
 pub mod edit_ops;
+pub mod encoding;
 pub mod finder;
 pub mod highlight;
 pub mod search;

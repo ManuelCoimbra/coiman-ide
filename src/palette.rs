@@ -14,7 +14,25 @@ pub enum PaletteResult {
     OpenFile(PathBuf),
     Run(Command),
     GoToLine(usize),
-    Theme(String),
+    /// An item chosen in a picker.
+    Picked(PickerKind, String),
+}
+
+/// What a picker list is choosing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PickerKind {
+    Theme,
+    LineEnding,
+    /// "Reopen with Encoding" or "Save with Encoding".
+    EncodingAction,
+    ReopenWithEncoding,
+    SaveWithEncoding,
+}
+
+struct Picker {
+    kind: PickerKind,
+    items: Vec<String>,
+    placeholder: &'static str,
 }
 
 #[derive(Default)]
@@ -23,8 +41,8 @@ pub struct Palette {
     query: String,
     selected: usize,
     just_opened: bool,
-    /// When set, the palette is the Color Theme picker over these labels.
-    themes: Option<Vec<String>>,
+    /// When set, the palette is a picker over these items instead of files/commands.
+    picker: Option<Picker>,
 }
 
 impl Palette {
@@ -33,14 +51,15 @@ impl Palette {
         self.query = prefix.to_owned();
         self.selected = 0;
         self.just_opened = true;
-        self.themes = None;
+        self.picker = None;
     }
 
     /// Opens the Color Theme picker with `current` preselected.
-    pub fn show_themes(&mut self, labels: Vec<String>, current: &str) {
+    /// Opens a picker over `items` with `current` preselected.
+    pub fn show_picker(&mut self, kind: PickerKind, items: Vec<String>, current: &str, placeholder: &'static str) {
         self.show_with("");
-        self.selected = labels.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
-        self.themes = Some(labels);
+        self.selected = items.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
+        self.picker = Some(Picker { kind, items, placeholder });
     }
 
     pub fn ui(&mut self, ctx: &egui::Context, finder: &mut FileFinder, keymap: &Keymap) -> Option<PaletteResult> {
@@ -55,10 +74,10 @@ impl Palette {
         // Build the candidate list: (label, detail, result, highlighted label chars).
         let mut items: Vec<(String, String, PaletteResult, Vec<usize>)> = Vec::new();
         let mut empty_text = "No matching results";
-        if let Some(themes) = &self.themes {
+        if let Some(picker) = &self.picker {
             let q = self.query.trim();
-            for t in themes.iter().filter(|t| fuzzy_match(t, q)) {
-                items.push((t.clone(), String::new(), PaletteResult::Theme(t.clone()), Vec::new()));
+            for t in picker.items.iter().filter(|t| fuzzy_match(t, q)) {
+                items.push((t.clone(), String::new(), PaletteResult::Picked(picker.kind, t.clone()), Vec::new()));
             }
         } else if let Some(q) = self.query.strip_prefix('>') {
             let q = q.trim();
@@ -119,11 +138,11 @@ impl Palette {
                     ui.set_width(width);
                     let edit = ui.add(
                         egui::TextEdit::singleline(&mut self.query)
-                            .hint_text(if self.themes.is_some() {
-                                "Select Color Theme"
-                            } else {
-                                "Search files by name (> for commands, : for line)"
-                            })
+                            .hint_text(
+                                self.picker
+                                    .as_ref()
+                                    .map_or("Search files by name (> for commands, : for line)", |p| p.placeholder),
+                            )
                             .desired_width(f32::INFINITY),
                     );
                     if self.just_opened {

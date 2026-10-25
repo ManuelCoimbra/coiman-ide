@@ -46,6 +46,22 @@ pub struct WorkbenchSettings {
 pub struct FilesSettings {
     /// Restore unsaved changes on the next launch instead of asking on exit.
     pub hot_exit: bool,
+    /// Line ending for new files: "auto" (CRLF on Windows, LF elsewhere), "lf" or "crlf".
+    pub eol: String,
+    /// Encoding for new files (VS Code ids: "utf8", "utf8bom", "utf16le", "windows1252", ...).
+    pub encoding: String,
+}
+
+impl FilesSettings {
+    /// Line ending for new files from `files.eol`.
+    pub fn new_file_eol(&self) -> &'static str {
+        match self.eol.to_ascii_lowercase().as_str() {
+            "lf" => "\n",
+            "crlf" => "\r\n",
+            _ if cfg!(windows) => "\r\n",
+            _ => "\n",
+        }
+    }
 }
 
 impl Default for EditorSettings {
@@ -62,7 +78,7 @@ impl Default for WorkbenchSettings {
 
 impl Default for FilesSettings {
     fn default() -> Self {
-        Self { hot_exit: true }
+        Self { hot_exit: true, eol: "auto".to_owned(), encoding: "utf8".to_owned() }
     }
 }
 

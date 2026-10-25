@@ -98,7 +98,9 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new(text: &str) -> Self {
-        let line_ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+        // Like VS Code, decide from the start of the file instead of scanning all of it.
+        let probe = &text.as_bytes()[..text.len().min(64 * 1024)];
+        let line_ending = if probe.windows(2).any(|w| w == b"\r\n") { "\r\n" } else { "\n" };
         Self {
             rope: Rope::from_str(text),
             selections: vec![Selection::cursor(0)],
@@ -771,6 +773,19 @@ impl Buffer {
         self.apply_changes_as(vec![change], EditKind::Other);
     }
 
+    /// Rewrites every line ending as `nl` and uses it for new lines.
+    pub fn convert_line_endings(&mut self, nl: &'static str) {
+        let head = self.primary().head;
+        let line = self.char_to_line(head);
+        let col = head - self.line_start(line);
+        let text = self.text().replace("\r\n", "\n");
+        let converted = if nl == "\r\n" { text.replace('\n', "\r\n") } else { text };
+        self.line_ending = nl;
+        self.replace_all(&converted, Selection::cursor(0));
+        let pos = (self.line_start(line) + col).min(self.line_end(line));
+        self.set_single(Selection::cursor(pos));
+    }
+
     /// Runs a line command from [`crate::edit_ops`] on just the lines around
     /// the primary selection (one line of context on each side, or the whole
     /// document when `whole_doc`), then applies the difference as one small
@@ -1039,6 +1054,22 @@ three",
 three",
             "backspace undone on its own"
         );
+    }
+
+    #[test]
+    fn line_ending_conversion_keeps_cursor_and_is_undoable() {
+        let mut b = Buffer::new("one\ntwo\r\nthree");
+        b.set_single(Selection::cursor(b.line_start(2) + 2));
+        b.convert_line_endings("\r\n");
+        assert_eq!(b.text(), "one\r\ntwo\r\nthree");
+        assert_eq!(b.line_col(b.primary().head), (3, 3));
+        b.insert("\n");
+        b.undo();
+        b.convert_line_endings("\n");
+        assert_eq!(b.text(), "one\ntwo\nthree");
+        assert_eq!(b.line_ending, "\n");
+        b.undo();
+        assert_eq!(b.text(), "one\r\ntwo\r\nthree");
     }
 
     #[test]

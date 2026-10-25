@@ -54,11 +54,14 @@ impl Session {
             .into_iter()
             .filter_map(|d| {
                 let on_disk = d.path.as_ref().and_then(|p| std::fs::read(p).ok());
-                let saved = on_disk.map(|b| String::from_utf8_lossy(&b).into_owned());
-                match (d.path, saved, d.backup) {
-                    (Some(path), Some(saved), backup) => {
-                        let text = backup.unwrap_or_else(|| saved.clone());
-                        Some(Document::restored(Some(path), 0, saved, text))
+                let decoded = on_disk.map(crate::encoding::detect_and_decode);
+                match (d.path, decoded, d.backup) {
+                    (Some(path), Some(decoded), backup) => {
+                        let text = backup.unwrap_or_else(|| decoded.text.clone());
+                        let mut doc = Document::restored(Some(path), 0, decoded.text, text);
+                        doc.encoding = decoded.encoding;
+                        doc.bom = decoded.bom;
+                        Some(doc)
                     }
                     (Some(path), None, Some(backup)) => Some(Document::restored(Some(path), 0, String::new(), backup)),
                     (Some(_), None, None) => None,

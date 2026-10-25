@@ -17,8 +17,20 @@ use std::path::PathBuf;
 pub(crate) use rust_code_core::{buffer, commands, document, edit_ops, finder, session, settings, syntax, watcher};
 
 fn main() -> eframe::Result {
-    // Optional first argument: a folder (opened in the explorer) or a file.
-    let start_path = std::env::args().nth(1).map(PathBuf::from);
+    let started = std::time::Instant::now();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // `--measure-startup <file>`: write the time to the first frame to <file>
+    // and exit (used by scripts/bench.ps1).
+    let startup_probe = match args.first().map(String::as_str) {
+        Some("--measure-startup") if args.len() >= 2 => {
+            let file = PathBuf::from(args.remove(1));
+            args.remove(0);
+            Some((started, file))
+        }
+        _ => None,
+    };
+    // Optional argument: a folder (opened in the explorer) or a file.
+    let start_path = args.first().map(PathBuf::from);
 
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -31,6 +43,12 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Rust Code",
         options,
-        Box::new(move |cc| Ok(Box::new(app::CodeApp::new(start_path, &cc.egui_ctx)))),
+        Box::new(move |cc| {
+            // Time until here is window + GPU context creation inside eframe.
+            let window_ready = started.elapsed();
+            let mut app = app::CodeApp::new(start_path, &cc.egui_ctx);
+            app.startup_probe = startup_probe.map(|(t, file)| (t, window_ready, file));
+            Ok(Box::new(app))
+        }),
     )
 }

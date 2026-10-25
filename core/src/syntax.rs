@@ -242,6 +242,28 @@ impl TsState {
         }
     }
 
+    /// Parses on the calling thread instead of the worker (benchmarks, tools).
+    /// Applies the buffer's pending edits so the reparse is incremental.
+    pub fn parse_sync(&mut self, buf: &mut Buffer) {
+        let mut tree = self.tree.take().map(|(_, t)| t);
+        for edit in self.inflight.drain(..).flat_map(|(_, e)| e).chain(buf.take_syntax_edits()) {
+            match (edit, tree.as_mut()) {
+                (SyntaxEdit::Reset, _) => tree = None,
+                (SyntaxEdit::Edit(e), Some(t)) => t.edit(&e),
+                (SyntaxEdit::Edit(_), None) => {}
+            }
+        }
+        let mut parser = Parser::new();
+        if parser.set_language(&self.lang.language()).is_err() {
+            return;
+        }
+        let rope = buf.rope();
+        if let Some(t) = parser.parse_with_options(&mut |byte, _| chunk_at(rope, byte), tree.as_ref(), None) {
+            self.tree = Some((buf.version(), t));
+            self.sent_version = Some(buf.version());
+        }
+    }
+
     pub fn accept(&mut self, parsed: Parsed) {
         // Versions only increase within a session except through undo, so match
         // by position in the in-flight list rather than by comparing numbers.

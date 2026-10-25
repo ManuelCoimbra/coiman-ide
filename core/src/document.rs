@@ -2,7 +2,10 @@
 
 use std::path::{Path, PathBuf};
 
+use encoding_rs::{Encoding, UTF_8};
+
 use crate::buffer::{Buffer, Selection};
+use crate::encoding;
 use crate::highlight::Highlighter;
 use crate::syntax::{Lang, TsState};
 
@@ -39,6 +42,10 @@ pub struct Document {
     /// Scroll the primary cursor into view the next time it is shown.
     pub reveal: bool,
     pub disk: DiskState,
+    /// Encoding the file is read and saved with.
+    pub encoding: &'static Encoding,
+    /// Whether the file starts with a byte order mark.
+    pub bom: bool,
 }
 
 impl Document {
@@ -58,6 +65,8 @@ impl Document {
             request_focus: false,
             reveal: false,
             disk: DiskState::InSync,
+            encoding: UTF_8,
+            bom: false,
         };
         doc.set_language(&ext);
         doc
@@ -78,8 +87,11 @@ impl Document {
 
     pub fn open(path: &Path) -> std::io::Result<Self> {
         let bytes = std::fs::read(path)?;
-        let text = String::from_utf8_lossy(&bytes);
-        Ok(Self::from_text(Some(path.to_path_buf()), 0, &text))
+        let decoded = encoding::detect_and_decode(bytes);
+        let mut doc = Self::from_text(Some(path.to_path_buf()), 0, &decoded.text);
+        doc.encoding = decoded.encoding;
+        doc.bom = decoded.bom;
+        Ok(doc)
     }
 
     /// Rebuilds a document from a hot-exit backup. `saved_text` is what is on disk
@@ -119,10 +131,17 @@ impl Document {
         let Some(path) = &self.path else {
             return Ok(false);
         };
-        let file = std::fs::File::create(path)?;
-        let mut writer = std::io::BufWriter::new(file);
-        self.buffer.rope().write_to(&mut writer)?;
-        std::io::Write::flush(&mut writer)?;
+        if self.encoding == UTF_8 && !self.bom {
+            // Common case: stream the rope straight to disk without a copy.
+            let file = std::fs::File::create(path)?;
+            let mut writer = std::io::BufWriter::new(file);
+            self.buffer.rope().write_to(&mut writer)?;
+            std::io::Write::flush(&mut writer)?;
+        } else {
+            let bytes = encoding::encode(&self.text(), self.encoding, self.bom)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+            std::fs::write(path, bytes)?;
+        }
         self.saved_version = self.buffer.version();
         self.disk = DiskState::InSync;
         Ok(true)
@@ -135,7 +154,7 @@ impl Document {
         let Some(path) = &self.path else { return };
         match std::fs::read(path) {
             Ok(bytes) => {
-                let text = String::from_utf8_lossy(&bytes);
+                let text = encoding::decode_with(&bytes, self.encoding).text;
                 if *self.buffer.rope() == *text {
                     self.disk = DiskState::InSync;
                 } else if self.is_dirty() {
@@ -153,8 +172,35 @@ impl Document {
     pub fn reload_from_disk(&mut self) -> std::io::Result<()> {
         let Some(path) = &self.path else { return Ok(()) };
         let bytes = std::fs::read(path)?;
-        self.load_text(&String::from_utf8_lossy(&bytes));
+        self.load_text(&encoding::decode_with(&bytes, self.encoding).text);
         Ok(())
+    }
+
+    /// Re-reads the file as `enc` ("Reopen with Encoding"). Refuses when there
+    /// are unsaved changes, since they would be lost.
+    pub fn reopen_with_encoding(&mut self, enc: &'static Encoding) -> Result<(), String> {
+        let Some(path) = &self.path else { return Err("The file has not been saved yet".to_owned()) };
+        if self.is_dirty() {
+            return Err("Save or revert your changes before reopening with another encoding".to_owned());
+        }
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let decoded = encoding::decode_with(&bytes, enc);
+        self.load_text(&decoded.text);
+        self.encoding = enc;
+        self.bom = decoded.bom;
+        Ok(())
+    }
+
+    /// Display name of the current encoding, e.g. "UTF-8 with BOM".
+    pub fn encoding_name(&self) -> String {
+        encoding::display_name(self.encoding, self.bom)
+    }
+
+    /// Converts every line ending to `nl` ("\n" or "\r\n") as one undo step;
+    /// new lines typed afterwards use it too.
+    pub fn set_line_ending(&mut self, nl: &'static str) {
+        self.buffer.convert_line_endings(nl);
+        self.reveal = true;
     }
 
     fn load_text(&mut self, text: &str) {

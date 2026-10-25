@@ -105,7 +105,12 @@ impl CodeApp {
 
     pub(super) fn new_file(&mut self) {
         self.untitled_counter += 1;
-        self.add_doc(Document::untitled(self.untitled_counter));
+        let mut doc = Document::untitled(self.untitled_counter);
+        doc.buffer.line_ending = self.settings.files.new_file_eol();
+        if let Some((enc, bom)) = rust_code_core::encoding::from_setting(&self.settings.files.encoding) {
+            (doc.encoding, doc.bom) = (enc, bom);
+        }
+        self.add_doc(doc);
     }
 
     pub(super) fn open_file(&mut self, path: &Path) {
