@@ -8,6 +8,7 @@ use egui::text::LayoutJob;
 use egui::{RichText, TextFormat};
 use rust_code_core::search::{FileResult, LineMatch, MAX_MATCHES, Msg, Query, SearchHandle};
 
+use crate::icons::{self, Icon};
 use crate::theme;
 
 /// Wait this long after typing stops before searching.
@@ -77,10 +78,13 @@ impl SearchPanel {
                 run_now = true;
             }
         });
-        if ui
-            .small_button(if self.show_globs { "▾ files to include/exclude" } else { "▸ files to include/exclude" })
-            .clicked()
-        {
+        let globs = ui.horizontal(|ui| {
+            let size = ui.text_style_height(&egui::TextStyle::Small);
+            let arrow = if self.show_globs { Icon::ChevronDown } else { Icon::ChevronRight };
+            let icon = icons::show(ui, arrow, size, theme::colors().text_dim).interact(egui::Sense::click()).clicked();
+            icon || ui.small_button("files to include/exclude").clicked()
+        });
+        if globs.inner {
             self.show_globs = !self.show_globs;
         }
         if self.show_globs {
@@ -146,9 +150,16 @@ impl SearchPanel {
             for file in &self.results {
                 let rel = file.path.strip_prefix(root).unwrap_or(&file.path);
                 let collapsed = self.collapsed.contains(&file.path);
-                let arrow = if collapsed { "▸" } else { "▾" };
-                let header = format!("{arrow} {}  ({})", rel.display(), file.matches.len());
-                if ui.add(egui::Button::new(RichText::new(header).strong()).frame(false)).clicked() {
+                let header = format!("{}  ({})", rel.display(), file.matches.len());
+                let clicked = ui
+                    .horizontal(|ui| {
+                        let size = ui.text_style_height(&egui::TextStyle::Body);
+                        let arrow = if collapsed { Icon::ChevronRight } else { Icon::ChevronDown };
+                        let icon = icons::show(ui, arrow, size, pal.text_dim).interact(egui::Sense::click()).clicked();
+                        icon || ui.add(egui::Button::new(RichText::new(header).strong()).frame(false)).clicked()
+                    })
+                    .inner;
+                if clicked {
                     toggle = Some(file.path.clone());
                 }
                 if collapsed {

@@ -2,9 +2,10 @@
 
 use crate::commands::Command;
 use crate::document::{DiskState, Document};
+use crate::icons::{self, Icon};
 use crate::terminal::Action as TerminalAction;
 use crate::theme;
-use egui::{Align, FontId, Key, RichText, Sense, Stroke};
+use egui::{Align, Key, RichText, Sense, Stroke};
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
@@ -139,7 +140,7 @@ impl CodeApp {
     pub(super) fn activity_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
         let mut cmd = None;
         ui.add_space(6.0);
-        let mut icon = |ui: &mut egui::Ui, glyph: &str, tip: &str, active: bool, c: Command| {
+        let mut icon = |ui: &mut egui::Ui, glyph: Icon, tip: &str, active: bool, c: Command| {
             let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(48.0, 44.0), Sense::click());
             if active {
@@ -150,16 +151,23 @@ impl CodeApp {
                 );
             }
             let color = if resp.hovered() { theme::colors().tab_active_fg } else { color };
-            ui.painter().text(rect.center(), egui::Align2::CENTER_CENTER, glyph, FontId::proportional(22.0), color);
+            icons::paint(
+                ui.painter(),
+                egui::Rect::from_center_size(rect.center(), egui::vec2(24.0, 24.0)),
+                glyph,
+                color,
+            );
             if resp.on_hover_text(tip).clicked() {
                 cmd = Some(c);
             }
         };
         let side = self.sidebar_visible.then_some(self.sidebar_view);
-        icon(ui, "📁", "Explorer (Ctrl+Shift+E)", side == Some(SidebarView::Explorer), Command::ShowExplorer);
-        icon(ui, "🔍", "Search (Ctrl+Shift+F)", side == Some(SidebarView::Search), Command::ShowSearch);
+        icon(ui, Icon::Files, "Explorer (Ctrl+Shift+E)", side == Some(SidebarView::Explorer), Command::ShowExplorer);
+        icon(ui, Icon::Search, "Search (Ctrl+Shift+F)", side == Some(SidebarView::Search), Command::ShowSearch);
+        let git = side == Some(SidebarView::Git);
+        icon(ui, Icon::SourceControl, "Source Control (Ctrl+Shift+G)", git, Command::ShowSourceControl);
         let terminal = self.panel_visible && self.panel_tab == PanelTab::Terminal;
-        icon(ui, "⌨", "Terminal (Ctrl+`)", terminal, Command::ToggleTerminal);
+        icon(ui, Icon::Terminal, "Terminal (Ctrl+`)", terminal, Command::ToggleTerminal);
         cmd
     }
 
@@ -187,7 +195,7 @@ impl CodeApp {
                 ui.add_space(8.0);
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if ui.small_button("×").on_hover_text("Close Panel").clicked() {
+                if icons::button(ui, Icon::Close, "Close Panel").clicked() {
                     self.panel_visible = false;
                 }
                 if self.panel_tab == PanelTab::Terminal {
@@ -269,7 +277,7 @@ impl CodeApp {
                     ui.label(RichText::new("EXPLORER").small().strong());
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         if self.explorer.root.is_some()
-                            && ui.small_button("⟳").on_hover_text("Refresh Explorer").clicked()
+                            && icons::button(ui, Icon::Refresh, "Refresh Explorer").clicked()
                         {
                             self.explorer.refresh();
                             self.finder.mark_stale();
@@ -292,6 +300,7 @@ impl CodeApp {
                     self.open_file(&path);
                 }
             }
+            SidebarView::Git => self.source_control_view(ui),
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
                 if let Some(jump) = self.search.ui(ui, self.explorer.root.as_deref()) {
@@ -339,20 +348,20 @@ impl CodeApp {
                                     if label.middle_clicked() {
                                         close = Some(i);
                                     }
-                                    let close_glyph = if doc.is_dirty() { "●" } else { "×" };
-                                    let close_color = if doc.is_dirty() {
-                                        theme::colors().modified
-                                    } else {
-                                        theme::colors().text_dim
+                                    // Unsaved: a dot that turns into × on hover, like VS Code.
+                                    let size = ui.text_style_height(&egui::TextStyle::Body);
+                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+                                    let hovered = resp.hovered();
+                                    if hovered {
+                                        ui.painter().rect_filled(rect, 3.0, theme::colors().hover_bg);
+                                    }
+                                    let (glyph, color) = match (doc.is_dirty(), hovered) {
+                                        (true, false) => (Icon::Dot, theme::colors().modified),
+                                        (_, true) => (Icon::Close, theme::colors().tab_active_fg),
+                                        _ => (Icon::Close, theme::colors().text_dim),
                                     };
-                                    if ui
-                                        .add(
-                                            egui::Button::new(RichText::new(close_glyph).color(close_color))
-                                                .frame(false),
-                                        )
-                                        .on_hover_text("Close (Ctrl+W)")
-                                        .clicked()
-                                    {
+                                    icons::paint(ui.painter(), rect.shrink(size * 0.12), glyph, color);
+                                    if resp.on_hover_text("Close (Ctrl+W)").clicked() {
                                         close = Some(i);
                                     }
                                 });
@@ -370,6 +379,7 @@ impl CodeApp {
             });
         if let Some(i) = select {
             self.active = i;
+            self.git.diff = None;
         }
         if let Some(i) = close {
             self.request_close_tab(i);
@@ -420,13 +430,13 @@ impl CodeApp {
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(14.0);
-                if ui.small_button("×").on_hover_text("Close (Escape)").clicked() {
+                if icons::button(ui, Icon::Close, "Close (Escape)").clicked() {
                     self.find.open = false;
                 }
-                if ui.small_button("↓").on_hover_text("Next Match (Enter)").clicked() {
+                if icons::button(ui, Icon::ArrowDown, "Next Match (Enter)").clicked() {
                     go_next = true;
                 }
-                if ui.small_button("↑").on_hover_text("Previous Match (Shift+Enter)").clicked() {
+                if icons::button(ui, Icon::ArrowUp, "Previous Match (Shift+Enter)").clicked() {
                     go_prev = true;
                 }
                 let count = if self.find.query.is_empty() {
@@ -522,7 +532,15 @@ impl CodeApp {
             if let Some(root) = &self.explorer.root {
                 let name =
                     root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
-                ui.label(white(format!("📁 {name}")));
+                ui.label(white(name));
+            }
+            if let Some(branch) = self.git_branch_label() {
+                let resp = ui
+                    .add(egui::Label::new(white(branch)).sense(Sense::click()).selectable(false))
+                    .on_hover_text("Switch branch (Git: Checkout to...)");
+                if resp.clicked() {
+                    status_cmd = Some(Command::GitCheckout);
+                }
             }
             let (errors, warnings) = self.problem_counts();
             let fg = theme::colors().status_fg;
@@ -576,7 +594,8 @@ impl CodeApp {
                     ui.label(white(format!("Ln {line}, Col {col}{sel}")));
                 }
                 if (self.font_size - self.settings.editor.font_size).abs() > f32::EPSILON {
-                    ui.label(white(format!("🔍 {}px", self.font_size)));
+                    ui.label(white(format!("{}px", self.font_size)));
+                    icons::show(ui, Icon::ZoomIn, size, theme::colors().status_fg);
                 }
             });
         });

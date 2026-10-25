@@ -76,6 +76,18 @@ pub enum Command {
     KillTerminal,
     ClearTerminal,
     DetachTerminal,
+    // Source control.
+    ShowSourceControl,
+    GitCommit,
+    GitRefresh,
+    GitCheckout,
+    GitCreateBranch,
+    GitStageHunk,
+    GitRevertHunk,
+    GitOpenChanges,
+    NextChange,
+    PreviousChange,
+    ToggleBlame,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -145,6 +157,17 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),
     (Command::DetachTerminal, "Terminal: Move Terminal into New Window"),
+    (Command::ShowSourceControl, "View: Show Source Control"),
+    (Command::GitCommit, "Git: Commit"),
+    (Command::GitRefresh, "Git: Refresh"),
+    (Command::GitCheckout, "Git: Checkout to..."),
+    (Command::GitCreateBranch, "Git: Create Branch..."),
+    (Command::GitStageHunk, "Git: Stage Selected Ranges"),
+    (Command::GitRevertHunk, "Git: Revert Selected Ranges"),
+    (Command::GitOpenChanges, "Git: Open Changes"),
+    (Command::NextChange, "Go to Next Change"),
+    (Command::PreviousChange, "Go to Previous Change"),
+    (Command::ToggleBlame, "Git: Toggle Inline Blame"),
 ];
 
 /// VS Code command ID of each command.
@@ -217,6 +240,17 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::KillTerminal, "workbench.action.terminal.kill"),
     (Command::ClearTerminal, "workbench.action.terminal.clear"),
     (Command::DetachTerminal, "workbench.action.terminal.moveIntoNewWindow"),
+    (Command::ShowSourceControl, "workbench.view.scm"),
+    (Command::GitCommit, "git.commit"),
+    (Command::GitRefresh, "git.refresh"),
+    (Command::GitCheckout, "git.checkout"),
+    (Command::GitCreateBranch, "git.branch"),
+    (Command::GitStageHunk, "git.stageSelectedRanges"),
+    (Command::GitRevertHunk, "git.revertSelectedRanges"),
+    (Command::GitOpenChanges, "git.openChange"),
+    (Command::NextChange, "workbench.action.editor.nextChange"),
+    (Command::PreviousChange, "workbench.action.editor.previousChange"),
+    (Command::ToggleBlame, "git.toggleBlame"),
 ];
 
 /// Commands whose shortcuts still work while the terminal has focus; every
@@ -232,6 +266,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowExplorer
             | ShowSearch
             | ShowProblems
+            | ShowSourceControl
             | NextEditor
             | PreviousEditor
             | ZoomIn

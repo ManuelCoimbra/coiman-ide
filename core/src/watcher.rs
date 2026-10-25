@@ -17,6 +17,9 @@ pub struct Changes {
     pub paths: HashSet<PathBuf>,
     /// Files or folders were created, deleted or renamed.
     pub structure: bool,
+    /// Git's index, HEAD or refs changed (a commit, checkout or stage made
+    /// outside the editor).
+    pub git: bool,
 }
 
 pub struct FileWatcher {
@@ -75,6 +78,9 @@ impl FileWatcher {
     pub fn drain(&mut self) -> Changes {
         let mut changes = Changes::default();
         for event in self.rx.try_iter().filter_map(Result::ok) {
+            if !matches!(event.kind, EventKind::Access(_)) && event.paths.iter().any(|p| is_git_state(p)) {
+                changes.git = true;
+            }
             let paths: Vec<PathBuf> = event.paths.into_iter().filter(|p| !in_ignored_dir(p)).collect();
             if paths.is_empty() {
                 continue;
@@ -90,6 +96,13 @@ impl FileWatcher {
         }
         changes
     }
+}
+
+/// `.git/index`, `.git/HEAD` or a file under `.git/refs`.
+fn is_git_state(path: &Path) -> bool {
+    let mut parts = path.components().map(|c| c.as_os_str().to_string_lossy());
+    let Some(_) = parts.by_ref().find(|c| c == ".git") else { return false };
+    matches!(parts.next().as_deref(), Some("index" | "HEAD" | "refs"))
 }
 
 fn in_ignored_dir(path: &Path) -> bool {

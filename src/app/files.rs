@@ -11,8 +11,11 @@ use super::{BACKUP_INTERVAL, CodeApp, PendingClose, SidebarView, repaint};
 impl CodeApp {
     /// Applies changes other programs made to files: reload clean tabs, flag
     /// conflicts and deletions, refresh the explorer and Quick Open index.
-    pub(super) fn pump_watcher(&mut self) {
+    pub(super) fn pump_watcher(&mut self, ctx: &egui::Context) {
         let changes = self.watcher.drain();
+        if changes.git || changes.structure || !changes.paths.is_empty() {
+            self.git_refresh_soon(ctx, 0.3);
+        }
         if changes.structure {
             self.explorer.refresh();
             self.finder.mark_stale();

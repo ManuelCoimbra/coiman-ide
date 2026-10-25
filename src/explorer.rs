@@ -3,8 +3,9 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use egui::{RichText, Sense};
+use egui::{Color32, RichText, Sense};
 
+use crate::icons::{self, Icon};
 use crate::theme;
 
 use rust_code_core::workspace::IGNORED_DIRS;
@@ -70,12 +71,7 @@ impl Explorer {
         for (path, name, is_dir) in entries {
             let expanded = self.expanded.contains(&path);
             let selected = active_file == Some(path.as_path());
-            let icon = match (is_dir, expanded) {
-                (true, true) => "▾ 📂",
-                (true, false) => "▸ 📁",
-                (false, _) => "   📄",
-            };
-            if row(ui, depth, &format!("{icon} {name}"), selected).clicked() {
+            if row(ui, depth, &name, selected, is_dir.then_some(expanded)).clicked() {
                 if is_dir {
                     if expanded {
                         self.expanded.remove(&path);
@@ -93,8 +89,9 @@ impl Explorer {
     }
 }
 
-/// A full-width clickable row with indentation and hover/selection highlight.
-fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool) -> egui::Response {
+/// A full-width clickable row with indentation, hover/selection highlight and
+/// an icon (`folder`: `Some(expanded)` for folders, `None` for files).
+fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool, folder: Option<bool>) -> egui::Response {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let height = (font.size * 1.7).round();
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
@@ -103,7 +100,21 @@ fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool) -> egui::Res
     } else if response.hovered() {
         ui.painter().rect_filled(rect, 0.0, theme::colors().hover_bg);
     }
-    let pos = rect.left_center() + egui::vec2(8.0 + depth as f32 * 12.0, 0.0);
+    let size = (font.size * 1.1).round();
+    let x = rect.left() + 4.0 + depth as f32 * 12.0;
+    let icon_box =
+        |x: f32| egui::Rect::from_center_size(egui::pos2(x + size / 2.0, rect.center().y), egui::vec2(size, size));
+    let dim = theme::colors().text_dim;
+    match folder {
+        Some(expanded) => {
+            let chevron = if expanded { Icon::ChevronDown } else { Icon::ChevronRight };
+            icons::paint(ui.painter(), icon_box(x).shrink(size * 0.1), chevron, dim);
+            let folder = if expanded { Icon::FolderOpen } else { Icon::Folder };
+            icons::paint(ui.painter(), icon_box(x + size), folder, Color32::from_rgb(0xC0, 0x9A, 0x53));
+        }
+        None => icons::paint(ui.painter(), icon_box(x + size), Icon::File, icons::file_color(text)),
+    }
+    let pos = egui::pos2(x + 2.0 * size + 6.0, rect.center().y);
     ui.painter().text(pos, egui::Align2::LEFT_CENTER, text, font, theme::colors().text);
     response
 }

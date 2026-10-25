@@ -23,6 +23,7 @@ pub struct Settings {
     pub files: FilesSettings,
     pub lsp: LspSettings,
     pub terminal: TerminalSettings,
+    pub git: GitSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -75,6 +76,21 @@ pub struct TerminalSettings {
     pub shell: String,
     /// Lines of scrollback kept per terminal.
     pub scrollback: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct GitSettings {
+    /// Source control features (needs `git` on PATH).
+    pub enabled: bool,
+    /// Show who last changed the cursor line, after its end.
+    pub blame_inline: bool,
+}
+
+impl Default for GitSettings {
+    fn default() -> Self {
+        Self { enabled: true, blame_inline: true }
+    }
 }
 
 impl Default for TerminalSettings {

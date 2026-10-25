@@ -10,6 +10,8 @@ use crate::document::Document;
 use crate::theme;
 
 const SCROLLBAR: f32 = 12.0;
+/// Width of the gutter strip (left of the text) where change markers sit.
+const CHANGE_ZONE: f32 = 12.0;
 /// How far to look for a matching bracket around the cursor.
 const BRACKET_SEARCH_LIMIT: usize = 20_000;
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
@@ -38,11 +40,45 @@ pub struct Mark {
     pub message: String,
 }
 
-/// Extra things drawn over the text (from language servers).
+/// How a run of lines differs from the version in Git's index.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChangeKind {
+    Added,
+    Modified,
+    /// Lines were removed just before `lines.start`.
+    Deleted,
+}
+
+/// A gutter change marker.
+pub struct ChangeMark {
+    pub kind: ChangeKind,
+    pub lines: std::ops::Range<usize>,
+}
+
+/// Extra things drawn over the text (language server and Git).
 #[derive(Default)]
 pub struct Decorations {
     /// Sorted by `start`.
     pub marks: Vec<Mark>,
+    /// Sorted by line.
+    pub changes: Vec<ChangeMark>,
+    /// Blame text shown after the end of this line.
+    pub blame: Option<(usize, String)>,
+}
+
+impl Decorations {
+    fn change_at(&self, line: usize) -> Option<&ChangeMark> {
+        self.changes.iter().find(|c| c.lines.contains(&line) || (c.lines.is_empty() && c.lines.start == line))
+    }
+}
+
+/// Gutter colors for changes (VS Code's defaults).
+fn change_color(kind: ChangeKind) -> Color32 {
+    match kind {
+        ChangeKind::Added => Color32::from_rgb(0x2E, 0xA0, 0x43),
+        ChangeKind::Modified => Color32::from_rgb(0x00, 0x78, 0xD4),
+        ChangeKind::Deleted => Color32::from_rgb(0xF8, 0x51, 0x49),
+    }
 }
 
 /// What happened in the editor this frame, for popups and language features.
@@ -51,6 +87,8 @@ pub struct Output {
     pub hover: Option<(usize, Pos2)>,
     /// Char clicked with Ctrl held (go to definition).
     pub ctrl_click: Option<usize>,
+    /// A gutter change marker was clicked: its line and the pointer position.
+    pub change_click: Option<(usize, Pos2)>,
     /// Screen rectangle of the primary cursor.
     pub cursor_rect: Rect,
 }
@@ -87,6 +125,8 @@ pub struct ViewState {
     dragging_scrollbar: Option<bool>,
     /// Char clicked with Ctrl this frame.
     ctrl_click: Option<usize>,
+    /// Gutter change marker clicked this frame.
+    change_click: Option<(usize, Pos2)>,
 }
 
 /// Word-wrap layout: `first_row[line]` is the first visual row of `line`.
@@ -259,7 +299,7 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
     let mut reveal = std::mem::take(&mut doc.reveal);
 
     handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response);
-    reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response);
+    reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response, deco);
     if has_focus {
         let version = doc.buffer.version();
         reveal |= handle_keyboard(ui, doc, view, &m, visible_rows);
@@ -335,7 +375,7 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
         let end_x = text_rect.left() + col_x(&doc.buffer, row.start, row.end, &m) - view.scroll.x;
         (p.x < end_x).then_some((pos, p))
     });
-    Output { hover, ctrl_click: view.ctrl_click.take(), cursor_rect }
+    Output { hover, ctrl_click: view.ctrl_click.take(), change_click: view.change_click.take(), cursor_rect }
 }
 
 /// X offset (in points, relative to the text area) of `pos` on the row starting at `row_start`.
@@ -410,6 +450,7 @@ fn handle_scrolling(
 }
 
 /// Returns true if the cursor moved and should be kept in view.
+#[allow(clippy::too_many_arguments)] // the editor's per-frame geometry, passed through
 fn handle_mouse(
     ui: &mut egui::Ui,
     doc: &mut Document,
@@ -418,6 +459,7 @@ fn handle_mouse(
     m: &Metrics,
     text_rect: Rect,
     response: &egui::Response,
+    deco: &Decorations,
 ) -> bool {
     if view.dragging_scrollbar.is_some() {
         return false;
@@ -428,9 +470,13 @@ fn handle_mouse(
     let pos = pos_at(doc, view, layout, m, text_rect, p);
 
     if pressed && p.x >= text_rect.left() - m.gutter_w && p.x < text_rect.right() {
+        let line = doc.buffer.char_to_line(pos);
+        if p.x < text_rect.left() && p.x >= text_rect.left() - CHANGE_ZONE && deco.change_at(line).is_some() {
+            view.change_click = Some((line, p));
+            return false;
+        }
         if p.x < text_rect.left() {
             // Click in the gutter selects the whole line.
-            let line = doc.buffer.char_to_line(pos);
             let next = (line + 1 < doc.buffer.len_lines()).then(|| doc.buffer.line_start(line + 1));
             let end = next.unwrap_or_else(|| doc.buffer.len_chars());
             doc.buffer.set_single(Selection::new(doc.buffer.line_start(line), end));
@@ -793,6 +839,13 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             let xb = if b > a { x0 + col_x(buf, row.start, b, m) } else { xa + m.char_w };
             squiggle(&text_painter, xa, xb, y + m.row_h - 2.0, severity_color(mark.severity));
         }
+        if inline.is_none()
+            && row.end == buf.line_end(row.line)
+            && let Some((_, blame)) = deco.blame.as_ref().filter(|(line, _)| *line == row.line)
+        {
+            let x = x0 + col_x(buf, row.start, row.end, m) + 3.0 * m.char_w;
+            text_painter.text(Pos2::new(x, y), egui::Align2::LEFT_TOP, blame, m.font_id.clone(), pal.text_dim);
+        }
         if let Some(mark) = inline
             && row.end == buf.line_end(row.line)
         {
@@ -805,6 +858,24 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 m.font_id.clone(),
                 severity_color(mark.severity).gamma_multiply(0.8),
             );
+        }
+
+        // Git change marker: a bar beside the line numbers, or a wedge where lines were deleted.
+        if let Some(change) = deco.change_at(row.line) {
+            let x = text_rect.left() - CHANGE_ZONE + 2.0;
+            let color = change_color(change.kind);
+            if change.kind == ChangeKind::Deleted {
+                if row.first {
+                    let tip = Pos2::new(x + 6.0, y);
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![Pos2::new(x, y - 4.0), tip, Pos2::new(x, y + 4.0)],
+                        color,
+                        Stroke::NONE,
+                    ));
+                }
+            } else {
+                painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(3.0, m.row_h)), 0.0, color);
+            }
         }
 
         // Line number.

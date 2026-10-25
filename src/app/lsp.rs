@@ -602,7 +602,7 @@ impl CodeApp {
             })
             .collect();
         marks.sort_by_key(|m| (m.start, m.severity));
-        Decorations { marks }
+        Decorations { marks, ..Decorations::default() }
     }
 
     /// (errors, warnings) across all files.

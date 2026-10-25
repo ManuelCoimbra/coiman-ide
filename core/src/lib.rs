@@ -8,6 +8,7 @@ pub mod document;
 pub mod edit_ops;
 pub mod encoding;
 pub mod finder;
+pub mod git;
 pub mod highlight;
 pub mod lsp;
 pub mod pty;

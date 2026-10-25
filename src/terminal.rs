@@ -171,7 +171,7 @@ impl Terminals {
         if ui.small_button(small("Kill")).on_hover_text("Kill the active terminal").clicked() {
             action = Some(Action::Kill);
         }
-        if ui.small_button(small("+")).on_hover_text("New Terminal (Ctrl+Shift+`)").clicked() {
+        if crate::icons::button(ui, crate::icons::Icon::Plus, "New Terminal (Ctrl+Shift+`)").clicked() {
             action = Some(Action::New);
         }
         // Right-to-left layout: list tabs last-first so they read left to right.

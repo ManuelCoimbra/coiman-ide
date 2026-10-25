@@ -17,9 +17,10 @@ A Cargo workspace with two crates:
   `document`, `syntax` (tree-sitter worker) and `highlight` (syntect), `theme` (data, VS Code
   import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`, `lsp` (language
   server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
-  sessions: portable-pty + alacritty_terminal).
+  sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`, `lsp`), `editor_view` (the editor widget), `lsp_ui`, `palette`,
+  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`), `editor_view` (the editor widget), `icons` (vector
+  icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
 
 Checks (no networking crates, formatting, clippy with warnings as errors, tests):
@@ -86,6 +87,28 @@ is read and written on your machine.
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
   (backed up every second to `%APPDATA%\rust-code\session.json`; no "save changes?" prompt on exit)
 - Zoom (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`), toggle side bar (`Ctrl+B`)
+
+### Source control (Git)
+
+Uses the `git` command line, like VS Code, and only local commands (no fetch, pull or
+push). All git work runs in the background.
+
+- **Gutter markers** beside the line numbers: green added, blue modified, red wedge for
+  deleted lines, compared with the index. Click one to see the old lines and **Stage** or
+  **Revert** just that change; `Alt+F5` / `Shift+Alt+F5` jump between changes;
+  `Ctrl+K Ctrl+Alt+S` stages and `Ctrl+K Ctrl+R` reverts the change at the cursor.
+  Reverting edits the buffer, so it can be undone.
+- **Inline blame** after the cursor line ("You, 3 days ago • Fix parser"), including
+  unsaved edits; `git.blame_inline` or **Git: Toggle Inline Blame** turns it off.
+- **Source Control view** (`Ctrl+Shift+G`): commit message (`Ctrl+Enter` commits), staged,
+  unstaged and conflicted files with stage / unstage / discard (discard asks first), and
+  **Stage All and Commit** when nothing is staged.
+- **Side-by-side diff**: click a file for index vs working tree (or HEAD vs index for
+  staged files), with per-change Stage / Revert / Unstage, previous/next change and
+  **Ignore whitespace**.
+- **Branches**: the branch in the status bar (with `*` for uncommitted changes and
+  ahead/behind counts) opens **Git: Checkout to...**, which can also create a branch.
+  Switching runs in the background and open files reload when they change.
 
 ### Rust language features (rust-analyzer)
 

@@ -4,6 +4,7 @@
 mod config;
 mod dispatch;
 mod files;
+mod git;
 mod lsp;
 mod workbench;
 
@@ -34,6 +35,7 @@ const BACKUP_INTERVAL: f64 = 1.0;
 enum SidebarView {
     Explorer,
     Search,
+    Git,
 }
 
 /// Tabs of the bottom panel.
@@ -122,6 +124,8 @@ pub struct CodeApp {
     syntax: Option<SyntaxWorker>,
     /// Language servers and the state of their features.
     lsp: lsp::LspState,
+    /// Git status, gutter, blame, diff and Source Control state.
+    git: git::GitState,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -162,6 +166,7 @@ impl CodeApp {
             startup_probe: None,
             syntax: None,
             lsp: lsp::LspState::default(),
+            git: git::GitState::default(),
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -190,8 +195,9 @@ impl eframe::App for CodeApp {
         }
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
-        self.pump_watcher();
+        self.pump_watcher(&ctx);
         self.pump_lsp(&ctx);
+        self.pump_git(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.
         if self.terminal.pump(&ctx) {
             if self.panel_tab == PanelTab::Terminal {
@@ -273,7 +279,12 @@ impl eframe::App for CodeApp {
                 indent_guides: self.settings.editor.indent_guides,
                 rainbow_brackets: self.settings.editor.bracket_pair_colorization,
             };
-            let deco = self.lsp_decorations(self.active);
+            if self.git.diff.is_some() {
+                self.diff_view(ui);
+                return;
+            }
+            let mut deco = self.lsp_decorations(self.active);
+            self.git_decorate(self.active, &mut deco);
             // Text typed this frame (the editor reads events without consuming them).
             let typed: String = ui.input(|i| {
                 i.events
@@ -284,10 +295,14 @@ impl eframe::App for CodeApp {
             if let Some(doc) = self.docs.get_mut(self.active) {
                 let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, ..opts };
                 let out = editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts, &deco);
+                if let Some((line, pos)) = out.change_click {
+                    self.open_hunk_popup(line, pos);
+                }
                 self.after_editor(&ctx, out, &typed);
             }
         });
         self.lsp_popups(&ctx);
+        self.git_popups(&ctx);
         self.terminal_window(&ctx);
 
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
@@ -295,6 +310,7 @@ impl eframe::App for CodeApp {
             Some(PaletteResult::Run(c)) => cmd = Some(c),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
             Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),
+            Some(PaletteResult::Input(InputKind::NewBranch, name)) => self.switch_branch(&ctx, name, true),
             Some(PaletteResult::GoToLine(line)) if line > 0 => {
                 if let Some(doc) = self.active_doc() {
                     doc.goto_line(line);

@@ -115,6 +115,27 @@ impl CodeApp {
                 }
             }
             Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
+            Command::ShowSourceControl => self.show_source_control(),
+            Command::GitCommit => self.git_commit(ctx),
+            Command::GitRefresh => self.git_refresh_soon(ctx, 0.0),
+            Command::GitCheckout => self.git_checkout(ctx),
+            Command::GitCreateBranch => {
+                self.palette.show_input(crate::palette::InputKind::NewBranch, "", "New branch name, then Enter");
+            }
+            Command::GitStageHunk => self.hunk_at_cursor(ctx, true),
+            Command::GitRevertHunk => self.hunk_at_cursor(ctx, false),
+            Command::GitOpenChanges => {
+                if let Some(path) = self.docs.get(self.active).and_then(|d| d.path.clone()) {
+                    self.open_diff(ctx, &path, false);
+                }
+            }
+            Command::NextChange | Command::PreviousChange => self.next_change(cmd == Command::NextChange),
+            Command::ToggleBlame => {
+                let on = !self.settings.git.blame_inline;
+                if let Err(e) = self.write_user_setting(ctx, "git", "blame_inline", if on { "true" } else { "false" }) {
+                    self.status = Some(e);
+                }
+            }
             Command::RestartLanguageServer => {
                 self.restart_lsp();
                 self.status = Some("Restarting rust-analyzer…".to_owned());
@@ -312,6 +333,7 @@ impl CodeApp {
         match kind {
             PickerKind::Theme => self.set_color_theme(ctx, label),
             PickerKind::CodeAction => self.pick_code_action(label),
+            PickerKind::Branch => self.pick_branch(ctx, label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

@@ -24,6 +24,7 @@ pub enum PaletteResult {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputKind {
     Rename,
+    NewBranch,
 }
 
 /// What a picker list is choosing.
@@ -36,6 +37,7 @@ pub enum PickerKind {
     ReopenWithEncoding,
     SaveWithEncoding,
     CodeAction,
+    Branch,
 }
 
 struct Picker {
