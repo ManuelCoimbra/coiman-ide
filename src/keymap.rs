@@ -96,6 +96,17 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+shift+o", Command::GoToSymbol, false),
     ("shift+alt+right", Command::ExpandSelection, true),
     ("shift+alt+left", Command::ShrinkSelection, true),
+    ("f5", Command::StartDebugging, false),
+    ("shift+f5", Command::StopDebugging, false),
+    ("ctrl+shift+f5", Command::RestartDebugging, false),
+    ("f10", Command::StepOver, false),
+    ("f11", Command::StepInto, false),
+    ("shift+f11", Command::StepOut, false),
+    ("f6", Command::PauseDebugging, false),
+    ("f9", Command::ToggleBreakpoint, true),
+    ("ctrl+shift+d", Command::ShowDebug, false),
+    ("ctrl+shift+y", Command::ShowDebugConsole, false),
+    ("ctrl+; ctrl+c", Command::DebugTestAtCursor, false),
 ];
 
 #[derive(Clone, Debug, PartialEq)]

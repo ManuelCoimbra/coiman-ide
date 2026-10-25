@@ -19,9 +19,10 @@ A Cargo workspace with two crates:
   server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
   sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches), `cargo` (run
   configurations, test discovery, test/check output parsing), `structure` (folds, outline,
-  smart selection, text objects), `history` (local history store), `vim` (Vim/Helix modal editing engine).
+  smart selection, text objects), `history` (local history store), `vim` (Vim/Helix modal editing engine),
+  `dap` (debug adapter client for CodeLLDB: DAP over stdio, finding and installing CodeLLDB).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`), `editor_view` (the editor widget), `icons` (vector
+  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`, `debug`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
 
@@ -133,7 +134,32 @@ push). All git work runs in the background.
   warnings in Problems and the editor. `cargo.check_command = "clippy"` makes rust-analyzer
   run clippy instead of check on every save.
 
-Debugging tests (run/debug at cursor) needs the debugger, which is still on the roadmap.
+### Debugging (CodeLLDB)
+
+Rust Code debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug
+Adapter Protocol. It uses `debug.codelldb_path`, then its own copy in
+`%APPDATA%\rust-code\codelldb`, then an installed VS Code CodeLLDB extension. If none is
+found, the Debug view offers to download it (about 135 MB once unpacked). Nothing is
+downloaded unless you click **Download**.
+
+- **Start**: `F5` builds with cargo and debugs a binary (asks which one when there are
+  several). The bug button next to Run in the Testing view, or `Ctrl+; Ctrl+C`, debugs
+  the test at the cursor. The program runs in a **Debug:** terminal tab, so it can read
+  input too.
+- **Breakpoints**: `F9` or a click left of a line number. **Debug: Add Conditional
+  Breakpoint...** pauses only when an expression is true. **Debug: Add Logpoint...**
+  prints a message to the Debug Console without pausing. The BREAKPOINTS list enables,
+  disables and removes them.
+- **Controls**: `F5` continue, `F10` step over, `F11` step into, `Shift+F11` step out,
+  `F6` pause, `Shift+F5` stop, `Ctrl+Shift+F5` restart.
+- **Debug view** (`Ctrl+Shift+D`): variables, watch expressions, call stack and
+  breakpoints. Rust types show readably through CodeLLDB's Rust formatters: `Vec` and
+  `HashMap` with their sizes and items, `String`, `Option`. Expanded variables stay
+  expanded while stepping.
+- **Debug Console** (`Ctrl+Shift+Y`): log point messages and the exit code. While paused,
+  it evaluates expressions in the selected frame. Prefix LLDB commands with `` ` ``.
+- **Not into std**: stepping skips `std`, `core` and `alloc`. Set
+  `debug.step_into_std = true` to step into them.
 
 ### Rust language features (rust-analyzer)
 

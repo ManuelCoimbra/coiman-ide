@@ -119,6 +119,25 @@ impl CodeApp {
             Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
             Command::ShowSourceControl => self.show_source_control(),
             Command::LocalHistory => self.history_picker(ctx),
+            Command::StartDebugging => self.start_debugging(ctx),
+            Command::StopDebugging => self.debug_stop(),
+            Command::RestartDebugging => self.debug_restart(ctx),
+            Command::StepOver => self.debug_step("next"),
+            Command::StepInto => self.debug_step("stepIn"),
+            Command::StepOut => self.debug_step("stepOut"),
+            Command::PauseDebugging => self.debug_pause(),
+            Command::ToggleBreakpoint => self.toggle_breakpoint_at_cursor(),
+            Command::ConditionalBreakpoint => self.edit_breakpoint(false),
+            Command::AddLogpoint => self.edit_breakpoint(true),
+            Command::ShowDebug => {
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Debug;
+            }
+            Command::ShowDebugConsole => self.toggle_panel(PanelTab::DebugConsole),
+            Command::DebugTestAtCursor => match self.test_item_at_cursor() {
+                Some((target, item)) => self.debug_test(ctx, target, item),
+                None => self.status = Some("No test at the cursor".to_owned()),
+            },
             Command::ToggleVimMode => {
                 let next = if self.settings.editor.keyboard_mode == "vim" { "default" } else { "vim" };
                 match self.write_user_setting(ctx, "editor", "keyboard_mode", &format!("\"{next}\"")) {
@@ -393,6 +412,7 @@ impl CodeApp {
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::Symbol => self.picked_symbol(label),
             PickerKind::History => self.picked_history(label),
+            PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

@@ -120,6 +120,20 @@ pub enum Command {
     LocalHistory,
     ShowTimeline,
     ToggleVimMode,
+    // Debugging.
+    StartDebugging,
+    StopDebugging,
+    RestartDebugging,
+    StepOver,
+    StepInto,
+    StepOut,
+    PauseDebugging,
+    ToggleBreakpoint,
+    ConditionalBreakpoint,
+    AddLogpoint,
+    ShowDebug,
+    ShowDebugConsole,
+    DebugTestAtCursor,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -229,6 +243,19 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::LocalHistory, "Local History: Find Entry to Restore..."),
     (Command::ShowTimeline, "View: Show Timeline"),
     (Command::ToggleVimMode, "Toggle Vim Mode"),
+    (Command::StartDebugging, "Debug: Start Debugging / Continue"),
+    (Command::StopDebugging, "Debug: Stop"),
+    (Command::RestartDebugging, "Debug: Restart"),
+    (Command::StepOver, "Debug: Step Over"),
+    (Command::StepInto, "Debug: Step Into"),
+    (Command::StepOut, "Debug: Step Out"),
+    (Command::PauseDebugging, "Debug: Pause"),
+    (Command::ToggleBreakpoint, "Debug: Toggle Breakpoint"),
+    (Command::ConditionalBreakpoint, "Debug: Add Conditional Breakpoint..."),
+    (Command::AddLogpoint, "Debug: Add Logpoint..."),
+    (Command::ShowDebug, "View: Show Run and Debug"),
+    (Command::ShowDebugConsole, "View: Toggle Debug Console"),
+    (Command::DebugTestAtCursor, "Test: Debug Test at Cursor"),
 ];
 
 /// VS Code command ID of each command.
@@ -341,6 +368,19 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::LocalHistory, "workbench.action.localHistory.restoreViaPicker"),
     (Command::ShowTimeline, "timeline.focus"),
     (Command::ToggleVimMode, "toggleVim"),
+    (Command::StartDebugging, "workbench.action.debug.start"),
+    (Command::StopDebugging, "workbench.action.debug.stop"),
+    (Command::RestartDebugging, "workbench.action.debug.restart"),
+    (Command::StepOver, "workbench.action.debug.stepOver"),
+    (Command::StepInto, "workbench.action.debug.stepInto"),
+    (Command::StepOut, "workbench.action.debug.stepOut"),
+    (Command::PauseDebugging, "workbench.action.debug.pause"),
+    (Command::ToggleBreakpoint, "editor.debug.action.toggleBreakpoint"),
+    (Command::ConditionalBreakpoint, "editor.debug.action.conditionalBreakpoint"),
+    (Command::AddLogpoint, "editor.debug.action.addLogPoint"),
+    (Command::ShowDebug, "workbench.view.debug"),
+    (Command::ShowDebugConsole, "workbench.debug.action.toggleRepl"),
+    (Command::DebugTestAtCursor, "testing.debugAtCursor"),
 ];
 
 /// Commands whose shortcuts still work while the terminal has focus; every
@@ -360,6 +400,9 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowTesting
             | ShowOutput
             | RunWithoutDebugging
+            | StartDebugging
+            | StopDebugging
+            | ShowDebug
             | NextEditor
             | PreviousEditor
             | ZoomIn

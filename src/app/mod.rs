@@ -3,6 +3,7 @@
 
 mod cargo;
 mod config;
+mod debug;
 mod dispatch;
 mod files;
 mod git;
@@ -40,6 +41,7 @@ enum SidebarView {
     Search,
     Git,
     Testing,
+    Debug,
 }
 
 /// Tabs of the bottom panel.
@@ -48,6 +50,7 @@ enum PanelTab {
     Problems,
     References,
     Output,
+    DebugConsole,
     Terminal,
 }
 
@@ -146,6 +149,8 @@ pub struct CodeApp {
     /// Vim or Helix key handling (`editor.keyboard_mode`), and the document it last saw.
     vim: Option<rust_code_core::vim::Vim>,
     vim_doc: Option<u64>,
+    /// Debugger sessions, breakpoints, watches.
+    debug: debug::DebugState,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -195,6 +200,7 @@ impl CodeApp {
             timeline_open: false,
             vim: None,
             vim_doc: None,
+            debug: debug::DebugState::default(),
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -227,6 +233,7 @@ impl eframe::App for CodeApp {
         self.pump_lsp(&ctx);
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
+        self.pump_debug(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.
         if self.terminal.pump(&ctx) {
             if self.panel_tab == PanelTab::Terminal {
@@ -316,6 +323,7 @@ impl eframe::App for CodeApp {
             let mut deco = self.lsp_decorations(self.active);
             self.git_decorate(self.active, &mut deco);
             self.cargo_decorate(self.active, &mut deco);
+            self.debug_decorate(self.active, &mut deco);
             if let Some(doc) = self.docs.get_mut(self.active) {
                 deco.folds = doc.structure().folds.clone();
             }
@@ -348,6 +356,9 @@ impl eframe::App for CodeApp {
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
                 }
+                if let Some(line) = out.breakpoint_click {
+                    self.toggle_breakpoint(line);
+                }
                 // Vim commands arrive as text too; only insert-mode typing drives completion.
                 let typing =
                     was_typing && self.vim.as_ref().is_none_or(|v| v.mode() == rust_code_core::vim::Mode::Insert);
@@ -367,6 +378,10 @@ impl eframe::App for CodeApp {
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
             Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),
             Some(PaletteResult::Input(InputKind::NewBranch, name)) => self.switch_branch(&ctx, name, true),
+            Some(PaletteResult::Input(InputKind::BreakpointCondition, text)) => {
+                self.finish_breakpoint_edit(false, &text)
+            }
+            Some(PaletteResult::Input(InputKind::Logpoint, text)) => self.finish_breakpoint_edit(true, &text),
             Some(PaletteResult::GoToLine(line)) if line > 0 => {
                 if let Some(doc) = self.active_doc() {
                     doc.goto_line(line);

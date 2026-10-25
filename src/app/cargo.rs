@@ -447,14 +447,17 @@ impl CodeApp {
     }
 
     /// Test: Run Test at Cursor — the innermost test or test module around it.
-    pub(super) fn test_at_cursor(&mut self, ctx: &egui::Context) {
-        let Some(doc) = self.docs.get(self.active) else { return };
+    /// The innermost test or test module around the cursor.
+    pub(super) fn test_item_at_cursor(&self) -> Option<(FileTarget, TestItem)> {
+        let doc = self.docs.get(self.active)?;
         let line = doc.buffer.char_to_line(doc.buffer.primary().head);
-        let found = self.active_tests().and_then(|f| {
-            let item = f.items.iter().filter(|i| i.line <= line && line <= i.end_line).max_by_key(|i| i.line)?;
-            Some((f.target.clone(), item.clone()))
-        });
-        match found {
+        let f = self.active_tests()?;
+        let item = f.items.iter().filter(|i| i.line <= line && line <= i.end_line).max_by_key(|i| i.line)?;
+        Some((f.target.clone(), item.clone()))
+    }
+
+    pub(super) fn test_at_cursor(&mut self, ctx: &egui::Context) {
+        match self.test_item_at_cursor() {
             Some((target, item)) => self.run_item(ctx, target, item),
             None => self.status = Some("No test at the cursor".to_owned()),
         }
@@ -521,6 +524,7 @@ impl CodeApp {
         let pal = theme::colors();
         let running = matches!(self.cargo.job, Some(Job { kind: JobKind::Tests(_), .. }));
         let mut run: Option<(FileTarget, TestItem)> = None;
+        let mut debug: Option<(FileTarget, TestItem)> = None;
         let mut open: Option<(PathBuf, usize)> = None;
         let mut action = None;
         ui.horizontal(|ui| {
@@ -588,6 +592,9 @@ impl CodeApp {
                             open = Some((f.path.clone(), item.line));
                         }
                         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                            if icons::button(ui, Icon::Bug, "Debug").clicked() {
+                                debug = Some((f.target.clone(), item.clone()));
+                            }
                             if icons::button(ui, Icon::Play, "Run").clicked() {
                                 run = Some((f.target.clone(), item.clone()));
                             }
@@ -609,6 +616,9 @@ impl CodeApp {
         }
         if let Some((target, item)) = run {
             self.run_item(&ctx, target, item);
+        }
+        if let Some((target, item)) = debug {
+            self.debug_test(&ctx, target, item);
         }
         if let Some((path, line)) = open {
             self.open_file(&path);

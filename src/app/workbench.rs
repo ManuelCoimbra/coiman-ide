@@ -150,6 +150,17 @@ impl CodeApp {
                 item(ui, "Move Terminal into New Window", Command::DetachTerminal);
             });
             ui.menu_button("Run", |ui| {
+                item(ui, "Start Debugging", Command::StartDebugging);
+                item(ui, "Stop Debugging", Command::StopDebugging);
+                item(ui, "Restart Debugging", Command::RestartDebugging);
+                item(ui, "Step Over", Command::StepOver);
+                item(ui, "Step Into", Command::StepInto);
+                item(ui, "Step Out", Command::StepOut);
+                ui.separator();
+                item(ui, "Toggle Breakpoint", Command::ToggleBreakpoint);
+                item(ui, "Conditional Breakpoint...", Command::ConditionalBreakpoint);
+                item(ui, "Logpoint...", Command::AddLogpoint);
+                ui.separator();
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Select and Run Configuration...", Command::SelectRunConfig);
                 item(ui, "Open Configurations", Command::OpenRunConfigs);
@@ -197,6 +208,8 @@ impl CodeApp {
         icon(ui, Icon::SourceControl, "Source Control (Ctrl+Shift+G)", git, Command::ShowSourceControl);
         let testing = side == Some(SidebarView::Testing);
         icon(ui, Icon::Beaker, "Testing", testing, Command::ShowTesting);
+        let debugging = side == Some(SidebarView::Debug);
+        icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
         let terminal = self.panel_visible && self.panel_tab == PanelTab::Terminal;
         icon(ui, Icon::Terminal, "Terminal (Ctrl+`)", terminal, Command::ToggleTerminal);
         cmd
@@ -210,6 +223,7 @@ impl CodeApp {
                 (PanelTab::Problems, self.problems_tab_label()),
                 (PanelTab::References, "REFERENCES".to_owned()),
                 (PanelTab::Output, "OUTPUT".to_owned()),
+                (PanelTab::DebugConsole, "DEBUG CONSOLE".to_owned()),
                 (PanelTab::Terminal, "TERMINAL".to_owned()),
             ];
             for (tab, label) in tabs {
@@ -241,6 +255,7 @@ impl CodeApp {
             PanelTab::Problems => self.problems_panel(ui),
             PanelTab::References => self.references_panel(ui),
             PanelTab::Output => self.output_panel(ui),
+            PanelTab::DebugConsole => self.debug_console(ui),
             PanelTab::Terminal if self.terminal.detached => {
                 ui.label(RichText::new("The terminal is in its own window.").color(theme::colors().text_dim));
                 if ui.button("Move It Back to the Panel").clicked() {
@@ -387,6 +402,7 @@ impl CodeApp {
             }
             SidebarView::Git => self.source_control_view(ui),
             SidebarView::Testing => self.testing_view(ui),
+            SidebarView::Debug => self.debug_view(ui),
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
                 if let Some(jump) = self.search.ui(ui, self.explorer.root.as_deref()) {
@@ -665,6 +681,9 @@ impl CodeApp {
                 .on_hover_text("Problems (Ctrl+Shift+M)");
             if problems.clicked() {
                 status_cmd = Some(Command::ShowProblems);
+            }
+            if let Some(text) = self.debug_status() {
+                ui.label(white(text));
             }
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));

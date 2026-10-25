@@ -5,6 +5,7 @@
 pub mod buffer;
 pub mod cargo;
 pub mod commands;
+pub mod dap;
 pub mod document;
 pub mod edit_ops;
 pub mod encoding;

@@ -25,6 +25,8 @@ pub enum PaletteResult {
 pub enum InputKind {
     Rename,
     NewBranch,
+    BreakpointCondition,
+    Logpoint,
 }
 
 /// What a picker list is choosing.
@@ -41,6 +43,7 @@ pub enum PickerKind {
     RunConfig,
     Symbol,
     History,
+    DebugTarget,
 }
 
 struct Picker {

@@ -33,6 +33,11 @@ pub enum Icon {
     Beaker,
     /// Skipped/ignored test.
     Skip,
+    Bug,
+    Pause,
+    StepOver,
+    StepInto,
+    StepOut,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -177,6 +182,34 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::Skip => {
             pen.circle(0.5, 0.5, 0.3);
             pen.line(&[(0.29, 0.71), (0.71, 0.29)]);
+        }
+        Icon::Bug => {
+            pen.circle(0.5, 0.58, 0.24);
+            pen.circle(0.5, 0.26, 0.1);
+            pen.line(&[(0.5, 0.36), (0.5, 0.82)]);
+            for y in [0.46, 0.62, 0.78] {
+                pen.line(&[(0.26, y), (0.1, y - 0.06)]);
+                pen.line(&[(0.74, y), (0.9, y - 0.06)]);
+            }
+        }
+        Icon::Pause => {
+            painter.rect_filled(Rect::from_min_max(pen.p(0.26, 0.2), pen.p(0.42, 0.8)), 1.0, color);
+            painter.rect_filled(Rect::from_min_max(pen.p(0.58, 0.2), pen.p(0.74, 0.8)), 1.0, color);
+        }
+        Icon::StepOver => {
+            pen.arc(0.5, 0.52, 0.32, std::f32::consts::PI, 2.0 * std::f32::consts::PI);
+            pen.line(&[(0.66, 0.42), (0.82, 0.54), (0.94, 0.38)]);
+            painter.circle_filled(pen.p(0.5, 0.84), rect.width() * 0.08, color);
+        }
+        Icon::StepInto => {
+            pen.line(&[(0.5, 0.1), (0.5, 0.6)]);
+            pen.line(&[(0.3, 0.42), (0.5, 0.62), (0.7, 0.42)]);
+            painter.circle_filled(pen.p(0.5, 0.84), rect.width() * 0.08, color);
+        }
+        Icon::StepOut => {
+            pen.line(&[(0.5, 0.64), (0.5, 0.12)]);
+            pen.line(&[(0.3, 0.32), (0.5, 0.12), (0.7, 0.32)]);
+            painter.circle_filled(pen.p(0.5, 0.84), rect.width() * 0.08, color);
         }
         Icon::ZoomIn => {
             pen.circle(0.42, 0.42, 0.28);

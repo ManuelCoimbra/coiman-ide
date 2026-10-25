@@ -26,6 +26,7 @@ pub struct Settings {
     pub git: GitSettings,
     pub cargo: CargoSettings,
     pub history: HistorySettings,
+    pub debug: DebugSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -111,6 +112,16 @@ pub struct HistorySettings {
     pub max_days: u64,
     /// Larger files are not kept.
     pub max_file_kb: usize,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct DebugSettings {
+    /// Path to CodeLLDB (the adapter executable or its extension folder);
+    /// empty finds Rust Code's own install or VS Code's extension.
+    pub codelldb_path: String,
+    /// Step into the standard library (`std`, `core`, `alloc`) instead of over it.
+    pub step_into_std: bool,
 }
 
 impl Default for HistorySettings {

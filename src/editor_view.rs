@@ -72,6 +72,10 @@ pub struct Decorations {
     pub blame: Option<(usize, String)>,
     /// Foldable regions (from the syntax tree or indentation).
     pub folds: Vec<rust_code_core::structure::FoldRange>,
+    /// Breakpoints: (line, color, has a condition or log message).
+    pub breakpoints: Vec<(usize, Color32, bool)>,
+    /// The line the debugger is paused on.
+    pub debug_line: Option<usize>,
     /// Lines with a runnable test, and its last result (gutter run buttons).
     pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
 }
@@ -101,6 +105,8 @@ pub struct Output {
     pub change_click: Option<(usize, Pos2)>,
     /// A gutter run button was clicked: its line.
     pub run_click: Option<usize>,
+    /// The breakpoint margin was clicked on this line.
+    pub breakpoint_click: Option<usize>,
     /// What Vim/Helix mode asked for this frame (`:w`, `:q`, clipboard).
     pub vim_effects: Vec<rust_code_core::vim::Effect>,
     /// Screen rectangle of the primary cursor.
@@ -143,6 +149,8 @@ pub struct ViewState {
     change_click: Option<(usize, Pos2)>,
     /// Gutter run button clicked this frame.
     run_click: Option<usize>,
+    /// Breakpoint margin clicked this frame.
+    breakpoint_click: Option<usize>,
     /// First lines of the folded regions.
     folded: std::collections::BTreeSet<usize>,
 }
@@ -496,6 +504,7 @@ pub fn show(
         ctrl_click: view.ctrl_click.take(),
         change_click: view.change_click.take(),
         run_click: view.run_click.take(),
+        breakpoint_click: view.breakpoint_click.take(),
         vim_effects,
         cursor_rect,
     }
@@ -595,8 +604,13 @@ fn handle_mouse(
     if pressed && p.x >= text_rect.left() - m.gutter_w && p.x < text_rect.right() {
         let line = doc.buffer.char_to_line(pos);
         let gutter_left = text_rect.left() - m.gutter_w;
-        if p.x < gutter_left + RUN_ZONE && deco.runnables.iter().any(|r| r.0 == line) {
-            view.run_click = Some(line);
+        // The left margin runs a test on test lines, and toggles a breakpoint elsewhere.
+        if p.x < gutter_left + RUN_ZONE {
+            if deco.runnables.iter().any(|r| r.0 == line) && !deco.breakpoints.iter().any(|b| b.0 == line) {
+                view.run_click = Some(line);
+            } else {
+                view.breakpoint_click = Some(line);
+            }
             return false;
         }
         let fold_x = text_rect.left() - CHANGE_ZONE - FOLD_ZONE;
@@ -1129,8 +1143,38 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
         }
 
+        // Paused line: highlighted, with an arrow in the margin.
+        if deco.debug_line == Some(row.line) {
+            let band = Rect::from_min_max(Pos2::new(text_rect.left(), y), Pos2::new(text_rect.right(), y + m.row_h));
+            text_painter.rect_filled(band, 0.0, Color32::from_rgba_unmultiplied(0xFF, 0xD7, 0x00, 28));
+        }
+        let margin = |size: f32| {
+            Rect::from_center_size(
+                Pos2::new(text_rect.left() - m.gutter_w + RUN_ZONE / 2.0 + 1.0, y + m.row_h / 2.0),
+                Vec2::splat(size),
+            )
+        };
+        let breakpoint = deco.breakpoints.iter().find(|b| b.0 == row.line).filter(|_| row.first);
+        if let Some((_, color, special)) = breakpoint {
+            let r = margin(m.row_h * 0.55);
+            painter.circle_filled(r.center(), r.width() / 2.0, *color);
+            if *special {
+                // Conditions and log points get a mark in the middle.
+                painter.hline(r.x_range().shrink(r.width() * 0.25), r.center().y, Stroke::new(1.5, pal.editor_bg));
+            }
+        }
+        if deco.debug_line == Some(row.line) && row.first {
+            crate::icons::paint(
+                &painter,
+                margin(m.row_h * 0.8),
+                crate::icons::Icon::Play,
+                Color32::from_rgb(0xFF, 0xCC, 0x00),
+            );
+        }
         // Test run button (with the last result's icon and color).
         if row.first
+            && breakpoint.is_none()
+            && deco.debug_line != Some(row.line)
             && let Some((_, icon, color)) = deco.runnables.iter().find(|r| r.0 == row.line)
         {
             let size = (m.row_h * 0.8).min(RUN_ZONE);

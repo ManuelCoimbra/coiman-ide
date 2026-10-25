@@ -25,6 +25,11 @@ from where:
   `cargo check` in your project, exactly as it does in other editors. Cargo
   downloads the project's dependencies from crates.io if they aren't already
   on your machine. Set `lsp.enabled = false` to never start it.
+- **Downloading the debugger.** If CodeLLDB isn't found, the Debug view offers
+  to download it from github.com/vadimcn/codelldb (the latest release
+  package). The download runs your system's `curl`, and the system `tar`
+  unpacks it. Rust Code itself still opens no connection. Nothing is
+  downloaded until you click **Download**.
 
 ## What Rust Code reads and writes on your machine
 
@@ -35,8 +40,10 @@ from where:
 | `%APPDATA%\rust-code\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
 | `%APPDATA%\rust-code\themes\*.json` | yes | never | your extra color themes |
 | `%APPDATA%\rust-code\history\` | yes | on every save (and outside change) of a file | local history: earlier versions of your files (`history.enabled = false` turns it off) |
+| `%APPDATA%\rust-code\codelldb\` | yes | when you agree to download the debugger | CodeLLDB, the debug adapter |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |
 | Installed VS Code themes (`%LOCALAPPDATA%\Programs\Microsoft VS Code`, `~\.vscode\extensions`) | theme files only | never | the Color Theme picker |
+| An installed VS Code CodeLLDB extension (`~\.vscode\extensions\vadimcn.vscode-lldb-*`) | its adapter only | never | debugging without a second download |
 
 Turning off `files.hot_exit` stops unsaved text from being stored in
 `session.json` (open tabs are still remembered).

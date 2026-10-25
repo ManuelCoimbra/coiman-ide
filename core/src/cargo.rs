@@ -83,7 +83,7 @@ pub fn launch_file_contents(configs: &[RunConfig]) -> String {
 }
 
 /// Binary targets of the workspace members (`cargo metadata --no-deps`).
-fn binaries(root: &Path) -> Vec<String> {
+pub fn binaries(root: &Path) -> Vec<String> {
     let out = quiet_command(Path::new("cargo"))
         .args(["metadata", "--no-deps", "--format-version", "1"])
         .current_dir(root)
@@ -101,6 +101,74 @@ fn binaries(root: &Path) -> Vec<String> {
         }
     }
     bins
+}
+
+// ----- building for the debugger -----------------------------------------------------
+
+/// An executable cargo built.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Artifact {
+    /// Target name (binary, test file, or package for unit tests).
+    pub name: String,
+    /// First target kind: "bin", "lib", "test"…
+    pub kind: String,
+    /// Built as a test harness (`cargo test --no-run`).
+    pub test: bool,
+    pub executable: PathBuf,
+}
+
+/// Runs `cargo <args>` with JSON messages in `dir` and returns the
+/// executables built; on failure, the end of cargo's error output.
+pub fn build_executables(dir: &Path, args: &[String]) -> Result<Vec<Artifact>, String> {
+    let out = quiet_command(Path::new("cargo"))
+        .args(args)
+        .arg("--message-format=json-render-diagnostics")
+        .current_dir(dir)
+        .env("CARGO_TERM_COLOR", "never")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run cargo: {e}"))?;
+    if !out.status.success() {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let tail: Vec<&str> = err.lines().filter(|l| !l.trim().is_empty()).collect();
+        return Err(tail[tail.len().saturating_sub(15)..].join("\n"));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).lines().filter_map(parse_artifact).collect())
+}
+
+fn parse_artifact(line: &str) -> Option<Artifact> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    if v["reason"] != "compiler-artifact" {
+        return None;
+    }
+    let executable = PathBuf::from(v["executable"].as_str()?);
+    Some(Artifact {
+        name: v["target"]["name"].as_str()?.to_owned(),
+        kind: v["target"]["kind"][0].as_str().unwrap_or("").to_owned(),
+        test: v["profile"]["test"].as_bool().unwrap_or(false),
+        executable,
+    })
+}
+
+/// Cargo arguments that build the test binary for `target`, and how to
+/// pick it out of the artifacts.
+pub fn test_build_args(package: &str, target: &Target) -> (Vec<String>, String, &'static str) {
+    let mut args = vec!["test".to_owned(), "--no-run".to_owned(), "-p".to_owned(), package.to_owned()];
+    let (name, kind) = match target {
+        Target::Lib => {
+            args.push("--lib".into());
+            (package.replace('-', "_"), "lib")
+        }
+        Target::Bin(n) => {
+            args.extend(["--bin".into(), n.clone()]);
+            (n.clone(), "bin")
+        }
+        Target::Test(n) => {
+            args.extend(["--test".into(), n.clone()]);
+            (n.clone(), "test")
+        }
+    };
+    (args, name, kind)
 }
 
 // ----- tests ------------------------------------------------------------------------
@@ -527,6 +595,14 @@ mod tests {
             n.line(Runner::Nextest, "        FAIL [   0.100s] app::bin/my-tool cli::parses"),
             Some(("my_tool".into(), "cli::parses".into(), Outcome::Failed))
         );
+    }
+
+    #[test]
+    fn parses_build_artifacts() {
+        let line = r#"{"reason":"compiler-artifact","target":{"name":"my_crate","kind":["lib"]},"profile":{"test":true},"executable":"C:/t/debug/deps/my_crate-123.exe"}"#;
+        let a = parse_artifact(line).unwrap();
+        assert_eq!((a.name.as_str(), a.kind.as_str(), a.test), ("my_crate", "lib", true));
+        assert!(parse_artifact(r#"{"reason":"compiler-artifact","target":{"name":"x","kind":["lib"]},"profile":{"test":false},"executable":null}"#).is_none());
     }
 
     #[test]
