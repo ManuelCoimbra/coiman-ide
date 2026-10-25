@@ -119,6 +119,13 @@ impl CodeApp {
             Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
             Command::ShowSourceControl => self.show_source_control(),
             Command::LocalHistory => self.history_picker(ctx),
+            Command::ToggleVimMode => {
+                let next = if self.settings.editor.keyboard_mode == "vim" { "default" } else { "vim" };
+                match self.write_user_setting(ctx, "editor", "keyboard_mode", &format!("\"{next}\"")) {
+                    Ok(()) => self.status = Some(format!("Keyboard mode: {next}")),
+                    Err(e) => self.status = Some(e),
+                }
+            }
             Command::ShowTimeline => {
                 self.sidebar_visible = true;
                 self.sidebar_view = SidebarView::Explorer;
@@ -316,6 +323,22 @@ impl CodeApp {
                     self.open_file(&path);
                 }
             }
+        }
+    }
+
+    /// Carries out what a Vim command line asked for.
+    pub(super) fn vim_effect(&mut self, ctx: &egui::Context, effect: rust_code_core::vim::Effect) {
+        use rust_code_core::vim::Effect;
+        match effect {
+            Effect::Save => self.run_command(ctx, Command::Save),
+            Effect::Quit { force: true } => self.close_tab(self.active),
+            Effect::Quit { force: false } => self.request_close_tab(self.active),
+            Effect::SaveQuit => {
+                if self.save_doc(self.active) {
+                    self.close_tab(self.active);
+                }
+            }
+            Effect::Clipboard(text) => ctx.copy_text(text),
         }
     }
 

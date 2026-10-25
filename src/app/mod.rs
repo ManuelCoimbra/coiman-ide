@@ -143,6 +143,9 @@ pub struct CodeApp {
     history: history::HistoryState,
     /// Whether the Timeline section of the Explorer is open.
     timeline_open: bool,
+    /// Vim or Helix key handling (`editor.keyboard_mode`), and the document it last saw.
+    vim: Option<rust_code_core::vim::Vim>,
+    vim_doc: Option<u64>,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -190,6 +193,8 @@ impl CodeApp {
             outline_open: true,
             history: history::HistoryState::default(),
             timeline_open: false,
+            vim: None,
+            vim_doc: None,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -302,6 +307,7 @@ impl eframe::App for CodeApp {
                 word_wrap: self.word_wrap,
                 indent_guides: self.settings.editor.indent_guides,
                 rainbow_brackets: self.settings.editor.bracket_pair_colorization,
+                block_cursor: false,
             };
             if self.git.diff.is_some() {
                 self.diff_view(ui);
@@ -321,15 +327,34 @@ impl eframe::App for CodeApp {
                     .collect()
             });
             if let Some(doc) = self.docs.get_mut(self.active) {
-                let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, ..opts };
-                let out = editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts, &deco);
+                // Switching files starts Vim afresh in normal mode on the new cursor.
+                if let Some(vim) = &mut self.vim
+                    && self.vim_doc != Some(doc.uid)
+                {
+                    vim.reset(&mut doc.buffer);
+                    self.vim_doc = Some(doc.uid);
+                }
+                let block_cursor = self.vim.as_ref().is_some_and(rust_code_core::vim::Vim::block_cursor);
+                let was_typing = self.vim.as_ref().is_none_or(|v| v.mode() == rust_code_core::vim::Mode::Insert);
+                let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, block_cursor, ..opts };
+                let mut out =
+                    editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts, &deco, self.vim.as_mut());
+                for effect in std::mem::take(&mut out.vim_effects) {
+                    self.vim_effect(&ctx, effect);
+                }
                 if let Some((line, pos)) = out.change_click {
                     self.open_hunk_popup(line, pos);
                 }
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
                 }
-                self.after_editor(&ctx, out, &typed);
+                // Vim commands arrive as text too; only insert-mode typing drives completion.
+                let typing =
+                    was_typing && self.vim.as_ref().is_none_or(|v| v.mode() == rust_code_core::vim::Mode::Insert);
+                if !typing {
+                    self.close_completion();
+                }
+                self.after_editor(&ctx, out, if typing { &typed } else { "" });
             }
         });
         self.lsp_popups(&ctx);

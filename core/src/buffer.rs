@@ -874,6 +874,15 @@ impl Buffer {
         self.record_reset();
     }
 
+    /// Number of undo steps available (Vim groups changes by these).
+    pub fn undo_depth(&self) -> usize {
+        self.undo.len()
+    }
+
+    pub fn redo_depth(&self) -> usize {
+        self.redo.len()
+    }
+
     pub fn undo(&mut self) -> bool {
         let Some(snap) = self.undo.pop() else { return false };
         self.redo.push(self.snapshot());

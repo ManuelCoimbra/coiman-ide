@@ -666,6 +666,9 @@ impl CodeApp {
             if problems.clicked() {
                 status_cmd = Some(Command::ShowProblems);
             }
+            if let Some(vim) = &self.vim {
+                ui.label(white(vim.status()));
+            }
             if let Some(text) = self.lsp_status_text() {
                 ui.label(white(text));
             }

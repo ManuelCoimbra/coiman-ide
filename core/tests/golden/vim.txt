@@ -1,0 +1,349 @@
+# Vim golden cases. Each case: "=== name", the text with | before the cursor
+# char, "--- keys" (Vim notation), then the expected text and cursor.
+# The test runs every case through Rust Code's engine and, when Vim is
+# installed, through real Vim (vim -u NONE) to check the expectations.
+# <sync> splits the keys into separate Vim commands (each its own undo step).
+
+=== w moves to the next word
+|foo.bar baz
+--- w
+foo|.bar baz
+
+=== 3w counts words and punctuation
+|foo.bar baz
+--- 3w
+foo.bar |baz
+
+=== W skips punctuation
+|foo.bar baz
+--- W
+foo.bar |baz
+
+=== e goes to the end of the word
+|foo bar
+--- e
+fo|o bar
+
+=== b goes back a word
+foo |bar
+--- b
+|foo bar
+
+=== ^ goes to the first non-blank
+  ab|c
+--- ^
+  |abc
+
+=== j and j keep the column across a short line
+abcdef
+ab
+ab|cdef
+--- kkjj
+abcdef
+ab
+ab|cdef
+
+=== j keeps the wanted column past a short line
+abc|def
+ab
+abcdef
+--- jj
+abcdef
+ab
+abc|def
+
+=== G goes to the last line
+one
+|two
+three
+--- G
+one
+two
+|three
+
+=== 3G goes to line 3
+|a
+b
+c
+d
+--- 3G
+a
+b
+|c
+d
+
+=== } goes to the next blank line
+|a
+b
+
+c
+--- }
+a
+b
+|
+c
+
+=== f then ; repeats
+|a.b.c.d
+--- f.;
+a.b|.c.d
+
+=== % jumps to the matching bracket
+|if (x) { y }
+--- %
+if (x|) { y }
+
+=== * searches the word under the cursor
+|foo bar foo
+--- *
+foo bar |foo
+
+=== / searches forward
+|foo bar foo
+--- /foo<CR>
+foo bar |foo
+
+=== dw deletes a word
+hello |world foo
+--- dw
+hello |foo
+
+=== dw on the last word keeps the line break
+one.|two
+three
+--- dw
+one|.
+three
+
+=== d2w deletes two words
+|a b c d
+--- d2w
+|c d
+
+=== de deletes to the end of the word
+|foo bar
+--- de
+| bar
+
+=== dt, deletes up to the comma
+|abc,def
+--- dt,
+|,def
+
+=== 2dd deletes two lines
+a
+|b
+c
+d
+--- 2dd
+a
+|d
+
+=== dd on the last line moves up
+a
+b
+|c
+--- dd
+a
+|b
+
+=== dj deletes two lines
+|a
+b
+c
+--- dj
+|c
+
+=== dk from the last line
+a
+b
+|c
+--- dk
+|a
+
+=== D deletes to the end of the line
+ab|cd
+--- D
+a|b
+
+=== 3x deletes three chars
+|abcdef
+--- 3x
+|def
+
+=== x at the end of the line
+ab|c
+--- x
+a|b
+
+=== cw changes to the end of the word
+foo |bar baz
+--- cwxx<Esc>
+foo x|x baz
+
+=== ce changes to the end of the word
+|foo bar
+--- cexx<Esc>
+x|x bar
+
+=== C changes to the end of the line
+ab|cd
+--- Cx<Esc>
+ab|x
+
+=== s substitutes a char
+|abc
+--- sx<Esc>
+|xbc
+
+=== S changes the whole line
+  |abc
+--- Sx<Esc>
+|x
+
+=== ciw changes the inner word
+say |hello there
+--- ciwbye<Esc>
+say by|e there
+
+=== di( deletes inside parentheses
+f(a, |b)
+--- di(
+f(|)
+
+=== ct) changes up to the parenthesis
+f(|abc)
+--- ct)z<Esc>
+f(|z)
+
+=== ca" changes the quoted string and its trailing space
+x = "he|llo" + y
+--- ca"z<Esc>
+x = |z+ y
+
+=== yyp duplicates a line
+|one
+two
+--- yyp
+one
+|one
+two
+
+=== xp swaps two chars
+|abc
+--- xp
+b|ac
+
+=== yiw then P pastes before the cursor
+|foo bar
+--- yiwwP
+foo fo|obar
+
+=== named registers
+|one two
+--- "ayiwwdiw"ap
+one on|e
+
+=== J joins lines
+|foo
+   bar
+--- J
+foo| bar
+
+=== r replaces a char
+|abc
+--- rx
+|xbc
+
+=== 2~ toggles case
+|abc
+--- 2~
+AB|c
+
+=== >> indents with a tab
+|foo
+--- >>
+	|foo
+
+=== o opens a line below
+|foo
+bar
+--- onew<Esc>
+foo
+ne|w
+bar
+
+=== O opens a line above
+foo
+|bar
+--- Onew<Esc>
+foo
+ne|w
+bar
+
+=== A appends at the end of the line
+|foo
+--- A!<Esc>
+foo|!
+
+=== I inserts at the first non-blank
+  |foo
+--- I-<Esc>
+  |-foo
+
+=== 3i repeats the insert
+|x
+--- 3iab<Esc>
+ababa|bx
+
+=== . repeats dw
+|a b c d
+--- dw..
+|d
+
+=== . repeats an insert
+|x
+--- ihi<Esc>.
+hh|iix
+
+=== u undoes one change
+|abc
+--- x<sync>x<sync>u
+|bc
+
+=== u undoes a whole insert
+|x
+--- iab cd<Esc><sync>u
+|x
+
+=== Ctrl-R redoes
+|abc
+--- x<sync>u<sync><C-r>
+|bc
+
+=== v then d deletes the selection
+|hello world
+--- vwd
+|orld
+
+=== Vjd deletes the last two lines
+a
+|b
+c
+--- Vjd
+|a
+
+=== visual U uppercases
+|abc
+--- vlU
+|ABc
+
+=== v y then p
+|ab
+--- vly$p
+aba|b
+
+=== :s replaces on the line
+|a a a
+--- :s/a/b/g<CR>
+|b b b

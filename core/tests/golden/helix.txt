@@ -1,0 +1,97 @@
+# Helix-style (selection first) golden cases. Input uses | for the cursor;
+# the expected text shows the selection in [brackets] (inclusive).
+
+=== w selects the word and its trailing space
+|foo bar
+--- w
+[foo ]bar
+
+=== w then d deletes it
+|foo bar
+--- wd
+[b]ar
+
+=== e selects to the end of the word
+|foo bar
+--- e
+[foo] bar
+
+=== b selects back to the word start
+foo ba|r
+--- b
+foo [bar]
+
+=== x selects the line
+|one
+two
+--- x
+[one
+]two
+
+=== x then d deletes the line
+|one
+two
+--- xd
+[t]wo
+
+=== c changes the selection
+|foo bar
+--- ecbaz<Esc>
+ba[z] bar
+
+=== y then p pastes after the selection
+|ab cd
+--- wyp
+ab [ab ]cd
+
+=== i inserts before the selection
+|foo
+--- ix<Esc>
+[x]foo
+
+=== a appends after the selection
+|foo
+--- eax<Esc>
+foo[x]
+
+=== r replaces every selected char
+|foo bar
+--- erx
+[xxx] bar
+
+=== ~ toggles case of the selection
+|foo bar
+--- e~
+[FOO] bar
+
+=== u undoes the change
+|foo bar
+--- edu
+[f]oo bar
+
+=== v extends with motions
+|abcdef
+--- vlll
+[abcd]ef
+
+=== gl goes to the line end
+|abc def
+--- gl
+abc de[f]
+
+=== f selects to the char
+|abc,def
+--- f,
+[abc,]def
+
+=== J joins lines
+|foo
+bar
+--- J
+foo[ ]bar
+
+=== o opens a line below
+|foo
+--- obar<Esc>
+foo
+ba[r]

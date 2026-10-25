@@ -61,6 +61,19 @@ impl CodeApp {
             problems.extend(err);
         }
         theme::apply_style(ctx, new.workbench.ui_font_size);
+        if first || new.editor.keyboard_mode != old.editor.keyboard_mode {
+            use rust_code_core::vim::{Flavor, Vim};
+            self.vim = match new.editor.keyboard_mode.as_str() {
+                "vim" => Some(Vim::new(Flavor::Vim)),
+                "helix" => Some(Vim::new(Flavor::Helix)),
+                "default" => None,
+                other => {
+                    problems.push(format!("editor.keyboard_mode: unknown mode `{other}` (default, vim, helix)"));
+                    None
+                }
+            };
+            self.vim_doc = None;
+        }
         self.keymap = keymap;
         self.settings_applied = true;
         if !problems.is_empty() {

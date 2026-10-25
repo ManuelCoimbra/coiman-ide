@@ -37,6 +37,8 @@ pub struct EditorSettings {
     pub bracket_pair_colorization: bool,
     /// Format the file with its language server when saving.
     pub format_on_save: bool,
+    /// Key handling: "default", "vim" (modal, Vim keys) or "helix" (select, then act).
+    pub keyboard_mode: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -161,6 +163,7 @@ impl Default for EditorSettings {
             indent_guides: true,
             bracket_pair_colorization: true,
             format_on_save: false,
+            keyboard_mode: "default".to_owned(),
         }
     }
 }

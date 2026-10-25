@@ -119,6 +119,7 @@ pub enum Command {
     // Local history.
     LocalHistory,
     ShowTimeline,
+    ToggleVimMode,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -227,6 +228,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::PreviousFunction, "Go to Previous Function"),
     (Command::LocalHistory, "Local History: Find Entry to Restore..."),
     (Command::ShowTimeline, "View: Show Timeline"),
+    (Command::ToggleVimMode, "Toggle Vim Mode"),
 ];
 
 /// VS Code command ID of each command.
@@ -338,6 +340,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::PreviousFunction, "rust-code.goto.previousFunction"),
     (Command::LocalHistory, "workbench.action.localHistory.restoreViaPicker"),
     (Command::ShowTimeline, "timeline.focus"),
+    (Command::ToggleVimMode, "toggleVim"),
 ];
 
 /// Commands whose shortcuts still work while the terminal has focus; every

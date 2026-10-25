@@ -981,6 +981,10 @@ impl CodeApp {
         doc.reveal = true;
     }
 
+    pub(super) fn close_completion(&mut self) {
+        self.lsp.completion = None;
+    }
+
     /// Keys for open popups, taken before the editor sees them.
     pub(super) fn lsp_keys(&mut self, ctx: &egui::Context) {
         if self.lsp.hover.as_ref().is_some_and(|h| h.sticky.is_some())

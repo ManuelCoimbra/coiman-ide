@@ -19,7 +19,7 @@ A Cargo workspace with two crates:
   server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
   sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches), `cargo` (run
   configurations, test discovery, test/check output parsing), `structure` (folds, outline,
-  smart selection, text objects), `history` (local history store).
+  smart selection, text objects), `history` (local history store), `vim` (Vim/Helix modal editing engine).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
   `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
@@ -156,6 +156,26 @@ downloaded unless you click **Install** (**Don't Ask Again** sets `lsp.ask_to_in
 Edits are sent to the server as small incremental changes. `rust-analyzer: Restart Server`
 restarts it (e.g. after changing `lsp.rust_analyzer_path`); `lsp.enabled = false` turns
 language servers off.
+
+### Vim and Helix modes
+
+`editor.keyboard_mode = "vim"` (or **Toggle Vim Mode**) turns on modal editing;
+`"helix"` selects first, then acts. The status bar shows the mode and the command being typed.
+
+- **Vim**: normal, insert, visual (`v`, `V`) and command-line modes; counts; motions
+  (`h j k l w b e W B E 0 ^ $ gg G f F t T ; , % { } n N * #`); operators `d c y > < g~ gu gU`
+  with motions, doubled (`dd`, `cc`, `>>`…) and text objects (`iw aw i( a" i{`…); `x X s S r ~
+  J p P o O i a I A D C Y`; registers (`"a`–`"z`, `"0`, `"+` to the clipboard); `.` repeat;
+  `u` / `Ctrl+R` undo whole changes; `/ ?` search; `:w`, `:q`, `:q!`, `:wq`, `:x`, `:<line>`,
+  `:s/a/b/g`, `:%s/a/b/g`.
+- **Helix**: `w e b W E B` select words, `x` lines, `%` everything, `v` extends, `f t` select
+  to a char, then `d c y p P r ~ > < J` act on the selection; `i a I A o O` insert; `u U`
+  undo/redo; `gg ge gh gl gs` go to; `;` collapses.
+- Insert mode is the normal editor (completion, auto-indent, IME); `Esc` returns to normal.
+
+The engine (`core/src/vim.rs`) is checked by golden files (`core/tests/golden/`): every Vim
+case is also run in real Vim (`vim -u NONE`, found on `PATH`, in Git for Windows, or at
+`RUST_CODE_VIM`) and the test fails if Vim disagrees.
 
 ### Local history
 

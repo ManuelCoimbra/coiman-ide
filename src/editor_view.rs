@@ -28,6 +28,8 @@ pub struct Options {
     pub word_wrap: bool,
     pub indent_guides: bool,
     pub rainbow_brackets: bool,
+    /// Draw the cursor as a block (Vim/Helix normal mode).
+    pub block_cursor: bool,
 }
 
 /// Problem severity, as in LSP: 1 error, 2 warning, 3 information, 4 hint.
@@ -99,6 +101,8 @@ pub struct Output {
     pub change_click: Option<(usize, Pos2)>,
     /// A gutter run button was clicked: its line.
     pub run_click: Option<usize>,
+    /// What Vim/Helix mode asked for this frame (`:w`, `:q`, clipboard).
+    pub vim_effects: Vec<rust_code_core::vim::Effect>,
     /// Screen rectangle of the primary cursor.
     pub cursor_rect: Rect,
 }
@@ -319,7 +323,15 @@ struct Metrics {
 }
 
 /// Draws and runs the editor for `doc` in all remaining space of `ui`.
-pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: Options, deco: &Decorations) -> Output {
+pub fn show(
+    ui: &mut egui::Ui,
+    doc: &mut Document,
+    view: &mut ViewState,
+    opts: Options,
+    deco: &Decorations,
+    vim: Option<&mut rust_code_core::vim::Vim>,
+) -> Output {
+    let mut vim_effects = Vec::new();
     let (font_size, word_wrap) = (opts.font_size, opts.word_wrap);
     let id = editor_id(doc.uid);
     let rect = ui.available_rect_before_wrap();
@@ -378,7 +390,10 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
     reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response, deco);
     if has_focus {
         let version = doc.buffer.version();
-        reveal |= handle_keyboard(ui, doc, view, &m, visible_rows);
+        reveal |= match vim {
+            Some(vim) => vim_keyboard(ui, doc, view, &m, visible_rows, vim, &mut vim_effects),
+            None => handle_keyboard(ui, doc, view, &m, visible_rows),
+        };
         if doc.buffer.version() != version {
             if let Some(line) = doc.buffer.take_edited_from_line() {
                 doc.highlighter.invalidate_from(line);
@@ -481,6 +496,7 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
         ctrl_click: view.ctrl_click.take(),
         change_click: view.change_click.take(),
         run_click: view.run_click.take(),
+        vim_effects,
         cursor_rect,
     }
 }
@@ -646,6 +662,86 @@ fn handle_mouse(
 }
 
 /// Returns true if the cursor moved or text changed (keep cursor in view).
+/// The Vim/Helix key for an egui key press, if it means anything to them.
+fn vim_key(key: Key, mods: Modifiers) -> Option<rust_code_core::vim::Key> {
+    use rust_code_core::vim::Key as V;
+    if mods.command || mods.ctrl {
+        let name = key.name();
+        let letter = name.chars().next().filter(|c| name.len() == 1 && c.is_ascii_alphabetic())?;
+        return Some(V::Ctrl(letter.to_ascii_lowercase()));
+    }
+    Some(match key {
+        Key::Escape => V::Esc,
+        Key::Enter => V::Enter,
+        Key::Backspace => V::Backspace,
+        Key::Tab => V::Tab,
+        Key::ArrowLeft => V::Left,
+        Key::ArrowRight => V::Right,
+        Key::ArrowUp => V::Up,
+        Key::ArrowDown => V::Down,
+        Key::Delete => V::Char('x'),
+        _ => return None,
+    })
+}
+
+/// Keyboard input in Vim/Helix mode: commands go to the engine; in insert
+/// mode the editor types as usual and the engine just watches (for `.`).
+fn vim_keyboard(
+    ui: &mut egui::Ui,
+    doc: &mut Document,
+    view: &mut ViewState,
+    m: &Metrics,
+    visible_rows: usize,
+    vim: &mut rust_code_core::vim::Vim,
+    effects: &mut Vec<rust_code_core::vim::Effect>,
+) -> bool {
+    use rust_code_core::vim::{Key as V, Mode};
+    let events = ui.input(|i| i.events.clone());
+    let mut moved = false;
+    for event in events {
+        if vim.mode() == Mode::Insert {
+            match &event {
+                Event::Key { key: Key::Escape, pressed: true, .. } => {
+                    effects.extend(vim.handle(&mut doc.buffer, V::Esc));
+                    moved = true;
+                    continue;
+                }
+                Event::Text(t) => t.chars().for_each(|c| vim.observe(V::Char(c))),
+                Event::Paste(t) => t.chars().for_each(|c| vim.observe(if c == '\n' { V::Enter } else { V::Char(c) })),
+                Event::Key { key: Key::Enter, pressed: true, modifiers, .. } if modifiers.is_none() => {
+                    vim.observe(V::Enter)
+                }
+                Event::Key { key: Key::Backspace, pressed: true, .. } => vim.observe(V::Backspace),
+                Event::Key { key: Key::Tab, pressed: true, modifiers, .. } if modifiers.is_none() => {
+                    vim.observe(V::Tab)
+                }
+                _ => {}
+            }
+            // Type normally, as without Vim.
+            moved |= handle_events(ui, doc, view, m, visible_rows, vec![event]);
+            continue;
+        }
+        match event {
+            Event::Text(text) => {
+                for c in text.chars().filter(|c| !c.is_control()) {
+                    effects.extend(vim.handle(&mut doc.buffer, V::Char(c)));
+                }
+                moved = true;
+            }
+            Event::Key { key, pressed: true, modifiers, .. } => {
+                // Printable keys arrive as text; only special keys here.
+                if let Some(k) = vim_key(key, modifiers) {
+                    effects.extend(vim.handle(&mut doc.buffer, k));
+                    moved = true;
+                }
+            }
+            Event::Copy => copy(ui, doc, view, false),
+            _ => {}
+        }
+    }
+    moved
+}
+
 fn handle_keyboard(
     ui: &mut egui::Ui,
     doc: &mut Document,
@@ -654,6 +750,17 @@ fn handle_keyboard(
     visible_rows: usize,
 ) -> bool {
     let events = ui.input(|i| i.events.clone());
+    handle_events(ui, doc, view, m, visible_rows, events)
+}
+
+fn handle_events(
+    ui: &mut egui::Ui,
+    doc: &mut Document,
+    view: &mut ViewState,
+    m: &Metrics,
+    visible_rows: usize,
+    events: Vec<Event>,
+) -> bool {
     let mut moved = false;
     for event in events {
         match event {
@@ -1051,14 +1158,28 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
     // Cursors.
     if has_focus {
         for s in doc.buffer.selections() {
-            let row_idx = layout.row_of(doc, view, s.head);
+            // A block cursor sits on the last selected char of a forward selection.
+            let block_at = if opts.block_cursor && s.head > s.anchor { s.head - 1 } else { s.head };
+            let row_idx = layout.row_of(doc, view, block_at);
             if row_idx < first_row || row_idx >= last_row {
                 continue;
             }
             let row = layout.row(doc, view, row_idx);
-            let x = x0 + col_x(&doc.buffer, row.start, s.head, m);
             let y = rect.top() + y_offset + (row_idx - first_row) as f32 * m.row_h;
-            text_painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, m.row_h)), 0.0, pal.cursor);
+            let x = x0 + col_x(&doc.buffer, row.start, s.head, m);
+            if opts.block_cursor {
+                // A block on the char under the cursor (the last selected char
+                // when a selection extends forward, as in Vim's visual mode).
+                let x = x0 + col_x(&doc.buffer, row.start, block_at.max(row.start), m);
+                let block = Rect::from_min_size(Pos2::new(x, y), Vec2::new(m.char_w, m.row_h));
+                text_painter.rect_filled(block, 0.0, pal.cursor.gamma_multiply(0.55));
+            } else {
+                text_painter.rect_filled(
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new(2.0, m.row_h)),
+                    0.0,
+                    pal.cursor,
+                );
+            }
             if *s == primary && !view.preedit.is_empty() {
                 let galley = ui.fonts_mut(|f| f.layout_no_wrap(view.preedit.clone(), m.font_id.clone(), pal.editor_fg));
                 let w = galley.size().x;
