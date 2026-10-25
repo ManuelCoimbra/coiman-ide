@@ -202,7 +202,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowProblems, "View: Toggle Problems"),
     (Command::NextProblem, "Go to Next Problem (Error, Warning, Info)"),
     (Command::PreviousProblem, "Go to Previous Problem (Error, Warning, Info)"),
-    (Command::RestartLanguageServer, "rust-analyzer: Restart Server"),
+    (Command::RestartLanguageServer, "Language Servers: Restart"),
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),

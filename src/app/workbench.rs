@@ -84,7 +84,9 @@ impl CodeApp {
         // The title, centered in the window but never over the menus or buttons.
         let pal = theme::colors();
         let font = egui::FontId::proportional(small_size(ui));
-        let galley = ui.painter().layout_no_wrap(self.last_title.clone(), font, pal.text_dim);
+        // The UI font has no "●" (unsaved marker in the OS title); use a bullet.
+        let title = self.last_title.replace('●', "•");
+        let galley = ui.painter().layout_no_wrap(title, font, pal.text_dim);
         let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - 16.0);
         if room.span() > 40.0 {
             let width = galley.size().x.min(room.span());

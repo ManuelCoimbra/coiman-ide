@@ -70,8 +70,12 @@ pub struct LspSettings {
     pub enabled: bool,
     /// Path to rust-analyzer; empty finds it on PATH or in ~/.cargo/bin.
     pub rust_analyzer_path: String,
-    /// Offer to install rust-analyzer with rustup when it is missing.
+    /// Offer to install a missing language server (rust-analyzer, pyright…).
     pub ask_to_install: bool,
+    /// Commands for language servers, by language: `python`, `typescript`,
+    /// `clangd`, `java`, `csharp`, `go` (and `rust`). A program path,
+    /// optionally followed by arguments; empty finds the server itself.
+    pub paths: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -167,7 +171,12 @@ impl Default for TerminalSettings {
 
 impl Default for LspSettings {
     fn default() -> Self {
-        Self { enabled: true, rust_analyzer_path: String::new(), ask_to_install: true }
+        Self {
+            enabled: true,
+            rust_analyzer_path: String::new(),
+            ask_to_install: true,
+            paths: std::collections::BTreeMap::new(),
+        }
     }
 }
 

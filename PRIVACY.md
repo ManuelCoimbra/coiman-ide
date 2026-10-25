@@ -18,13 +18,24 @@ Rust Code is built to be trusted with your code. These are commitments, and
 Anything that needs the network asks first and says what will be downloaded
 from where:
 
-- **Installing rust-analyzer.** If it is missing, Rust Code offers to run
-  `rustup component add rust-analyzer`, which downloads it from
-  static.rust-lang.org. Nothing runs until you click **Install**.
-- **rust-analyzer itself** is a separate program that runs `cargo metadata` and
-  `cargo check` in your project, exactly as it does in other editors. Cargo
-  downloads the project's dependencies from crates.io if they aren't already
-  on your machine. Set `lsp.enabled = false` to never start it.
+- **Installing language servers.** If the server for a file is missing, Rust
+  Code offers to install it and says exactly how:
+  - rust-analyzer: `rustup component add rust-analyzer` (static.rust-lang.org);
+  - pyright and typescript-language-server: `npm install -g …` (registry.npmjs.org);
+  - pylsp: `python -m pip install --user python-lsp-server` (pypi.org);
+  - csharp-ls: `dotnet tool install --global csharp-ls` (nuget.org);
+  - gopls: `go install golang.org/x/tools/gopls@latest` (proxy.golang.org);
+  - clangd and the Java language server: downloaded with your system's `curl`
+    from github.com/clangd and download.eclipse.org. When no Java 25 is
+    installed, a Java runtime from Eclipse Temurin (api.adoptium.net) comes too.
+
+  Nothing runs until you click **Install**. npm, pip, dotnet and go tools install
+  into those tools' own global folders.
+- **Language servers themselves** are separate programs, as in other editors.
+  Some fetch what your project needs. rust-analyzer runs `cargo metadata` and
+  `cargo check`, so Cargo downloads dependencies from crates.io. jdtls may
+  resolve Maven or Gradle dependencies. Set `lsp.enabled = false` to never
+  start them.
 - **Downloading the debugger.** If CodeLLDB isn't found, the Debug view offers
   to download it from github.com/vadimcn/codelldb (the latest release
   package). The download runs your system's `curl`, and the system `tar`
@@ -49,6 +60,7 @@ from where:
 | `%APPDATA%\rust-code\themes\*.json` | yes | never | your extra color themes |
 | `%APPDATA%\rust-code\history\` | yes | on every save (and outside change) of a file | local history: earlier versions of your files (`history.enabled = false` turns it off) |
 | `%APPDATA%\rust-code\plugins\` (plugin files, `plugins.lock`) | yes | when you install, update, uninstall, enable or change a plugin's permissions | installed plugins, their hashes, trusted publisher keys and what you granted |
+| `%APPDATA%\rust-code\lsp\` | yes | when you agree to download a language server (clangd, jdtls, its Java runtime) | language servers Rust Code installed itself; jdtls keeps its index there too |
 | `%APPDATA%\rust-code\codelldb\` | yes | when you agree to download the debugger | CodeLLDB, the debug adapter |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |
 | Installed VS Code themes (`%LOCALAPPDATA%\Programs\Microsoft VS Code`, `~\.vscode\extensions`) | theme files only | never | the Color Theme picker |

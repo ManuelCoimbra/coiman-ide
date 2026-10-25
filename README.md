@@ -218,12 +218,26 @@ rcplugin keygen my.key
 rcplugin publish examples/plugins/word-count <registry-folder> --key my.key --changelog "..."
 ```
 
-### Rust language features (rust-analyzer)
+### Language servers
 
-Opening a `.rs` file starts [rust-analyzer](https://rust-analyzer.github.io/) for its Cargo
-project (found on `PATH`, in `~/.cargo/bin`, or at `lsp.rust_analyzer_path`). If it isn't
-installed, a bar offers to install it with `rustup component add rust-analyzer`; nothing is
-downloaded unless you click **Install** (**Don't Ask Again** sets `lsp.ask_to_install = false`).
+Opening a file starts its language server for the file's project. Each server is found on
+`PATH`, in the usual tool folders, or at `lsp.paths.<language>` (a program, optionally with
+arguments):
+
+| Language | Server | If it is missing, the bar offers to |
+| --- | --- | --- |
+| Rust | [rust-analyzer](https://rust-analyzer.github.io/) (`lsp.rust_analyzer_path` also works) | `rustup component add rust-analyzer` |
+| Python | pyright (or basedpyright, pylsp) | `npm install -g pyright`, or `pip install --user python-lsp-server` without Node.js |
+| JavaScript, TypeScript | typescript-language-server | `npm install -g typescript-language-server typescript@6` |
+| C, C++ | clangd (also found in `C:\Program Files\LLVM`) | download the latest clangd release |
+| Java | Eclipse JDT Language Server | download it; plus a Java 25 runtime (Eclipse Temurin) if Java 25+ isn't installed |
+| C# | csharp-ls (or a downloaded OmniSharp) | `dotnet tool install --global csharp-ls` |
+| Go | gopls | `go install golang.org/x/tools/gopls@latest` |
+
+The bar says exactly what it will run or download, and nothing happens unless you click
+**Install** (**Don't Ask Again** sets `lsp.ask_to_install = false`). Without the tools to
+install a server (Node.js, the .NET SDK, Go), it says what to install. Downloaded servers go to
+`%APPDATA%\rust-code\lsp`. The status bar shows the active file's server.
 
 | Feature | How |
 | --- | --- |
@@ -236,9 +250,9 @@ downloaded unless you click **Install** (**Don't Ask Again** sets `lsp.ask_to_in
 | Code actions | `Ctrl+.` (quick fixes, refactors) |
 | Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving |
 
-Edits are sent to the server as small incremental changes. `rust-analyzer: Restart Server`
-restarts it (e.g. after changing `lsp.rust_analyzer_path`); `lsp.enabled = false` turns
-language servers off.
+Edits are sent to the server as small incremental changes. **Language Servers: Restart**
+restarts them (e.g. after changing `lsp.paths`); `lsp.enabled = false` turns language
+servers off.
 
 ### Vim and Helix modes
 

@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 
 use super::convert::diff_change;
 use super::discovery::quiet_command;
+use super::servers::{Launch, ServerKind};
 use super::transport::{encode, read_message};
 
 /// Lines of the server's stderr kept to explain a crash.
@@ -48,6 +49,7 @@ struct OpenDoc {
 }
 
 pub struct Client {
+    pub kind: ServerKind,
     pub root: PathBuf,
     child: Child,
     out: Sender<Vec<u8>>,
@@ -62,16 +64,18 @@ pub struct Client {
 }
 
 impl Client {
-    /// Starts `program` in `root` and sends `initialize` (with the server's
+    /// Starts the server in `root` and sends `initialize` (with the server's
     /// own `options`). `wake` is called from a background thread whenever a
     /// message arrives.
     pub fn start(
-        program: &Path,
+        kind: ServerKind,
+        launch: &Launch,
         root: &Path,
         options: Value,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> std::io::Result<Self> {
-        let mut child = quiet_command(program)
+        let mut child = quiet_command(&launch.program)
+            .args(&launch.args)
             .current_dir(root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -129,6 +133,7 @@ impl Client {
         })?;
 
         let mut client = Self {
+            kind,
             root: root.to_path_buf(),
             child,
             out,
@@ -370,10 +375,21 @@ fn client_capabilities() -> Value {
 
 /// The LSP language id for a file extension, if a server is known for it.
 pub fn language_id(ext: &str) -> Option<&'static str> {
-    match ext {
-        "rs" => Some("rust"),
-        _ => None,
-    }
+    Some(match ext {
+        "rs" => "rust",
+        "py" | "pyw" | "pyi" => "python",
+        "js" | "mjs" | "cjs" => "javascript",
+        "jsx" => "javascriptreact",
+        "ts" | "mts" | "cts" => "typescript",
+        "tsx" => "typescriptreact",
+        "c" => "c",
+        // Headers go to clangd as C++; it reads compile flags to tell.
+        "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" | "hxx" | "inl" => "cpp",
+        "java" => "java",
+        "cs" => "csharp",
+        "go" => "go",
+        _ => return None,
+    })
 }
 
 #[cfg(test)]

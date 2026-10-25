@@ -3,12 +3,12 @@
 //! diagnostics, completion, hover, go to definition/implementation, find
 //! references, rename, code actions and formatting.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
-use rust_code_core::lsp::discovery::{self, Found};
+use rust_code_core::lsp::servers::{self, Found, Installer, Launch, ServerKind};
 use rust_code_core::lsp::types as lt;
 use rust_code_core::lsp::{Client, Event, convert, language_id};
 use serde_json::{Value, json};
@@ -29,14 +29,15 @@ const FORMAT_ON_SAVE_TIMEOUT: f64 = 2.0;
 /// Completion rows visible without scrolling.
 const COMPLETION_ROWS: usize = 12;
 
-/// Where we are in finding a server.
+/// Where we are in finding one kind of server.
 pub(super) enum Setup {
     /// Not looked for yet (no file that needs one).
     Idle,
     Probing(Receiver<Found>),
-    Ready(PathBuf),
+    Ready(Launch),
     Missing {
-        rustup: Option<PathBuf>,
+        installer: Option<Installer>,
+        note: String,
     },
     Installing(Receiver<Result<(), String>>),
     /// Stopped (crashed, failed to start or install) until restarted.
@@ -110,13 +111,15 @@ pub(super) struct LocationItem {
     preview: String,
 }
 
+#[derive(Default)]
 pub(super) struct LspState {
-    pub(super) setup: Setup,
-    /// The install offer was dismissed for this session.
-    offer_dismissed: bool,
+    /// Each kind of server's state; absent means not looked for yet.
+    setups: HashMap<ServerKind, Setup>,
+    /// Servers whose install offer was dismissed for this session.
+    offer_dismissed: HashSet<ServerKind>,
     clients: Vec<Client>,
-    /// Requests in flight, by (server root, request id).
-    pending: HashMap<(PathBuf, i64), Pending>,
+    /// Requests in flight, by (server, server root, request id).
+    pending: HashMap<(ServerKind, PathBuf, i64), Pending>,
     /// Diagnostics by file (key: [`path_key`]), with the path as reported.
     diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
     /// Buffer version last sent to the server, per document uid.
@@ -139,34 +142,16 @@ pub(super) struct LspState {
     show_problem_at_cursor: bool,
 }
 
-impl Default for LspState {
-    fn default() -> Self {
-        Self {
-            setup: Setup::Idle,
-            offer_dismissed: false,
-            clients: Vec::new(),
-            pending: HashMap::new(),
-            diagnostics: HashMap::new(),
-            synced: HashMap::new(),
-            progress: HashMap::new(),
-            completion: None,
-            hover: None,
-            hover_rest: None,
-            code_actions: Vec::new(),
-            locations: Vec::new(),
-            locations_title: String::new(),
-            format_save: None,
-            rename_at: None,
-            cursor_rect: None,
-            show_problem_at_cursor: false,
-        }
-    }
+/// Path, LSP language id and server of a document a server should handle.
+fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, ServerKind)> {
+    let lang = language_id(&doc.extension())?;
+    let kind = ServerKind::for_language(lang)?;
+    Some((doc.path.clone().filter(|_| !doc.large)?, lang, kind))
 }
 
-/// Path and LSP language id of a document a server should handle.
-fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str)> {
-    let lang = language_id(&doc.extension())?;
-    Some((doc.path.clone().filter(|_| !doc.large)?, lang))
+/// Whether `client` is the server for a file of `kind` at `path`.
+fn serves(client: &Client, kind: ServerKind, path: &Path) -> bool {
+    client.kind == kind && path.starts_with(&client.root)
 }
 
 /// Key for comparing paths (case-insensitive on Windows).
@@ -267,23 +252,19 @@ impl CodeApp {
         if !self.settings.lsp.enabled {
             if !self.lsp.clients.is_empty() {
                 self.restart_lsp();
-                self.lsp.setup = Setup::Off;
             }
             return;
         }
         self.advance_setup(ctx);
-        if let Setup::Ready(server) = &self.lsp.setup {
-            let server = server.clone();
-            self.sync_documents(ctx, &server);
-        }
+        self.sync_documents(ctx);
         let mut batch = Vec::new();
         for client in &mut self.lsp.clients {
             for ev in client.poll() {
-                batch.push((client.root.clone(), ev));
+                batch.push((client.kind, client.root.clone(), ev));
             }
         }
-        for (root, ev) in batch {
-            self.handle_event(&root, ev);
+        for (kind, root, ev) in batch {
+            self.handle_event(kind, &root, ev);
         }
         self.lsp.clients.retain(|c| !c.has_exited());
 
@@ -300,53 +281,80 @@ impl CodeApp {
         }
     }
 
+    /// The command configured for a server (`[lsp.paths]`, or
+    /// `lsp.rust_analyzer_path` for Rust).
+    fn configured_server(&self, kind: ServerKind) -> String {
+        let path = self.settings.lsp.paths.get(kind.id()).cloned().unwrap_or_default();
+        if path.trim().is_empty() && kind == ServerKind::RustAnalyzer {
+            self.settings.lsp.rust_analyzer_path.clone()
+        } else {
+            path
+        }
+    }
+
     fn advance_setup(&mut self, ctx: &egui::Context) {
-        let next = match &self.lsp.setup {
-            Setup::Idle if self.docs.iter().any(|d| lsp_target(d).is_some()) => {
-                let configured = self.settings.lsp.rust_analyzer_path.clone();
+        // Look for the servers open documents need.
+        let needed: HashSet<ServerKind> = self.docs.iter().filter_map(lsp_target).map(|(_, _, k)| k).collect();
+        for kind in needed {
+            if matches!(self.lsp.setups.get(&kind), None | Some(Setup::Idle)) {
+                let configured = self.configured_server(kind);
                 let (tx, rx) = mpsc::channel();
                 let wake = repaint(ctx);
                 std::thread::spawn(move || {
-                    let _ = tx.send(discovery::find_rust_analyzer(&configured));
+                    let _ = tx.send(servers::find(kind, &configured));
                     wake();
                 });
-                Some(Setup::Probing(rx))
+                self.lsp.setups.insert(kind, Setup::Probing(rx));
             }
-            Setup::Probing(rx) => rx.try_recv().ok().map(|found| match found {
-                Found::Server(path) => Setup::Ready(path),
-                Found::Missing { rustup } => Setup::Missing { rustup },
-            }),
-            Setup::Installing(rx) => match rx.try_recv() {
-                Ok(Ok(())) => {
-                    self.status = Some("rust-analyzer installed".to_owned());
-                    Some(Setup::Idle)
-                }
-                Ok(Err(e)) => {
-                    self.status = Some(format!("Could not install rust-analyzer: {e}"));
-                    Some(Setup::Off)
-                }
-                Err(_) => None,
-            },
-            _ => None,
-        };
-        if let Some(next) = next {
-            self.lsp.setup = next;
+        }
+        let kinds: Vec<ServerKind> = self.lsp.setups.keys().copied().collect();
+        for kind in kinds {
+            let next = match &self.lsp.setups[&kind] {
+                Setup::Probing(rx) => rx.try_recv().ok().map(|found| match found {
+                    Found::Server(launch) => Setup::Ready(launch),
+                    Found::Missing { installer, note } => Setup::Missing { installer, note },
+                }),
+                Setup::Installing(rx) => match rx.try_recv() {
+                    Ok(Ok(())) => {
+                        self.status = Some(format!("{} installed", kind.name()));
+                        Some(Setup::Idle)
+                    }
+                    Ok(Err(e)) => {
+                        self.status = Some(format!("Could not install {}: {e}", kind.name()));
+                        Some(Setup::Off)
+                    }
+                    Err(_) => None,
+                },
+                _ => None,
+            };
+            if let Some(next) = next {
+                self.lsp.setups.insert(kind, next);
+            }
         }
     }
 
     /// Starts servers for documents that need one and sends new text.
-    fn sync_documents(&mut self, ctx: &egui::Context, server: &Path) {
+    fn sync_documents(&mut self, ctx: &egui::Context) {
         for i in 0..self.docs.len() {
-            let Some((path, _)) = lsp_target(&self.docs[i]) else { continue };
-            if !self.lsp.clients.iter().any(|c| path.starts_with(&c.root)) {
-                let root = workspace_root(&path, self.explorer.root.as_deref());
-                let options = json!({ "check": { "command": self.settings.cargo.check_command } });
-                match Client::start(server, &root, options, repaint(ctx)) {
+            let Some((path, _, kind)) = lsp_target(&self.docs[i]) else { continue };
+            let Some(Setup::Ready(launch)) = self.lsp.setups.get(&kind) else { continue };
+            if !self.lsp.clients.iter().any(|c| serves(c, kind, &path)) {
+                let launch = launch.clone();
+                let (root, options) = if kind == ServerKind::RustAnalyzer {
+                    let root = workspace_root(&path, self.explorer.root.as_deref());
+                    (root, json!({ "check": { "command": self.settings.cargo.check_command } }))
+                } else {
+                    (
+                        servers::root_for(kind, &path, self.explorer.root.as_deref()),
+                        servers::init_options(kind, &launch),
+                    )
+                };
+                match Client::start(kind, &launch, &root, options, repaint(ctx)) {
                     Ok(client) => self.lsp.clients.push(client),
                     Err(e) => {
-                        self.status = Some(format!("Could not start rust-analyzer: {e}"));
-                        self.lsp.setup = Setup::Off;
-                        return;
+                        self.status = Some(format!("Could not start {}: {e}", kind.name()));
+                        self.lsp.setups.insert(kind, Setup::Off);
+                        continue;
                     }
                 }
             }
@@ -358,8 +366,8 @@ impl CodeApp {
     /// Returns the server index and the document's URI.
     fn sync_doc(&mut self, i: usize) -> Option<(usize, lt::Url)> {
         let doc = self.docs.get(i)?;
-        let (path, lang) = lsp_target(doc)?;
-        let ci = self.lsp.clients.iter().position(|c| path.starts_with(&c.root))?;
+        let (path, lang, kind) = lsp_target(doc)?;
+        let ci = self.lsp.clients.iter().position(|c| serves(c, kind, &path))?;
         let uri = convert::uri_from_path(&path)?;
         let version = doc.buffer.version();
         let client = &mut self.lsp.clients[ci];
@@ -381,9 +389,9 @@ impl CodeApp {
 
     pub(super) fn lsp_did_close(&mut self, doc: &Document) {
         self.lsp.synced.remove(&doc.uid);
-        let Some((path, _)) = lsp_target(doc) else { return };
+        let Some((path, _, kind)) = lsp_target(doc) else { return };
         let Some(uri) = convert::uri_from_path(&path) else { return };
-        if let Some(client) = self.lsp.clients.iter_mut().find(|c| path.starts_with(&c.root)) {
+        if let Some(client) = self.lsp.clients.iter_mut().find(|c| serves(c, kind, &path)) {
             client.did_close(&uri);
         }
     }
@@ -397,7 +405,7 @@ impl CodeApp {
         self.lsp.diagnostics.clear();
         self.lsp.completion = None;
         self.lsp.hover = None;
-        self.lsp.setup = Setup::Idle;
+        self.lsp.setups.clear();
     }
 
     fn doc_index(&self, uid: u64) -> Option<usize> {
@@ -408,7 +416,7 @@ impl CodeApp {
         self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, path)))
     }
 
-    fn handle_event(&mut self, root: &Path, ev: Event) {
+    fn handle_event(&mut self, kind: ServerKind, root: &Path, ev: Event) {
         match ev {
             Event::Notification { method, params } => match method.as_str() {
                 "textDocument/publishDiagnostics" => {
@@ -423,7 +431,7 @@ impl CodeApp {
                 "$/progress" => self.on_progress(&params),
                 // Errors and warnings only.
                 "window/showMessage" if params["type"].as_i64().is_some_and(|t| t <= 2) => {
-                    self.status = Some(format!("rust-analyzer: {}", params["message"].as_str().unwrap_or("")));
+                    self.status = Some(format!("{}: {}", kind.name(), params["message"].as_str().unwrap_or("")));
                 }
                 _ => {}
             },
@@ -452,23 +460,22 @@ impl CodeApp {
                     m if m.ends_with("/refresh") => Ok(Value::Null),
                     _ => Err((-32601, format!("{method} is not supported"))),
                 };
-                if let Some(client) = self.lsp.clients.iter_mut().find(|c| c.root == root) {
+                if let Some(client) = self.lsp.clients.iter_mut().find(|c| c.kind == kind && c.root == root) {
                     client.respond(id, result);
                 }
             }
             Event::Response { id, result } => {
-                if let Some(pending) = self.lsp.pending.remove(&(root.to_path_buf(), id)) {
-                    self.on_response(pending, result);
+                if let Some(pending) = self.lsp.pending.remove(&(kind, root.to_path_buf(), id)) {
+                    self.on_response(kind, pending, result);
                 }
             }
             Event::Exited(why) => {
                 let why = if why.is_empty() { String::new() } else { format!(": {why}") };
-                self.status = Some(format!(
-                    "rust-analyzer stopped{why}. Run \"rust-analyzer: Restart Server\" to start it again."
-                ));
-                self.lsp.pending.retain(|(r, _), _| r != root);
+                self.status =
+                    Some(format!("{} stopped{why}. Run \"Language Servers: Restart\" to start it again.", kind.name()));
+                self.lsp.pending.retain(|(k, r, _), _| !(*k == kind && r == root));
                 self.lsp.progress.clear();
-                self.lsp.setup = Setup::Off;
+                self.lsp.setups.insert(kind, Setup::Off);
             }
         }
     }
@@ -504,7 +511,7 @@ impl CodeApp {
         }
     }
 
-    fn on_response(&mut self, pending: Pending, result: Result<Value, String>) {
+    fn on_response(&mut self, kind: ServerKind, pending: Pending, result: Result<Value, String>) {
         let value = match result {
             Ok(v) => v,
             Err(e) => {
@@ -517,7 +524,7 @@ impl CodeApp {
                     }
                     Pending::Hover { .. } => {}
                     Pending::Format { uid, save: true, .. } => self.finish_format_save(uid, None),
-                    _ => self.status = Some(format!("rust-analyzer: {e}")),
+                    _ => self.status = Some(format!("{}: {e}", kind.name())),
                 }
                 return;
             }
@@ -564,19 +571,21 @@ impl CodeApp {
         let p = params(&self.docs[i], json!({ "uri": uri }));
         let client = &mut self.lsp.clients[ci];
         let id = client.request(method, p);
-        self.lsp.pending.insert((client.root.clone(), id), pending);
+        self.lsp.pending.insert((client.kind, client.root.clone(), id), pending);
         true
     }
 
     fn unavailable_reason(&self) -> String {
-        let rust_open = self.docs.get(self.active).and_then(lsp_target).is_some();
-        match &self.lsp.setup {
-            _ if !rust_open => "No language server for this file".to_owned(),
+        let Some((_, _, kind)) = self.docs.get(self.active).and_then(lsp_target) else {
+            return "No language server for this file".to_owned();
+        };
+        let name = kind.name();
+        match self.lsp.setups.get(&kind) {
             _ if !self.settings.lsp.enabled => "Language servers are turned off (lsp.enabled)".to_owned(),
-            Setup::Probing(_) | Setup::Idle | Setup::Ready(_) => "rust-analyzer is starting…".to_owned(),
-            Setup::Missing { .. } => "rust-analyzer is not installed".to_owned(),
-            Setup::Installing(_) => "rust-analyzer is being installed…".to_owned(),
-            Setup::Off => "rust-analyzer is stopped (run \"rust-analyzer: Restart Server\")".to_owned(),
+            None | Some(Setup::Probing(_) | Setup::Idle | Setup::Ready(_)) => format!("{name} is starting…"),
+            Some(Setup::Missing { .. }) => format!("{name} is not installed"),
+            Some(Setup::Installing(_)) => format!("{name} is being installed…"),
+            Some(Setup::Off) => format!("{name} is stopped (run \"Language Servers: Restart\")"),
         }
     }
 
@@ -1034,8 +1043,8 @@ impl CodeApp {
         if !focused || self.lsp.completion.as_ref().is_some_and(|c| c.uid != uid) {
             self.lsp.completion = None;
         }
-        let Some((ci, _)) = lsp_target(doc).and_then(|(p, _)| {
-            self.lsp.clients.iter().position(|c| p.starts_with(&c.root) && c.is_ready()).map(|ci| (ci, p))
+        let Some((ci, _)) = lsp_target(doc).and_then(|(p, _, k)| {
+            self.lsp.clients.iter().position(|c| serves(c, k, &p) && c.is_ready()).map(|ci| (ci, p))
         }) else {
             return;
         };
@@ -1156,7 +1165,7 @@ impl CodeApp {
                     .docs
                     .get(i)
                     .and_then(lsp_target)
-                    .is_some_and(|(p, _)| self.lsp.clients.iter().any(|c| p.starts_with(&c.root) && c.is_ready()));
+                    .is_some_and(|(p, _, k)| self.lsp.clients.iter().any(|c| serves(c, k, &p) && c.is_ready()));
                 if has_server {
                     let anchor = Some(pointer);
                     self.request_for(i, "textDocument/hover", Pending::Hover { uid, pos, anchor }, |doc, td| {
@@ -1373,9 +1382,9 @@ impl CodeApp {
     pub(super) fn request_format(&mut self, ctx: &egui::Context, i: usize, save: bool) -> bool {
         let Some(doc) = self.docs.get(i) else { return false };
         let (uid, version) = (doc.uid, doc.buffer.version());
-        let can_format = lsp_target(doc).is_some_and(|(p, _)| {
+        let can_format = lsp_target(doc).is_some_and(|(p, _, k)| {
             self.lsp.clients.iter().any(|c| {
-                p.starts_with(&c.root)
+                serves(c, k, &p)
                     && c.capabilities()
                         .and_then(|caps| caps.document_formatting_provider.as_ref())
                         .is_some_and(|f| !matches!(f, lt::OneOf::Left(false)))
@@ -1411,24 +1420,26 @@ impl CodeApp {
 
     // ----- UI ------------------------------------------------------------------------
 
-    /// Offer to install rust-analyzer (nothing is downloaded without a yes).
+    /// Offer to install the active file's missing server (nothing is
+    /// downloaded without a yes).
     pub(super) fn lsp_offer_bar(&mut self, ui: &mut egui::Ui) {
-        let Setup::Missing { rustup } = &self.lsp.setup else { return };
-        let rust_active = self.docs.get(self.active).and_then(lsp_target).is_some();
-        if !rust_active || self.lsp.offer_dismissed || !self.settings.lsp.ask_to_install {
+        let Some((_, _, kind)) = self.docs.get(self.active).and_then(lsp_target) else { return };
+        let Some(Setup::Missing { installer, note }) = self.lsp.setups.get(&kind) else { return };
+        if self.lsp.offer_dismissed.contains(&kind) || !self.settings.lsp.ask_to_install {
             return;
         }
-        let rustup = rustup.clone();
+        let (installer, note) = (installer.clone(), note.clone());
+        let (name, langs) = (kind.name(), kind.languages());
         let mut choice = None;
         egui::Frame::new().fill(theme::colors().hover_bg).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal_wrapped(|ui| match &rustup {
-                Some(_) => {
-                    ui.label(
-                        "rust-analyzer is not installed. It provides errors, completion, hover and go to \
-                             definition for Rust. Install it with rustup? This downloads the rust-analyzer \
-                             component from static.rust-lang.org.",
-                    );
+            ui.horizontal_wrapped(|ui| match &installer {
+                Some(installer) => {
+                    ui.label(format!(
+                        "{name} is not installed. It provides errors, completion, hover and go to definition \
+                         for {langs}. Install it? This will {}.",
+                        installer.describe()
+                    ));
                     if ui.button("Install").clicked() {
                         choice = Some(0);
                     }
@@ -1440,53 +1451,58 @@ impl CodeApp {
                     }
                 }
                 None => {
-                    ui.label(
-                        "rust-analyzer was not found, so Rust language features are off. Install it \
-                             (rustup component add rust-analyzer) or set lsp.rust_analyzer_path in settings.",
-                    );
+                    ui.label(format!(
+                        "No language server for {langs} was found, so its language features are off. {note} \
+                         Or set lsp.paths.{} in settings.",
+                        kind.id()
+                    ));
                     if ui.button("OK").clicked() {
                         choice = Some(1);
                     }
                 }
             });
         });
-        match (choice, rustup) {
-            (Some(0), Some(rustup)) => {
+        match (choice, installer) {
+            (Some(0), Some(installer)) => {
                 let (tx, rx) = mpsc::channel();
                 let wake = repaint(ui.ctx());
                 std::thread::spawn(move || {
-                    let _ = tx.send(discovery::install_rust_analyzer(&rustup));
+                    let _ = tx.send(servers::install(kind, &installer));
                     wake();
                 });
-                self.lsp.setup = Setup::Installing(rx);
+                self.lsp.setups.insert(kind, Setup::Installing(rx));
             }
             (Some(2), _) => {
-                self.lsp.offer_dismissed = true;
+                self.lsp.offer_dismissed.insert(kind);
                 let ctx = ui.ctx().clone();
                 if let Err(e) = self.write_user_setting(&ctx, "lsp", "ask_to_install", "false") {
                     self.status = Some(e);
                 }
             }
-            (Some(_), _) => self.lsp.offer_dismissed = true,
+            (Some(_), _) => {
+                self.lsp.offer_dismissed.insert(kind);
+            }
             _ => {}
         }
     }
 
-    /// Server state for the status bar, if a server is relevant.
+    /// The active file's server state for the status bar.
     pub(super) fn lsp_status_text(&self) -> Option<String> {
-        let relevant = !self.lsp.clients.is_empty() || self.docs.get(self.active).and_then(lsp_target).is_some();
-        if !relevant || !self.settings.lsp.enabled {
+        let (_, _, kind) = self.docs.get(self.active).and_then(lsp_target)?;
+        if !self.settings.lsp.enabled {
             return None;
         }
-        Some(match &self.lsp.setup {
-            Setup::Installing(_) => "Installing rust-analyzer…".to_owned(),
-            Setup::Missing { .. } => "rust-analyzer: not installed".to_owned(),
-            Setup::Off => "rust-analyzer: stopped".to_owned(),
-            Setup::Idle | Setup::Probing(_) => "rust-analyzer: starting".to_owned(),
-            Setup::Ready(_) => match self.lsp.progress.values().next() {
-                Some((title, msg)) => format!("rust-analyzer: {title} {msg}").trim_end().to_owned(),
-                None if self.lsp.clients.iter().any(|c| !c.is_ready()) => "rust-analyzer: starting".to_owned(),
-                None => "rust-analyzer".to_owned(),
+        let name = kind.name();
+        let starting = || format!("{name}: starting");
+        Some(match self.lsp.setups.get(&kind) {
+            Some(Setup::Installing(_)) => format!("Installing {name}…"),
+            Some(Setup::Missing { .. }) => format!("{name}: not installed"),
+            Some(Setup::Off) => format!("{name}: stopped"),
+            None | Some(Setup::Idle | Setup::Probing(_)) => starting(),
+            Some(Setup::Ready(_)) => match self.lsp.progress.values().next() {
+                Some((title, msg)) => format!("{name}: {title} {msg}").trim_end().to_owned(),
+                None if self.lsp.clients.iter().any(|c| c.kind == kind && !c.is_ready()) => starting(),
+                None => name.to_owned(),
             },
         })
     }
