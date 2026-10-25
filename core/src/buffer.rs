@@ -607,32 +607,7 @@ impl Buffer {
         for c in changes {
             let start = (c.start as isize + delta) as usize;
             let end = (c.end as isize + delta) as usize;
-            let tracking = self.syntax_edits.is_some();
-            let before = tracking.then(|| {
-                let (sb, eb) = (self.rope.char_to_byte(start), self.rope.char_to_byte(end));
-                (sb, eb, self.point_at_byte(sb), self.point_at_byte(eb))
-            });
-            if end > start {
-                self.rope.remove(start..end);
-            }
-            let inserted = c.text.chars().count();
-            if inserted > 0 {
-                self.rope.insert(start, &c.text);
-            }
-            if let Some((start_byte, old_end_byte, start_position, old_end_position)) = before {
-                let new_end_byte = start_byte + c.text.len();
-                let edit = InputEdit {
-                    start_byte,
-                    old_end_byte,
-                    new_end_byte,
-                    start_position,
-                    old_end_position,
-                    new_end_position: self.point_at_byte(new_end_byte),
-                };
-                if let Some(edits) = &mut self.syntax_edits {
-                    edits.push(SyntaxEdit::Edit(edit));
-                }
-            }
+            let inserted = self.splice(start, end, &c.text);
             // An offset past the inserted text points into the text that followed it.
             let cursor = (start + c.cursor_offset.unwrap_or(inserted)).min(self.rope.len_chars());
             if c.start <= primary_start {
@@ -644,6 +619,82 @@ impl Buffer {
         let kind_before = self.last_edit;
         self.set_selections(new_sels, new_primary);
         self.last_edit = kind_before;
+        self.finish_edit(first_line);
+    }
+
+    /// Replaces `[start, end)` with `text`, recording the edit for the syntax
+    /// parser. Returns the number of chars inserted.
+    fn splice(&mut self, start: usize, end: usize, text: &str) -> usize {
+        let before = self.syntax_edits.is_some().then(|| {
+            let (sb, eb) = (self.rope.char_to_byte(start), self.rope.char_to_byte(end));
+            (sb, eb, self.point_at_byte(sb), self.point_at_byte(eb))
+        });
+        if end > start {
+            self.rope.remove(start..end);
+        }
+        let inserted = text.chars().count();
+        if inserted > 0 {
+            self.rope.insert(start, text);
+        }
+        if let Some((start_byte, old_end_byte, start_position, old_end_position)) = before {
+            let new_end_byte = start_byte + text.len();
+            let edit = InputEdit {
+                start_byte,
+                old_end_byte,
+                new_end_byte,
+                start_position,
+                old_end_position,
+                new_end_position: self.point_at_byte(new_end_byte),
+            };
+            if let Some(edits) = &mut self.syntax_edits {
+                edits.push(SyntaxEdit::Edit(edit));
+            }
+        }
+        inserted
+    }
+
+    /// Applies non-overlapping edits given in the current text's coordinates
+    /// (e.g. from a language server) as one undo step. Selections move with
+    /// the text around them; one inside a replaced span ends up after it.
+    pub fn apply_edits(&mut self, mut edits: Vec<(usize, usize, String)>) {
+        let len = self.len_chars();
+        for e in &mut edits {
+            e.1 = e.1.min(len);
+            e.0 = e.0.min(e.1);
+        }
+        edits.retain(|(s, e, t)| e > s || !t.is_empty());
+        if edits.is_empty() {
+            return;
+        }
+        edits.sort_by_key(|(s, e, _)| (*s, *e));
+        let map = |pos: usize| {
+            let mut delta = 0isize;
+            for (s, e, t) in &edits {
+                let n = t.chars().count() as isize;
+                if pos < *s || (pos == *s && pos < *e) {
+                    break;
+                }
+                if pos < *e {
+                    return (*s as isize + delta + n) as usize;
+                }
+                delta += n - (e - s) as isize;
+            }
+            (pos as isize + delta) as usize
+        };
+        let sels: Vec<Selection> = self
+            .selections
+            .iter()
+            .map(|s| Selection { anchor: map(s.anchor), head: map(s.head), goal: None })
+            .collect();
+        self.begin_edit(EditKind::Other);
+        let first_line = self.char_to_line(edits[0].0);
+        // Back to front, so earlier offsets stay valid.
+        for (s, e, t) in edits.iter().rev() {
+            self.splice(*s, *e, t);
+        }
+        let primary = self.primary;
+        self.set_selections(sels, primary);
+        self.last_edit = EditKind::Other;
         self.finish_edit(first_line);
     }
 
@@ -1087,5 +1138,41 @@ three",
         assert_eq!(b.visual_col(1), 4);
         assert_eq!(b.pos_at_visual_col(0, 4), 1);
         assert_eq!(b.pos_at_visual_col(0, 1), 0);
+    }
+
+    #[test]
+    fn apply_edits_is_one_undo_step_and_moves_cursors() {
+        let mut b = Buffer::new(
+            "let x=1;
+let y=2;
+",
+        );
+        b.set_single(Selection::cursor(13)); // before the "y" on line 2
+        b.apply_edits(vec![
+            (5, 6, " = ".into()),
+            (14, 15, " = ".into()),
+            (
+                0,
+                0,
+                "// fmt
+"
+                .into(),
+            ),
+        ]);
+        assert_eq!(
+            b.text(),
+            "// fmt
+let x = 1;
+let y = 2;
+"
+        );
+        assert_eq!(b.primary().head, 13 + 7 + 2);
+        assert!(b.undo());
+        assert_eq!(
+            b.text(),
+            "let x=1;
+let y=2;
+"
+        );
     }
 }

@@ -66,6 +66,17 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+alt+up", Command::AddCursorAbove, true),
     ("ctrl+alt+down", Command::AddCursorBelow, true),
     ("ctrl+shift+\\", Command::JumpToBracket, true),
+    ("ctrl+space", Command::TriggerSuggest, true),
+    ("ctrl+k ctrl+i", Command::ShowHover, true),
+    ("f12", Command::GoToDefinition, true),
+    ("ctrl+f12", Command::GoToImplementation, true),
+    ("shift+f12", Command::FindReferences, true),
+    ("f2", Command::RenameSymbol, true),
+    ("ctrl+.", Command::QuickFix, true),
+    ("shift+alt+f", Command::FormatDocument, true),
+    ("ctrl+shift+m", Command::ShowProblems, false),
+    ("f8", Command::NextProblem, false),
+    ("shift+f8", Command::PreviousProblem, false),
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -213,6 +224,12 @@ impl Keymap {
             let b = &self.bindings[i];
             if applies(b) && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[0])) {
                 if b.keys.len() == 1 {
+                    // Alt combinations can also produce text (Shift+Alt+F types "F" on
+                    // Windows); it must not reach the editor.
+                    let m = b.keys[0].modifiers;
+                    if m.alt || m.command || m.ctrl {
+                        ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Text(_))));
+                    }
                     return Some(b.command);
                 }
                 *chord = Some(b.keys[0]);

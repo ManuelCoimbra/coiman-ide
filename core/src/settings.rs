@@ -21,6 +21,7 @@ pub struct Settings {
     pub editor: EditorSettings,
     pub workbench: WorkbenchSettings,
     pub files: FilesSettings,
+    pub lsp: LspSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -30,6 +31,8 @@ pub struct EditorSettings {
     pub word_wrap: bool,
     pub indent_guides: bool,
     pub bracket_pair_colorization: bool,
+    /// Format the file with its language server when saving.
+    pub format_on_save: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -52,6 +55,23 @@ pub struct FilesSettings {
     pub encoding: String,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct LspSettings {
+    /// Language features from language servers (rust-analyzer for Rust).
+    pub enabled: bool,
+    /// Path to rust-analyzer; empty finds it on PATH or in ~/.cargo/bin.
+    pub rust_analyzer_path: String,
+    /// Offer to install rust-analyzer with rustup when it is missing.
+    pub ask_to_install: bool,
+}
+
+impl Default for LspSettings {
+    fn default() -> Self {
+        Self { enabled: true, rust_analyzer_path: String::new(), ask_to_install: true }
+    }
+}
+
 impl FilesSettings {
     /// Line ending for new files from `files.eol`.
     pub fn new_file_eol(&self) -> &'static str {
@@ -66,7 +86,13 @@ impl FilesSettings {
 
 impl Default for EditorSettings {
     fn default() -> Self {
-        Self { font_size: 14.0, word_wrap: false, indent_guides: true, bracket_pair_colorization: true }
+        Self {
+            font_size: 14.0,
+            word_wrap: false,
+            indent_guides: true,
+            bracket_pair_colorization: true,
+            format_on_save: false,
+        }
     }
 }
 

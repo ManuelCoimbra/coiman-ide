@@ -15,16 +15,23 @@ Rust Code is built to be trusted with your code. These are commitments, and
   later, it will be off until you turn it on, use the provider/key you choose,
   and never run on its own.
 
-Future features that need the network (for example downloading a language
-server) will ask first, every time, and say exactly what will be downloaded
-from where.
+Anything that needs the network asks first and says what will be downloaded
+from where:
+
+- **Installing rust-analyzer.** If it is missing, Rust Code offers to run
+  `rustup component add rust-analyzer`, which downloads it from
+  static.rust-lang.org. Nothing runs until you click **Install**.
+- **rust-analyzer itself** is a separate program that runs `cargo metadata` and
+  `cargo check` in your project, exactly as it does in other editors. Cargo
+  downloads the project's dependencies from crates.io if they aren't already
+  on your machine. Set `lsp.enabled = false` to never start it.
 
 ## What Rust Code reads and writes on your machine
 
 | Location | Read | Written | Why |
 | --- | --- | --- | --- |
 | Files and folders you open | yes | when you save | editing |
-| `%APPDATA%\rust-code\settings.toml`, `keybindings.toml` | yes | when you edit them or pick a theme | your settings |
+| `%APPDATA%\rust-code\settings.toml`, `keybindings.toml` | yes | when you edit them, pick a theme, or choose "Don't Ask Again" | your settings |
 | `%APPDATA%\rust-code\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
 | `%APPDATA%\rust-code\themes\*.json` | yes | never | your extra color themes |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |

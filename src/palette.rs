@@ -16,6 +16,14 @@ pub enum PaletteResult {
     GoToLine(usize),
     /// An item chosen in a picker.
     Picked(PickerKind, String),
+    /// Text entered in an input box.
+    Input(InputKind, String),
+}
+
+/// What an input box asks for.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InputKind {
+    Rename,
 }
 
 /// What a picker list is choosing.
@@ -27,6 +35,7 @@ pub enum PickerKind {
     EncodingAction,
     ReopenWithEncoding,
     SaveWithEncoding,
+    CodeAction,
 }
 
 struct Picker {
@@ -43,6 +52,8 @@ pub struct Palette {
     just_opened: bool,
     /// When set, the palette is a picker over these items instead of files/commands.
     picker: Option<Picker>,
+    /// When set, the palette is a plain input box.
+    input: Option<(InputKind, &'static str)>,
 }
 
 impl Palette {
@@ -52,6 +63,13 @@ impl Palette {
         self.selected = 0;
         self.just_opened = true;
         self.picker = None;
+        self.input = None;
+    }
+
+    /// Opens an input box prefilled with `initial` (all of it selected).
+    pub fn show_input(&mut self, kind: InputKind, initial: &str, placeholder: &'static str) {
+        self.show_with(initial);
+        self.input = Some((kind, placeholder));
     }
 
     /// Opens the Color Theme picker with `current` preselected.
@@ -69,6 +87,10 @@ impl Palette {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape)) {
             self.open = false;
             return None;
+        }
+
+        if let Some((kind, placeholder)) = self.input {
+            return self.input_ui(ctx, kind, placeholder);
         }
 
         // Build the candidate list: (label, detail, result, highlighted label chars).
@@ -191,6 +213,40 @@ impl Palette {
             self.open = false;
         }
         picked
+    }
+}
+
+impl Palette {
+    fn input_ui(&mut self, ctx: &egui::Context, kind: InputKind, placeholder: &str) -> Option<PaletteResult> {
+        let enter = ctx.input(|i| i.key_pressed(Key::Enter));
+        let width = (ctx.content_rect().width() * 0.4).clamp(300.0, 500.0);
+        egui::Area::new(egui::Id::unique("palette_input"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(6.0).show(ui, |ui| {
+                    ui.set_width(width);
+                    let edit = ui.add(egui::TextEdit::singleline(&mut self.query).desired_width(f32::INFINITY));
+                    if self.just_opened {
+                        edit.request_focus();
+                        if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), edit.id) {
+                            let all = egui::text::CCursorRange::two(
+                                egui::text::CCursor::new(0),
+                                egui::text::CCursor::new(self.query.chars().count()),
+                            );
+                            state.cursor.set_char_range(Some(all));
+                            state.store(ui.ctx(), edit.id);
+                        }
+                        self.just_opened = false;
+                    }
+                    ui.label(RichText::new(placeholder).small().color(theme::colors().text_dim));
+                });
+            });
+        if enter && !self.query.trim().is_empty() {
+            self.open = false;
+            return Some(PaletteResult::Input(kind, self.query.trim().to_owned()));
+        }
+        None
     }
 }
 

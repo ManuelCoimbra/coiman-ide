@@ -114,7 +114,7 @@ impl CodeApp {
     }
 
     pub(super) fn open_file(&mut self, path: &Path) {
-        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref() == Some(path)) {
+        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, path))) {
             self.active = i;
             return;
         }
@@ -148,6 +148,7 @@ impl CodeApp {
                 if path.is_some_and(|p| self.is_config_file(&p)) {
                     self.settings_reload = true;
                 }
+                self.lsp_did_save(index);
                 true
             }
             Ok(false) => self.save_doc_as(index),
@@ -170,6 +171,7 @@ impl CodeApp {
                 self.status = Some(format!("Saved {}", doc.title()));
                 self.explorer.refresh();
                 self.finder.mark_stale();
+                self.lsp_did_save(index);
                 true
             }
             Err(e) => {
@@ -193,6 +195,7 @@ impl CodeApp {
         }
         let doc = self.docs.remove(index);
         self.views.remove(&doc.uid);
+        self.lsp_did_close(&doc);
         if let Some(worker) = &self.syntax
             && doc.ts.is_some()
         {

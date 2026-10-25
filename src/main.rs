@@ -6,6 +6,7 @@ mod app;
 mod editor_view;
 mod explorer;
 mod keymap;
+mod lsp_ui;
 mod palette;
 mod search_panel;
 mod terminal;

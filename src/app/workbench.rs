@@ -5,7 +5,7 @@ use crate::document::{DiskState, Document};
 use crate::theme;
 use egui::{Align, FontId, Key, RichText, Sense, Stroke};
 
-use super::{CodeApp, FindCache, PendingClose, SidebarView};
+use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
 impl CodeApp {
     /// Bar above the editor when the file changed or vanished on disk.
@@ -78,6 +78,10 @@ impl CodeApp {
                 item(ui, "Find in Files", Command::ShowSearch);
                 ui.separator();
                 item(ui, "Toggle Line Comment", Command::ToggleLineComment);
+                ui.separator();
+                item(ui, "Rename Symbol", Command::RenameSymbol);
+                item(ui, "Quick Fix...", Command::QuickFix);
+                item(ui, "Format Document", Command::FormatDocument);
             });
             ui.menu_button("Selection", |ui| {
                 item(ui, "Copy Line Up", Command::CopyLinesUp);
@@ -97,6 +101,7 @@ impl CodeApp {
                 ui.separator();
                 item(ui, "Explorer", Command::ShowExplorer);
                 item(ui, "Search", Command::ShowSearch);
+                item(ui, "Problems", Command::ShowProblems);
                 item(ui, "Terminal", Command::ToggleTerminal);
                 item(ui, "Toggle Side Bar", Command::ToggleSidebar);
                 item(ui, "Zen Mode", Command::ToggleZenMode);
@@ -110,6 +115,13 @@ impl CodeApp {
                 item(ui, "Go to File...", Command::QuickOpen);
                 item(ui, "Go to Bracket", Command::JumpToBracket);
                 item(ui, "Go to Line...", Command::GoToLine);
+                ui.separator();
+                item(ui, "Go to Definition", Command::GoToDefinition);
+                item(ui, "Go to Implementations", Command::GoToImplementation);
+                item(ui, "Go to References", Command::FindReferences);
+                ui.separator();
+                item(ui, "Next Problem", Command::NextProblem);
+                item(ui, "Previous Problem", Command::PreviousProblem);
             });
             ui.menu_button("Terminal", |ui| {
                 item(ui, "Toggle Terminal", Command::ToggleTerminal);
@@ -140,8 +152,45 @@ impl CodeApp {
         let side = self.sidebar_visible.then_some(self.sidebar_view);
         icon(ui, "📁", "Explorer (Ctrl+Shift+E)", side == Some(SidebarView::Explorer), Command::ShowExplorer);
         icon(ui, "🔍", "Search (Ctrl+Shift+F)", side == Some(SidebarView::Search), Command::ShowSearch);
-        icon(ui, "⌨", "Terminal (Ctrl+`)", self.terminal_visible, Command::ToggleTerminal);
+        let terminal = self.panel_visible && self.panel_tab == PanelTab::Terminal;
+        icon(ui, "⌨", "Terminal (Ctrl+`)", terminal, Command::ToggleTerminal);
         cmd
+    }
+
+    /// The bottom panel: Problems, References and Terminal tabs.
+    pub(super) fn panel(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            let tabs = [
+                (PanelTab::Problems, self.problems_tab_label()),
+                (PanelTab::References, "REFERENCES".to_owned()),
+                (PanelTab::Terminal, "TERMINAL".to_owned()),
+            ];
+            for (tab, label) in tabs {
+                let active = self.panel_tab == tab;
+                let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
+                let resp = ui.add(egui::Label::new(RichText::new(label).small().color(color)).sense(Sense::click()));
+                if active {
+                    let r = resp.rect;
+                    ui.painter().hline(r.x_range(), r.bottom() + 2.0, Stroke::new(1.0, theme::colors().accent));
+                }
+                if resp.clicked() {
+                    self.panel_tab = tab;
+                    self.terminal.focus_requested = tab == PanelTab::Terminal;
+                }
+                ui.add_space(8.0);
+            }
+            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                if ui.small_button("×").on_hover_text("Close Panel").clicked() {
+                    self.panel_visible = false;
+                }
+            });
+        });
+        ui.add_space(4.0);
+        match self.panel_tab {
+            PanelTab::Problems => self.problems_panel(ui),
+            PanelTab::References => self.references_panel(ui),
+            PanelTab::Terminal => self.terminal.ui(ui),
+        }
     }
 
     pub(super) fn sidebar(&mut self, ui: &mut egui::Ui) {
@@ -406,6 +455,26 @@ impl CodeApp {
                 let name =
                     root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
                 ui.label(white(format!("📁 {name}")));
+            }
+            let (errors, warnings) = self.problem_counts();
+            let fg = theme::colors().status_fg;
+            let problems = ui
+                .horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 3.0;
+                    crate::lsp_ui::severity_icon(ui, 1, fg);
+                    ui.label(white(errors.to_string()));
+                    ui.add_space(4.0);
+                    crate::lsp_ui::severity_icon(ui, 2, fg);
+                    ui.label(white(warnings.to_string()));
+                })
+                .response
+                .interact(Sense::click())
+                .on_hover_text("Problems (Ctrl+Shift+M)");
+            if problems.clicked() {
+                status_cmd = Some(Command::ShowProblems);
+            }
+            if let Some(text) = self.lsp_status_text() {
+                ui.label(white(text));
             }
             if let Some(msg) = &self.status {
                 ui.label(white(msg.clone()));

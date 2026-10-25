@@ -11,7 +11,7 @@ use crate::theme;
 use egui::{Key, Modifiers};
 use rust_code_core::encoding;
 
-use super::{CodeApp, INDENT, SidebarView};
+use super::{CodeApp, INDENT, PanelTab, SidebarView};
 
 impl CodeApp {
     /// Applies a text edit to the active document and moves its selection.
@@ -58,7 +58,10 @@ impl CodeApp {
                 }
             }
             Command::Save => {
-                self.save_doc(self.active);
+                // Format first if asked to; the save happens when formatting is done.
+                if !(self.settings.editor.format_on_save && self.request_format(ctx, self.active, true)) {
+                    self.save_doc(self.active);
+                }
             }
             Command::SaveAs => {
                 self.save_doc_as(self.active);
@@ -73,8 +76,28 @@ impl CodeApp {
             Command::CloseTab => self.request_close_tab(self.active),
             Command::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
             Command::ToggleTerminal => {
-                self.terminal_visible = !self.terminal_visible;
-                self.terminal.focus_requested = self.terminal_visible;
+                self.toggle_panel(PanelTab::Terminal);
+                self.terminal.focus_requested = self.panel_visible;
+            }
+            Command::ShowProblems => self.toggle_panel(PanelTab::Problems),
+            Command::TriggerSuggest => self.request_completion(None),
+            Command::ShowHover => self.show_hover_at_cursor(),
+            Command::GoToDefinition => self.request_locations("textDocument/definition", "Definitions", None),
+            Command::GoToImplementation => {
+                self.request_locations("textDocument/implementation", "Implementations", None);
+            }
+            Command::FindReferences => self.request_locations("textDocument/references", "References", None),
+            Command::RenameSymbol => self.start_rename(),
+            Command::QuickFix => self.request_code_actions(),
+            Command::FormatDocument => {
+                if !self.request_format(ctx, self.active, false) {
+                    self.status = Some("No formatter available for this file".to_owned());
+                }
+            }
+            Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
+            Command::RestartLanguageServer => {
+                self.restart_lsp();
+                self.status = Some("Restarting rust-analyzer…".to_owned());
             }
             Command::ShowExplorer => {
                 self.sidebar_visible = true;
@@ -222,6 +245,16 @@ impl CodeApp {
         }
     }
 
+    /// Shows the bottom panel on `tab`, or hides it if it already shows `tab`.
+    fn toggle_panel(&mut self, tab: PanelTab) {
+        if self.panel_visible && self.panel_tab == tab {
+            self.panel_visible = false;
+        } else {
+            self.panel_visible = true;
+            self.panel_tab = tab;
+        }
+    }
+
     pub(super) fn open_palette(&mut self, prefix: &str) {
         self.finder.refresh_if_stale();
         self.palette.show_with(prefix);
@@ -244,6 +277,7 @@ impl CodeApp {
     pub(super) fn handle_pick(&mut self, ctx: &egui::Context, kind: PickerKind, label: &str) {
         match kind {
             PickerKind::Theme => self.set_color_theme(ctx, label),
+            PickerKind::CodeAction => self.pick_code_action(label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

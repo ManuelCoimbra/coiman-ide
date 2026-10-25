@@ -24,6 +24,47 @@ pub struct Options {
     pub rainbow_brackets: bool,
 }
 
+/// Problem severity, as in LSP: 1 error, 2 warning, 3 information, 4 hint.
+pub type Severity = u8;
+
+/// A diagnostic shown in the text: a squiggle, plus the message after the
+/// line for errors and warnings.
+pub struct Mark {
+    pub start: usize,
+    pub end: usize,
+    /// Line of `start`.
+    pub line: usize,
+    pub severity: Severity,
+    pub message: String,
+}
+
+/// Extra things drawn over the text (from language servers).
+#[derive(Default)]
+pub struct Decorations {
+    /// Sorted by `start`.
+    pub marks: Vec<Mark>,
+}
+
+/// What happened in the editor this frame, for popups and language features.
+pub struct Output {
+    /// Char under the mouse pointer (only over text) and the pointer position.
+    pub hover: Option<(usize, Pos2)>,
+    /// Char clicked with Ctrl held (go to definition).
+    pub ctrl_click: Option<usize>,
+    /// Screen rectangle of the primary cursor.
+    pub cursor_rect: Rect,
+}
+
+/// Color of a diagnostic severity (VS Code's defaults).
+pub fn severity_color(severity: Severity) -> Color32 {
+    match severity {
+        1 => Color32::from_rgb(0xF1, 0x4C, 0x4C),
+        2 => Color32::from_rgb(0xCC, 0xA7, 0x00),
+        3 => Color32::from_rgb(0x37, 0x94, 0xFF),
+        _ => Color32::from_gray(0x99),
+    }
+}
+
 pub fn editor_id(uid: u64) -> egui::Id {
     egui::Id::unique(("editor", uid))
 }
@@ -44,6 +85,8 @@ pub struct ViewState {
     line_clipboard: Option<String>,
     /// Whether the current mouse drag started on the vertical/horizontal scrollbar.
     dragging_scrollbar: Option<bool>,
+    /// Char clicked with Ctrl this frame.
+    ctrl_click: Option<usize>,
 }
 
 /// Word-wrap layout: `first_row[line]` is the first visual row of `line`.
@@ -167,7 +210,7 @@ struct Metrics {
 }
 
 /// Draws and runs the editor for `doc` in all remaining space of `ui`.
-pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: Options) {
+pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: Options, deco: &Decorations) -> Output {
     let (font_size, word_wrap) = (opts.font_size, opts.word_wrap);
     let id = editor_id(doc.uid);
     let rect = ui.available_rect_before_wrap();
@@ -264,13 +307,13 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
     view.scroll.x = view.scroll.x.clamp(0.0, max_x);
 
     // ----- paint ---------------------------------------------------------------
-    paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts });
+    paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts, deco });
     paint_scrollbars(ui, view, rect, text_rect, content_h, max_x);
 
+    let row_y = text_rect.top() + cursor_row as f32 * row_h - view.scroll.y;
+    let x = text_rect.left() + cursor_x - view.scroll.x;
+    let cursor_rect = Rect::from_min_size(Pos2::new(x, row_y), Vec2::new(2.0, row_h));
     if has_focus {
-        let row_y = text_rect.top() + cursor_row as f32 * row_h - view.scroll.y;
-        let x = text_rect.left() + cursor_x - view.scroll.x;
-        let cursor_rect = Rect::from_min_size(Pos2::new(x, row_y), Vec2::new(2.0, row_h));
         let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
         ui.output_mut(|o| {
             o.ime = Some(egui::output::IMEOutput {
@@ -282,6 +325,17 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
         });
     }
     response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, "Editor"));
+
+    // The char under the pointer, only over actual text (not the space after a line).
+    let pointer = ui.input(|i| i.pointer.hover_pos()).filter(|p| text_rect.contains(*p));
+    let idle = !ui.input(|i| i.pointer.any_down());
+    let hover = pointer.filter(|_| idle && response.hovered()).and_then(|p| {
+        let pos = pos_at(doc, view, &layout, &m, text_rect, p - Vec2::new(char_w / 2.0, 0.0));
+        let row = layout.row(doc, view, layout.row_of(doc, view, pos));
+        let end_x = text_rect.left() + col_x(&doc.buffer, row.start, row.end, &m) - view.scroll.x;
+        (p.x < end_x).then_some((pos, p))
+    });
+    Output { hover, ctrl_click: view.ctrl_click.take(), cursor_rect }
 }
 
 /// X offset (in points, relative to the text area) of `pos` on the row starting at `row_start`.
@@ -382,6 +436,9 @@ fn handle_mouse(
             doc.buffer.set_single(Selection::new(doc.buffer.line_start(line), end));
         } else if mods.alt {
             doc.buffer.add_selection(Selection::cursor(pos));
+        } else if mods.command {
+            doc.buffer.set_single(Selection::cursor(pos));
+            view.ctrl_click = Some(pos);
         } else if mods.shift {
             let anchor = doc.buffer.primary().anchor;
             doc.buffer.set_single(Selection::new(anchor, pos));
@@ -622,10 +679,11 @@ struct PaintCtx<'a> {
     text_rect: Rect,
     has_focus: bool,
     opts: Options,
+    deco: &'a Decorations,
 }
 
 fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: PaintCtx) {
-    let PaintCtx { layout, m, rect, text_rect, has_focus, opts } = ctx;
+    let PaintCtx { layout, m, rect, text_rect, has_focus, opts, deco } = ctx;
     let pal = theme::colors();
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, theme::colors().editor_bg);
@@ -715,6 +773,39 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         let job = row_job(doc, view, &row, m);
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
+        let buf = &doc.buffer;
+
+        // Diagnostics: squiggles under their text, and the most severe
+        // error/warning message after the end of its line.
+        let mut inline: Option<&Mark> = None;
+        for mark in deco.marks.iter().take_while(|k| k.start <= row.end.max(row.start + 1)) {
+            if mark.severity <= 2 && mark.line == row.line && inline.is_none_or(|i| mark.severity < i.severity) {
+                inline = Some(mark);
+            }
+            let before = mark.end < row.start || (mark.end == row.start && mark.start < row.start);
+            let after = mark.start > row.end || (mark.start == row.end && mark.end > row.end);
+            if mark.severity > 3 || before || after {
+                continue;
+            }
+            let a = mark.start.max(row.start);
+            let b = mark.end.min(row.end);
+            let xa = x0 + col_x(buf, row.start, a, m);
+            let xb = if b > a { x0 + col_x(buf, row.start, b, m) } else { xa + m.char_w };
+            squiggle(&text_painter, xa, xb, y + m.row_h - 2.0, severity_color(mark.severity));
+        }
+        if let Some(mark) = inline
+            && row.end == buf.line_end(row.line)
+        {
+            let x = x0 + col_x(buf, row.start, row.end, m) + 3.0 * m.char_w;
+            let message = mark.message.lines().next().unwrap_or_default();
+            text_painter.text(
+                Pos2::new(x, y),
+                egui::Align2::LEFT_TOP,
+                message,
+                m.font_id.clone(),
+                severity_color(mark.severity).gamma_multiply(0.8),
+            );
+        }
 
         // Line number.
         if row.first {
@@ -753,6 +844,21 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 text_painter.hline(x..=x + w, y + m.row_h - 1.0, Stroke::new(1.0, pal.editor_fg));
             }
         }
+    }
+}
+
+/// A wavy underline from `x0` to `x1` around height `y`.
+fn squiggle(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: Color32) {
+    let mut points = Vec::new();
+    let mut x = x0;
+    let mut up = true;
+    while x <= x1 + 0.5 {
+        points.push(Pos2::new(x, if up { y - 1.0 } else { y + 1.0 }));
+        x += 2.0;
+        up = !up;
+    }
+    if points.len() >= 2 {
+        painter.add(egui::Shape::line(points, Stroke::new(1.0, color)));
     }
 }
 

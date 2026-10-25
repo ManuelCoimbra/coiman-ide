@@ -58,6 +58,19 @@ pub enum Command {
     SelectTheme,
     ChangeEncoding,
     ChangeLineEnding,
+    // Language features (from a language server).
+    TriggerSuggest,
+    ShowHover,
+    GoToDefinition,
+    GoToImplementation,
+    FindReferences,
+    RenameSymbol,
+    QuickFix,
+    FormatDocument,
+    ShowProblems,
+    NextProblem,
+    PreviousProblem,
+    RestartLanguageServer,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -111,6 +124,18 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::SelectTheme, "Preferences: Color Theme"),
     (Command::ChangeEncoding, "Change File Encoding"),
     (Command::ChangeLineEnding, "Change End of Line Sequence"),
+    (Command::TriggerSuggest, "Trigger Suggest"),
+    (Command::ShowHover, "Show or Focus Hover"),
+    (Command::GoToDefinition, "Go to Definition"),
+    (Command::GoToImplementation, "Go to Implementations"),
+    (Command::FindReferences, "Go to References"),
+    (Command::RenameSymbol, "Rename Symbol"),
+    (Command::QuickFix, "Quick Fix..."),
+    (Command::FormatDocument, "Format Document"),
+    (Command::ShowProblems, "View: Toggle Problems"),
+    (Command::NextProblem, "Go to Next Problem (Error, Warning, Info)"),
+    (Command::PreviousProblem, "Go to Previous Problem (Error, Warning, Info)"),
+    (Command::RestartLanguageServer, "rust-analyzer: Restart Server"),
 ];
 
 /// VS Code command ID of each command.
@@ -167,6 +192,18 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::SelectTheme, "workbench.action.selectTheme"),
     (Command::ChangeEncoding, "workbench.action.editor.changeEncoding"),
     (Command::ChangeLineEnding, "workbench.action.editor.changeEOL"),
+    (Command::TriggerSuggest, "editor.action.triggerSuggest"),
+    (Command::ShowHover, "editor.action.showHover"),
+    (Command::GoToDefinition, "editor.action.revealDefinition"),
+    (Command::GoToImplementation, "editor.action.goToImplementation"),
+    (Command::FindReferences, "editor.action.goToReferences"),
+    (Command::RenameSymbol, "editor.action.rename"),
+    (Command::QuickFix, "editor.action.quickFix"),
+    (Command::FormatDocument, "editor.action.formatDocument"),
+    (Command::ShowProblems, "workbench.actions.view.problems"),
+    (Command::NextProblem, "editor.action.marker.nextInFiles"),
+    (Command::PreviousProblem, "editor.action.marker.prevInFiles"),
+    (Command::RestartLanguageServer, "rust-analyzer.restartServer"),
 ];
 
 pub fn command_id(cmd: Command) -> &'static str {

@@ -15,9 +15,10 @@ A Cargo workspace with two crates:
 - **`core/` (`rust-code-core`)** — everything that doesn't need a UI, so it can be tested
   and benchmarked headlessly: `buffer` (rope, selections, undo), `edit_ops` (line commands),
   `document`, `syntax` (tree-sitter worker) and `highlight` (syntect), `theme` (data, VS Code
-  import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`.
+  import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`, `lsp` (language
+  server client: JSON-RPC over stdio, position conversion, server discovery).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`), `editor_view` (the editor widget), `palette`,
+  `dispatch`, `files`, `config`, `workbench`, `lsp`), `editor_view` (the editor widget), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal`, `keymap`, `theme` (egui colors and visuals).
 
 Checks (no networking crates, formatting, clippy with warnings as errors, tests):
@@ -78,6 +79,28 @@ is read and written on your machine.
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
   (backed up every second to `%APPDATA%\rust-code\session.json`; no "save changes?" prompt on exit)
 - Zoom (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`), toggle side bar (`Ctrl+B`)
+
+### Rust language features (rust-analyzer)
+
+Opening a `.rs` file starts [rust-analyzer](https://rust-analyzer.github.io/) for its Cargo
+project (found on `PATH`, in `~/.cargo/bin`, or at `lsp.rust_analyzer_path`). If it isn't
+installed, a bar offers to install it with `rustup component add rust-analyzer`; nothing is
+downloaded unless you click **Install** (**Don't Ask Again** sets `lsp.ask_to_install = false`).
+
+| Feature | How |
+| --- | --- |
+| Errors and warnings | Squiggles, the message after the line (Error Lens style), hover for details; Problems panel (`Ctrl+Shift+M`), counts in the status bar; `F8` / `Shift+F8` next/previous problem |
+| Completion | As you type, after `.`/`:`, or `Ctrl+Space`; `Enter`/`Tab` accepts, snippets place the cursor, auto-imports are added |
+| Hover | Rest the pointer on a symbol, or `Ctrl+K Ctrl+I` at the cursor |
+| Go to Definition / Implementations | `F12` or `Ctrl+Click` / `Ctrl+F12` |
+| Find References | `Shift+F12`, results in the References panel |
+| Rename Symbol | `F2`; files that aren't open are opened with the changes unsaved, so you can review and undo |
+| Code actions | `Ctrl+.` (quick fixes, refactors) |
+| Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving |
+
+Edits are sent to the server as small incremental changes. `rust-analyzer: Restart Server`
+restarts it (e.g. after changing `lsp.rust_analyzer_path`); `lsp.enabled = false` turns
+language servers off.
 
 ### VS Code editor actions
 

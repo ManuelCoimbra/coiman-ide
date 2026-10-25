@@ -68,33 +68,44 @@ impl CodeApp {
         }
     }
 
-    /// Saves the picked theme into the user settings file (keeping its comments) and applies it.
-    pub(super) fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
-        let Some(path) = settings::user_settings_path() else { return };
+    /// Sets `[table] key = value` (a TOML literal) in the user settings file,
+    /// keeping its comments, and applies it.
+    pub(super) fn write_user_setting(
+        &mut self,
+        ctx: &egui::Context,
+        table: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), String> {
+        let path = settings::user_settings_path().ok_or("No config directory available")?;
         let text = std::fs::read_to_string(&path).unwrap_or_else(|_| settings::default_file_contents());
-        let value = toml::Value::String(label.to_owned()).to_string();
-        let updated = settings::set_value_in_text(&text, "workbench", "color_theme", &value);
+        let updated = settings::set_value_in_text(&text, table, key, value);
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
-        match std::fs::write(&path, updated) {
-            Ok(()) => {
-                // An open, unmodified tab of the file would otherwise show stale text
-                // (and saving it would undo the change).
-                if let Some(i) =
-                    self.docs.iter().position(|d| d.path.as_deref() == Some(path.as_path()) && !d.is_dirty())
-                    && let Ok(fresh) = Document::open(&path)
-                {
-                    let uid = self.docs[i].uid;
-                    self.docs[i] = fresh;
-                    self.docs[i].uid = uid;
-                }
-                self.reload_settings(ctx);
-                if self.settings.workbench.color_theme != label {
-                    self.status = Some("Theme saved, but workspace settings override it".to_owned());
-                }
+        std::fs::write(&path, updated).map_err(|e| format!("Could not save settings: {e}"))?;
+        // An open, unmodified tab of the file would otherwise show stale text
+        // (and saving it would undo the change).
+        if let Some(i) = self.docs.iter().position(|d| d.path.as_deref() == Some(path.as_path()) && !d.is_dirty())
+            && let Ok(fresh) = Document::open(&path)
+        {
+            let uid = self.docs[i].uid;
+            self.docs[i] = fresh;
+            self.docs[i].uid = uid;
+        }
+        self.reload_settings(ctx);
+        Ok(())
+    }
+
+    /// Saves the picked theme into the user settings file and applies it.
+    pub(super) fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
+        let value = toml::Value::String(label.to_owned()).to_string();
+        match self.write_user_setting(ctx, "workbench", "color_theme", &value) {
+            Ok(()) if self.settings.workbench.color_theme != label => {
+                self.status = Some("Theme saved, but workspace settings override it".to_owned());
             }
-            Err(e) => self.status = Some(format!("Could not save theme: {e}")),
+            Ok(()) => {}
+            Err(e) => self.status = Some(e),
         }
     }
 }

@@ -4,6 +4,7 @@
 mod config;
 mod dispatch;
 mod files;
+mod lsp;
 mod workbench;
 
 use std::path::PathBuf;
@@ -15,7 +16,7 @@ use crate::editor_view;
 use crate::explorer::Explorer;
 use crate::finder::FileFinder;
 use crate::keymap::Keymap;
-use crate::palette::{Palette, PaletteResult};
+use crate::palette::{InputKind, Palette, PaletteResult};
 use crate::search_panel::SearchPanel;
 use crate::session;
 use crate::settings::Settings;
@@ -33,6 +34,14 @@ const BACKUP_INTERVAL: f64 = 1.0;
 enum SidebarView {
     Explorer,
     Search,
+}
+
+/// Tabs of the bottom panel.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PanelTab {
+    Problems,
+    References,
+    Terminal,
 }
 
 enum PendingClose {
@@ -79,7 +88,9 @@ pub struct CodeApp {
 
     sidebar_visible: bool,
     sidebar_view: SidebarView,
-    terminal_visible: bool,
+    /// Bottom panel (Problems, References, Terminal).
+    panel_visible: bool,
+    panel_tab: PanelTab,
     font_size: f32,
     word_wrap: bool,
     zen_mode: bool,
@@ -109,6 +120,8 @@ pub struct CodeApp {
     pub(crate) startup_probe: Option<(std::time::Instant, std::time::Duration, PathBuf)>,
     /// Background tree-sitter parser, started on the first frame.
     syntax: Option<SyntaxWorker>,
+    /// Language servers and the state of their features.
+    lsp: lsp::LspState,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -128,7 +141,8 @@ impl CodeApp {
             watcher: FileWatcher::new(repaint(ctx)),
             sidebar_visible: true,
             sidebar_view: SidebarView::Explorer,
-            terminal_visible: false,
+            panel_visible: false,
+            panel_tab: PanelTab::Terminal,
             font_size: DEFAULT_FONT_SIZE,
             word_wrap: false,
             zen_mode: false,
@@ -147,6 +161,7 @@ impl CodeApp {
             last_title: String::new(),
             startup_probe: None,
             syntax: None,
+            lsp: lsp::LspState::default(),
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -176,7 +191,11 @@ impl eframe::App for CodeApp {
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
         self.pump_watcher();
+        self.pump_lsp(&ctx);
         if self.pending_close.is_none() && !self.palette.open {
+            if self.editor_focused(&ctx) {
+                self.lsp_keys(&ctx);
+            }
             self.handle_shortcuts(&ctx);
         }
 
@@ -218,12 +237,12 @@ impl eframe::App for CodeApp {
                 .show(ui, |ui| self.sidebar(ui));
         }
 
-        if self.terminal_visible && !zen {
-            egui::Panel::bottom("terminal")
+        if self.panel_visible && !zen {
+            egui::Panel::bottom("panel")
                 .default_size(220.0)
                 .resizable(true)
                 .frame(egui::Frame::new().fill(theme::colors().editor_bg).inner_margin(egui::Margin::symmetric(12, 6)))
-                .show(ui, |ui| self.terminal.ui(ui));
+                .show(ui, |ui| self.panel(ui));
         }
 
         egui::CentralPanel::no_frame().frame(egui::Frame::new().fill(theme::colors().editor_bg)).show(ui, |ui| {
@@ -239,6 +258,7 @@ impl eframe::App for CodeApp {
                 self.breadcrumbs(ui);
             }
             self.disk_conflict_bar(ui);
+            self.lsp_offer_bar(ui);
             self.find_bar(ui);
             let opts = editor_view::Options {
                 font_size: self.font_size,
@@ -246,16 +266,27 @@ impl eframe::App for CodeApp {
                 indent_guides: self.settings.editor.indent_guides,
                 rainbow_brackets: self.settings.editor.bracket_pair_colorization,
             };
+            let deco = self.lsp_decorations(self.active);
+            // Text typed this frame (the editor reads events without consuming them).
+            let typed: String = ui.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|e| if let egui::Event::Text(t) = e { Some(t.as_str()) } else { None })
+                    .collect()
+            });
             if let Some(doc) = self.docs.get_mut(self.active) {
                 let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, ..opts };
-                editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts);
+                let out = editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts, &deco);
+                self.after_editor(&ctx, out, &typed);
             }
         });
+        self.lsp_popups(&ctx);
 
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
+            Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),
             Some(PaletteResult::GoToLine(line)) if line > 0 => {
                 if let Some(doc) = self.active_doc() {
                     doc.goto_line(line);

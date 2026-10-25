@@ -9,6 +9,7 @@ pub mod edit_ops;
 pub mod encoding;
 pub mod finder;
 pub mod highlight;
+pub mod lsp;
 pub mod search;
 pub mod session;
 pub mod settings;
