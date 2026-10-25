@@ -203,9 +203,13 @@ impl Palette {
                     let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
                     let wanted = (items.len().max(1) as f32 * row_h).min(360.0);
                     egui::ScrollArea::vertical().max_height(360.0).min_scrolled_height(wanted).show(ui, |ui| {
-                        for (i, (label, detail, _, hl)) in items.iter().enumerate() {
+                        for (i, (label, detail, outcome, hl)) in items.iter().enumerate() {
                             let selected = i == self.selected;
                             let resp = ui.horizontal(|ui| {
+                                if matches!(outcome, PaletteResult::OpenFile(_)) {
+                                    let size = ui.text_style_height(&egui::TextStyle::Body);
+                                    crate::icons::show_file(ui, label, size);
+                                }
                                 let r = ui.selectable_label(selected, highlight_label(ui, label, hl));
                                 ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
                                 r

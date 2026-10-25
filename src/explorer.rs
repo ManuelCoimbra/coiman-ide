@@ -112,7 +112,7 @@ fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool, folder: Opti
             let folder = if expanded { Icon::FolderOpen } else { Icon::Folder };
             icons::paint(ui.painter(), icon_box(x + size), folder, Color32::from_rgb(0xC0, 0x9A, 0x53));
         }
-        None => icons::paint(ui.painter(), icon_box(x + size), Icon::File, icons::file_color(text)),
+        None => icons::paint_file(ui.painter(), icon_box(x + size), text),
     }
     let pos = egui::pos2(x + 2.0 * size + 6.0, rect.center().y);
     ui.painter().text(pos, egui::Align2::LEFT_CENTER, text, font, theme::colors().text);

@@ -447,6 +447,9 @@ impl CodeApp {
                                 ui.horizontal(|ui| {
                                     let color =
                                         if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
+                                    let icon_size = ui.text_style_height(&egui::TextStyle::Body);
+                                    icons::show_file(ui, &doc.title(), icon_size);
+                                    ui.add_space(4.0);
                                     let label = ui.add(
                                         egui::Label::new(RichText::new(doc.title()).color(color))
                                             .sense(Sense::click())
