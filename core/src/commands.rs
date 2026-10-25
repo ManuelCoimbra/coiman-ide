@@ -88,6 +88,18 @@ pub enum Command {
     NextChange,
     PreviousChange,
     ToggleBlame,
+    // Run and test.
+    RunWithoutDebugging,
+    SelectRunConfig,
+    OpenRunConfigs,
+    ShowTesting,
+    TestAtCursor,
+    TestCurrentFile,
+    TestAll,
+    CancelTests,
+    CargoCheck,
+    CargoClippy,
+    ShowOutput,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -168,6 +180,17 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NextChange, "Go to Next Change"),
     (Command::PreviousChange, "Go to Previous Change"),
     (Command::ToggleBlame, "Git: Toggle Inline Blame"),
+    (Command::RunWithoutDebugging, "Run: Start Without Debugging"),
+    (Command::SelectRunConfig, "Run: Select and Start Configuration..."),
+    (Command::OpenRunConfigs, "Run: Open Configurations"),
+    (Command::ShowTesting, "View: Show Testing"),
+    (Command::TestAtCursor, "Test: Run Test at Cursor"),
+    (Command::TestCurrentFile, "Test: Run Tests in Current File"),
+    (Command::TestAll, "Test: Run All Tests"),
+    (Command::CancelTests, "Test: Cancel Test Run"),
+    (Command::CargoCheck, "Cargo: Check"),
+    (Command::CargoClippy, "Cargo: Clippy"),
+    (Command::ShowOutput, "View: Toggle Output"),
 ];
 
 /// VS Code command ID of each command.
@@ -251,6 +274,17 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NextChange, "workbench.action.editor.nextChange"),
     (Command::PreviousChange, "workbench.action.editor.previousChange"),
     (Command::ToggleBlame, "git.toggleBlame"),
+    (Command::RunWithoutDebugging, "workbench.action.debug.run"),
+    (Command::SelectRunConfig, "workbench.action.debug.selectandstart"),
+    (Command::OpenRunConfigs, "workbench.action.debug.configure"),
+    (Command::ShowTesting, "workbench.view.testing"),
+    (Command::TestAtCursor, "testing.runAtCursor"),
+    (Command::TestCurrentFile, "testing.runCurrentFile"),
+    (Command::TestAll, "testing.runAll"),
+    (Command::CancelTests, "testing.cancelRun"),
+    (Command::CargoCheck, "rust-code.cargo.check"),
+    (Command::CargoClippy, "rust-code.cargo.clippy"),
+    (Command::ShowOutput, "workbench.action.output.toggleOutput"),
 ];
 
 /// Commands whose shortcuts still work while the terminal has focus; every
@@ -267,6 +301,9 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowSearch
             | ShowProblems
             | ShowSourceControl
+            | ShowTesting
+            | ShowOutput
+            | RunWithoutDebugging
             | NextEditor
             | PreviousEditor
             | ZoomIn

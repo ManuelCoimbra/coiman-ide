@@ -17,9 +17,10 @@ A Cargo workspace with two crates:
   `document`, `syntax` (tree-sitter worker) and `highlight` (syntect), `theme` (data, VS Code
   import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`, `lsp` (language
   server client: JSON-RPC over stdio, position conversion, server discovery), `pty` (shell
-  sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches).
+  sessions: portable-pty + alacritty_terminal), `git` (git CLI: status, hunks, blame, branches), `cargo` (run
+  configurations, test discovery, test/check output parsing).
 - **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
-  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`), `editor_view` (the editor widget), `icons` (vector
+  `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
 
@@ -109,6 +110,29 @@ push). All git work runs in the background.
 - **Branches**: the branch in the status bar (with `*` for uncommitted changes and
   ahead/behind counts) opens **Git: Checkout to...**, which can also create a branch.
   Switching runs in the background and open files reload when they change.
+
+### Run, test and check (Cargo)
+
+- **Run configurations** live in `.rust-code/launch.toml` (commit it to share them):
+  `name`, `command` (run through the shell, so pipes and `&&` work), optional `cwd` and
+  `env`. Without the file, Rust Code offers what Cargo implies: run each binary, test,
+  check and clippy the workspace. `Ctrl+F5` runs the selected configuration (asks the first
+  time), **Run: Select and Start Configuration...** picks another, **Run: Open
+  Configurations** creates the file. Each run gets a terminal tab that stays open with its
+  exit code.
+- **Testing view** (flask icon): every `#[test]` (also `#[tokio::test]`, `#[rstest]`,
+  `#[test_case]`) found in the source, grouped by file and module, with its last result.
+  Run all, one file, one module or one test. Run buttons also sit in the editor gutter
+  next to each test and test module, showing pass/fail after a run.
+  `Ctrl+; C` runs the test at the cursor, `Ctrl+; F` the current file, `Ctrl+; A` all.
+- **Runner**: `cargo test`, or `cargo nextest` when it is installed
+  (`cargo.test_runner = "auto" | "cargo" | "nextest"`). Output streams into the **Output**
+  panel (`Ctrl+Shift+U`); runs can be cancelled.
+- **Check and clippy**: **Cargo: Check** / **Cargo: Clippy** put compiler errors and
+  warnings in Problems and the editor. `cargo.check_command = "clippy"` makes rust-analyzer
+  run clippy instead of check on every save.
+
+Debugging tests (run/debug at cursor) needs the debugger, which is still on the roadmap.
 
 ### Rust language features (rust-analyzer)
 

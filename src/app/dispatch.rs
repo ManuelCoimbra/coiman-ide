@@ -116,6 +116,17 @@ impl CodeApp {
             }
             Command::NextProblem | Command::PreviousProblem => self.next_problem(cmd == Command::NextProblem),
             Command::ShowSourceControl => self.show_source_control(),
+            Command::RunWithoutDebugging => self.run_selected_config(ctx),
+            Command::SelectRunConfig => self.select_run_config(ctx),
+            Command::OpenRunConfigs => self.open_run_configs(),
+            Command::ShowTesting => self.show_testing(ctx),
+            Command::TestAtCursor => self.test_at_cursor(ctx),
+            Command::TestCurrentFile => self.test_current_file(ctx),
+            Command::TestAll => self.test_all(ctx),
+            Command::CancelTests => self.cancel_job(),
+            Command::CargoCheck => self.run_cargo_check(ctx, "check"),
+            Command::CargoClippy => self.run_cargo_check(ctx, "clippy"),
+            Command::ShowOutput => self.toggle_panel(PanelTab::Output),
             Command::GitCommit => self.git_commit(ctx),
             Command::GitRefresh => self.git_refresh_soon(ctx, 0.0),
             Command::GitCheckout => self.git_checkout(ctx),
@@ -334,6 +345,7 @@ impl CodeApp {
             PickerKind::Theme => self.set_color_theme(ctx, label),
             PickerKind::CodeAction => self.pick_code_action(label),
             PickerKind::Branch => self.pick_branch(ctx, label),
+            PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

@@ -157,10 +157,28 @@ impl Session {
     ) -> Result<Self, String> {
         let words = split_command(command);
         let (program, args) = words.split_first().ok_or("no shell configured")?;
+        Self::spawn_args(program, args, cwd, &[], size, scrollback, wake)
+    }
+
+    /// Like [`Session::spawn`] with the program and arguments given
+    /// separately, plus extra environment variables.
+    pub fn spawn_args(
+        program: &str,
+        args: &[String],
+        cwd: &Path,
+        env: &[(String, String)],
+        size: Size,
+        scrollback: usize,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> Result<Self, String> {
+        let program = program.to_owned();
         let pair = native_pty_system().openpty(size.pty()).map_err(|e| format!("could not open a terminal: {e}"))?;
-        let mut cmd = CommandBuilder::new(program);
+        let mut cmd = CommandBuilder::new(&program);
         cmd.args(args);
         cmd.cwd(cwd);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
         cmd.env("TERM_PROGRAM", "rust-code");
@@ -205,7 +223,8 @@ impl Session {
             })
             .map_err(|e| e.to_string())?;
 
-        let name = Path::new(program).file_stem().map_or_else(|| program.clone(), |s| s.to_string_lossy().into_owned());
+        let name =
+            Path::new(&program).file_stem().map_or_else(|| program.clone(), |s| s.to_string_lossy().into_owned());
         Ok(Self { term, writer, master: pair.master, killer, notices, size, shared_size, name, exited: false })
     }
 

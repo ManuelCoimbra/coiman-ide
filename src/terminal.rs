@@ -46,6 +46,10 @@ struct Tab {
     title: Option<String>,
     /// Scroll wheel movement not yet turned into whole lines.
     scroll_rest: f32,
+    /// A run configuration: the tab stays open after the program ends.
+    task: bool,
+    /// Set when the program ended (with its exit code, if known).
+    exited: Option<Option<u32>>,
 }
 
 impl Tab {
@@ -60,12 +64,26 @@ impl Tab {
         };
         let short: String = title.chars().take(24).collect();
         let ellipsis = if short.len() < title.len() { "…" } else { "" };
-        format!("{}: {short}{ellipsis}", index + 1)
+        let status = match self.exited {
+            Some(Some(code)) => format!(" (exit {code})"),
+            Some(None) => " (ended)".to_owned(),
+            None => String::new(),
+        };
+        format!("{}: {short}{ellipsis}{status}", index + 1)
     }
 
     fn focus_id(&self) -> egui::Id {
         egui::Id::unique(("terminal", self.id))
     }
+}
+
+/// A program to run in its own terminal tab.
+pub struct Task<'a> {
+    pub title: &'a str,
+    pub program: &'a str,
+    pub args: &'a [String],
+    pub env: &'a [(String, String)],
+    pub cwd: &'a Path,
 }
 
 /// What the terminal header asks the app to do.
@@ -106,11 +124,27 @@ impl Terminals {
         let ctx = ctx.clone();
         let size = Size { columns: 80, lines: 24 };
         let session = Session::spawn(&shell, &self.cwd, size, scrollback, move || ctx.request_repaint())?;
-        self.tabs.push(Tab { id: self.next_id, session, title: None, scroll_rest: 0.0 });
+        self.push(session, None, false);
+        Ok(())
+    }
+
+    /// Runs a program (a run configuration) in a new tab named after it.
+    /// The tab stays open after it ends so its output can be read.
+    pub fn run_task(&mut self, ctx: &egui::Context, task: Task, scrollback: usize) -> Result<(), String> {
+        let ctx = ctx.clone();
+        let size = Size { columns: 80, lines: 24 };
+        let session = Session::spawn_args(task.program, task.args, task.cwd, task.env, size, scrollback, move || {
+            ctx.request_repaint()
+        })?;
+        self.push(session, Some(task.title.to_owned()), true);
+        Ok(())
+    }
+
+    fn push(&mut self, session: Session, title: Option<String>, task: bool) {
+        self.tabs.push(Tab { id: self.next_id, session, title, scroll_rest: 0.0, task, exited: None });
         self.next_id += 1;
         self.active = self.tabs.len() - 1;
         self.focus_requested = true;
-        Ok(())
     }
 
     pub fn kill_active(&mut self) {
@@ -141,16 +175,18 @@ impl Terminals {
         for tab in &mut self.tabs {
             for notice in tab.session.poll() {
                 match notice {
-                    Notice::Title(t) => tab.title = Some(t),
-                    Notice::ResetTitle => tab.title = None,
+                    // A task keeps its configuration's name.
+                    Notice::Title(t) if !tab.task => tab.title = Some(t),
+                    Notice::ResetTitle if !tab.task => tab.title = None,
                     Notice::Clipboard(text) => ctx.copy_text(text),
-                    Notice::Bell | Notice::Exited(_) => {}
+                    Notice::Exited(code) => tab.exited = Some(code),
+                    _ => {}
                 }
             }
         }
         // Like VS Code, a terminal closes when its shell exits.
         let active_id = self.tabs.get(self.active).map(|t| t.id);
-        self.tabs.retain(|t| !t.session.has_exited());
+        self.tabs.retain(|t| t.task || !t.session.has_exited());
         self.active = active_id.and_then(|id| self.tabs.iter().position(|t| t.id == id)).unwrap_or(0);
         self.active = self.active.min(self.tabs.len().saturating_sub(1));
         before > 0 && self.tabs.is_empty()

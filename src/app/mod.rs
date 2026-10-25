@@ -1,6 +1,7 @@
 //! Main application state and the per-frame loop. The behaviour is split by
 //! area into submodules that each add methods to [`CodeApp`].
 
+mod cargo;
 mod config;
 mod dispatch;
 mod files;
@@ -36,6 +37,7 @@ enum SidebarView {
     Explorer,
     Search,
     Git,
+    Testing,
 }
 
 /// Tabs of the bottom panel.
@@ -43,6 +45,7 @@ enum SidebarView {
 enum PanelTab {
     Problems,
     References,
+    Output,
     Terminal,
 }
 
@@ -126,6 +129,8 @@ pub struct CodeApp {
     lsp: lsp::LspState,
     /// Git status, gutter, blame, diff and Source Control state.
     git: git::GitState,
+    /// Run configurations, tests and cargo check results.
+    cargo: cargo::CargoState,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -167,6 +172,7 @@ impl CodeApp {
             syntax: None,
             lsp: lsp::LspState::default(),
             git: git::GitState::default(),
+            cargo: cargo::CargoState::default(),
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -198,6 +204,7 @@ impl eframe::App for CodeApp {
         self.pump_watcher(&ctx);
         self.pump_lsp(&ctx);
         self.pump_git(&ctx);
+        self.pump_cargo(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.
         if self.terminal.pump(&ctx) {
             if self.panel_tab == PanelTab::Terminal {
@@ -285,6 +292,7 @@ impl eframe::App for CodeApp {
             }
             let mut deco = self.lsp_decorations(self.active);
             self.git_decorate(self.active, &mut deco);
+            self.cargo_decorate(self.active, &mut deco);
             // Text typed this frame (the editor reads events without consuming them).
             let typed: String = ui.input(|i| {
                 i.events
@@ -297,6 +305,9 @@ impl eframe::App for CodeApp {
                 let out = editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts, &deco);
                 if let Some((line, pos)) = out.change_click {
                     self.open_hunk_popup(line, pos);
+                }
+                if let Some(line) = out.run_click {
+                    self.run_test_at_line(&ctx, line);
                 }
                 self.after_editor(&ctx, out, &typed);
             }

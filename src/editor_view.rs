@@ -12,6 +12,8 @@ use crate::theme;
 const SCROLLBAR: f32 = 12.0;
 /// Width of the gutter strip (left of the text) where change markers sit.
 const CHANGE_ZONE: f32 = 12.0;
+/// Width of the strip at the gutter's left edge for test run buttons.
+const RUN_ZONE: f32 = 14.0;
 /// How far to look for a matching bracket around the cursor.
 const BRACKET_SEARCH_LIMIT: usize = 20_000;
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
@@ -64,6 +66,8 @@ pub struct Decorations {
     pub changes: Vec<ChangeMark>,
     /// Blame text shown after the end of this line.
     pub blame: Option<(usize, String)>,
+    /// Lines with a runnable test, and its last result (gutter run buttons).
+    pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
 }
 
 impl Decorations {
@@ -89,6 +93,8 @@ pub struct Output {
     pub ctrl_click: Option<usize>,
     /// A gutter change marker was clicked: its line and the pointer position.
     pub change_click: Option<(usize, Pos2)>,
+    /// A gutter run button was clicked: its line.
+    pub run_click: Option<usize>,
     /// Screen rectangle of the primary cursor.
     pub cursor_rect: Rect,
 }
@@ -127,6 +133,8 @@ pub struct ViewState {
     ctrl_click: Option<usize>,
     /// Gutter change marker clicked this frame.
     change_click: Option<(usize, Pos2)>,
+    /// Gutter run button clicked this frame.
+    run_click: Option<usize>,
 }
 
 /// Word-wrap layout: `first_row[line]` is the first visual row of `line`.
@@ -261,7 +269,7 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
     let row_h = ui.fonts_mut(|f| f.row_height(&font_id));
     let char_w = ui.fonts_mut(|f| f.glyph_width(&font_id, '0'));
     let digits = doc.buffer.len_lines().to_string().len().max(3);
-    let m = Metrics { gutter_w: digits as f32 * char_w + 28.0, font_id, row_h, char_w };
+    let m = Metrics { gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE, font_id, row_h, char_w };
     let text_rect = Rect::from_min_max(
         Pos2::new(rect.left() + m.gutter_w, rect.top()),
         Pos2::new(rect.right() - SCROLLBAR, rect.bottom()),
@@ -375,7 +383,13 @@ pub fn show(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, opts: O
         let end_x = text_rect.left() + col_x(&doc.buffer, row.start, row.end, &m) - view.scroll.x;
         (p.x < end_x).then_some((pos, p))
     });
-    Output { hover, ctrl_click: view.ctrl_click.take(), change_click: view.change_click.take(), cursor_rect }
+    Output {
+        hover,
+        ctrl_click: view.ctrl_click.take(),
+        change_click: view.change_click.take(),
+        run_click: view.run_click.take(),
+        cursor_rect,
+    }
 }
 
 /// X offset (in points, relative to the text area) of `pos` on the row starting at `row_start`.
@@ -471,6 +485,11 @@ fn handle_mouse(
 
     if pressed && p.x >= text_rect.left() - m.gutter_w && p.x < text_rect.right() {
         let line = doc.buffer.char_to_line(pos);
+        let gutter_left = text_rect.left() - m.gutter_w;
+        if p.x < gutter_left + RUN_ZONE && deco.runnables.iter().any(|r| r.0 == line) {
+            view.run_click = Some(line);
+            return false;
+        }
         if p.x < text_rect.left() && p.x >= text_rect.left() - CHANGE_ZONE && deco.change_at(line).is_some() {
             view.change_click = Some((line, p));
             return false;
@@ -876,6 +895,18 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             } else {
                 painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(3.0, m.row_h)), 0.0, color);
             }
+        }
+
+        // Test run button (with the last result's icon and color).
+        if row.first
+            && let Some((_, icon, color)) = deco.runnables.iter().find(|r| r.0 == row.line)
+        {
+            let size = (m.row_h * 0.8).min(RUN_ZONE);
+            let at = Rect::from_center_size(
+                Pos2::new(text_rect.left() - m.gutter_w + RUN_ZONE / 2.0 + 1.0, y + m.row_h / 2.0),
+                Vec2::splat(size),
+            );
+            crate::icons::paint(&painter, at, icon.unwrap_or(crate::icons::Icon::Play), *color);
         }
 
         // Line number.

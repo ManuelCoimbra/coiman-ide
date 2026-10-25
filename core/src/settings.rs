@@ -24,6 +24,7 @@ pub struct Settings {
     pub lsp: LspSettings,
     pub terminal: TerminalSettings,
     pub git: GitSettings,
+    pub cargo: CargoSettings,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -85,6 +86,21 @@ pub struct GitSettings {
     pub enabled: bool,
     /// Show who last changed the cursor line, after its end.
     pub blame_inline: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct CargoSettings {
+    /// What rust-analyzer runs on save for errors and warnings: "check" or "clippy".
+    pub check_command: String,
+    /// Test runner: "auto" (nextest when installed), "cargo" or "nextest".
+    pub test_runner: String,
+}
+
+impl Default for CargoSettings {
+    fn default() -> Self {
+        Self { check_command: "check".to_owned(), test_runner: "auto".to_owned() }
+    }
 }
 
 impl Default for GitSettings {

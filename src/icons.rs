@@ -25,6 +25,14 @@ pub enum Icon {
     /// Discard / revert (an undo arrow).
     Discard,
     ZoomIn,
+    /// Run (a right-pointing triangle).
+    Play,
+    Stop,
+    Check,
+    /// A test flask, for the Testing view.
+    Beaker,
+    /// Skipped/ignored test.
+    Skip,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -149,6 +157,26 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             // An arrow curling back to the left.
             pen.arc(0.52, 0.56, 0.3, -0.5 * PI, 0.75 * PI);
             pen.line(&[(0.36, 0.1), (0.52, 0.26), (0.36, 0.42)]);
+        }
+        Icon::Play => {
+            painter.add(Shape::convex_polygon(
+                vec![pen.p(0.28, 0.16), pen.p(0.84, 0.5), pen.p(0.28, 0.84)],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Icon::Stop => {
+            painter.rect_filled(Rect::from_min_max(pen.p(0.24, 0.24), pen.p(0.76, 0.76)), 1.0, color);
+        }
+        Icon::Check => pen.line(&[(0.16, 0.52), (0.4, 0.76), (0.86, 0.26)]),
+        Icon::Beaker => {
+            pen.line(&[(0.38, 0.08), (0.38, 0.4), (0.12, 0.86), (0.88, 0.86), (0.62, 0.4), (0.62, 0.08)]);
+            pen.line(&[(0.3, 0.08), (0.7, 0.08)]);
+            pen.line(&[(0.24, 0.64), (0.76, 0.64)]);
+        }
+        Icon::Skip => {
+            pen.circle(0.5, 0.5, 0.3);
+            pen.line(&[(0.29, 0.71), (0.71, 0.29)]);
         }
         Icon::ZoomIn => {
             pen.circle(0.42, 0.42, 0.28);

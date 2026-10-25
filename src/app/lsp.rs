@@ -340,7 +340,8 @@ impl CodeApp {
             let Some((path, _)) = lsp_target(&self.docs[i]) else { continue };
             if !self.lsp.clients.iter().any(|c| path.starts_with(&c.root)) {
                 let root = workspace_root(&path, self.explorer.root.as_deref());
-                match Client::start(server, &root, repaint(ctx)) {
+                let options = json!({ "check": { "command": self.settings.cargo.check_command } });
+                match Client::start(server, &root, options, repaint(ctx)) {
                     Ok(client) => self.lsp.clients.push(client),
                     Err(e) => {
                         self.status = Some(format!("Could not start rust-analyzer: {e}"));
@@ -429,8 +430,15 @@ impl CodeApp {
             Event::Request { id, method, params } => {
                 let result = match method.as_str() {
                     // Defaults for every setting asked for.
+                    // Defaults, except the check rust-analyzer runs on save (check or clippy).
                     "workspace/configuration" => {
-                        Ok(Value::Array(vec![Value::Null; params["items"].as_array().map_or(0, Vec::len)]))
+                        let check = json!({ "check": { "command": self.settings.cargo.check_command } });
+                        let items = params["items"].as_array().cloned().unwrap_or_default();
+                        let answers = items
+                            .iter()
+                            .map(|i| if i["section"] == "rust-analyzer" { check.clone() } else { Value::Null })
+                            .collect();
+                        Ok(Value::Array(answers))
                     }
                     "workspace/applyEdit" => {
                         let edit = serde_json::from_value::<lt::WorkspaceEdit>(params["edit"].clone());
@@ -578,8 +586,32 @@ impl CodeApp {
 
     // ----- diagnostics -------------------------------------------------------------
 
-    fn diagnostics_for(&self, path: &Path) -> &[lt::Diagnostic] {
-        self.lsp.diagnostics.get(&path_key(path)).map_or(&[], |(_, d)| d.as_slice())
+    /// A file's diagnostics from the language server and the last cargo check.
+    fn diagnostics_for(&self, path: &Path) -> Vec<lt::Diagnostic> {
+        let k = path_key(path);
+        let mut all = self.lsp.diagnostics.get(&k).map(|(_, d)| d.clone()).unwrap_or_default();
+        for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
+            // The same compiler message may come from rust-analyzer's own check.
+            let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
+            if !all.iter().any(|a| a.range.start == d.range.start && first(&a.message) == first(&d.message)) {
+                all.push(d.clone());
+            }
+        }
+        all
+    }
+
+    /// Every file with diagnostics, from both sources.
+    fn all_diagnostics(&self) -> Vec<(PathBuf, Vec<lt::Diagnostic>)> {
+        let mut keys: Vec<&PathBuf> = self.lsp.diagnostics.keys().chain(self.cargo.diagnostics.keys()).collect();
+        keys.sort();
+        keys.dedup();
+        keys.into_iter()
+            .filter_map(|k| {
+                let path = self.lsp.diagnostics.get(k).or_else(|| self.cargo.diagnostics.get(k))?.0.clone();
+                let diags = self.diagnostics_for(&path);
+                Some((path, diags))
+            })
+            .collect()
     }
 
     /// Squiggles for document `i`.
@@ -607,8 +639,9 @@ impl CodeApp {
 
     /// (errors, warnings) across all files.
     pub(super) fn problem_counts(&self) -> (usize, usize) {
-        let all = self.lsp.diagnostics.values().flat_map(|(_, d)| d.iter().map(severity_of));
-        all.fold((0, 0), |(e, w), s| (e + usize::from(s == 1), w + usize::from(s == 2)))
+        let all = self.all_diagnostics();
+        let severities = all.iter().flat_map(|(_, d)| d.iter().map(severity_of));
+        severities.fold((0, 0), |(e, w), s| (e + usize::from(s == 1), w + usize::from(s == 2)))
     }
 
     /// Problems at char `pos` of document `uid`.
@@ -631,7 +664,8 @@ impl CodeApp {
 
     /// All problems (no hints), sorted by file then position.
     fn sorted_problems(&self) -> Vec<(PathBuf, lt::Diagnostic)> {
-        let mut files: Vec<&(PathBuf, Vec<lt::Diagnostic>)> = self.lsp.diagnostics.values().collect();
+        let all = self.all_diagnostics();
+        let mut files: Vec<&(PathBuf, Vec<lt::Diagnostic>)> = all.iter().collect();
         files.sort_by(|a, b| a.0.cmp(&b.0));
         let mut out = Vec::new();
         for (path, diags) in files {

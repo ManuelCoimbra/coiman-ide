@@ -62,9 +62,15 @@ pub struct Client {
 }
 
 impl Client {
-    /// Starts `program` in `root` and sends `initialize`. `wake` is called
-    /// from a background thread whenever a message arrives.
-    pub fn start(program: &Path, root: &Path, wake: impl Fn() + Send + Sync + 'static) -> std::io::Result<Self> {
+    /// Starts `program` in `root` and sends `initialize` (with the server's
+    /// own `options`). `wake` is called from a background thread whenever a
+    /// message arrives.
+    pub fn start(
+        program: &Path,
+        root: &Path,
+        options: Value,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> std::io::Result<Self> {
         let mut child = quiet_command(program)
             .current_dir(root)
             .stdin(Stdio::piped())
@@ -142,6 +148,7 @@ impl Client {
             "rootUri": root_uri,
             "workspaceFolders": [{ "uri": root_uri, "name": name }],
             "capabilities": client_capabilities(),
+            "initializationOptions": options,
         });
         client.init_id = client.next_id;
         client.next_id += 1;

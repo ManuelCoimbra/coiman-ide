@@ -83,6 +83,11 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+k ctrl+r", Command::GitRevertHunk, true),
     ("alt+f5", Command::NextChange, true),
     ("shift+alt+f5", Command::PreviousChange, true),
+    ("ctrl+f5", Command::RunWithoutDebugging, false),
+    ("ctrl+; c", Command::TestAtCursor, false),
+    ("ctrl+; f", Command::TestCurrentFile, false),
+    ("ctrl+; a", Command::TestAll, false),
+    ("ctrl+shift+u", Command::ShowOutput, false),
 ];
 
 #[derive(Clone, Debug, PartialEq)]

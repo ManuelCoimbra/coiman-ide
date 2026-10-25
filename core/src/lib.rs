@@ -3,6 +3,7 @@
 //! everything here can be tested and benchmarked headlessly.
 
 pub mod buffer;
+pub mod cargo;
 pub mod commands;
 pub mod document;
 pub mod edit_ops;

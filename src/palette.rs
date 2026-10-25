@@ -38,6 +38,7 @@ pub enum PickerKind {
     SaveWithEncoding,
     CodeAction,
     Branch,
+    RunConfig,
 }
 
 struct Picker {
