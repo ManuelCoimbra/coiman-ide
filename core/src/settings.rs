@@ -51,6 +51,8 @@ pub struct EditorSettings {
     pub semantic_highlighting: bool,
     /// Show inferred types and parameter names in the text.
     pub inlay_hints: bool,
+    /// Glide to the new position when keys move the view, instead of jumping.
+    pub smooth_scrolling: bool,
     pub trim_trailing_whitespace: bool,
     pub insert_final_newline: bool,
     /// Key handling: "default", "vim" (modal, Vim keys) or "helix" (select, then act).
@@ -220,6 +222,7 @@ impl Default for EditorSettings {
             auto_close_brackets: true,
             semantic_highlighting: true,
             inlay_hints: true,
+            smooth_scrolling: true,
             trim_trailing_whitespace: false,
             insert_final_newline: false,
             keyboard_mode: "default".to_owned(),

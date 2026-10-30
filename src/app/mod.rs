@@ -112,6 +112,8 @@ pub struct CodeApp {
     zen_mode: bool,
     /// Paths of closed editors, most recent last, for Reopen Closed Editor.
     closed_editors: Vec<PathBuf>,
+    /// Folders for Open Recent, newest first.
+    recent_folders: Vec<PathBuf>,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -192,6 +194,7 @@ impl CodeApp {
             word_wrap: false,
             zen_mode: false,
             closed_editors: Vec::new(),
+            recent_folders: rust_code_core::recent::load(),
             pending_close: None,
             allow_close: false,
             chord: None,
@@ -338,6 +341,7 @@ impl eframe::App for CodeApp {
                 indent_guides: self.settings.editor.indent_guides,
                 rainbow_brackets: self.settings.editor.bracket_pair_colorization,
                 block_cursor: false,
+                smooth_scrolling: self.settings.editor.smooth_scrolling,
             };
             if self.git.diff.is_some() {
                 self.diff_view(ui);

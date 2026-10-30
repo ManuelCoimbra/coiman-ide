@@ -18,6 +18,7 @@ pub mod history;
 pub mod lsp;
 pub mod plugin;
 pub mod pty;
+pub mod recent;
 pub mod run;
 pub mod search;
 pub mod session;

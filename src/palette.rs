@@ -41,6 +41,8 @@ pub enum InputKind {
 pub enum PickerKind {
     Theme,
     LineEnding,
+    Indentation,
+    RecentFolder,
     /// "Reopen with Encoding" or "Save with Encoding".
     EncodingAction,
     ReopenWithEncoding,
@@ -231,7 +233,8 @@ impl Palette {
                                     let size = ui.text_style_height(&egui::TextStyle::Body);
                                     crate::icons::show_file(ui, label, size);
                                 }
-                                let r = ui.selectable_label(selected, highlight_label(ui, label, hl));
+                                let text = highlight_label(ui, label, hl);
+                                let r = ui.add(egui::Button::selectable(selected, text).truncate());
                                 ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
                                 r
                             });

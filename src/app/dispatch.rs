@@ -343,6 +343,24 @@ impl CodeApp {
                 let current = self.settings.workbench.color_theme.clone();
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
             }
+            Command::ChangeIndentation => {
+                if let Some(doc) = self.docs.get(self.active) {
+                    let indent = doc.buffer.indent;
+                    let current = if indent.use_tabs { "Tabs".to_owned() } else { format!("Spaces: {}", indent.size) };
+                    let items = ["Spaces: 2", "Spaces: 4", "Spaces: 8", "Tabs", "Detect from Content"];
+                    let items = items.map(str::to_owned).to_vec();
+                    self.palette.show_picker(PickerKind::Indentation, items, &current, "Select Indentation");
+                }
+            }
+            Command::OpenRecent => {
+                let items: Vec<String> =
+                    self.recent_folders.iter().filter(|f| f.is_dir()).map(|f| f.display().to_string()).collect();
+                if items.is_empty() {
+                    self.status = Some("No recent folders".to_owned());
+                } else {
+                    self.palette.show_picker(PickerKind::RecentFolder, items, "", "Select a folder to open");
+                }
+            }
             Command::ChangeLineEnding => {
                 if let Some(doc) = self.docs.get(self.active) {
                     let current = doc.line_ending();
@@ -437,6 +455,22 @@ impl CodeApp {
             PickerKind::History => self.picked_history(label),
             PickerKind::RunTarget => self.picked_run_target(ctx, label),
             PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
+            PickerKind::RecentFolder => self.open_folder(label.into()),
+            PickerKind::Indentation => {
+                let size = label.strip_prefix("Spaces: ").and_then(|n| n.parse().ok());
+                let mut docs = std::mem::take(&mut self.docs);
+                if let Some(doc) = docs.get_mut(self.active) {
+                    match (label, size) {
+                        ("Tabs", _) => doc.buffer.indent.use_tabs = true,
+                        (_, Some(size)) => {
+                            doc.buffer.indent.use_tabs = false;
+                            doc.buffer.indent.size = size;
+                        }
+                        _ => self.apply_file_rules(doc),
+                    }
+                }
+                self.docs = docs;
+            }
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });

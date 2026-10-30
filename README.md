@@ -58,6 +58,9 @@ is read and written on your machine.
 - Integrated title bar, as in VS Code: menus, the window title and the window buttons share
   one bar. Drag it to move the window, double-click it to maximize, resize from any edge.
 - File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons, and create, rename and delete in the Explorer (right-click; delete goes to the Recycle Bin)
+- `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
+- The status bar's indentation opens a picker: spaces, tabs, or detect from the content
+- The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
 - Find and replace (`Ctrl+F`, `Ctrl+H`): match case, whole word, regular expressions with `$1`
   groups. The Search view replaces across the project after showing the count; open files change
   with undo and stay unsaved, others change on disk (UTF-8 only)

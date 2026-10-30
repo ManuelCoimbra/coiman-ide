@@ -30,6 +30,7 @@ pub struct Options {
     pub rainbow_brackets: bool,
     /// Draw the cursor as a block (Vim/Helix normal mode).
     pub block_cursor: bool,
+    pub smooth_scrolling: bool,
 }
 
 /// Problem severity, as in LSP: 1 error, 2 warning, 3 information, 4 hint.
@@ -160,6 +161,8 @@ pub struct ViewState {
     line_clipboard: Option<String>,
     /// Whether the current mouse drag started on the vertical/horizontal scrollbar.
     dragging_scrollbar: Option<bool>,
+    /// How far the painted view still is from `scroll.y`, while gliding.
+    scroll_offset: f32,
     /// Fixed corner (line, visual column) of the column selection being dragged.
     column_anchor: Option<(usize, usize)>,
     /// Char clicked with Ctrl this frame.
@@ -421,6 +424,7 @@ pub fn show(
     let lines_before = doc.buffer.len_lines();
 
     handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response);
+    let scroll_before = view.scroll.y;
     reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response, deco);
     if has_focus {
         let version = doc.buffer.version();
@@ -495,6 +499,7 @@ pub fn show(
     };
     view.scroll.y = view.scroll.y.clamp(0.0, max_y);
     view.scroll.x = view.scroll.x.clamp(0.0, max_x);
+    glide(ui, view, opts.smooth_scrolling, scroll_before.clamp(0.0, max_y) - view.scroll.y, text_rect.height());
 
     // ----- paint ---------------------------------------------------------------
     paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts, deco });
@@ -596,6 +601,23 @@ fn cell_at(
         col = col.saturating_sub(taken);
     }
     (row.start, row.end, row.line, row_col + col)
+}
+
+/// Eases the painted view toward `scroll.y` after a jump of `jump` from keys
+/// or reveal. Wheel and scrollbar moves are outside `jump`. Long jumps cut.
+fn glide(ui: &egui::Ui, view: &mut ViewState, smooth: bool, jump: f32, view_h: f32) {
+    let offset = view.scroll_offset + jump;
+    if !smooth || offset.abs() > view_h * 3.0 {
+        view.scroll_offset = 0.0;
+        return;
+    }
+    let dt = ui.input(|i| i.stable_dt);
+    view.scroll_offset = offset * (-dt / 0.04).exp();
+    if view.scroll_offset.abs() < 0.5 {
+        view.scroll_offset = 0.0;
+    } else {
+        ui.ctx().request_repaint();
+    }
 }
 
 fn handle_scrolling(
@@ -1074,7 +1096,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
     painter.rect_filled(rect, 0.0, theme::colors().editor_bg);
     let text_painter = painter.with_clip_rect(text_rect);
 
-    let scroll = view.scroll;
+    let scroll = Vec2::new(view.scroll.x, (view.scroll.y + view.scroll_offset).max(0.0));
     let first_row = (scroll.y / m.row_h).floor() as usize;
     let y_offset = first_row as f32 * m.row_h - scroll.y;
     let rows_on_screen = (rect.height() / m.row_h).ceil() as usize + 1;

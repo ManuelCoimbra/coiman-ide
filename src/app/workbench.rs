@@ -195,6 +195,7 @@ impl CodeApp {
                 ui.separator();
                 item(ui, "Open File...", Command::OpenFile);
                 item(ui, "Open Folder...", Command::OpenFolder);
+                item(ui, "Open Recent...", Command::OpenRecent);
                 ui.separator();
                 item(ui, "Save", Command::Save);
                 item(ui, "Save As...", Command::SaveAs);
@@ -859,6 +860,7 @@ impl CodeApp {
                 ("New File", Command::NewFile),
                 ("Open File...", Command::OpenFile),
                 ("Open Folder...", Command::OpenFolder),
+                ("Open Recent...", Command::OpenRecent),
                 ("Show All Commands", Command::CommandPalette),
                 ("Go to File...", Command::QuickOpen),
                 ("Toggle Terminal", Command::ToggleTerminal),
@@ -958,7 +960,9 @@ impl CodeApp {
                     }
                     let indent = doc.buffer.indent;
                     let kind = if indent.use_tabs { "Tabs" } else { "Spaces" };
-                    ui.label(white(format!("{kind}: {}", indent.size)));
+                    if clickable(ui, format!("{kind}: {}", indent.size), "Select Indentation") {
+                        status_cmd = Some(Command::ChangeIndentation);
+                    }
                     let (line, col) = doc.cursor();
                     let count = doc.buffer.selections().len();
                     let sel = match (count, doc.selection_len()) {

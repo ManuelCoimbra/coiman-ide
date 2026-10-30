@@ -1450,12 +1450,10 @@ impl CodeApp {
         if !can_format {
             return false;
         }
-        let sent = self.request_for(
-            i,
-            "textDocument/formatting",
-            Pending::Format { uid, version, save },
-            |_, td| json!({ "textDocument": td, "options": { "tabSize": 4, "insertSpaces": true } }),
-        );
+        let sent = self.request_for(i, "textDocument/formatting", Pending::Format { uid, version, save }, |doc, td| {
+            let indent = doc.buffer.indent;
+            json!({ "textDocument": td, "options": { "tabSize": indent.size, "insertSpaces": !indent.use_tabs } })
+        });
         if sent && save {
             self.lsp.format_save = Some((uid, ctx.input(|inp| inp.time)));
         }

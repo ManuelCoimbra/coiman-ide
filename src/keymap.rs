@@ -28,6 +28,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+n", Command::NewFile, false),
     ("ctrl+o", Command::OpenFile, false),
     ("ctrl+k ctrl+o", Command::OpenFolder, false),
+    ("ctrl+r", Command::OpenRecent, false),
     ("ctrl+s", Command::Save, false),
     ("ctrl+shift+s", Command::SaveAs, false),
     ("ctrl+k s", Command::SaveAll, false),
@@ -452,7 +453,7 @@ mod tests {
         // Any other key still ends the chord.
         assert_eq!(press(Key::K, Modifiers::COMMAND), None);
         assert_eq!(press(Key::A, Modifiers::NONE), None);
-        assert_eq!(press(Key::R, Modifiers::COMMAND), None);
+        assert_eq!(press(Key::R, Modifiers::COMMAND), Some(Command::OpenRecent));
     }
 
     #[test]

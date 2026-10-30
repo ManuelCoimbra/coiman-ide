@@ -8,6 +8,7 @@ use crate::session::{self, Session};
 use crate::syntax::SyntaxWorker;
 use crate::theme;
 use crate::watcher::same_path;
+use rust_code_core::recent;
 use rust_code_core::{editorconfig, find};
 use std::path::{Path, PathBuf};
 
@@ -313,6 +314,10 @@ impl CodeApp {
     }
 
     pub(super) fn open_folder(&mut self, path: PathBuf) {
+        recent::add(&mut self.recent_folders, &path);
+        if let Err(e) = recent::save(&self.recent_folders) {
+            self.status = Some(format!("Could not save recent folders: {e}"));
+        }
         self.finder.set_root(Some(path.clone()));
         self.watcher.set_root(Some(&path));
         // The workspace settings layer depends on the folder.
