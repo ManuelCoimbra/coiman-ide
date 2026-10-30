@@ -4,6 +4,7 @@ use crate::document::Document;
 use crate::keymap::Keymap;
 use crate::settings;
 use crate::theme;
+use rust_code_core::trust;
 use std::path::{Path, PathBuf};
 
 use super::CodeApp;
@@ -34,6 +35,82 @@ impl CodeApp {
             files.push(settings::workspace_settings_path(root));
         }
         files.iter().any(|f| f == path)
+    }
+
+    /// The folder in Restricted Mode for what's on screen: the open folder,
+    /// else the active file's folder.
+    pub(super) fn restricted_folder(&self) -> Option<PathBuf> {
+        let active = self.docs.get(self.active).and_then(|d| d.path.as_deref());
+        let folder = self.explorer.root.clone().or_else(|| active.and_then(Path::parent).map(Path::to_path_buf))?;
+        (!trust::is_trusted(&folder)).then_some(folder)
+    }
+
+    /// Whether something may run in `dir`; says why not in the status bar.
+    pub(super) fn allowed_to_run(&mut self, dir: &Path) -> bool {
+        let allowed = trust::is_trusted(dir);
+        if !allowed {
+            self.trust_prompt_hidden = false;
+            self.status = Some("Restricted Mode: trust this folder to run things in it".to_owned());
+        }
+        allowed
+    }
+
+    /// Bar shown while the folder is in Restricted Mode.
+    pub(super) fn trust_bar(&mut self, ui: &mut egui::Ui) {
+        if self.trust_prompt_hidden {
+            return;
+        }
+        let Some(folder) = self.restricted_folder() else { return };
+        let mut choice = None;
+        egui::Frame::new().fill(theme::colors().hover_bg).inner_margin(egui::Margin::symmetric(10, 6)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal_wrapped(|ui| {
+                let name = folder.file_name().map_or_else(|| folder.display().to_string(), |n| n.to_string_lossy().into_owned());
+                ui.label(format!(
+                    "Restricted Mode: do you trust the authors of \"{name}\"? Trusting lets its settings, language servers, Git, Cargo builds, run configurations and debugging run, and they can run code on your computer. Until then you can read and edit its files."
+                ))
+                .on_hover_text(folder.display().to_string());
+                if ui.button("Trust Folder").clicked() {
+                    choice = Some(true);
+                }
+                if ui.button("Stay Restricted").clicked() {
+                    choice = Some(false);
+                }
+            });
+        });
+        match choice {
+            Some(true) => self.set_workspace_trust(ui.ctx(), &folder, true),
+            Some(false) => self.trust_prompt_hidden = true,
+            None => {}
+        }
+    }
+
+    /// Workspaces: Trust or Restrict This Folder.
+    pub(super) fn toggle_workspace_trust(&mut self, ctx: &egui::Context) {
+        let active = self.docs.get(self.active).and_then(|d| d.path.as_deref());
+        let folder = self.explorer.root.clone().or_else(|| active.and_then(Path::parent).map(Path::to_path_buf));
+        let Some(folder) = folder else {
+            self.status = Some("Open a folder first".to_owned());
+            return;
+        };
+        let trust_it = !trust::is_trusted(&folder);
+        self.set_workspace_trust(ctx, &folder, trust_it);
+    }
+
+    fn set_workspace_trust(&mut self, ctx: &egui::Context, folder: &Path, trusted: bool) {
+        let result = if trusted { trust::trust(folder) } else { trust::revoke(folder) };
+        if let Err(e) = result {
+            self.status = Some(format!("Could not save trust: {e}"));
+            return;
+        }
+        self.trust_prompt_hidden = false;
+        let name =
+            folder.file_name().map_or_else(|| folder.display().to_string(), |n| n.to_string_lossy().into_owned());
+        self.status = Some(format!("{name} is {}", if trusted { "trusted" } else { "restricted" }));
+        // Stops what was running; what is allowed starts again on the next frame.
+        self.restart_lsp();
+        self.settings_reload = true;
+        self.git_refresh_soon(ctx, 0.0);
     }
 
     /// Reloads settings, keybindings and the color theme, applying what changed.

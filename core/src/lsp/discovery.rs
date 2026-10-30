@@ -31,6 +31,8 @@ pub fn quiet_command(program: &Path) -> Command {
 fn responds(program: &Path, expect: &str) -> bool {
     quiet_command(program)
         .arg("--version")
+        // Not the app's folder: its rust-toolchain.toml would choose what runs.
+        .current_dir(std::env::temp_dir())
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()

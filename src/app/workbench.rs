@@ -50,6 +50,7 @@ impl CodeApp {
     pub(super) fn title_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
         const HEIGHT: f32 = 30.0;
         const BUTTON: f32 = 46.0;
+        const RUN_BUTTON: f32 = 40.0;
         let ctx = ui.ctx().clone();
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
         let bar = egui::Rect::from_min_size(ui.max_rect().min, egui::vec2(ui.max_rect().width(), HEIGHT));
@@ -87,7 +88,7 @@ impl CodeApp {
         // The UI font has no "●" (unsaved marker in the OS title); use a bullet.
         let title = self.last_title.replace('●', "•");
         let galley = ui.painter().layout_no_wrap(title, font, pal.text_dim);
-        let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - 16.0);
+        let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - RUN_BUTTON - 16.0);
         if room.span() > 40.0 {
             let width = galley.size().x.min(room.span());
             let x = (bar.center().x - width / 2.0).clamp(room.min, room.max - width);
@@ -97,6 +98,21 @@ impl CodeApp {
                 galley,
                 pal.text_dim,
             );
+        }
+
+        // Run Program, just left of the window buttons.
+        let run_rect = egui::Rect::from_min_size(
+            egui::pos2(bar.max.x - 3.0 * BUTTON - RUN_BUTTON, bar.min.y),
+            egui::vec2(RUN_BUTTON, HEIGHT),
+        );
+        let run = ui.interact(run_rect, egui::Id::unique("run_program"), Sense::click());
+        if run.hovered() {
+            ui.painter().rect_filled(run_rect, 0.0, pal.hover_bg);
+        }
+        let icon = egui::Rect::from_center_size(run_rect.center(), egui::vec2(16.0, 16.0));
+        icons::paint(ui.painter(), icon, Icon::Play, Color32::from_rgb(0x89, 0xD1, 0x85));
+        if run.on_hover_text("Run Program (Shift+F10)").clicked() {
+            cmd = Some(Command::RunProgram);
         }
 
         // Window buttons.
@@ -279,6 +295,7 @@ impl CodeApp {
                 item(ui, "Conditional Breakpoint...", Command::ConditionalBreakpoint);
                 item(ui, "Logpoint...", Command::AddLogpoint);
                 ui.separator();
+                item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Select and Run Configuration...", Command::SelectRunConfig);
                 item(ui, "Open Configurations", Command::OpenRunConfigs);
@@ -814,6 +831,14 @@ impl CodeApp {
             }
             if let Some(text) = self.debug_status() {
                 ui.label(white(text));
+            }
+            if self.restricted_folder().is_some() {
+                let resp = ui
+                    .add(egui::Label::new(white("Restricted Mode".to_owned())).sense(Sense::click()).selectable(false))
+                    .on_hover_text("This folder isn't trusted. Click to decide.");
+                if resp.clicked() {
+                    self.trust_prompt_hidden = false;
+                }
             }
             self.plugin_status_items(ui, rust_code_core::plugin::manifest::Alignment::Left, size);
             if let Some(vim) = &self.vim {

@@ -84,6 +84,9 @@ pub fn launch_file_contents(configs: &[RunConfig]) -> String {
 
 /// Binary targets of the workspace members (`cargo metadata --no-deps`).
 pub fn binaries(root: &Path) -> Vec<String> {
+    if !crate::trust::is_trusted(root) {
+        return Vec::new();
+    }
     let out = quiet_command(Path::new("cargo"))
         .args(["metadata", "--no-deps", "--format-version", "1"])
         .current_dir(root)
@@ -120,6 +123,7 @@ pub struct Artifact {
 /// Runs `cargo <args>` with JSON messages in `dir` and returns the
 /// executables built; on failure, the end of cargo's error output.
 pub fn build_executables(dir: &Path, args: &[String]) -> Result<Vec<Artifact>, String> {
+    crate::trust::check(dir)?;
     let out = quiet_command(Path::new("cargo"))
         .args(args)
         .arg("--message-format=json-render-diagnostics")
@@ -356,6 +360,8 @@ pub enum Runner {
 pub fn has_nextest() -> bool {
     quiet_command(Path::new("cargo"))
         .args(["nextest", "--version"])
+        // Not the app's folder: its rust-toolchain.toml would choose what runs.
+        .current_dir(std::env::temp_dir())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

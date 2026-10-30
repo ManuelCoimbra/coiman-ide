@@ -144,6 +144,33 @@ push). All git work runs in the background.
   warnings in Problems and the editor. `cargo.check_command = "clippy"` makes rust-analyzer
   run clippy instead of check on every save.
 
+### Run Program
+
+The green button in the title bar (or `Shift+F10`, or the Run menu) saves your files and runs
+the active file the way its language runs, in a terminal tab:
+
+| Language | What runs |
+| --- | --- |
+| Python | The project's `.venv`, `venv` or `env` if there is one, else `python` |
+| JavaScript, TypeScript | `node` (a project's `tsx` for TypeScript if it has one) |
+| Java | Finds the class with `main` and its package, even from another file (asks if several fit). `mvn exec:java` or `gradle run` in those projects, otherwise `javac` then `java`. Java 25 classless files run directly |
+| C, C++ | Checks for `main`, compiles with `gcc`/`g++` or `clang`/`clang++`, runs. CMake, Make and Meson projects need a run configuration |
+| Rust | `cargo run`, `--bin` or `--example` from the file's place (asks if several binaries fit). `rustc` outside Cargo |
+| Go | `go run .` in a module, else the file. Only `package main` |
+| C# | `dotnet run --project`, or the file alone without a project (.NET 10) |
+| Others | Shell, PowerShell, batch, Ruby, PHP, Lua, Perl, R, Dart, Swift, Kotlin; HTML opens in the browser |
+
+Build output goes to the system temp folder, never your project. For anything else, use
+**Run: Open Configurations**.
+
+### Workspace trust
+
+Opening a folder runs nothing from it. Until you click **Trust Folder**, it stays in Restricted
+Mode: you can read and edit files, but its `.rust-code/settings.toml` is ignored, and language
+servers, Git, Cargo, run configurations, Run Program and debugging are off. Trust covers
+subfolders and is remembered outside the project. **Workspaces: Trust or Restrict This Folder**
+changes your mind later. The built-in terminal is your own shell and stays available.
+
 ### Debugging (CodeLLDB)
 
 Rust Code debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug

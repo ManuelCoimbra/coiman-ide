@@ -140,6 +140,13 @@ impl Terminals {
         Ok(())
     }
 
+    /// Closes finished tabs whose title starts with `prefix`.
+    pub fn close_finished(&mut self, prefix: &str) {
+        let keep = |t: &Tab| !(t.exited.is_some() && t.title.as_deref().is_some_and(|n| n.starts_with(prefix)));
+        self.tabs.retain(keep);
+        self.active = self.active.min(self.tabs.len().saturating_sub(1));
+    }
+
     fn push(&mut self, session: Session, title: Option<String>, task: bool) {
         self.tabs.push(Tab { id: self.next_id, session, title, scroll_rest: 0.0, task, exited: None });
         self.next_id += 1;

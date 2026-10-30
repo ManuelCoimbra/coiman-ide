@@ -134,6 +134,7 @@ impl CodeApp {
                 self.sidebar_view = SidebarView::Debug;
             }
             Command::ShowDebugConsole => self.toggle_panel(PanelTab::DebugConsole),
+            Command::ManageWorkspaceTrust => self.toggle_workspace_trust(ctx),
             Command::ShowExtensions => self.show_extensions(),
             Command::CheckPluginUpdates => self.check_registry(ctx),
             Command::InstallPluginFromFolder => self.install_plugin_from_folder(ctx),
@@ -168,6 +169,7 @@ impl CodeApp {
             Command::SelectComment => self.select_text_object(TextObject::Comment),
             Command::NextFunction | Command::PreviousFunction => self.adjacent_function(cmd == Command::NextFunction),
             Command::RunWithoutDebugging => self.run_selected_config(ctx),
+            Command::RunProgram => self.run_program(ctx),
             Command::SelectRunConfig => self.select_run_config(ctx),
             Command::OpenRunConfigs => self.open_run_configs(),
             Command::ShowTesting => self.show_testing(ctx),
@@ -415,6 +417,7 @@ impl CodeApp {
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::Symbol => self.picked_symbol(label),
             PickerKind::History => self.picked_history(label),
+            PickerKind::RunTarget => self.picked_run_target(ctx, label),
             PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {

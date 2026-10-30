@@ -215,6 +215,8 @@ fn home() -> Option<PathBuf> {
 fn runs(program: &Path, args: &[&str]) -> bool {
     quiet_command(program)
         .args(args)
+        // Not the app's folder: `python -c "import pylsp"` would import from it.
+        .current_dir(std::env::temp_dir())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())

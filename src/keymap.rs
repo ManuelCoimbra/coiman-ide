@@ -84,6 +84,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("alt+f5", Command::NextChange, true),
     ("shift+alt+f5", Command::PreviousChange, true),
     ("ctrl+f5", Command::RunWithoutDebugging, false),
+    ("shift+f10", Command::RunProgram, false),
     ("ctrl+; c", Command::TestAtCursor, false),
     ("ctrl+; f", Command::TestCurrentFile, false),
     ("ctrl+; a", Command::TestAll, false),

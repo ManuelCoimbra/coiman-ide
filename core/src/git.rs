@@ -61,6 +61,8 @@ fn native(path: &str) -> PathBuf {
 
 /// Runs git in `dir`. Errors carry git's own message.
 fn git(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<Vec<u8>, String> {
+    // A repository's config can run programs (core.fsmonitor, hooks, diff drivers).
+    crate::trust::check(dir)?;
     let mut cmd = quiet_command(Path::new("git"));
     cmd.current_dir(dir)
         .args(["-c", "core.quotepath=off", "-c", "color.ui=false"])

@@ -577,6 +577,9 @@ impl CodeApp {
     // ----- starting -------------------------------------------------------------------------
 
     fn start_session(&mut self, ctx: &egui::Context, launch: Launch) {
+        if !self.allowed_to_run(&launch.cwd) {
+            return;
+        }
         let Some(adapter) = self.adapter() else {
             // Ask to install CodeLLDB; start once it is there.
             self.debug.queued = Some(launch);

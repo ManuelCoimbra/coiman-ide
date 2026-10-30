@@ -157,9 +157,13 @@ pub struct CodeApp {
     debug: debug::DebugState,
     /// Installed plugins and what they contribute.
     plugins: plugins::PluginState,
+    /// "Stay Restricted" was chosen: no bar until something needs trust again.
+    trust_prompt_hidden: bool,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
+        // Before anything reads a folder's settings or runs a tool for it.
+        rust_code_core::trust::enforce();
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut app = Self {
             docs: Vec::new(),
@@ -208,6 +212,7 @@ impl CodeApp {
             vim_doc: None,
             debug: debug::DebugState::default(),
             plugins: plugins::PluginState::default(),
+            trust_prompt_hidden: false,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -264,6 +269,9 @@ impl eframe::App for CodeApp {
         egui::Panel::top("title_bar").frame(egui::Frame::new().fill(theme::colors().activity_bg)).show(ui, |ui| {
             cmd = cmd.or(self.title_bar(ui));
         });
+        if !self.trust_prompt_hidden && self.restricted_folder().is_some() {
+            egui::Panel::top("trust_bar").frame(egui::Frame::NONE).show(ui, |ui| self.trust_bar(ui));
+        }
         // Zen mode hides all workbench chrome around the editor.
         if !zen {
             egui::Panel::bottom("status_bar")

@@ -46,6 +46,7 @@ pub enum PickerKind {
     Symbol,
     History,
     DebugTarget,
+    RunTarget,
 }
 
 struct Picker {

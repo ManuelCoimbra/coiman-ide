@@ -11,6 +11,7 @@ use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
 use rust_code_core::lsp::servers::{self, Found, Installer, Launch, ServerKind};
 use rust_code_core::lsp::types as lt;
 use rust_code_core::lsp::{Client, Event, convert, language_id};
+use rust_code_core::trust;
 use serde_json::{Value, json};
 
 use crate::document::Document;
@@ -349,6 +350,10 @@ impl CodeApp {
                         servers::init_options(kind, &launch),
                     )
                 };
+                // Servers run a project's code (build scripts, its own TypeScript).
+                if !trust::is_trusted(&root) {
+                    continue;
+                }
                 match Client::start(kind, &launch, &root, options, repaint(ctx)) {
                     Ok(client) => self.lsp.clients.push(client),
                     Err(e) => {
@@ -579,6 +584,9 @@ impl CodeApp {
         let Some((_, _, kind)) = self.docs.get(self.active).and_then(lsp_target) else {
             return "No language server for this file".to_owned();
         };
+        if self.restricted_folder().is_some() {
+            return "Language servers are off in Restricted Mode".to_owned();
+        }
         let name = kind.name();
         match self.lsp.setups.get(&kind) {
             _ if !self.settings.lsp.enabled => "Language servers are turned off (lsp.enabled)".to_owned(),
@@ -1425,6 +1433,9 @@ impl CodeApp {
     pub(super) fn lsp_offer_bar(&mut self, ui: &mut egui::Ui) {
         let Some((_, _, kind)) = self.docs.get(self.active).and_then(lsp_target) else { return };
         let Some(Setup::Missing { installer, note }) = self.lsp.setups.get(&kind) else { return };
+        if self.restricted_folder().is_some() {
+            return;
+        }
         if self.lsp.offer_dismissed.contains(&kind) || !self.settings.lsp.ask_to_install {
             return;
         }
@@ -1490,6 +1501,9 @@ impl CodeApp {
     pub(super) fn lsp_status_text(&self) -> Option<String> {
         let (_, _, kind) = self.docs.get(self.active).and_then(lsp_target)?;
         if !self.settings.lsp.enabled {
+            return None;
+        }
+        if self.restricted_folder().is_some() {
             return None;
         }
         let name = kind.name();

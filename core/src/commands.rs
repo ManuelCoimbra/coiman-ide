@@ -90,6 +90,7 @@ pub enum Command {
     ToggleBlame,
     // Run and test.
     RunWithoutDebugging,
+    RunProgram,
     SelectRunConfig,
     OpenRunConfigs,
     ShowTesting,
@@ -135,6 +136,7 @@ pub enum Command {
     ShowDebugConsole,
     DebugTestAtCursor,
     // Plugins.
+    ManageWorkspaceTrust,
     ShowExtensions,
     CheckPluginUpdates,
     InstallPluginFromFolder,
@@ -219,6 +221,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::PreviousChange, "Go to Previous Change"),
     (Command::ToggleBlame, "Git: Toggle Inline Blame"),
     (Command::RunWithoutDebugging, "Run: Start Without Debugging"),
+    (Command::RunProgram, "Run: Run Program"),
     (Command::SelectRunConfig, "Run: Select and Start Configuration..."),
     (Command::OpenRunConfigs, "Run: Open Configurations"),
     (Command::ShowTesting, "View: Show Testing"),
@@ -259,6 +262,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::AddLogpoint, "Debug: Add Logpoint..."),
     (Command::ShowDebug, "View: Show Run and Debug"),
     (Command::ShowDebugConsole, "View: Toggle Debug Console"),
+    (Command::ManageWorkspaceTrust, "Workspaces: Trust or Restrict This Folder"),
     (Command::ShowExtensions, "View: Show Extensions"),
     (Command::CheckPluginUpdates, "Plugins: Check Registry for Plugins and Updates"),
     (Command::InstallPluginFromFolder, "Plugins: Install from Folder..."),
@@ -347,6 +351,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::PreviousChange, "workbench.action.editor.previousChange"),
     (Command::ToggleBlame, "git.toggleBlame"),
     (Command::RunWithoutDebugging, "workbench.action.debug.run"),
+    (Command::RunProgram, "rustcode.runProgram"),
     (Command::SelectRunConfig, "workbench.action.debug.selectandstart"),
     (Command::OpenRunConfigs, "workbench.action.debug.configure"),
     (Command::ShowTesting, "workbench.view.testing"),
@@ -387,6 +392,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::AddLogpoint, "editor.debug.action.addLogPoint"),
     (Command::ShowDebug, "workbench.view.debug"),
     (Command::ShowDebugConsole, "workbench.debug.action.toggleRepl"),
+    (Command::ManageWorkspaceTrust, "workbench.trust.manage"),
     (Command::ShowExtensions, "workbench.view.extensions"),
     (Command::CheckPluginUpdates, "workbench.extensions.action.checkForUpdates"),
     (Command::InstallPluginFromFolder, "workbench.extensions.action.installVSIX"),
@@ -410,6 +416,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowTesting
             | ShowOutput
             | RunWithoutDebugging
+            | RunProgram
             | StartDebugging
             | StopDebugging
             | ShowDebug

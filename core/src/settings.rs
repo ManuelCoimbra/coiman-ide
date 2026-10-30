@@ -263,6 +263,8 @@ pub struct Loaded {
 pub fn load(workspace_root: Option<&Path>) -> Loaded {
     let mut problems = Vec::new();
     let mut merged = Table::new();
+    // An untrusted folder's settings are ignored: they can name programs to run.
+    let workspace_root = workspace_root.filter(|r| crate::trust::is_trusted(r));
     let files = user_settings_path().into_iter().chain(workspace_root.map(workspace_settings_path));
     for path in files {
         if path.exists() {

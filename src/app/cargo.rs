@@ -15,6 +15,7 @@ use rust_code_core::cargo::{
 };
 use rust_code_core::lsp::discovery::quiet_command;
 use rust_code_core::lsp::types as lt;
+use rust_code_core::run;
 
 use crate::icons::{self, Icon};
 use crate::palette::PickerKind;
@@ -60,6 +61,8 @@ enum Msg {
 }
 
 pub(super) struct CargoState {
+    /// Programs offered by Run Program when several fit.
+    run_targets: Vec<run::RunPlan>,
     /// Tests by file key.
     tests: HashMap<PathBuf, FileTests>,
     scanned_for: Option<PathBuf>,
@@ -84,6 +87,7 @@ impl Default for CargoState {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
         Self {
+            run_targets: Vec::new(),
             tests: HashMap::new(),
             scanned_for: None,
             parsed: None,
@@ -233,6 +237,9 @@ impl CodeApp {
     /// Starts `cargo <args>` in `cwd` as the background job (replacing any).
     fn start_job(&mut self, ctx: &egui::Context, kind: JobKind, args: Vec<String>, cwd: &Path) {
         self.cancel_job();
+        if !self.allowed_to_run(cwd) {
+            return;
+        }
         let title = format!("cargo {}", args.join(" "));
         let spawned = quiet_command(Path::new("cargo"))
             .args(&args)
@@ -703,6 +710,67 @@ impl CodeApp {
         self.palette.show_picker(PickerKind::RunConfig, names, &current, "Select a configuration to run");
     }
 
+    /// Run Program: runs the active file the way its language runs. With no
+    /// file open, the folder's Cargo project.
+    pub(super) fn run_program(&mut self, ctx: &egui::Context) {
+        // What runs is what's on screen.
+        for i in 0..self.docs.len() {
+            if self.docs[i].is_dirty() && self.docs[i].path.is_some() {
+                self.save_doc(i);
+            }
+        }
+        let root = self.explorer.root.clone();
+        let active = self.docs.get(self.active);
+        let outcome = match active.and_then(|d| d.path.clone().map(|p| (p, d.text()))) {
+            Some((file, source)) => run::plan(&file, &source, root.as_deref()),
+            None if active.is_some() => Err("Save this file first".to_owned()),
+            None => match self.cargo_root() {
+                Some(dir) => Ok(run::Outcome::Run(run::RunPlan {
+                    title: "cargo run".to_owned(),
+                    command: "cargo run".to_owned(),
+                    cwd: dir,
+                })),
+                None => Err("Open a file to run".to_owned()),
+            },
+        };
+        match outcome {
+            Ok(run::Outcome::Run(plan)) => self.start_run(ctx, &plan),
+            Ok(run::Outcome::Choose(plans)) => {
+                let names = plans.iter().map(|p| p.title.clone()).collect();
+                self.cargo.run_targets = plans;
+                self.palette.show_picker(PickerKind::RunTarget, names, "", "Select the program to run");
+            }
+            Err(e) => self.status = Some(e),
+        }
+    }
+
+    pub(super) fn picked_run_target(&mut self, ctx: &egui::Context, name: &str) {
+        if let Some(plan) = self.cargo.run_targets.iter().find(|p| p.title == name).cloned() {
+            self.start_run(ctx, &plan);
+        }
+    }
+
+    /// Runs a plan in its own terminal tab.
+    fn start_run(&mut self, ctx: &egui::Context, plan: &run::RunPlan) {
+        if !self.allowed_to_run(&plan.cwd) {
+            return;
+        }
+        let (program, args) = shell(&plan.command);
+        let scrollback = self.settings.terminal.scrollback;
+        // Each run replaces the last one's finished tab.
+        self.terminal.close_finished("Run: ");
+        let title = format!("Run: {}", plan.title);
+        let task = Task { title: &title, program: &program, args: &args, env: &[], cwd: &plan.cwd };
+        match self.terminal.run_task(ctx, task, scrollback) {
+            Ok(()) => {
+                self.panel_visible = true;
+                self.panel_tab = PanelTab::Terminal;
+                self.terminal.detached = false;
+            }
+            Err(e) => self.status = Some(format!("Could not run {}: {e}", plan.title)),
+        }
+    }
+
     /// Ctrl+F5: run the selected configuration (asks which the first time).
     pub(super) fn run_selected_config(&mut self, ctx: &egui::Context) {
         let selected = self.cargo.selected.clone();
@@ -724,6 +792,9 @@ impl CodeApp {
 
     fn run_config(&mut self, ctx: &egui::Context, config: &RunConfig) {
         let Some(root) = self.cargo_root().or_else(|| self.explorer.root.clone()) else { return };
+        if !self.allowed_to_run(&root) {
+            return;
+        }
         let cwd = config.cwd.as_ref().map_or(root.clone(), |c| root.join(c));
         let (program, args) = shell(&config.command);
         let env: Vec<(String, String)> = config.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
