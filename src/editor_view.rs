@@ -31,6 +31,10 @@ pub struct Options {
     /// Draw the cursor as a block (Vim/Helix normal mode).
     pub block_cursor: bool,
     pub smooth_scrolling: bool,
+    /// Which pane this is, when the editor is split.
+    pub pane: u8,
+    /// Whether this is the focused pane; the other one leaves focus requests alone.
+    pub active: bool,
 }
 
 /// Problem severity, as in LSP: 1 error, 2 warning, 3 information, 4 hint.
@@ -141,8 +145,8 @@ pub fn severity_color(severity: Severity) -> Color32 {
     }
 }
 
-pub fn editor_id(uid: u64) -> egui::Id {
-    egui::Id::unique(("editor", uid))
+pub fn editor_id(uid: u64, pane: u8) -> egui::Id {
+    egui::Id::unique(("editor", uid, pane))
 }
 
 /// Per-document view state that survives between frames.
@@ -364,7 +368,7 @@ pub fn show(
 ) -> Output {
     let mut vim_effects = Vec::new();
     let (font_size, word_wrap) = (opts.font_size, opts.word_wrap);
-    let id = editor_id(doc.uid);
+    let id = editor_id(doc.uid, opts.pane);
     let rect = ui.available_rect_before_wrap();
     ui.allocate_rect(rect, Sense::hover());
     let response = ui.interact(rect, id, Sense::click_and_drag());
@@ -391,7 +395,7 @@ pub fn show(
     }
 
     // ----- focus ---------------------------------------------------------------
-    if doc.request_focus {
+    if doc.request_focus && opts.active {
         response.request_focus();
         doc.request_focus = false;
     }

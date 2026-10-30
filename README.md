@@ -58,6 +58,9 @@ is read and written on your machine.
 - Integrated title bar, as in VS Code: menus, the window title and the window buttons share
   one bar. Drag it to move the window, double-click it to maximize, resize from any edge.
 - File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons, and create, rename and delete in the Explorer (right-click; delete goes to the Recycle Bin)
+- Split the editor with `Ctrl+\\` or by dragging a tab onto the right half of the editor; each pane
+  scrolls on its own. `Ctrl+1` / `Ctrl+2` move between them, `Shift+Alt+0` flips the layout, the
+  divider drags, and **View > Single Editor** goes back to one. Drag tabs to reorder them
 - `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there

@@ -12,6 +12,7 @@ mod lsp;
 mod lsp_extra;
 mod outline;
 mod plugins;
+mod split;
 mod workbench;
 
 use std::path::PathBuf;
@@ -112,6 +113,10 @@ pub struct CodeApp {
     zen_mode: bool,
     /// Paths of closed editors, most recent last, for Reopen Closed Editor.
     closed_editors: Vec<PathBuf>,
+    /// The second editor pane, when split.
+    split: Option<split::Split>,
+    /// Tab being dragged.
+    tab_drag: Option<u64>,
     /// Folders for Open Recent, newest first.
     recent_folders: Vec<PathBuf>,
 
@@ -194,6 +199,8 @@ impl CodeApp {
             word_wrap: false,
             zen_mode: false,
             closed_editors: Vec::new(),
+            split: None,
+            tab_drag: None,
             recent_folders: rust_code_core::recent::load(),
             pending_close: None,
             allow_close: false,
@@ -342,21 +349,17 @@ impl eframe::App for CodeApp {
                 rainbow_brackets: self.settings.editor.bracket_pair_colorization,
                 block_cursor: false,
                 smooth_scrolling: self.settings.editor.smooth_scrolling,
+                pane: 0,
+                active: true,
             };
             if self.git.diff.is_some() {
                 self.diff_view(ui);
                 return;
             }
-            let mut deco = self.lsp_decorations(self.active);
-            self.git_decorate(self.active, &mut deco);
-            self.cargo_decorate(self.active, &mut deco);
-            self.debug_decorate(self.active, &mut deco);
-            // Plugins last: their colors go over the server's.
-            self.lsp_views_decorate(self.active, &mut deco);
-            self.plugin_decorate(self.active, &mut deco);
-            if let Some(doc) = self.docs.get_mut(self.active) {
-                deco.folds = doc.structure().folds.clone();
-            }
+            let (active_rect, other_rect) = self.split_rects(ui);
+            let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
+            let pane = self.active_pane();
+            let deco = self.decorations(self.active);
             // Text typed this frame (the editor reads events without consuming them).
             let typed: String = ui.input(|i| {
                 i.events
@@ -374,9 +377,15 @@ impl eframe::App for CodeApp {
                 }
                 let block_cursor = self.vim.as_ref().is_some_and(rust_code_core::vim::Vim::block_cursor);
                 let was_typing = self.vim.as_ref().is_none_or(|v| v.mode() == rust_code_core::vim::Mode::Insert);
-                let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, block_cursor, ..opts };
-                let mut out =
-                    editor_view::show(ui, doc, self.views.entry(doc.uid).or_default(), opts, &deco, self.vim.as_mut());
+                let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, block_cursor, pane, ..opts };
+                let mut out = editor_view::show(
+                    &mut active_ui,
+                    doc,
+                    self.views.entry(doc.uid).or_default(),
+                    opts,
+                    &deco,
+                    self.vim.as_mut(),
+                );
                 for effect in std::mem::take(&mut out.vim_effects) {
                     self.vim_effect(&ctx, effect);
                 }
@@ -396,6 +405,9 @@ impl eframe::App for CodeApp {
                     self.close_completion();
                 }
                 self.after_editor(&ctx, out, if typing { &typed } else { "" });
+            }
+            if let Some(rect) = other_rect {
+                self.other_pane(ui, rect, opts);
             }
         });
         self.lsp_popups(&ctx);

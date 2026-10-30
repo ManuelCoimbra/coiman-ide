@@ -253,6 +253,10 @@ impl CodeApp {
                 item(ui, "Terminal", Command::ToggleTerminal);
                 item(ui, "Toggle Side Bar", Command::ToggleSidebar);
                 item(ui, "Zen Mode", Command::ToggleZenMode);
+                ui.separator();
+                item(ui, "Split Editor", Command::SplitEditor);
+                item(ui, "Single Editor", Command::CloseSplit);
+                item(ui, "Flip Split Layout", Command::ToggleSplitLayout);
                 item(ui, "Word Wrap", Command::ToggleWordWrap);
                 ui.separator();
                 item(ui, "Fold", Command::Fold);
@@ -586,6 +590,8 @@ impl CodeApp {
     pub(super) fn tab_bar(&mut self, ui: &mut egui::Ui) {
         let mut select = None;
         let mut close = None;
+        let mut tabs = Vec::with_capacity(self.docs.len());
+        let mut drag_started = None;
         egui::ScrollArea::horizontal()
             .id_salt("tabs")
             .auto_shrink([false, true])
@@ -608,11 +614,14 @@ impl CodeApp {
                                     ui.add_space(4.0);
                                     let label = ui.add(
                                         egui::Label::new(RichText::new(doc.title()).color(color))
-                                            .sense(Sense::click())
+                                            .sense(Sense::click_and_drag())
                                             .selectable(false),
                                     );
                                     if label.clicked() {
                                         select = Some(i);
+                                    }
+                                    if label.drag_started() {
+                                        drag_started = Some(doc.uid);
                                     }
                                     if label.middle_clicked() {
                                         close = Some(i);
@@ -636,6 +645,7 @@ impl CodeApp {
                                 });
                             })
                             .response;
+                        tabs.push(resp.rect);
                         if active {
                             let r = resp.rect;
                             ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, theme::colors().accent));
@@ -652,6 +662,11 @@ impl CodeApp {
         }
         if let Some(i) = close {
             self.request_close_tab(i);
+        }
+        self.tab_drag = drag_started.or(self.tab_drag);
+        if let Some(uid) = self.tab_drag {
+            let bar = ui.min_rect();
+            self.drag_tab(ui, uid, &tabs, bar);
         }
     }
 

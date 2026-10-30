@@ -37,7 +37,8 @@ impl CodeApp {
     }
 
     pub(super) fn editor_focused(&self, ctx: &egui::Context) -> bool {
-        self.docs.get(self.active).is_some_and(|d| ctx.memory(|m| m.has_focus(editor_id(d.uid))))
+        let pane = self.active_pane();
+        self.docs.get(self.active).is_some_and(|d| ctx.memory(|m| m.has_focus(editor_id(d.uid, pane))))
     }
 
     pub(super) fn run_command(&mut self, ctx: &egui::Context, cmd: Command) {
@@ -343,6 +344,11 @@ impl CodeApp {
                 let current = self.settings.workbench.color_theme.clone();
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
             }
+            Command::SplitEditor => self.split_editor(),
+            Command::CloseSplit => self.close_split(),
+            Command::ToggleSplitLayout => self.toggle_split_layout(),
+            Command::FocusFirstPane => self.focus_pane(false),
+            Command::FocusSecondPane => self.focus_pane(true),
             Command::ChangeIndentation => {
                 if let Some(doc) = self.docs.get(self.active) {
                     let indent = doc.buffer.indent;
