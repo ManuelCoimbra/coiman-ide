@@ -45,6 +45,26 @@ pub struct Hunk {
     pub new: Range<usize>,
 }
 
+/// One commit in the history.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Commit {
+    pub hash: String,
+    pub short: String,
+    pub author: String,
+    /// Unix time of the commit.
+    pub time: i64,
+    /// Branches and tags pointing here.
+    pub refs: String,
+    pub subject: String,
+}
+
+/// One stash; `name` looks like `stash@{0}`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Stash {
+    pub name: String,
+    pub message: String,
+}
+
 /// Who last changed a line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BlameLine {
@@ -168,6 +188,84 @@ impl Repo {
         let hash = git(&self.root, &["hash-object", "-w", "--stdin", &path_arg], Some(content.as_bytes())).map(text)?;
         let info = format!("{mode},{},{rel}", hash.trim());
         self.run(&["update-index", "--add", "--cacheinfo", &info]).map(drop)
+    }
+
+    /// Replaces the last commit: its message, if given, and what is staged.
+    pub fn amend(&self, message: Option<&str>) -> Result<(), String> {
+        match message {
+            Some(m) => git(&self.root, &["commit", "-q", "--amend", "-F", "-"], Some(m.as_bytes())).map(drop),
+            None => self.run(&["commit", "-q", "--amend", "--no-edit"]).map(drop),
+        }
+    }
+
+    pub fn last_commit_message(&self) -> Result<String, String> {
+        Ok(self.run(&["log", "-1", "--format=%B"])?.trim().to_owned())
+    }
+
+    /// The latest commits of the current branch. A repository with none has an empty log.
+    pub fn log(&self, limit: usize) -> Result<Vec<Commit>, String> {
+        if self.run(&["rev-parse", "--verify", "-q", "HEAD"]).is_err() {
+            return Ok(Vec::new());
+        }
+        let count = format!("-n{limit}");
+        let out = self.run(&["log", &count, "--format=%H%x1f%h%x1f%an%x1f%at%x1f%D%x1f%s"])?;
+        Ok(out
+            .lines()
+            .filter_map(|line| {
+                let mut f = line.splitn(6, '\x1f').map(str::to_owned);
+                Some(Commit {
+                    hash: f.next()?,
+                    short: f.next()?,
+                    author: f.next()?,
+                    time: f.next()?.parse().ok()?,
+                    refs: f.next()?,
+                    subject: f.next()?,
+                })
+            })
+            .collect())
+    }
+
+    /// Files a commit changed: (kind, relative path). A merge lists what it brought in.
+    pub fn commit_files(&self, hash: &str) -> Result<Vec<(char, String)>, String> {
+        let out = self.run(&["show", "--first-parent", "--format=", "--name-status", "--no-renames", "-z", hash])?;
+        let mut parts = out.split('\0').filter(|p| !p.is_empty());
+        let mut files = Vec::new();
+        while let (Some(kind), Some(rel)) = (parts.next(), parts.next()) {
+            files.push((kind.trim().chars().next().unwrap_or('M'), rel.to_owned()));
+        }
+        Ok(files)
+    }
+
+    /// A file's text at a revision, or empty if it wasn't there.
+    pub fn file_at(&self, rev: &str, rel: &str) -> String {
+        self.show_rev(rev, rel).unwrap_or_default()
+    }
+
+    fn show_rev(&self, rev: &str, rel: &str) -> Option<String> {
+        git(&self.root, &["show", &format!("{rev}:{rel}")], None).ok().map(text)
+    }
+
+    /// Puts all changes, untracked files too, away. False if there were none.
+    pub fn stash_push(&self) -> Result<bool, String> {
+        Ok(!self.run(&["stash", "push", "-u"])?.contains("No local changes"))
+    }
+
+    pub fn stash_list(&self) -> Result<Vec<Stash>, String> {
+        let out = self.run(&["stash", "list", "--format=%gd%x1f%s"])?;
+        Ok(out
+            .lines()
+            .filter_map(|l| l.split_once('\x1f'))
+            .map(|(name, message)| Stash { name: name.to_owned(), message: message.to_owned() })
+            .collect())
+    }
+
+    /// Brings a stash back and keeps it (`pop` false), or removes it after.
+    pub fn stash_restore(&self, name: &str, pop: bool) -> Result<(), String> {
+        self.run(&["stash", if pop { "pop" } else { "apply" }, name]).map(drop)
+    }
+
+    pub fn stash_drop(&self, name: &str) -> Result<(), String> {
+        self.run(&["stash", "drop", name]).map(drop)
     }
 
     fn first_remote(&self) -> Result<String, String> {
@@ -414,6 +512,75 @@ pub fn apply_hunks(base: &str, new: &str, hunks: &[Hunk], nl: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn amends_stashes_and_reads_history() {
+        let dir = std::env::temp_dir().join(format!("rust-code-git-history-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sh = |args: &[&str]| {
+            let out = std::process::Command::new("git").current_dir(&dir).args(args).output().unwrap();
+            assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        sh(&["init", "-q"]);
+        sh(&["config", "user.name", "Ann"]);
+        sh(&["config", "user.email", "a@a"]);
+        sh(&["config", "core.autocrlf", "false"]);
+        let repo = Repo { root: dir.clone() };
+        assert_eq!(repo.log(10).unwrap(), []);
+
+        std::fs::write(dir.join("a.txt"), "1\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("first").unwrap();
+        std::fs::write(dir.join("a.txt"), "2\n").unwrap();
+        std::fs::write(dir.join("b c.txt"), "new\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("secnd | with: symbols").unwrap();
+
+        // Amending changes the message, and with no message only the content.
+        repo.amend(Some("second | with: symbols")).unwrap();
+        assert_eq!(repo.last_commit_message().unwrap(), "second | with: symbols");
+        std::fs::write(dir.join("c.txt"), "late\n").unwrap();
+        repo.stage(&["c.txt"]).unwrap();
+        repo.amend(None).unwrap();
+        let log = repo.log(10).unwrap();
+        assert_eq!(log.len(), 2);
+        assert_eq!((log[0].subject.as_str(), log[0].author.as_str()), ("second | with: symbols", "Ann"));
+        assert!(log[0].refs.contains("HEAD"));
+        assert!(log[0].hash.starts_with(&log[0].short));
+        assert_eq!(repo.log(1).unwrap().len(), 1);
+
+        let files = repo.commit_files(&log[0].hash).unwrap();
+        assert_eq!(files, [('M', "a.txt".into()), ('A', "b c.txt".into()), ('A', "c.txt".into())]);
+        // The first commit has no parent to compare with.
+        assert_eq!(repo.commit_files(&log[1].hash).unwrap(), [('A', "a.txt".to_owned())]);
+        assert_eq!(repo.file_at(&log[0].hash, "a.txt"), "2\n");
+        assert_eq!(repo.file_at(&format!("{}^", log[0].hash), "a.txt"), "1\n");
+        assert_eq!(repo.file_at(&format!("{}^", log[0].hash), "c.txt"), "");
+
+        // Stash takes everything, untracked files too.
+        assert!(!repo.stash_push().unwrap());
+        std::fs::write(dir.join("a.txt"), "3\n").unwrap();
+        std::fs::write(dir.join("u.txt"), "u\n").unwrap();
+        assert!(repo.stash_push().unwrap());
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "2\n");
+        assert!(!dir.join("u.txt").exists());
+        let stashes = repo.stash_list().unwrap();
+        assert_eq!(stashes.len(), 1);
+        assert_eq!(stashes[0].name, "stash@{0}");
+        repo.stash_restore("stash@{0}", false).unwrap();
+        assert_eq!(std::fs::read_to_string(dir.join("a.txt")).unwrap(), "3\n");
+        assert_eq!(repo.stash_list().unwrap().len(), 1);
+        sh(&["checkout", "-q", "--", "a.txt"]);
+        std::fs::remove_file(dir.join("u.txt")).unwrap();
+        repo.stash_restore("stash@{0}", true).unwrap();
+        assert!(dir.join("u.txt").exists());
+        assert_eq!(repo.stash_list().unwrap(), []);
+        assert!(repo.stash_push().unwrap());
+        repo.stash_drop("stash@{0}").unwrap();
+        assert_eq!(repo.stash_list().unwrap(), []);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn pushes_fetches_and_pulls() {

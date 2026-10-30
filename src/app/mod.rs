@@ -14,6 +14,7 @@ mod keys_ui;
 mod lsp;
 mod lsp_extra;
 mod lsp_room;
+mod md_preview;
 mod outline;
 mod plugins;
 mod settings_ui;
@@ -123,6 +124,7 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    md_preview: md_preview::MdPreview,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
     font_load: Option<std::sync::mpsc::Receiver<rust_code_core::fonts::Loaded>>,
@@ -221,6 +223,7 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            md_preview: Default::default(),
             auto_save: Default::default(),
             font_load: None,
             settings_ui: Default::default(),
@@ -364,6 +367,10 @@ impl eframe::App for CodeApp {
 
         egui::CentralPanel::no_frame().frame(egui::Frame::new().fill(theme::colors().editor_bg)).show(ui, |ui| {
             if self.docs.is_empty() {
+                if self.git.diff.is_some() {
+                    self.diff_view(ui);
+                    return;
+                }
                 cmd = cmd.or(self.welcome(ui));
                 return;
             }
@@ -393,6 +400,7 @@ impl eframe::App for CodeApp {
                 self.diff_view(ui);
                 return;
             }
+            self.markdown_preview(ui);
             let (active_rect, other_rect) = self.split_rects(ui);
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
             let pane = self.active_pane();

@@ -76,6 +76,8 @@ is read and written on your machine.
 - `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
+- Markdown preview (`Ctrl+K V`, **View > Markdown Preview**) beside the editor, updating as you type.
+  Links open only when clicked, and images show as their alt text: nothing is fetched
 - Auto save (`files.auto_save`): after a delay, or on leaving the file or window. Saves after a
   delay don't each add a local history entry, and files changed on disk wait for you
 - Find and replace (`Ctrl+F`, `Ctrl+H`): match case, whole word, regular expressions with `$1`
@@ -149,6 +151,9 @@ push). All git work runs in the background.
   unstaged and conflicted files with stage / unstage / discard (discard asks first), and
   **Stage All and Commit** when nothing is staged. **Pull**, **Push** (publishing a new branch) and
   **Fetch** show how many commits each way; they run only when you ask, using your Git credentials.
+  **Amend last commit** replaces the last commit. **Stash** puts all changes away, with **Apply**,
+  **Pop** and **Drop** on each stash. **History** lists the latest 200 commits; click one for its
+  files, and a file for what the commit changed (**Git: Show History**).
 - **Side-by-side diff**: click a file for index vs working tree (or HEAD vs index for
   staged files), with per-change Stage / Revert / Unstage, previous/next change and
   **Ignore whitespace**.

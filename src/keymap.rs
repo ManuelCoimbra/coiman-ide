@@ -29,6 +29,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+o", Command::OpenFile, false),
     ("ctrl+k ctrl+o", Command::OpenFolder, false),
     ("ctrl+r", Command::OpenRecent, false),
+    ("ctrl+k v", Command::MarkdownPreview, false),
     ("ctrl+s", Command::Save, false),
     ("ctrl+shift+s", Command::SaveAs, false),
     ("ctrl+k s", Command::SaveAll, false),
@@ -547,6 +548,8 @@ mod tests {
             ctx.end_pass().textures_delta.clear();
             command
         };
+        assert_eq!(press(Key::K, Modifiers::COMMAND), None);
+        assert_eq!(press(Key::V, Modifiers::NONE), Some(Command::MarkdownPreview));
         assert_eq!(press(Key::K, Modifiers::COMMAND), None);
         assert_eq!(press(Key::ControlLeft, Modifiers::COMMAND), None);
         assert_eq!(press(Key::R, Modifiers::COMMAND), Some(Command::GitRevertHunk));

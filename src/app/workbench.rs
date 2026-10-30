@@ -185,6 +185,7 @@ impl CodeApp {
         let mut end = 0.0;
         let keymap = &self.keymap;
         let cargo_project = self.cargo_project;
+        let markdown = self.active_is_markdown();
         egui::MenuBar::new().ui(ui, |ui| {
             let mut item = |ui: &mut egui::Ui, label: &str, c: Command| {
                 if ui.add(egui::Button::new(label).shortcut_text(keymap.shortcut_text(c))).clicked() {
@@ -259,6 +260,9 @@ impl CodeApp {
                 item(ui, "Single Editor", Command::CloseSplit);
                 item(ui, "Flip Split Layout", Command::ToggleSplitLayout);
                 item(ui, "Word Wrap", Command::ToggleWordWrap);
+                if markdown {
+                    item(ui, "Markdown Preview", Command::MarkdownPreview);
+                }
                 ui.separator();
                 item(ui, "Fold", Command::Fold);
                 item(ui, "Unfold", Command::Unfold);

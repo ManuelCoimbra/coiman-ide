@@ -9,7 +9,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use crate::commands::Command;
 use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Vec2};
-use rust_code_core::git::{self, FileChange, Hunk, Repo, Status};
+use rust_code_core::git::{self, Commit, FileChange, Hunk, Repo, Stash, Status};
 
 use crate::document::Document;
 use crate::editor_view::{ChangeKind, ChangeMark, Decorations};
@@ -25,6 +25,17 @@ const BLAME_DELAY: f64 = 0.4;
 /// Minimum seconds between gutter diffs while typing.
 const GUTTER_INTERVAL: f64 = 0.15;
 const CREATE_BRANCH: &str = "+ Create New Branch...";
+/// Commits listed in the history.
+const LOG_LIMIT: usize = 200;
+
+/// What was clicked in the stash and history lists.
+enum ListAction {
+    Restore(String, bool),
+    Drop(Stash),
+    Expand(String),
+    Collapse,
+    OpenFile(String, String, String),
+}
 
 /// Results of background git work.
 enum Msg {
@@ -39,6 +50,9 @@ enum Msg {
     },
     Branches(Result<Vec<String>, String>),
     Diff(DiffSource),
+    Lists(Result<(Vec<Commit>, Vec<Stash>), String>),
+    CommitFiles(String, Result<Vec<(char, String)>, String>),
+    LastMessage(Result<String, String>),
     Done {
         result: Result<String, String>,
     },
@@ -52,6 +66,8 @@ struct DiffSource {
     left: String,
     /// `None`: use the open document's text.
     right: Option<String>,
+    /// A commit's change, not your working files: shown read-only.
+    commit: Option<String>,
 }
 
 /// One aligned row of the side-by-side diff.
@@ -68,6 +84,8 @@ pub(super) struct DiffView {
     staged: bool,
     /// A local-history version (left) against the current text (right).
     history: Option<rust_code_core::history::Entry>,
+    /// What a commit changed, against its parent: read-only.
+    commit: Option<String>,
     left: String,
     right: String,
     /// The right side is the open document (kept live while editing).
@@ -126,6 +144,8 @@ struct HunkPopup {
 struct Confirm {
     text: String,
     changes: Vec<FileChange>,
+    /// Dropping this stash, rather than discarding `changes`.
+    stash: Option<String>,
 }
 
 pub(super) struct GitState {
@@ -154,6 +174,15 @@ pub(super) struct GitState {
     pub(super) diff: Option<DiffView>,
     popup: Option<HunkPopup>,
     confirm: Option<Confirm>,
+    /// The next commit replaces the last one.
+    amend: bool,
+    log: Vec<Commit>,
+    stashes: Vec<Stash>,
+    /// The log and stashes may have changed since they were read.
+    lists_stale: bool,
+    history_open: bool,
+    /// The commit showing its files.
+    expanded: Option<(String, Vec<(char, String)>)>,
 }
 
 impl Default for GitState {
@@ -179,6 +208,12 @@ impl Default for GitState {
             diff: None,
             popup: None,
             confirm: None,
+            amend: false,
+            log: Vec::new(),
+            stashes: Vec::new(),
+            lists_stale: true,
+            history_open: false,
+            expanded: None,
         }
     }
 }
@@ -320,6 +355,7 @@ impl CodeApp {
                     self.git.base.insert(key(&path), text);
                 }
                 self.git.base_gen += 1;
+                self.git.lists_stale = true;
                 match status {
                     Ok(status) => self.git.status = Some(status),
                     Err(e) => self.status = Some(format!("Git: {e}")),
@@ -340,6 +376,20 @@ impl CodeApp {
                 Err(e) => self.status = Some(format!("Git: {e}")),
             },
             Msg::Diff(src) => self.show_diff(src),
+            Msg::Lists(result) => match result {
+                Ok((log, stashes)) => (self.git.log, self.git.stashes) = (log, stashes),
+                Err(e) => self.status = Some(format!("Git: {e}")),
+            },
+            Msg::CommitFiles(hash, result) => match result {
+                Ok(files) => self.git.expanded = Some((hash, files)),
+                Err(e) => self.status = Some(format!("Git: {e}")),
+            },
+            Msg::LastMessage(result) => match result {
+                // Unless something was typed in the meantime.
+                Ok(message) if self.git.message.is_empty() => self.git.message = message,
+                Ok(_) => {}
+                Err(e) => self.status = Some(format!("Git: {e}")),
+            },
             Msg::Done { result } => {
                 self.git.busy = None;
                 match result {
@@ -351,7 +401,7 @@ impl CodeApp {
                     Err(e) => self.status = Some(format!("Git: {e}")),
                 }
                 self.git_refresh_soon(ctx, 0.0);
-                if let Some(view) = self.git.diff.as_ref().filter(|v| v.history.is_none()) {
+                if let Some(view) = self.git.diff.as_ref().filter(|v| v.history.is_none() && v.commit.is_none()) {
                     let (path, staged) = (view.path.clone(), view.staged);
                     self.open_diff(ctx, &path, staged);
                 }
@@ -594,7 +644,7 @@ impl CodeApp {
                 let right = if open { None } else { Some(std::fs::read_to_string(&path).unwrap_or_default()) };
                 (left, right)
             };
-            Msg::Diff(DiffSource { path, rel, staged, left, right })
+            Msg::Diff(DiffSource { path, rel, staged, left, right, commit: None })
         });
     }
 
@@ -612,6 +662,7 @@ impl CodeApp {
             rel: src.rel,
             staged: src.staged,
             history: None,
+            commit: src.commit,
             left: src.left,
             right,
             live,
@@ -643,6 +694,7 @@ impl CodeApp {
             rel,
             staged: false,
             history: Some(entry),
+            commit: None,
             left: old,
             right: doc.text(),
             live: Some((doc.uid, doc.buffer.version())),
@@ -706,7 +758,8 @@ impl CodeApp {
             format!("{} {} vs Current", e.source.label(), git::relative_time((ms.saturating_sub(e.time) / 1000) as i64))
         });
         ui.horizontal(|ui| {
-            let sides = match &history_label {
+            let commit_label = view.commit.as_ref().map(|c| format!("Before vs {c}"));
+            let sides = match history_label.as_ref().or(commit_label.as_ref()) {
                 Some(label) => label.as_str(),
                 None if view.staged => "HEAD vs Index",
                 None => "Index vs Working Tree",
@@ -752,6 +805,7 @@ impl CodeApp {
         }
         let staged = view.staged;
         let history = view.history.is_some();
+        let read_only = view.commit.is_some();
         area.show_rows(ui, row_h, view.rows.len(), |ui, range| {
             let width = ui.available_width();
             let actions_w = if staged || history { 64.0 } else { 110.0 };
@@ -794,6 +848,7 @@ impl CodeApp {
                 // Hunk buttons on the first row of each change.
                 if let Some(k) = row.hunk
                     && (r == 0 || view.rows[r - 1].hunk != Some(k))
+                    && !read_only
                 {
                     let mut child = ui.new_child(
                         egui::UiBuilder::new().max_rect(mid).layout(egui::Layout::left_to_right(Align::Center)),
@@ -908,7 +963,7 @@ impl CodeApp {
 
         let mut confirmed = None;
         if let Some(c) = &self.git.confirm {
-            egui::Window::new("Discard Changes")
+            egui::Window::new(if c.stash.is_some() { "Drop Stash" } else { "Discard Changes" })
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
@@ -916,7 +971,7 @@ impl CodeApp {
                     ui.label(&c.text);
                     ui.label(RichText::new("This can't be undone.").color(theme::colors().text_dim));
                     ui.horizontal(|ui| {
-                        if ui.button("Discard").clicked() {
+                        if ui.button(if c.stash.is_some() { "Drop" } else { "Discard" }).clicked() {
                             confirmed = Some(true);
                         }
                         if ui.button("Cancel").clicked() {
@@ -930,7 +985,10 @@ impl CodeApp {
             && yes
         {
             self.git_job(ctx, None, move |repo| Msg::Done {
-                result: repo.discard(&c.changes).map(|()| format!("Discarded {} file(s)", c.changes.len())),
+                result: match &c.stash {
+                    Some(name) => repo.stash_drop(name).map(|()| "Dropped stash".to_owned()),
+                    None => repo.discard(&c.changes).map(|()| format!("Discarded {} file(s)", c.changes.len())),
+                },
             });
         }
     }
@@ -940,6 +998,15 @@ impl CodeApp {
     pub(super) fn git_commit(&mut self, ctx: &egui::Context) {
         let message = self.git.message.trim().to_owned();
         let Some(status) = &self.git.status else { return };
+        if self.git.amend {
+            self.git.amend = false;
+            self.git.message.clear();
+            self.git_job(ctx, Some("Amending…".to_owned()), move |repo| {
+                let message = (!message.is_empty()).then_some(message.as_str());
+                Msg::Done { result: repo.amend(message).map(|()| "Amended the last commit".to_owned()) }
+            });
+            return;
+        }
         if message.is_empty() {
             self.status = Some("Type a commit message first".to_owned());
             return;
@@ -953,6 +1020,34 @@ impl CodeApp {
         self.git_job(ctx, Some("Committing…".to_owned()), move |repo| {
             let result = if stage_all { repo.stage(&["."]) } else { Ok(()) };
             Msg::Done { result: result.and_then(|()| repo.commit(&message)).map(|()| "Committed".to_owned()) }
+        });
+    }
+
+    pub(super) fn git_stash(&mut self, ctx: &egui::Context) {
+        if self.git.repo.is_none() {
+            self.status = Some("Open a folder in a Git repository first".to_owned());
+        } else if self.git.busy.is_none() {
+            self.git_job(ctx, Some("Stashing…".to_owned()), |repo| Msg::Done {
+                result: repo
+                    .stash_push()
+                    .map(|any| if any { "Stashed changes" } else { "No changes to stash" }.to_owned()),
+            });
+        }
+    }
+
+    pub(super) fn git_show_history(&mut self) {
+        self.git.history_open = true;
+        self.show_source_control();
+    }
+
+    /// A file as a commit changed it, against the commit's parent.
+    fn open_commit_file(&mut self, ctx: &egui::Context, hash: String, short: String, rel: String) {
+        let Some(root) = self.git.repo.as_ref().map(|r| r.root.clone()) else { return };
+        self.git_job(ctx, None, move |repo| {
+            let left = repo.file_at(&format!("{hash}^"), &rel);
+            let right = Some(repo.file_at(&hash, &rel));
+            let path = root.join(&rel);
+            Msg::Diff(DiffSource { path, rel, staged: false, left, right, commit: Some(short) })
         });
     }
 
@@ -1047,6 +1142,12 @@ impl CodeApp {
         {
             self.git_checkout(&ctx);
         }
+        if self.git.lists_stale {
+            self.git.lists_stale = false;
+            self.git_job(&ctx, None, |repo| {
+                Msg::Lists(repo.log(LOG_LIMIT).and_then(|log| Ok((log, repo.stash_list()?))))
+            });
+        }
         ui.horizontal(|ui| {
             let busy = self.git.busy.is_some();
             let pull = format!("Pull {}", status.behind);
@@ -1068,6 +1169,10 @@ impl CodeApp {
                     self.git_remote(&ctx, command);
                 }
             }
+            let tip = "Put all changes away, untracked files too";
+            if ui.add_enabled(!busy, egui::Button::new("Stash")).on_hover_text(tip).clicked() {
+                self.git_stash(&ctx);
+            }
         });
         let hint = format!("Message (Ctrl+Enter to commit on '{}')", status.branch);
         let edit = ui.add(
@@ -1078,8 +1183,22 @@ impl CodeApp {
         );
         let commit_key =
             edit.has_focus() && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter));
-        let label =
-            if status.staged.is_empty() && !status.unstaged.is_empty() { "Stage All and Commit" } else { "Commit" };
+        let tip = "Replace the last commit with this message and what's staged. If it was already pushed, your next push will be refused.";
+        let was_amending = self.git.amend;
+        if ui.checkbox(&mut self.git.amend, "Amend last commit").on_hover_text(tip).changed() {
+            if !was_amending && self.git.message.is_empty() {
+                self.git_job(&ctx, None, |repo| Msg::LastMessage(repo.last_commit_message()));
+            } else if was_amending {
+                self.git.message.clear();
+            }
+        }
+        let label = if self.git.amend {
+            "Amend"
+        } else if status.staged.is_empty() && !status.unstaged.is_empty() {
+            "Stage All and Commit"
+        } else {
+            "Commit"
+        };
         let busy = self.git.busy.is_some();
         let commit = ui.add_enabled(!busy, egui::Button::new(label).min_size(Vec2::new(ui.available_width(), 24.0)));
         if commit.clicked() || commit_key {
@@ -1091,6 +1210,7 @@ impl CodeApp {
         let mut stage: Vec<String> = Vec::new();
         let mut unstage: Vec<String> = Vec::new();
         let mut discard: Vec<FileChange> = Vec::new();
+        let mut list_action = None;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let sections: [(&str, &Vec<FileChange>, u8); 3] = [
                 ("Merge Changes", &status.conflicts, 0),
@@ -1152,8 +1272,104 @@ impl CodeApp {
             if status.staged.is_empty() && status.unstaged.is_empty() && status.conflicts.is_empty() {
                 ui.label(RichText::new("No changes.").color(pal.text_dim));
             }
+            ui.add_space(8.0);
+            if !self.git.stashes.is_empty() {
+                ui.label(RichText::new(format!("Stashes  {}", self.git.stashes.len())).small().strong());
+                for stash in &self.git.stashes {
+                    ui.horizontal(|ui| {
+                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                            if ui.small_button("Drop").on_hover_text("Delete this stash").clicked() {
+                                list_action = Some(ListAction::Drop(stash.clone()));
+                            }
+                            if ui.small_button("Pop").on_hover_text("Bring it back and remove it").clicked() {
+                                list_action = Some(ListAction::Restore(stash.name.clone(), true));
+                            }
+                            if ui.small_button("Apply").on_hover_text("Bring it back and keep it").clicked() {
+                                list_action = Some(ListAction::Restore(stash.name.clone(), false));
+                            }
+                            ui.add(egui::Label::new(&stash.message).truncate()).on_hover_text(&stash.message);
+                        });
+                    });
+                }
+                ui.add_space(8.0);
+            }
+            let history = egui::CollapsingHeader::new(RichText::new("History").small().strong())
+                .id_salt("git_history")
+                .open(self.git.history_open.then_some(true))
+                .show(ui, |ui| {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |d| d.as_secs() as i64);
+                    if self.git.log.is_empty() {
+                        ui.label(RichText::new("No commits yet.").color(pal.text_dim));
+                    }
+                    for commit in &self.git.log {
+                        let expanded = self.git.expanded.as_ref().filter(|e| e.0 == commit.hash);
+                        let row = ui.add(egui::Label::new(&commit.subject).sense(Sense::click()).truncate());
+                        let tip = format!(
+                            "{}\n{}, {}\n{}",
+                            commit.subject,
+                            commit.author,
+                            git::relative_time(now - commit.time),
+                            commit.hash
+                        );
+                        if row.on_hover_text(tip).clicked() {
+                            list_action = Some(if expanded.is_some() {
+                                ListAction::Collapse
+                            } else {
+                                ListAction::Expand(commit.hash.clone())
+                            });
+                        }
+                        let refs = if commit.refs.is_empty() { String::new() } else { format!(" ({})", commit.refs) };
+                        let detail = format!(
+                            "{}  {}  {}{refs}",
+                            commit.short,
+                            commit.author,
+                            git::relative_time(now - commit.time)
+                        );
+                        ui.add(egui::Label::new(RichText::new(detail).small().color(pal.text_dim)).truncate());
+                        for (kind, rel) in expanded.iter().flat_map(|e| &e.1) {
+                            ui.horizontal(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(RichText::new(kind.to_string()).color(kind_color(*kind)).strong());
+                                if ui.add(egui::Label::new(rel).sense(Sense::click()).truncate()).clicked() {
+                                    list_action = Some(ListAction::OpenFile(
+                                        commit.hash.clone(),
+                                        commit.short.clone(),
+                                        rel.clone(),
+                                    ));
+                                }
+                            });
+                        }
+                        ui.add_space(3.0);
+                    }
+                });
+            if self.git.history_open {
+                self.git.history_open = false;
+                let _ = history;
+            }
         });
 
+        match list_action {
+            Some(ListAction::Restore(name, pop)) => {
+                self.git_job(&ctx, Some("Restoring stash…".to_owned()), move |repo| Msg::Done {
+                    result: repo.stash_restore(&name, pop).map(|()| "Restored stash".to_owned()),
+                });
+            }
+            Some(ListAction::Drop(stash)) => {
+                let text = format!("Delete the stash \"{}\"?", stash.message);
+                self.git.confirm = Some(Confirm { text, changes: Vec::new(), stash: Some(stash.name) });
+            }
+            Some(ListAction::Expand(hash)) => {
+                self.git_job(&ctx, None, move |repo| {
+                    let files = repo.commit_files(&hash);
+                    Msg::CommitFiles(hash, files)
+                });
+            }
+            Some(ListAction::Collapse) => self.git.expanded = None,
+            Some(ListAction::OpenFile(hash, short, rel)) => self.open_commit_file(&ctx, hash, short, rel),
+            None => {}
+        }
         if !stage.is_empty() {
             self.git_job(&ctx, None, move |repo| {
                 let rels: Vec<&str> = stage.iter().map(String::as_str).collect();
@@ -1172,7 +1388,7 @@ impl CodeApp {
                 [one] => format!("Discard the changes in {}?", one.rel),
                 many => format!("Discard the changes in {} files?", many.len()),
             };
-            self.git.confirm = Some(Confirm { text, changes: discard });
+            self.git.confirm = Some(Confirm { text, changes: discard, stash: None });
         }
         if let Some((path, staged, kind)) = open {
             if kind == 'U' {
