@@ -318,6 +318,11 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Code actions | `Ctrl+.` (quick fixes, refactors) |
 | Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving |
 
+Click the server's name in the status bar, or run **Language Servers: Show Status**, for its state,
+how long it has been running, memory use, and each task with its elapsed time. **Restart** restarts
+that server; rust-analyzer also gets **Reload Workspace**, **Rebuild Proc Macros**, **Run Check** and
+**Cancel Check**.
+
 Edits are sent to the server as small incremental changes. **Language Servers: Restart**
 restarts them (e.g. after changing `lsp.paths`); `lsp.enabled = false` turns language
 servers off.

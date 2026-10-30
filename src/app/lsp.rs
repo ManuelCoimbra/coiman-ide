@@ -9,6 +9,7 @@ use std::sync::mpsc::{self, Receiver};
 
 use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
 use rust_code_core::lsp::servers::{self, Found, Installer, Launch, ServerKind};
+use rust_code_core::lsp::status::{Health, ServerStatus};
 use rust_code_core::lsp::types as lt;
 use rust_code_core::lsp::{Client, Event, convert, language_id};
 use rust_code_core::trust;
@@ -132,19 +133,20 @@ pub(super) struct LocationItem {
 #[derive(Default)]
 pub(super) struct LspState {
     /// Each kind of server's state; absent means not looked for yet.
-    setups: HashMap<ServerKind, Setup>,
+    pub(super) setups: HashMap<ServerKind, Setup>,
     /// Servers whose install offer was dismissed for this session.
     offer_dismissed: HashSet<ServerKind>,
     pub(super) clients: Vec<Client>,
     /// Requests in flight, by (server, server root, request id).
     pub(super) pending: HashMap<(ServerKind, PathBuf, i64), Pending>,
     pub(super) extra: super::lsp_extra::LspExtra,
+    pub(super) room: super::lsp_room::Room,
     /// Diagnostics by file (key: [`path_key`]), with the path as reported.
     diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
     /// Buffer version last sent to the server, per document uid.
-    synced: HashMap<u64, u64>,
-    /// Work-done progress by token: (title, latest message).
-    progress: HashMap<String, (String, String)>,
+    pub(super) synced: HashMap<u64, u64>,
+    /// Work-done progress by token: (title, latest message, started).
+    pub(super) progress: HashMap<String, (String, String, std::time::Instant)>,
     completion: Option<Completion>,
     hover: Option<Hover>,
     /// The word the pointer rests on: (doc uid, char, since, request sent).
@@ -423,6 +425,7 @@ impl CodeApp {
     /// Stops all servers; they start again (after a new search) on the next frame.
     pub(super) fn restart_lsp(&mut self) {
         self.lsp.clients.clear();
+        self.lsp.room.last_stop = None;
         self.lsp.pending.clear();
         self.lsp.synced.clear();
         self.lsp.progress.clear();
@@ -453,6 +456,11 @@ impl CodeApp {
                     }
                 }
                 "$/progress" => self.on_progress(&params),
+                "experimental/serverStatus" => {
+                    if let Some(client) = self.lsp.clients.iter_mut().find(|c| c.kind == kind && c.root == root) {
+                        client.status = Some(ServerStatus::parse(&params));
+                    }
+                }
                 // Errors and warnings only.
                 "window/showMessage" if params["type"].as_i64().is_some_and(|t| t <= 2) => {
                     self.status = Some(format!("{}: {}", kind.name(), params["message"].as_str().unwrap_or("")));
@@ -497,9 +505,9 @@ impl CodeApp {
                 }
             }
             Event::Exited(why) => {
-                let why = if why.is_empty() { String::new() } else { format!(": {why}") };
-                self.status =
-                    Some(format!("{} stopped{why}. Run \"Language Servers: Restart\" to start it again.", kind.name()));
+                let why = if why.is_empty() { String::new() } else { format!(" Last output: {why}") };
+                self.lsp.room.last_stop = Some(format!("{} stopped.{why}", kind.name()));
+                self.status = Some(format!("{} stopped. Click its name here for details.", kind.name()));
                 self.lsp.pending.retain(|(k, r, _), _| !(*k == kind && r == root));
                 self.lsp.progress.clear();
                 self.lsp.setups.insert(kind, Setup::Off);
@@ -524,7 +532,7 @@ impl CodeApp {
         match value["kind"].as_str() {
             Some("begin") => {
                 let title = value["title"].as_str().unwrap_or("").to_owned();
-                self.lsp.progress.insert(token, (title, message()));
+                self.lsp.progress.insert(token, (title, message(), std::time::Instant::now()));
             }
             Some("report") => {
                 if let Some(p) = self.lsp.progress.get_mut(&token) {
@@ -1561,9 +1569,21 @@ impl CodeApp {
             Some(Setup::Off) => format!("{name}: stopped"),
             None | Some(Setup::Idle | Setup::Probing(_)) => starting(),
             Some(Setup::Ready(_)) => match self.lsp.progress.values().next() {
-                Some((title, msg)) => format!("{name}: {title} {msg}").trim_end().to_owned(),
+                Some((title, msg, _)) => {
+                    // Messages can hold long paths; the window shows them whole.
+                    let text = format!("{name}: {title} {msg}");
+                    let cut: String = text.trim_end().chars().take(70).collect();
+                    if cut.len() < text.trim_end().len() { format!("{cut}…") } else { cut }
+                }
                 None if self.lsp.clients.iter().any(|c| c.kind == kind && !c.is_ready()) => starting(),
-                None => name.to_owned(),
+                None => {
+                    let status = self.lsp.clients.iter().find(|c| c.kind == kind).and_then(|c| c.status.as_ref());
+                    match status.map(|s| s.health) {
+                        Some(Health::Error) => format!("{name}: error"),
+                        Some(Health::Warning) => format!("{name}: warning"),
+                        _ => name.to_owned(),
+                    }
+                }
             },
         })
     }

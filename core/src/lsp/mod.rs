@@ -6,6 +6,7 @@ mod client;
 pub mod convert;
 pub mod discovery;
 pub mod servers;
+pub mod status;
 pub mod transport;
 
 pub use client::{Client, Event, language_id};

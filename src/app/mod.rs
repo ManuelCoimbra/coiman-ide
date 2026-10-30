@@ -11,6 +11,7 @@ mod hidden;
 mod history;
 mod lsp;
 mod lsp_extra;
+mod lsp_room;
 mod outline;
 mod plugins;
 mod split;
@@ -415,6 +416,7 @@ impl eframe::App for CodeApp {
             }
         });
         self.lsp_popups(&ctx);
+        self.lsp_room(&ctx);
         self.git_popups(&ctx);
         self.terminal_window(&ctx);
 

@@ -950,7 +950,12 @@ impl CodeApp {
                 ui.label(white(vim.status()));
             }
             if let Some(text) = self.lsp_status_text() {
-                ui.label(white(text));
+                let resp = ui
+                    .add(egui::Label::new(white(text)).sense(Sense::click()).selectable(false))
+                    .on_hover_text("Language Servers: state, memory and controls");
+                if resp.clicked() {
+                    status_cmd = Some(Command::ShowLanguageServers);
+                }
             }
             if let Some(msg) = &self.status {
                 ui.label(white(msg.clone()));

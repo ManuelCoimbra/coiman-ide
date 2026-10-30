@@ -15,6 +15,7 @@ use serde_json::{Value, json};
 use super::convert::diff_change;
 use super::discovery::quiet_command;
 use super::servers::{Launch, ServerKind};
+use super::status::ServerStatus;
 use super::transport::{encode, read_message};
 
 /// Lines of the server's stderr kept to explain a crash.
@@ -61,6 +62,9 @@ pub struct Client {
     queued: Vec<Value>,
     open: HashMap<Url, OpenDoc>,
     exited: bool,
+    pub started: Instant,
+    /// The server's own report, for servers that send one.
+    pub status: Option<ServerStatus>,
 }
 
 impl Client {
@@ -144,6 +148,8 @@ impl Client {
             queued: Vec::new(),
             open: HashMap::new(),
             exited: false,
+            started: Instant::now(),
+            status: None,
         };
         let root_uri = Url::from_directory_path(root).ok();
         let name = root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
@@ -171,6 +177,10 @@ impl Client {
         } else {
             self.queued.push(msg);
         }
+    }
+
+    pub fn pid(&self) -> u32 {
+        self.child.id()
     }
 
     /// Whether the server has answered `initialize`.
@@ -390,6 +400,7 @@ fn client_capabilities() -> Value {
             "inlayHint": { "refreshSupport": true },
         },
         "window": { "workDoneProgress": true, "showMessage": {} },
+        "experimental": { "serverStatusNotification": true },
     })
 }
 

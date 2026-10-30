@@ -345,6 +345,7 @@ impl CodeApp {
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
             }
             Command::NextHiddenCharacter => self.next_hidden_char(),
+            Command::ShowLanguageServers => self.show_lsp_room(),
             Command::SplitEditor => self.split_editor(),
             Command::CloseSplit => self.close_split(),
             Command::ToggleSplitLayout => self.toggle_split_layout(),
