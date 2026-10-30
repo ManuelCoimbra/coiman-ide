@@ -168,6 +168,23 @@ pub enum Found {
     },
 }
 
+/// rust-analyzer's settings: its check command, memory preset and build folder.
+pub fn rust_analyzer_options(check: &str, memory: &str, separate_target: bool) -> serde_json::Value {
+    let mut options = serde_json::json!({ "check": { "command": check } });
+    if separate_target {
+        options["cargo"]["targetDir"] = true.into();
+    }
+    if matches!(memory, "low" | "minimal") {
+        options["lru"]["capacity"] = 32.into();
+        options["cachePriming"]["enable"] = false.into();
+    }
+    if memory == "minimal" {
+        options["procMacro"]["enable"] = false.into();
+        options["cargo"]["buildScripts"]["enable"] = false.into();
+    }
+    options
+}
+
 /// `initializationOptions` a server needs (besides rust-analyzer's, which
 /// the editor builds from its settings).
 pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
@@ -547,6 +564,31 @@ pub fn root_for(kind: ServerKind, path: &Path, open_folder: Option<&Path>) -> Pa
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rust_analyzer_options_follow_the_settings() {
+        use serde_json::json;
+        assert_eq!(rust_analyzer_options("clippy", "default", false), json!({ "check": { "command": "clippy" } }));
+        assert_eq!(
+            rust_analyzer_options("check", "low", true),
+            json!({
+                "check": { "command": "check" },
+                "cargo": { "targetDir": true },
+                "lru": { "capacity": 32 },
+                "cachePriming": { "enable": false },
+            })
+        );
+        assert_eq!(
+            rust_analyzer_options("check", "minimal", true),
+            json!({
+                "check": { "command": "check" },
+                "cargo": { "targetDir": true, "buildScripts": { "enable": false } },
+                "lru": { "capacity": 32 },
+                "cachePriming": { "enable": false },
+                "procMacro": { "enable": false },
+            })
+        );
+    }
 
     #[test]
     fn languages_map_to_servers_and_roots_follow_markers() {

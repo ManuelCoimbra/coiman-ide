@@ -345,6 +345,7 @@ impl eframe::App for CodeApp {
             }
             self.disk_conflict_bar(ui);
             self.hidden_bar(ui);
+            self.lock_bar(ui);
             self.lsp_offer_bar(ui);
             self.find_bar(ui);
             let opts = editor_view::Options {

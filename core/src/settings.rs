@@ -90,6 +90,13 @@ pub struct LspSettings {
     pub rust_analyzer_path: String,
     /// Offer to install a missing language server (rust-analyzer, pyright…).
     pub ask_to_install: bool,
+    /// How much rust-analyzer may keep in memory: "default", "low" (fewer
+    /// cached trees, no warm-up on load) or "minimal" (also no build scripts or
+    /// proc macros, so code that depends on them shows false errors).
+    pub rust_analyzer_memory: String,
+    /// Give rust-analyzer its own build folder inside the target folder, so its
+    /// checks don't make cargo wait for the lock. It duplicates build output.
+    pub rust_analyzer_separate_target: bool,
     /// Commands for language servers, by language: `python`, `typescript`,
     /// `clangd`, `java`, `csharp`, `go` (and `rust`). A program path,
     /// optionally followed by arguments; empty finds the server itself.
@@ -193,6 +200,8 @@ impl Default for LspSettings {
             enabled: true,
             rust_analyzer_path: String::new(),
             ask_to_install: true,
+            rust_analyzer_memory: "default".to_owned(),
+            rust_analyzer_separate_target: false,
             paths: std::collections::BTreeMap::new(),
         }
     }

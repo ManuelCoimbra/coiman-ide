@@ -1,7 +1,7 @@
 //! What a running language server reports about itself, and what it costs.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -100,10 +100,64 @@ pub fn process_memory(roots: &[u32]) -> HashMap<u32, u64> {
     roots.iter().filter_map(|&root| Some((root, tree_memory(&table, root)?))).collect()
 }
 
+/// Whether a line of cargo's output says it is waiting for the build folder.
+/// Package cache locks are another matter: a separate build folder won't help.
+pub fn waits_for_build_lock(line: &str) -> bool {
+    let line = line.to_lowercase();
+    line.contains("waiting for file lock") && !line.contains("package cache")
+}
+
+fn dir_size(dir: &Path) -> u64 {
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    entries
+        .flatten()
+        .map(|entry| match entry.metadata() {
+            Ok(m) if m.is_dir() => dir_size(&entry.path()),
+            Ok(m) if m.is_file() => m.len(),
+            _ => 0,
+        })
+        .sum()
+}
+
+/// Bytes in a workspace's target folder, and how many of those are
+/// rust-analyzer's own copy. Runs cargo and walks the folder: call it off the
+/// UI thread, and only for trusted folders.
+pub fn build_folder_sizes(root: &Path) -> (u64, u64) {
+    // Cargo knows where it really is (`CARGO_TARGET_DIR`, `build.target-dir`).
+    let reported = quiet_command(Path::new("cargo"))
+        .args(["metadata", "--no-deps", "--format-version", "1"])
+        .current_dir(root)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok())
+        .and_then(|v| v["target_directory"].as_str().map(PathBuf::from));
+    let target = reported.unwrap_or_else(|| root.join("target"));
+    (dir_size(&target), dir_size(&target.join("rust-analyzer")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn recognizes_lock_waits() {
+        assert!(waits_for_build_lock("    Blocking waiting for file lock on build directory"));
+        assert!(!waits_for_build_lock("    Blocking waiting for file lock on package cache"));
+        assert!(!waits_for_build_lock("    Checking foo v0.1.0"));
+    }
+
+    #[test]
+    fn sizes_a_folder_with_its_subfolders() {
+        let dir = std::env::temp_dir().join(format!("rust-code-size-test-{}", std::process::id()));
+        let inner = dir.join("target").join("rust-analyzer");
+        std::fs::create_dir_all(&inner).unwrap();
+        std::fs::write(dir.join("target").join("a"), [0u8; 10]).unwrap();
+        std::fs::write(inner.join("b"), [0u8; 5]).unwrap();
+        assert_eq!(build_folder_sizes(&dir), (15, 5));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn reads_server_status() {

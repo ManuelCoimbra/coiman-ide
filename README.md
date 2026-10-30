@@ -321,7 +321,15 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 Click the server's name in the status bar, or run **Language Servers: Show Status**, for its state,
 how long it has been running, memory use, and each task with its elapsed time. **Restart** restarts
 that server; rust-analyzer also gets **Reload Workspace**, **Rebuild Proc Macros**, **Run Check** and
-**Cancel Check**.
+**Cancel Check**, and the window shows the size of the build folder.
+
+**Memory use** picks a preset (`lsp.rust_analyzer_memory`): `default`, `low` (fewer cached syntax
+trees, no cache warm-up on load) or `minimal` (also no build scripts or proc macros, so code that
+depends on them shows false errors). **Own build folder** (`lsp.rust_analyzer_separate_target`)
+stops cargo waiting on rust-analyzer's checks, and costs disk because build output is duplicated
+under `target/rust-analyzer`; it is off by default. Either change restarts rust-analyzer. When a cargo
+job started here waits for the build folder, a bar says what holds it and offers both ways out.
+Waits in the terminal aren't detected.
 
 Edits are sent to the server as small incremental changes. **Language Servers: Restart**
 restarts them (e.g. after changing `lsp.paths`); `lsp.enabled = false` turns language

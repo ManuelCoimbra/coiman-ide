@@ -124,6 +124,13 @@ impl CodeApp {
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
         let new = self.settings.clone();
+        // Servers read these when they start.
+        if !first
+            && (old.lsp.rust_analyzer_memory != new.lsp.rust_analyzer_memory
+                || old.lsp.rust_analyzer_separate_target != new.lsp.rust_analyzer_separate_target)
+        {
+            self.restart_rust_analyzer();
+        }
         // Indentation and save rules may have changed.
         let mut docs = std::mem::take(&mut self.docs);
         for doc in &mut docs {

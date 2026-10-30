@@ -14,6 +14,7 @@ use rust_code_core::cargo::{
     self, CargoDiagnostic, FileTarget, Outcome, OutputParser, RunConfig, Runner, TestItem, TestScope,
 };
 use rust_code_core::lsp::discovery::quiet_command;
+use rust_code_core::lsp::status::waits_for_build_lock;
 use rust_code_core::lsp::types as lt;
 use rust_code_core::run;
 
@@ -73,6 +74,8 @@ pub(super) struct CargoState {
     job: Option<Job>,
     output: Vec<String>,
     output_title: String,
+    /// The running job said it is waiting for the build folder's lock.
+    pub(super) lock_wait: bool,
     /// Diagnostics from the last `Cargo: Check`/`Clippy`, by file key.
     pub(super) diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
     configs: Vec<RunConfig>,
@@ -95,6 +98,7 @@ impl Default for CargoState {
             job: None,
             output: Vec::new(),
             output_title: String::new(),
+            lock_wait: false,
             diagnostics: HashMap::new(),
             configs: Vec::new(),
             selected: None,
@@ -282,6 +286,7 @@ impl CodeApp {
     }
 
     pub(super) fn cancel_job(&mut self) {
+        self.cargo.lock_wait = false;
         if let Some(mut job) = self.cargo.job.take() {
             let _ = job.child.kill();
             self.push_output("[cancelled]".to_owned());
@@ -293,6 +298,10 @@ impl CodeApp {
         let Some(job) = &mut self.cargo.job else { return };
         let mut new_lines = Vec::new();
         while let Ok((stdout, line)) = job.lines.try_recv() {
+            // Any later output means the wait is over.
+            if !stdout {
+                self.cargo.lock_wait = waits_for_build_lock(&line);
+            }
             match &job.kind {
                 JobKind::Tests(runner) => {
                     if let Some((binary, path, outcome)) = job.parser.line(*runner, &line) {
@@ -324,6 +333,7 @@ impl CodeApp {
             return;
         };
         let job = self.cargo.job.take().expect("checked above");
+        self.cargo.lock_wait = false;
         // Let the reader threads hand over the last lines.
         for (_, line) in job.lines.try_iter().collect::<Vec<_>>() {
             self.push_output(line);

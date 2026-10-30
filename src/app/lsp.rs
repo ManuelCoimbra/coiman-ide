@@ -364,7 +364,7 @@ impl CodeApp {
                 let launch = launch.clone();
                 let (root, options) = if kind == ServerKind::RustAnalyzer {
                     let root = workspace_root(&path, self.explorer.root.as_deref());
-                    (root, json!({ "check": { "command": self.settings.cargo.check_command } }))
+                    (root, self.rust_analyzer_settings())
                 } else {
                     (
                         servers::root_for(kind, &path, self.explorer.root.as_deref()),
@@ -470,9 +470,9 @@ impl CodeApp {
             Event::Request { id, method, params } => {
                 let result = match method.as_str() {
                     // Defaults for every setting asked for.
-                    // Defaults, except the check rust-analyzer runs on save (check or clippy).
+                    // Defaults, except what rust-analyzer's settings here cover.
                     "workspace/configuration" => {
-                        let check = json!({ "check": { "command": self.settings.cargo.check_command } });
+                        let check = self.rust_analyzer_settings();
                         let items = params["items"].as_array().cloned().unwrap_or_default();
                         let answers = items
                             .iter()
