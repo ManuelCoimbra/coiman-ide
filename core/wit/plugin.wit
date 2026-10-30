@@ -1,4 +1,4 @@
-package rust-code:plugin@0.1.0;
+package rust-code:plugin@0.2.0;
 
 /// Data shared by the editor and plugins.
 interface types {
@@ -32,6 +32,36 @@ interface types {
         button(button),
     }
 
+    /// Colors part of a line. Colors are 0xRRGGBB.
+    record decoration {
+        /// 1-based line.
+        line: u32,
+        /// 0-based character columns, end exclusive.
+        start: u32,
+        end: u32,
+        foreground: option<u32>,
+        background: option<u32>,
+        italic: bool,
+    }
+
+    enum severity {
+        error,
+        warning,
+        information,
+        hint,
+    }
+
+    /// An entry in the Problems panel, underlined in the editor.
+    record problem {
+        /// 1-based line.
+        line: u32,
+        /// 0-based character columns, end exclusive.
+        start: u32,
+        end: u32,
+        severity: severity,
+        message: string,
+    }
+
     /// The active editor.
     record document {
         /// Relative to the open folder ("" when the file is outside it or unsaved).
@@ -53,6 +83,8 @@ interface types {
         saved(string),
         /// Another editor became active (relative path, "" if none).
         active-changed(string),
+        /// The active editor's text changed (relative path); sent once typing pauses.
+        edited(string),
     }
 }
 
@@ -60,7 +92,7 @@ interface types {
 /// editor need a permission the user granted at install; without it they
 /// return `permission denied: <permission>`.
 interface host {
-    use types.{tree-item, block, document};
+    use types.{tree-item, block, document, decoration, problem};
 
     /// A line in the plugin's log (Output panel).
     log: func(message: string);
@@ -73,6 +105,12 @@ interface host {
     set-tree-items: func(view: string, items: list<tree-item>);
     /// Replaces the content of a panel declared in `plugin.toml`.
     set-panel: func(panel: string, blocks: list<block>);
+    /// Replaces this plugin's coloring of a file (relative path, "" for the
+    /// active editor). Empty clears it.
+    set-decorations: func(path: string, items: list<decoration>);
+    /// Replaces this plugin's problems for a file (relative path, "" for the
+    /// active editor). Empty clears them.
+    set-problems: func(path: string, items: list<problem>);
     /// Opens a file of the open folder at a 1-based line.
     open-location: func(path: string, line: u32) -> result<_, string>;
 

@@ -99,6 +99,13 @@ fn host_api_permissions_sandbox_and_limits() {
     host.run_command(ID, "run", "undeclared");
     wait(&host, |u| matches!(u, Update::Log { line, .. } if line.contains("isn't declared")));
 
+    // Coloring and problems, in the editor's terms.
+    host.run_command(ID, "run", "decorate careful");
+    let decorated = wait(&host, |u| matches!(u, Update::Decorations { .. }));
+    assert!(matches!(&decorated, Update::Decorations { items, .. } if items[0].foreground == Some(0xFF0000)));
+    let problems = wait(&host, |u| matches!(u, Update::Problems { .. }));
+    assert!(matches!(&problems, Update::Problems { items, .. } if items[0].message == "careful"));
+
     // Events it subscribed to.
     host.event(EventKind::Saved, Event::Saved("src/a.txt".into()));
     wait(&host, |u| matches!(u, Update::Log { line, .. } if line == "saved src/a.txt"));

@@ -1,6 +1,3 @@
 /target
 /graphify-out
-# Plugins built for wasm32 have their own target folders.
-/examples/plugins/*/target
-/core/tests/fixtures/*/target
 /examples/plugins/*/plugin.wasm

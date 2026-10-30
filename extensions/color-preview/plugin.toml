@@ -1,0 +1,6 @@
+id = "rust-code.color-preview"
+name = "Color Preview"
+version = "1.0.0"
+description = "Shows #rgb, #rrggbb and rgb() colors in their own color."
+permissions = ["editor-read"]
+events = ["edited", "active-changed", "saved"]

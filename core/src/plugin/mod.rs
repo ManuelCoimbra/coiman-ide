@@ -7,5 +7,5 @@ pub mod manifest;
 pub mod registry;
 pub mod store;
 
-pub use host::{Block, Button, Document, Event, PluginHost, TreeItem, Update};
+pub use host::{Block, Button, Decoration, Document, Event, PluginHost, Problem, Severity, TreeItem, Update};
 pub use manifest::{EventKind, Manifest, Permission};

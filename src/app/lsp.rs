@@ -156,7 +156,7 @@ fn serves(client: &Client, kind: ServerKind, path: &Path) -> bool {
 }
 
 /// Key for comparing paths (case-insensitive on Windows).
-fn path_key(path: &Path) -> PathBuf {
+pub(super) fn path_key(path: &Path) -> PathBuf {
     if cfg!(windows) { PathBuf::from(path.to_string_lossy().to_lowercase()) } else { path.to_path_buf() }
 }
 
@@ -607,6 +607,7 @@ impl CodeApp {
     fn diagnostics_for(&self, path: &Path) -> Vec<lt::Diagnostic> {
         let k = path_key(path);
         let mut all = self.lsp.diagnostics.get(&k).map(|(_, d)| d.clone()).unwrap_or_default();
+        all.extend(self.plugin_problems(&k));
         for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
             let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
@@ -619,12 +620,26 @@ impl CodeApp {
 
     /// Every file with diagnostics, from both sources.
     fn all_diagnostics(&self) -> Vec<(PathBuf, Vec<lt::Diagnostic>)> {
-        let mut keys: Vec<&PathBuf> = self.lsp.diagnostics.keys().chain(self.cargo.diagnostics.keys()).collect();
+        let plugin_paths = self.plugin_problem_paths();
+        let mut keys: Vec<&PathBuf> = self
+            .lsp
+            .diagnostics
+            .keys()
+            .chain(self.cargo.diagnostics.keys())
+            .chain(plugin_paths.iter().map(|(k, _)| k))
+            .collect();
         keys.sort();
         keys.dedup();
         keys.into_iter()
             .filter_map(|k| {
-                let path = self.lsp.diagnostics.get(k).or_else(|| self.cargo.diagnostics.get(k))?.0.clone();
+                let path = self
+                    .lsp
+                    .diagnostics
+                    .get(k)
+                    .or_else(|| self.cargo.diagnostics.get(k))
+                    .map(|(p, _)| p)
+                    .or_else(|| plugin_paths.iter().find(|(key, _)| key == k).map(|(_, p)| p))?
+                    .clone();
                 let diags = self.diagnostics_for(&path);
                 Some((path, diags))
             })

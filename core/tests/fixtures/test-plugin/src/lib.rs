@@ -7,7 +7,7 @@ wit_bindgen::generate!({
 });
 
 use rust_code::plugin::host;
-use rust_code::plugin::types::{Block, TreeItem};
+use rust_code::plugin::types::{Block, Decoration, Problem, Severity, TreeItem};
 
 struct TestPlugin;
 
@@ -43,6 +43,13 @@ impl Guest for TestPlugin {
                 };
                 host::set_tree_items("files", &[item]);
                 Ok("tree".into())
+            }
+            "decorate" => {
+                let item = Decoration { line: 1, start: 0, end: 3, foreground: Some(0xFF0000), background: None, italic: false };
+                host::set_decorations("", &[item]);
+                let problem = Problem { line: 1, start: 0, end: 3, severity: Severity::Warning, message: arg.into() };
+                host::set_problems("", &[problem]);
+                Ok("decorated".into())
             }
             "undeclared" => {
                 host::set_panel("nope", &[]);

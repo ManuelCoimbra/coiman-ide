@@ -48,6 +48,7 @@ pub enum EventKind {
     Opened,
     Saved,
     ActiveChanged,
+    Edited,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

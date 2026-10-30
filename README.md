@@ -236,6 +236,20 @@ Plugins are WebAssembly components written against `core/wit/plugin.wit` and run
 - **Install from Folder…** installs an unsigned plugin you are developing (marked
   unsigned).
 
+**Built in**, as plugins you can turn off in the Extensions view:
+
+- **Comment Highlights**: TODO, FIXME, BUG, HACK, XXX and NOTE tags, and comments starting with
+  `!`, `?` or `*`.
+- **Trailing Spaces**: marks whitespace at line ends.
+- **Color Preview**: `#rgb`, `#rrggbb` and `rgb()` shown in their own color.
+- **SCS Units**: Euro Truck Simulator 2 and American Truck Simulator `.sii` files get colors, a
+  **SII Units** list in the Explorer, and checks for unbalanced braces, unclosed strings, duplicate
+  unit names, malformed lines and a missing `SiiNunit`.
+
+Plugins can color text (`set-decorations`) and report in the Problems panel (`set-problems`), and
+hear about edits (`edited` event). VS Code extensions themselves can't load here: they need VS
+Code's JavaScript host and full system access, which is what this sandbox exists to avoid.
+
 Writing one: see `examples/plugins/word-count`. It has a status item, a panel, a TODO tree
 view and commands. Build it with `scripts/build-plugins.ps1`, which needs
 `rustup target add wasm32-unknown-unknown`. Publish it with:

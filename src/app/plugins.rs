@@ -5,22 +5,52 @@
 //! `rust_code_core::plugin::PluginHost`; nothing is fetched from a registry
 //! unless the user asks.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use egui::{Align, RichText, Sense};
+use rust_code_core::lsp::types as lt;
 use rust_code_core::plugin::manifest::{Alignment, Manifest, Permission};
 use rust_code_core::plugin::registry::{self, Entry, Package};
 use rust_code_core::plugin::store::{self, Lockfile, UpdateDiff};
-use rust_code_core::plugin::{Block, Document, Event, EventKind, PluginHost, TreeItem, Update};
+use rust_code_core::plugin::{
+    Block, Decoration, Document, Event, EventKind, PluginHost, Problem, Severity, TreeItem, Update,
+};
 
+use super::lsp::path_key;
 use super::{CodeApp, PanelTab, SidebarView, repaint};
+use crate::editor_view::{Decorations, Highlight};
 
 const WARNING: egui::Color32 = egui::Color32::from_rgb(0xCC, 0xA7, 0x00);
 const ERROR: egui::Color32 = egui::Color32::from_rgb(0xF1, 0x4C, 0x4C);
 use crate::icons::{self, Icon};
 use crate::theme;
+
+/// Extensions that ship with Rust Code: sandboxed plugins like any other, with
+/// no download. They can be turned off in the Extensions view.
+const BUILT_IN: [(&str, &[u8]); 4] = [
+    (
+        include_str!("../../extensions/comment-highlights/plugin.toml"),
+        include_bytes!("../../extensions/comment-highlights/plugin.wasm"),
+    ),
+    (
+        include_str!("../../extensions/trailing-spaces/plugin.toml"),
+        include_bytes!("../../extensions/trailing-spaces/plugin.wasm"),
+    ),
+    (
+        include_str!("../../extensions/color-preview/plugin.toml"),
+        include_bytes!("../../extensions/color-preview/plugin.wasm"),
+    ),
+    (include_str!("../../extensions/scs-sii/plugin.toml"), include_bytes!("../../extensions/scs-sii/plugin.wasm")),
+];
+
+/// `Locked::source` of a built-in extension.
+const BUILT_IN_SOURCE: &str = "built-in";
+
+/// Seconds after the last edit before plugins are told.
+const EDIT_DELAY: f64 = 0.15;
 
 pub(super) struct StatusItem {
     plugin: String,
@@ -108,6 +138,13 @@ pub(super) struct PluginState {
     workspace: Option<PathBuf>,
     last_active: Option<Option<PathBuf>>,
     last_doc: Option<(u64, u64)>,
+    /// A change plugins haven't heard about: (doc uid, version, when seen).
+    edit_pending: Option<(u64, u64, f64)>,
+    /// Coloring and problems by (plugin, file key).
+    decorations: HashMap<(String, PathBuf), Vec<Decoration>>,
+    /// All plugins' coloring per file key, by line.
+    highlights: HashMap<PathBuf, Arc<HashMap<usize, Vec<Highlight>>>>,
+    problems: HashMap<(String, PathBuf), (PathBuf, Vec<lt::Diagnostic>)>,
 }
 
 /// Command Palette key for a plugin command.
@@ -149,11 +186,92 @@ impl CodeApp {
             Ok(lock) => self.plugins.lock = lock,
             Err(e) => self.status = Some(format!("Plugins: {e}")),
         }
+        self.install_built_ins(&dir);
         self.plugins.dir = Some(dir);
         self.refresh_infos();
         let ids: Vec<String> = self.plugins.lock.plugins.iter().filter(|p| p.enabled).map(|p| p.id.clone()).collect();
         for id in ids {
             self.load_plugin(ctx, &id);
+        }
+    }
+
+    /// Puts the built-in extensions in the store, new or updated. Each one's
+    /// on/off choice and permissions are kept.
+    fn install_built_ins(&mut self, dir: &Path) {
+        let mut changed = false;
+        for (toml, wasm) in BUILT_IN {
+            let Ok(manifest) = rust_code_core::plugin::manifest::parse(toml) else { continue };
+            let wasm_hash = registry::sha256_hex(wasm);
+            let locked = self.plugins.lock.get(&manifest.id);
+            if locked.is_some_and(|l| {
+                l.wasm_sha256 == wasm_hash && l.manifest_sha256 == registry::sha256_hex(toml.as_bytes())
+            }) {
+                continue;
+            }
+            let granted = match locked {
+                Some(l) => l.granted.clone(),
+                None => manifest.permissions.clone(),
+            };
+            let pkg = Package { manifest, manifest_bytes: toml.as_bytes().to_vec(), wasm: wasm.to_vec() };
+            if store::install(dir, &mut self.plugins.lock, &pkg, BUILT_IN_SOURCE, "", granted).is_ok() {
+                changed = true;
+            }
+        }
+        if changed && let Err(e) = self.plugins.lock.save(dir) {
+            self.status = Some(format!("Plugins: {e}"));
+        }
+    }
+
+    /// Plugin coloring for document `i`.
+    pub(super) fn plugin_decorate(&self, i: usize, deco: &mut Decorations) {
+        if let Some(path) = self.docs.get(i).and_then(|d| d.path.as_deref()) {
+            deco.highlights = self.plugins.highlights.get(&path_key(path)).cloned();
+        }
+    }
+
+    /// Plugins' problems for a file key.
+    pub(super) fn plugin_problems(&self, key: &Path) -> Vec<lt::Diagnostic> {
+        let matching = self.plugins.problems.iter().filter(|((_, k), _)| k == key);
+        matching.flat_map(|(_, (_, items))| items.iter().cloned()).collect()
+    }
+
+    /// Files with plugin problems: (key, path).
+    pub(super) fn plugin_problem_paths(&self) -> Vec<(PathBuf, PathBuf)> {
+        self.plugins.problems.iter().map(|((_, k), (p, _))| (k.clone(), p.clone())).collect()
+    }
+
+    /// The file a plugin named: relative to the open folder, "" for the active editor.
+    fn plugin_path(&self, path: &str) -> Option<PathBuf> {
+        if path.is_empty() {
+            self.docs.get(self.active)?.path.clone()
+        } else {
+            self.explorer.root.as_ref().map(|r| r.join(path))
+        }
+    }
+
+    /// Rebuilds the merged coloring of a file from every plugin's.
+    fn rebuild_highlights(&mut self, key: &Path) {
+        let mut lines: HashMap<usize, Vec<Highlight>> = HashMap::new();
+        for ((_, k), items) in &self.plugins.decorations {
+            if k != key {
+                continue;
+            }
+            for d in items {
+                let color =
+                    |c: Option<u32>| c.map(|v| egui::Color32::from_rgb((v >> 16) as u8, (v >> 8) as u8, v as u8));
+                lines.entry(d.line.saturating_sub(1) as usize).or_default().push(Highlight {
+                    start: d.start as usize,
+                    end: d.end as usize,
+                    foreground: color(d.foreground),
+                    background: color(d.background),
+                    italic: d.italic,
+                });
+            }
+        }
+        if lines.is_empty() {
+            self.plugins.highlights.remove(key);
+        } else {
+            self.plugins.highlights.insert(key.to_path_buf(), Arc::new(lines));
         }
     }
 
@@ -252,6 +370,13 @@ impl CodeApp {
     }
 
     fn remove_contributions(&mut self, id: &str) {
+        let keys: Vec<PathBuf> =
+            self.plugins.decorations.keys().filter(|(p, _)| p == id).map(|(_, k)| k.clone()).collect();
+        self.plugins.decorations.retain(|(p, _), _| p != id);
+        for key in keys {
+            self.rebuild_highlights(&key);
+        }
+        self.plugins.problems.retain(|(p, _), _| p != id);
         self.plugins.status_items.retain(|s| s.plugin != id);
         self.plugins.trees.retain(|t| t.plugin != id);
         let before = self.plugins.panels.len();
@@ -284,27 +409,33 @@ impl CodeApp {
         for u in updates {
             self.on_plugin_update(u);
         }
-        // Active editor changes and the document snapshot for `editor-read`.
-        let active = self.docs.get(self.active).map(|d| d.path.clone());
-        let active = active.flatten();
-        if self.plugins.last_active.as_ref() != Some(&active) {
-            self.plugins.last_active = Some(active.clone());
-            let rel = active.as_deref().map(|p| self.relative(p)).unwrap_or_default();
-            if let Some(host) = &self.plugins.host {
-                host.event(EventKind::ActiveChanged, Event::ActiveChanged(rel));
-            }
-        }
-        let reads = self.plugins.lock.plugins.iter().any(|p| p.enabled && p.granted.contains(&Permission::EditorRead));
-        if reads {
-            let key = self.docs.get(self.active).map(|d| (d.uid, d.buffer.version()));
-            if key != self.plugins.last_doc {
+        // The document snapshot for `editor-read`, once typing pauses, then
+        // the events: plugins read the snapshot when they hear about a change.
+        let now = ctx.input(|i| i.time);
+        let key = self.docs.get(self.active).map(|d| (d.uid, d.buffer.version()));
+        let switched = self.plugins.last_doc.map(|k| k.0) != key.map(|k| k.0);
+        let mut edited = false;
+        if key != self.plugins.last_doc {
+            let settled = match (self.plugins.edit_pending, key) {
+                (Some((uid, version, since)), Some((u, v))) if uid == u && version == v => now - since >= EDIT_DELAY,
+                (_, Some((u, v))) => {
+                    self.plugins.edit_pending = Some((u, v, now));
+                    false
+                }
+                _ => true,
+            };
+            if switched || settled {
+                edited = !switched;
+                self.plugins.edit_pending = None;
                 self.plugins.last_doc = key;
                 let doc = self.docs.get(self.active).map(|d| {
                     let (line, column) = d.cursor();
+                    // Very large files stay out of plugins.
+                    let text = if d.large { String::new() } else { d.text() };
                     Document {
                         path: d.path.as_deref().map(|p| self.relative(p)).unwrap_or_default(),
                         language: d.language_name().to_owned(),
-                        text: d.text(),
+                        text,
                         line: line as u32,
                         column: column as u32,
                         dirty: d.is_dirty(),
@@ -313,7 +444,20 @@ impl CodeApp {
                 if let Some(host) = &self.plugins.host {
                     host.set_document(doc);
                 }
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(EDIT_DELAY));
             }
+        }
+        let active = self.docs.get(self.active).and_then(|d| d.path.clone());
+        let rel = active.as_deref().map(|p| self.relative(p)).unwrap_or_default();
+        if self.plugins.last_active.as_ref() != Some(&active) {
+            self.plugins.last_active = Some(active);
+            if let Some(host) = &self.plugins.host {
+                host.event(EventKind::ActiveChanged, Event::ActiveChanged(rel.clone()));
+            }
+        }
+        if edited && let Some(host) = &self.plugins.host {
+            host.event(EventKind::Edited, Event::Edited(rel));
         }
     }
 
@@ -323,6 +467,32 @@ impl CodeApp {
                 if let Some(info) = self.plugins.infos.iter_mut().find(|i| i.id == plugin) {
                     info.running = true;
                     info.problem = None;
+                }
+                // It may have missed what's on screen while it was loading.
+                self.plugins.last_doc = None;
+                self.plugins.last_active = None;
+            }
+            Update::Decorations { plugin, path, items } => {
+                if let Some(file) = self.plugin_path(&path) {
+                    let key = path_key(&file);
+                    if items.is_empty() {
+                        self.plugins.decorations.remove(&(plugin, key.clone()));
+                    } else {
+                        self.plugins.decorations.insert((plugin, key.clone()), items);
+                    }
+                    self.rebuild_highlights(&key);
+                }
+            }
+            Update::Problems { plugin, path, items } => {
+                if let Some(file) = self.plugin_path(&path) {
+                    let key = path_key(&file);
+                    if items.is_empty() {
+                        self.plugins.problems.remove(&(plugin, key));
+                    } else {
+                        let source = self.plugin_name(&plugin);
+                        let diagnostics = items.iter().map(|p| diagnostic(p, &source)).collect();
+                        self.plugins.problems.insert((plugin, key), (file, diagnostics));
+                    }
                 }
             }
             Update::Stopped { plugin, error } => {
@@ -790,7 +960,7 @@ impl CodeApp {
                 ui.label(RichText::new(name).strong());
                 ui.label(RichText::new(&locked.version).small().color(pal.text_dim));
                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    if icons::button(ui, Icon::Trash, "Uninstall").clicked() {
+                    if locked.source != BUILT_IN_SOURCE && icons::button(ui, Icon::Trash, "Uninstall").clicked() {
                         actions.push(Action::Uninstall(info.id.clone()));
                     }
                     let mut enabled = locked.enabled;
@@ -806,7 +976,9 @@ impl CodeApp {
                 (None, false, true) => RichText::new("starting…").color(pal.text_dim),
             };
             ui.label(state.small());
-            let origin = if locked.signed() {
+            let origin = if locked.source == BUILT_IN_SOURCE {
+                "built in".to_owned()
+            } else if locked.signed() {
                 format!("signed, key {}", registry::fingerprint(&locked.publisher_key))
             } else {
                 format!("unsigned, {}", locked.source)
@@ -971,6 +1143,22 @@ impl CodeApp {
         if let Some((plugin, command, argument)) = run {
             self.run_plugin(&plugin, &command, &argument);
         }
+    }
+}
+
+fn diagnostic(p: &Problem, source: &str) -> lt::Diagnostic {
+    let line = p.line.saturating_sub(1);
+    lt::Diagnostic {
+        range: lt::Range::new(lt::Position::new(line, p.start), lt::Position::new(line, p.end)),
+        severity: Some(match p.severity {
+            Severity::Error => lt::DiagnosticSeverity::ERROR,
+            Severity::Warning => lt::DiagnosticSeverity::WARNING,
+            Severity::Information => lt::DiagnosticSeverity::INFORMATION,
+            Severity::Hint => lt::DiagnosticSeverity::HINT,
+        }),
+        source: Some(source.to_owned()),
+        message: p.message.clone(),
+        ..Default::default()
     }
 }
 

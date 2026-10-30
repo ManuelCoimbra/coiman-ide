@@ -1,0 +1,14 @@
+id = "rust-code.scs-sii"
+name = "SCS Units"
+version = "1.0.0"
+description = "Euro Truck Simulator 2 and American Truck Simulator .sii files: colors, a list of units, and checks for broken structure."
+permissions = ["editor-read"]
+events = ["edited", "active-changed", "saved"]
+
+[[commands]]
+id = "open"
+title = "SCS Units: Go to Unit"
+
+[[tree_views]]
+id = "units"
+title = "SII Units"

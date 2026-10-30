@@ -46,6 +46,16 @@ pub struct Mark {
     pub message: String,
 }
 
+/// Coloring a plugin put on part of a line (columns in characters).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Highlight {
+    pub start: usize,
+    pub end: usize,
+    pub foreground: Option<Color32>,
+    pub background: Option<Color32>,
+    pub italic: bool,
+}
+
 /// How a run of lines differs from the version in Git's index.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ChangeKind {
@@ -66,6 +76,8 @@ pub struct ChangeMark {
 pub struct Decorations {
     /// Sorted by `start`.
     pub marks: Vec<Mark>,
+    /// Plugin coloring by line.
+    pub highlights: Option<std::sync::Arc<std::collections::HashMap<usize, Vec<Highlight>>>>,
     /// Sorted by line.
     pub changes: Vec<ChangeMark>,
     /// Blame text shown after the end of this line.
@@ -1057,8 +1069,25 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
         }
 
+        // Plugin coloring: backgrounds under the text, the rest in the text itself.
+        let line_highlights = deco.highlights.as_ref().and_then(|h| h.get(&row.line));
+        if let Some(highlights) = line_highlights {
+            let line_start = buf.line_start(row.line);
+            for h in highlights {
+                let (a, b) = ((line_start + h.start).max(row.start), (line_start + h.end).min(row.end));
+                if let (Some(color), true) = (h.background, b > a) {
+                    let (xa, xb) = (x0 + col_x(buf, row.start, a, m), x0 + col_x(buf, row.start, b, m));
+                    text_painter.rect_filled(
+                        Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)),
+                        0.0,
+                        color,
+                    );
+                }
+            }
+        }
+
         // Text.
-        let job = row_job(doc, view, &row, m);
+        let job = row_job(doc, view, &row, m, line_highlights.map(Vec::as_slice));
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
         let buf = &doc.buffer;
@@ -1271,7 +1300,39 @@ fn indent_cols(buf: &Buffer, line: usize) -> usize {
 }
 
 /// Builds the text for one row: syntax colors, tabs expanded to spaces.
-fn row_job(doc: &mut Document, view: &mut ViewState, row: &Row, m: &Metrics) -> LayoutJob {
+/// Syntax color runs with plugin colors on top.
+fn overlay_runs(runs: &[(usize, Color32, bool)], highlights: &[Highlight], len: usize) -> Vec<(usize, Color32, bool)> {
+    let mut styles = Vec::with_capacity(len);
+    for &(end, color, italic) in runs {
+        let end = end.min(len);
+        if end > styles.len() {
+            styles.resize(end, (color, italic));
+        }
+    }
+    styles.resize(len, (theme::colors().editor_fg, false));
+    for h in highlights {
+        for style in styles.iter_mut().take(h.end.min(len)).skip(h.start) {
+            style.0 = h.foreground.unwrap_or(style.0);
+            style.1 |= h.italic;
+        }
+    }
+    let mut out: Vec<(usize, Color32, bool)> = Vec::new();
+    for (i, (color, italic)) in styles.into_iter().enumerate() {
+        match out.last_mut() {
+            Some(last) if last.1 == color && last.2 == italic => last.0 = i + 1,
+            _ => out.push((i + 1, color, italic)),
+        }
+    }
+    out
+}
+
+fn row_job(
+    doc: &mut Document,
+    view: &mut ViewState,
+    row: &Row,
+    m: &Metrics,
+    highlights: Option<&[Highlight]>,
+) -> LayoutJob {
     let line_start = doc.buffer.line_start(row.line);
     let line_text = doc.buffer.line_text(row.line);
     let chars: Vec<char> = line_text.chars().collect();
@@ -1297,6 +1358,9 @@ fn row_job(doc: &mut Document, view: &mut ViewState, row: &Row, m: &Metrics) -> 
             }
         }
         None => runs.push((chars.len(), theme::colors().editor_fg, false)),
+    }
+    if let Some(highlights) = highlights.filter(|h| h.iter().any(|x| x.foreground.is_some() || x.italic)) {
+        runs = overlay_runs(&runs, highlights, chars.len());
     }
 
     let mut job = LayoutJob::default();

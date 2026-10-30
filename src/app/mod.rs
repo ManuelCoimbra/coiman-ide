@@ -339,6 +339,7 @@ impl eframe::App for CodeApp {
             self.git_decorate(self.active, &mut deco);
             self.cargo_decorate(self.active, &mut deco);
             self.debug_decorate(self.active, &mut deco);
+            self.plugin_decorate(self.active, &mut deco);
             if let Some(doc) = self.docs.get_mut(self.active) {
                 deco.folds = doc.structure().folds.clone();
             }

@@ -25,7 +25,7 @@ wasmtime::component::bindgen!({
     world: "plugin",
 });
 
-pub use rust_code::plugin::types::{Block, Button, Document, TreeItem};
+pub use rust_code::plugin::types::{Block, Button, Decoration, Document, Problem, Severity, TreeItem};
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
 const TICK: Duration = Duration::from_millis(10);
@@ -77,6 +77,17 @@ pub enum Update {
     Insert {
         plugin: String,
         text: String,
+    },
+    /// `path` is relative to the open folder; "" means the active editor.
+    Decorations {
+        plugin: String,
+        path: String,
+        items: Vec<Decoration>,
+    },
+    Problems {
+        plugin: String,
+        path: String,
+        items: Vec<Problem>,
     },
 }
 
@@ -386,6 +397,14 @@ impl rust_code::plugin::host::Host for State {
         if self.declared("panel", &panel, ids) {
             self.send(Update::Panel { plugin: self.plugin.clone(), panel, blocks });
         }
+    }
+
+    fn set_decorations(&mut self, path: String, items: Vec<Decoration>) {
+        self.send(Update::Decorations { plugin: self.plugin.clone(), path, items });
+    }
+
+    fn set_problems(&mut self, path: String, items: Vec<Problem>) {
+        self.send(Update::Problems { plugin: self.plugin.clone(), path, items });
     }
 
     fn open_location(&mut self, path: String, line: u32) -> Result<(), String> {

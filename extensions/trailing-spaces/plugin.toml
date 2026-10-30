@@ -1,0 +1,6 @@
+id = "rust-code.trailing-spaces"
+name = "Trailing Spaces"
+version = "1.0.0"
+description = "Marks spaces at the end of lines."
+permissions = ["editor-read"]
+events = ["edited", "active-changed", "saved"]
