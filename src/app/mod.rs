@@ -32,7 +32,6 @@ use crate::theme;
 use crate::watcher::FileWatcher;
 
 const DEFAULT_FONT_SIZE: f32 = 14.0;
-const INDENT: &str = "    ";
 /// Seconds between crash-recovery session backups.
 const BACKUP_INTERVAL: f64 = 1.0;
 
@@ -67,16 +66,18 @@ enum PendingClose {
 struct FindCache {
     uid: u64,
     version: u64,
-    query: String,
-    match_case: bool,
+    options: rust_code_core::find::FindOptions,
     matches: Vec<(usize, usize)>,
+    /// The regular expression doesn't compile.
+    error: Option<String>,
 }
 
 #[derive(Default)]
 struct FindBar {
     open: bool,
-    query: String,
-    match_case: bool,
+    options: rust_code_core::find::FindOptions,
+    show_replace: bool,
+    replacement: String,
     focus_requested: bool,
     /// Matches for (doc uid, buffer version, query, match case), recomputed only on change.
     cache: Option<FindCache>,
@@ -159,6 +160,10 @@ pub struct CodeApp {
     plugins: plugins::PluginState,
     /// "Stay Restricted" was chosen: no bar until something needs trust again.
     trust_prompt_hidden: bool,
+    /// Where the Explorer's next new file, folder or rename applies.
+    path_target: Option<PathBuf>,
+    /// Asking before moving this to the Recycle Bin.
+    delete_pending: Option<PathBuf>,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -213,6 +218,8 @@ impl CodeApp {
             debug: debug::DebugState::default(),
             plugins: plugins::PluginState::default(),
             trust_prompt_hidden: false,
+            path_target: None,
+            delete_pending: None,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
@@ -397,6 +404,9 @@ impl eframe::App for CodeApp {
             Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
             Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),
+            Some(PaletteResult::Input(InputKind::NewFile, name)) => self.finish_new_path(&name, false),
+            Some(PaletteResult::Input(InputKind::NewFolder, name)) => self.finish_new_path(&name, true),
+            Some(PaletteResult::Input(InputKind::RenamePath, name)) => self.finish_rename_path(&name),
             Some(PaletteResult::Input(InputKind::NewBranch, name)) => self.switch_branch(&ctx, name, true),
             Some(PaletteResult::Input(InputKind::BreakpointCondition, text)) => {
                 self.finish_breakpoint_edit(false, &text)

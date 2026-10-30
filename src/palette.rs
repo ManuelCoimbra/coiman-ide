@@ -26,6 +26,9 @@ pub enum PaletteResult {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputKind {
     Rename,
+    NewFile,
+    NewFolder,
+    RenamePath,
     NewBranch,
     BreakpointCondition,
     Logpoint,

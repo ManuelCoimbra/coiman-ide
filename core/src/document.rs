@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use encoding_rs::{Encoding, UTF_8};
 
-use crate::buffer::{Buffer, Selection};
+use crate::buffer::{Buffer, Change, Selection};
 use crate::encoding;
 use crate::highlight::Highlighter;
 use crate::structure::{self, FoldRange, Symbol};
@@ -32,6 +32,10 @@ pub struct Structure {
 }
 
 pub struct Document {
+    /// Remove spaces at line ends when saving.
+    pub trim_trailing_whitespace: bool,
+    /// End the file with a newline when saving.
+    pub insert_final_newline: bool,
     /// Unique id for the editor widget state; assigned by the app.
     pub uid: u64,
     pub path: Option<PathBuf>,
@@ -65,6 +69,8 @@ impl Document {
         let large = text.len() > LARGE_FILE_BYTES || buffer.len_lines() > LARGE_FILE_LINES;
         let ext = extension_of(path.as_deref());
         let mut doc = Self {
+            trim_trailing_whitespace: false,
+            insert_final_newline: false,
             uid: 0,
             saved_version: buffer.version(),
             buffer,
@@ -139,7 +145,54 @@ impl Document {
     }
 
     /// Saves to the current path. Returns `Ok(false)` if the document has no path yet.
+    /// What `.editorconfig` or the settings ask of the text when saving.
+    fn prepare_for_save(&mut self) {
+        let mut changes = Vec::new();
+        if self.trim_trailing_whitespace {
+            for line in 0..self.buffer.len_lines() {
+                let (start, end) = (self.buffer.line_start(line), self.buffer.line_end(line));
+                let text = self.buffer.slice_string(start, end);
+                let kept = text.trim_end_matches([' ', '\t']).chars().count();
+                if start + kept < end {
+                    changes.push(Change { start: start + kept, end, text: String::new(), cursor_offset: None });
+                }
+            }
+        }
+        let len = self.buffer.len_chars();
+        if self.insert_final_newline && len > 0 && !self.buffer.rope().char(len - 1).eq(&'\n') {
+            changes.push(Change {
+                start: len,
+                end: len,
+                text: self.buffer.line_ending.to_owned(),
+                cursor_offset: None,
+            });
+        }
+        if !changes.is_empty() {
+            let selections = self.buffer.selections().to_vec();
+            self.buffer.apply_changes(changes, false);
+            let len = self.buffer.len_chars();
+            let kept = selections.iter().map(|s| Selection::new(s.anchor.min(len), s.head.min(len))).collect();
+            self.buffer.set_selections(kept, 0);
+        }
+    }
+
+    /// Replaces every match; returns how many (one undo step).
+    pub fn replace_all(&mut self, opts: &crate::find::FindOptions, with: &str) -> Result<usize, String> {
+        let found = crate::find::replacements(&self.text(), opts, with)?;
+        let count = found.len();
+        let changes = found
+            .into_iter()
+            .map(|r| Change { start: r.start, end: r.end, text: r.text, cursor_offset: None })
+            .collect();
+        self.buffer.apply_changes(changes, false);
+        Ok(count)
+    }
+
     pub fn save(&mut self) -> std::io::Result<bool> {
+        if self.path.is_none() {
+            return Ok(false);
+        }
+        self.prepare_for_save();
         let Some(path) = &self.path else {
             return Ok(false);
         };

@@ -75,7 +75,47 @@ pub struct Change {
     pub cursor_offset: Option<usize>,
 }
 
+/// How a document indents.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Indent {
+    pub use_tabs: bool,
+    /// Columns per level.
+    pub size: usize,
+}
+
+impl Default for Indent {
+    fn default() -> Self {
+        Self { use_tabs: false, size: TAB_WIDTH }
+    }
+}
+
+impl Indent {
+    /// The text of one level.
+    pub fn unit(self) -> String {
+        if self.use_tabs { "\t".to_owned() } else { " ".repeat(self.size) }
+    }
+}
+
+/// Typed characters that get a partner.
+fn closer_of(c: char) -> Option<char> {
+    Some(match c {
+        '(' => ')',
+        '[' => ']',
+        '{' => '}',
+        '"' => '"',
+        '\'' => '\'',
+        '`' => '`',
+        _ => return None,
+    })
+}
+
 pub struct Buffer {
+    /// How Enter and Tab indent.
+    pub indent: Indent,
+    /// Type brackets and quotes in pairs.
+    pub auto_close: bool,
+    /// Whether `'` pairs too (not in Rust, where it starts lifetimes).
+    pub pair_single_quote: bool,
     rope: Rope,
     selections: Vec<Selection>,
     primary: usize,
@@ -102,6 +142,9 @@ impl Buffer {
         let probe = &text.as_bytes()[..text.len().min(64 * 1024)];
         let line_ending = if probe.windows(2).any(|w| w == b"\r\n") { "\r\n" } else { "\n" };
         Self {
+            indent: Indent::default(),
+            auto_close: true,
+            pair_single_quote: true,
             rope: Rope::from_str(text),
             selections: vec![Selection::cursor(0)],
             primary: 0,
@@ -735,7 +778,7 @@ impl Buffer {
                 let opens = matches!(before, Some('{' | '(' | '['));
                 let closes =
                     matches!((before, after), (Some('{'), Some('}')) | (Some('('), Some(')')) | (Some('['), Some(']')));
-                let inner = if opens { format!("{indent}{}", " ".repeat(TAB_WIDTH)) } else { indent.clone() };
+                let inner = if opens { format!("{indent}{}", self.indent.unit()) } else { indent.clone() };
                 let mut text = format!("{nl}{inner}");
                 let cursor = text.chars().count();
                 if closes {
@@ -754,9 +797,60 @@ impl Buffer {
             .selections
             .iter()
             .map(|s| {
-                let col = self.visual_col(s.start());
-                let n = TAB_WIDTH - col % TAB_WIDTH;
-                Change { start: s.start(), end: s.end(), text: " ".repeat(n), cursor_offset: None }
+                let text = if self.indent.use_tabs {
+                    "\t".to_owned()
+                } else {
+                    let size = self.indent.size.max(1);
+                    " ".repeat(size - self.visual_col(s.start()) % size)
+                };
+                Change { start: s.start(), end: s.end(), text, cursor_offset: None }
+            })
+            .collect();
+        self.apply_changes(changes, false);
+    }
+
+    /// Typing: like [`insert`](Self::insert), with brackets and quotes in pairs.
+    /// Typing a closer that is already next steps over it, a selection gets
+    /// surrounded, and a pair only opens where it can't swallow following text.
+    pub fn type_text(&mut self, text: &str) {
+        let mut chars = text.chars();
+        let (Some(c), None, true) = (chars.next(), chars.next(), self.auto_close) else {
+            self.insert(text);
+            return;
+        };
+        let at = |pos: usize| (pos < self.len_chars()).then(|| self.rope.char(pos));
+        let is_closer = matches!(c, ')' | ']' | '}' | '"' | '`') || (c == '\'' && self.pair_single_quote);
+        if is_closer && self.selections.iter().all(|s| s.is_empty() && at(s.head) == Some(c)) {
+            let moved = self.selections.iter().map(|s| Selection::cursor(s.head + 1)).collect();
+            let primary = self.primary;
+            self.set_selections(moved, primary);
+            self.last_edit = EditKind::Other;
+            return;
+        }
+        let Some(close) = closer_of(c).filter(|_| c != '\'' || self.pair_single_quote) else {
+            self.insert(text);
+            return;
+        };
+        let quote = c == close;
+        let changes: Vec<Change> = self
+            .selections
+            .iter()
+            .map(|s| {
+                let (start, end) = (s.start(), s.end());
+                if start != end {
+                    let inner = self.slice_string(start, end);
+                    let cursor = inner.chars().count() + 1;
+                    return Change { start, end, text: format!("{c}{inner}{close}"), cursor_offset: Some(cursor) };
+                }
+                let next_ok =
+                    at(end).is_none_or(|n| n.is_whitespace() || matches!(n, ')' | ']' | '}' | ',' | ';' | ':'));
+                let before = start.checked_sub(1).map(|p| self.rope.char(p));
+                let prev_ok = !quote || before.is_none_or(|p| !p.is_alphanumeric() && p != c);
+                if next_ok && prev_ok {
+                    Change { start, end, text: format!("{c}{close}"), cursor_offset: Some(1) }
+                } else {
+                    Change { start, end, text: c.to_string(), cursor_offset: None }
+                }
             })
             .collect();
         self.apply_changes(changes, false);
@@ -772,6 +866,19 @@ impl Buffer {
                 }
                 if s.head == 0 {
                     return None;
+                }
+                // Between an empty pair: both go.
+                if self.auto_close && !word && s.head < self.len_chars() {
+                    let (before, after) = (self.rope.char(s.head - 1), self.rope.char(s.head));
+                    let pairs = closer_of(before) == Some(after) && (before != '\'' || self.pair_single_quote);
+                    if pairs {
+                        return Some(Change {
+                            start: s.head - 1,
+                            end: s.head + 1,
+                            text: String::new(),
+                            cursor_offset: None,
+                        });
+                    }
                 }
                 let start = if word { self.prev_word_boundary(s.head) } else { self.skip_cr(s.head - 1, false) };
                 Some(Change { start, end: s.head, text: String::new(), cursor_offset: None })
@@ -920,6 +1027,63 @@ pub fn visual_width(chars: impl Iterator<Item = char>) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn types_brackets_and_quotes_in_pairs() {
+        let typed = |start: &str, cursor: usize, keys: &[&str]| {
+            let mut b = Buffer::new(start);
+            b.set_single(Selection::cursor(cursor));
+            for k in keys {
+                b.type_text(k);
+            }
+            (b.text(), b.primary().head)
+        };
+        assert_eq!(typed("", 0, &["{"]), ("{}".to_owned(), 1));
+        assert_eq!(typed("", 0, &["(", "[", "\""]), ("([\"\"])".to_owned(), 3));
+        // A closer that's already next is stepped over.
+        assert_eq!(typed("", 0, &["(", "x", ")"]), ("(x)".to_owned(), 3));
+        assert_eq!(typed("", 0, &["\"", "\""]), ("\"\"".to_owned(), 2));
+        // Nothing swallows the word after the cursor; no pair right after a word for quotes.
+        assert_eq!(typed("word", 0, &["("]), ("(word".to_owned(), 1));
+        assert_eq!(typed("it", 2, &["'"]), ("it'".to_owned(), 3));
+        // Selections get surrounded.
+        let mut b = Buffer::new("word");
+        b.set_single(Selection::new(0, 4));
+        b.type_text("[");
+        assert_eq!(b.text(), "[word]");
+        // Rust lifetimes stay alone.
+        let mut b = Buffer::new("");
+        b.pair_single_quote = false;
+        b.type_text("'");
+        assert_eq!(b.text(), "'");
+        // Backspace removes an empty pair, but not a closer with text between.
+        let mut b = Buffer::new("");
+        b.type_text("(");
+        b.delete_backward(false);
+        assert_eq!(b.text(), "");
+        // Off means plain typing.
+        let mut b = Buffer::new("");
+        b.auto_close = false;
+        b.type_text("(");
+        assert_eq!(b.text(), "(");
+    }
+
+    #[test]
+    fn enter_and_tab_follow_the_indent_style() {
+        let mut b = Buffer::new("{");
+        b.indent = Indent { use_tabs: true, size: 4 };
+        b.set_single(Selection::cursor(1));
+        b.insert_newline();
+        assert_eq!(
+            b.text(),
+            "{
+	"
+        );
+        let mut b = Buffer::new("");
+        b.indent = Indent { use_tabs: false, size: 2 };
+        b.insert_tab();
+        assert_eq!(b.text(), "  ");
+    }
 
     #[test]
     fn typing_groups_into_one_undo_step_until_space() {

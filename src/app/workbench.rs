@@ -2,10 +2,12 @@
 
 use crate::commands::Command;
 use crate::document::{DiskState, Document};
+use crate::explorer::ExplorerAction;
 use crate::icons::{self, Icon};
 use crate::terminal::Action as TerminalAction;
 use crate::theme;
 use egui::{Align, Color32, Key, RichText, Sense, Stroke};
+use rust_code_core::find;
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
@@ -519,11 +521,17 @@ impl CodeApp {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("EXPLORER").small().strong());
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        if self.explorer.root.is_some()
-                            && icons::button(ui, Icon::Refresh, "Refresh Explorer").clicked()
-                        {
-                            self.explorer.refresh();
-                            self.finder.mark_stale();
+                        if self.explorer.root.is_some() {
+                            if icons::button(ui, Icon::Refresh, "Refresh Explorer").clicked() {
+                                self.explorer.refresh();
+                                self.finder.mark_stale();
+                            }
+                            if icons::button(ui, Icon::Folder, "New Folder...").clicked() {
+                                self.start_explorer_action(ExplorerAction::NewFolder(None));
+                            }
+                            if icons::button(ui, Icon::Plus, "New File...").clicked() {
+                                self.start_explorer_action(ExplorerAction::NewFile(None));
+                            }
                         }
                     });
                 });
@@ -539,8 +547,12 @@ impl CodeApp {
                 {
                     self.open_folder(path);
                 }
+                self.delete_prompt(ui);
                 if let Some(path) = self.explorer.ui(ui, active_path.as_deref()) {
                     self.open_file(&path);
+                }
+                if let Some(action) = self.explorer.action.take() {
+                    self.start_explorer_action(action);
                 }
             }
             SidebarView::Git => self.source_control_view(ui),
@@ -549,7 +561,11 @@ impl CodeApp {
             SidebarView::Extensions => self.extensions_view(ui),
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
-                if let Some(jump) = self.search.ui(ui, self.explorer.root.as_deref()) {
+                let jump = self.search.ui(ui, self.explorer.root.as_deref());
+                if std::mem::take(&mut self.search.replace_requested) {
+                    self.replace_in_project(ui.input(|i| i.time));
+                }
+                if let Some(jump) = jump {
                     self.open_file(&jump.path);
                     if let Some(doc) = self.active_doc() {
                         // Select the match itself, not just the line.
@@ -683,20 +699,28 @@ impl CodeApp {
         }
         let Some(doc) = self.docs.get_mut(self.active) else { return };
         let (uid, version) = (doc.uid, doc.buffer.version());
-        let fresh = self.find.cache.as_ref().is_some_and(|c| {
-            (c.uid, c.version, c.match_case) == (uid, version, self.find.match_case) && c.query == self.find.query
-        });
+        let fresh = self
+            .find
+            .cache
+            .as_ref()
+            .is_some_and(|c| (c.uid, c.version) == (uid, version) && c.options == self.find.options);
         if !fresh {
-            let matches = find_matches(&doc.text(), &self.find.query, self.find.match_case);
-            let (query, match_case) = (self.find.query.clone(), self.find.match_case);
-            self.find.cache = Some(FindCache { uid, version, query, match_case, matches });
+            let options = self.find.options.clone();
+            let (matches, error) = match find::find_all(&doc.text(), &options, MAX_FIND_MATCHES) {
+                Ok(m) => (m, None),
+                Err(e) => (Vec::new(), Some(e)),
+            };
+            self.find.cache = Some(FindCache { uid, version, options, matches, error });
         }
         let matches = self.find.cache.as_ref().map(|c| c.matches.clone()).unwrap_or_default();
+        let error = self.find.cache.as_ref().and_then(|c| c.error.clone());
         let sel_start = doc.buffer.primary().start();
         let current = matches.iter().position(|&(s, _)| s >= sel_start);
 
         let mut go_next = false;
         let mut go_prev = false;
+        let mut replace_one = false;
+        let mut replace_all = false;
         ui.horizontal(|ui| {
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.add_space(14.0);
@@ -709,20 +733,28 @@ impl CodeApp {
                 if icons::button(ui, Icon::ArrowUp, "Previous Match (Shift+Enter)").clicked() {
                     go_prev = true;
                 }
-                let count = if self.find.query.is_empty() {
+                let count = if self.find.options.query.is_empty() {
                     String::new()
+                } else if let Some(e) = &error {
+                    e.clone()
                 } else if matches.is_empty() {
                     "No results".to_owned()
                 } else {
                     let shown = current.map_or(matches.len(), |c| c + 1);
                     format!("{shown} of {}", matches.len())
                 };
-                ui.label(RichText::new(count).small().color(theme::colors().text_dim));
-                if ui.selectable_label(self.find.match_case, "Aa").on_hover_text("Match Case").clicked() {
-                    self.find.match_case = !self.find.match_case;
-                }
-                let edit =
-                    ui.add(egui::TextEdit::singleline(&mut self.find.query).hint_text("Find").desired_width(220.0));
+                ui.add(egui::Label::new(RichText::new(count).small().color(theme::colors().text_dim)).truncate());
+                let toggle = |ui: &mut egui::Ui, on: &mut bool, text: &str, tip: &str| {
+                    if ui.selectable_label(*on, RichText::new(text).monospace()).on_hover_text(tip).clicked() {
+                        *on = !*on;
+                    }
+                };
+                toggle(ui, &mut self.find.options.regex, ".*", "Use Regular Expression");
+                toggle(ui, &mut self.find.options.whole_word, "ab", "Match Whole Word");
+                toggle(ui, &mut self.find.options.match_case, "Aa", "Match Case");
+                let edit = ui.add(
+                    egui::TextEdit::singleline(&mut self.find.options.query).hint_text("Find").desired_width(220.0),
+                );
                 if self.find.focus_requested {
                     edit.request_focus();
                     self.find.focus_requested = false;
@@ -738,15 +770,68 @@ impl CodeApp {
                 if edit.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
                     self.find.open = false;
                 }
+                let arrow = if self.find.show_replace { Icon::ChevronDown } else { Icon::ChevronRight };
+                if icons::button(ui, arrow, "Toggle Replace (Ctrl+H)").clicked() {
+                    self.find.show_replace = !self.find.show_replace;
+                }
             });
         });
+        if self.find.show_replace {
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    ui.add_space(14.0);
+                    replace_all = ui.button("Replace All").clicked();
+                    replace_one = ui.button("Replace").clicked();
+                    let hint = if self.find.options.regex { "Replace ($1 for groups)" } else { "Replace" };
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut self.find.replacement).hint_text(hint).desired_width(220.0),
+                    );
+                    if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                        replace_one = true;
+                        edit.request_focus();
+                    }
+                });
+            });
+        }
+        if replace_all {
+            let (options, with) = (self.find.options.clone(), self.find.replacement.clone());
+            self.status = Some(match self.docs[self.active].replace_all(&options, &with) {
+                Ok(n) => format!("Replaced {n} occurrences"),
+                Err(e) => e,
+            });
+            return;
+        }
+        if replace_one {
+            // The match under the selection gets replaced; otherwise go to the next.
+            let (start, end) = {
+                let p = doc.buffer.primary();
+                (p.start(), p.end())
+            };
+            if matches.contains(&(start, end)) {
+                let found = find::replacements(&doc.text(), &self.find.options, &self.find.replacement);
+                if let Some(r) = found.ok().and_then(|f| f.into_iter().find(|r| r.start == start)) {
+                    doc.buffer.insert(&r.text);
+                    let after = start + r.text.chars().count();
+                    let text = doc.text();
+                    let next = find::find_all(&text, &self.find.options, MAX_FIND_MATCHES).unwrap_or_default();
+                    let target = next.iter().find(|m| m.0 >= after).or(next.first()).copied();
+                    if let Some((s, e)) = target {
+                        doc.select(s, e);
+                    }
+                }
+                return;
+            }
+            go_next = true;
+        }
 
         if matches.is_empty() {
             return;
         }
         let target = if go_next {
             // First match strictly after the current selection start.
-            Some(matches.iter().find(|&&(s, _)| s > sel_start).unwrap_or(&matches[0]))
+            let replacing = replace_one && sel_start < matches[matches.len() - 1].0 + 1;
+            let found = if replacing { matches.iter().find(|&&(s, _)| s >= sel_start) } else { None };
+            Some(found.or(matches.iter().find(|&&(s, _)| s > sel_start)).unwrap_or(&matches[0]))
         } else if go_prev {
             Some(matches.iter().rev().find(|&&(s, _)| s < sel_start).unwrap_or(&matches[matches.len() - 1]))
         } else {
@@ -868,7 +953,9 @@ impl CodeApp {
                     if clickable(ui, doc.encoding_name(), "Select Encoding") {
                         status_cmd = Some(Command::ChangeEncoding);
                     }
-                    ui.label(white("Spaces: 4".to_owned()));
+                    let indent = doc.buffer.indent;
+                    let kind = if indent.use_tabs { "Tabs" } else { "Spaces" };
+                    ui.label(white(format!("{kind}: {}", indent.size)));
                     let (line, col) = doc.cursor();
                     let count = doc.buffer.selections().len();
                     let sel = match (count, doc.selection_len()) {
@@ -1061,25 +1148,5 @@ fn small_size(ui: &egui::Ui) -> f32 {
 }
 
 /// All matches of `query` in `text`, as `[start, end)` char index ranges.
-fn find_matches(text: &str, query: &str, match_case: bool) -> Vec<(usize, usize)> {
-    if query.is_empty() {
-        return Vec::new();
-    }
-    let (hay, needle) =
-        if match_case { (text.to_owned(), query.to_owned()) } else { (text.to_lowercase(), query.to_lowercase()) };
-    // Lowercasing can change byte lengths for some scripts; fall back to exact matching then.
-    let (hay, needle) = if hay.len() == text.len() { (hay, needle) } else { (text.to_owned(), query.to_owned()) };
-    let needle_chars = needle.chars().count();
-    let mut out = Vec::new();
-    let mut last_byte = 0;
-    let mut last_char = 0;
-    for (byte, _) in hay.match_indices(&needle) {
-        last_char += hay[last_byte..byte].chars().count();
-        last_byte = byte;
-        out.push((last_char, last_char + needle_chars));
-        if out.len() >= 10_000 {
-            break;
-        }
-    }
-    out
-}
+/// Most matches the find bar counts and steps through.
+const MAX_FIND_MATCHES: usize = 10_000;

@@ -12,7 +12,7 @@ use egui::{Key, Modifiers};
 use rust_code_core::encoding;
 
 use super::outline::FoldAction;
-use super::{CodeApp, INDENT, PanelTab, SidebarView};
+use super::{CodeApp, PanelTab, SidebarView};
 use rust_code_core::structure::TextObject;
 
 impl CodeApp {
@@ -217,6 +217,11 @@ impl CodeApp {
                 self.find.open = true;
                 self.find.focus_requested = true;
             }
+            Command::Replace => {
+                self.find.open = true;
+                self.find.show_replace = true;
+                self.find.focus_requested = true;
+            }
             Command::GoToLine => self.palette.show_with(":"),
             Command::ZoomIn => self.font_size = (self.font_size + 1.0).min(40.0),
             Command::ZoomOut => self.font_size = (self.font_size - 1.0).max(8.0),
@@ -239,8 +244,11 @@ impl CodeApp {
             Command::CopyLinesUp => self.apply_edit(|t, s| Some(edit_ops::copy_lines(t, s, false))),
             Command::CopyLinesDown => self.apply_edit(|t, s| Some(edit_ops::copy_lines(t, s, true))),
             Command::DeleteLines => self.apply_edit(|t, s| Some(edit_ops::delete_lines(t, s))),
-            Command::IndentLines => self.apply_edit(|t, s| Some(edit_ops::indent_lines(t, s, false, INDENT))),
-            Command::OutdentLines => self.apply_edit(|t, s| Some(edit_ops::indent_lines(t, s, true, INDENT))),
+            Command::IndentLines | Command::OutdentLines => {
+                let unit = self.docs.get(self.active).map(|d| d.buffer.indent.unit()).unwrap_or_default();
+                let outdent = cmd == Command::OutdentLines;
+                self.apply_edit(|t, s| Some(edit_ops::indent_lines(t, s, outdent, &unit)));
+            }
             Command::SelectNextOccurrence => {
                 if let Some(doc) = self.active_doc() {
                     doc.buffer.add_next_occurrence();

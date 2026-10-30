@@ -57,7 +57,15 @@ is read and written on your machine.
 
 - Integrated title bar, as in VS Code: menus, the window title and the window buttons share
   one bar. Drag it to move the window, double-click it to maximize, resize from any edge.
-- File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons
+- File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons, and create, rename and delete in the Explorer (right-click; delete goes to the Recycle Bin)
+- Find and replace (`Ctrl+F`, `Ctrl+H`): match case, whole word, regular expressions with `$1`
+  groups. The Search view replaces across the project after showing the count; open files change
+  with undo and stay unsaved, others change on disk (UTF-8 only)
+- Brackets and quotes type in pairs, step over their closer, surround a selection, and Backspace
+  removes an empty pair (`editor.auto_close_brackets`)
+- Indentation follows `.editorconfig`, then how the file is already indented, then
+  `editor.tab_size` and `editor.insert_spaces`. `.editorconfig` also sets
+  `trim_trailing_whitespace` and `insert_final_newline` on save. Tabs always display 4 columns wide
 - Custom editor widget on a rope (`ropey`): only visible rows are laid out and drawn, so
   million-line files stay responsive; files over 16 MB / 100k lines open in large-file mode
   (no highlighting or wrap)

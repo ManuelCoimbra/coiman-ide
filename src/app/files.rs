@@ -1,9 +1,14 @@
 //! Documents and files: open/save/close, hot exit, external changes and syntax sync.
 
+use crate::buffer::Indent;
 use crate::document::Document;
+use crate::explorer::ExplorerAction;
+use crate::palette::InputKind;
 use crate::session::{self, Session};
 use crate::syntax::SyntaxWorker;
+use crate::theme;
 use crate::watcher::same_path;
+use rust_code_core::{editorconfig, find};
 use std::path::{Path, PathBuf};
 
 use super::{BACKUP_INTERVAL, CodeApp, PendingClose, SidebarView, repaint};
@@ -99,7 +104,25 @@ impl CodeApp {
         }
     }
 
+    /// Applies indentation and save rules to a document: `.editorconfig` first,
+    /// then how the file is already indented, then the settings.
+    pub(super) fn apply_file_rules(&self, doc: &mut Document) {
+        let editor = &self.settings.editor;
+        let config = doc.path.as_deref().map(editorconfig::lookup).unwrap_or_default();
+        let detected =
+            if editor.detect_indentation && !doc.large { editorconfig::detect_indent(&doc.text()) } else { None };
+        let use_tabs = config.use_tabs.or(detected.map(|d| d.0)).unwrap_or(!editor.insert_spaces);
+        let size = config.indent_size.or(detected.map(|d| d.1)).unwrap_or(editor.tab_size.max(1));
+        doc.buffer.indent = Indent { use_tabs, size };
+        doc.buffer.auto_close = editor.auto_close_brackets;
+        // `'` starts Rust lifetimes and is an apostrophe in prose.
+        doc.buffer.pair_single_quote = !matches!(doc.extension().as_str(), "rs" | "md" | "markdown" | "txt");
+        doc.trim_trailing_whitespace = config.trim_trailing_whitespace.unwrap_or(editor.trim_trailing_whitespace);
+        doc.insert_final_newline = config.insert_final_newline.unwrap_or(editor.insert_final_newline);
+    }
+
     pub(super) fn add_doc(&mut self, mut doc: Document) {
+        self.apply_file_rules(&mut doc);
         // Focus the editor when the tab is first shown, so typing goes straight into it.
         doc.request_focus = true;
         doc.uid = self.next_uid;
@@ -134,6 +157,158 @@ impl CodeApp {
                 self.plugins_opened(path);
             }
             Err(e) => self.status = Some(format!("Could not open {}: {e}", path.display())),
+        }
+    }
+
+    /// Replace All in the Search view. Open files change in the editor, with
+    /// undo, and stay unsaved; others change on disk (local history sees that).
+    pub(super) fn replace_in_project(&mut self, now: f64) {
+        let Some(job) = self.search.project_replace() else { return };
+        let (mut count, mut files, mut failed) = (0, 0, Vec::new());
+        for path in &job.files {
+            let done = if let Some(doc) =
+                self.docs.iter_mut().find(|d| d.path.as_deref().is_some_and(|p| same_path(p, path)))
+            {
+                doc.replace_all(&job.options, &job.with)
+            } else {
+                // Only UTF-8 text: anything else would be damaged by rewriting it.
+                std::fs::read_to_string(path).map_err(|e| e.to_string()).and_then(|text| {
+                    let (new, n) = find::replace_in_text(&text, &job.options, &job.with)?;
+                    if n > 0 {
+                        std::fs::write(path, new).map_err(|e| e.to_string())?;
+                    }
+                    Ok(n)
+                })
+            };
+            match done {
+                Ok(n) => {
+                    count += n;
+                    files += usize::from(n > 0);
+                }
+                Err(_) => failed.push(path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()),
+            }
+        }
+        self.status = Some(if failed.is_empty() {
+            format!("Replaced {count} occurrences in {files} files")
+        } else {
+            format!("Replaced {count} occurrences in {files} files; couldn't change: {}", failed.join(", "))
+        });
+        self.search.search_again(now);
+    }
+
+    /// Starts a context menu or header action of the Explorer.
+    pub(super) fn start_explorer_action(&mut self, action: ExplorerAction) {
+        let root = self.explorer.root.clone();
+        match action {
+            ExplorerAction::NewFile(dir) => {
+                self.path_target = dir.or(root);
+                self.palette.show_input(InputKind::NewFile, "", "New file name, then Enter (a/b.rs makes folders too)");
+            }
+            ExplorerAction::NewFolder(dir) => {
+                self.path_target = dir.or(root);
+                self.palette.show_input(InputKind::NewFolder, "", "New folder name, then Enter");
+            }
+            ExplorerAction::Rename(path) => {
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                self.path_target = Some(path);
+                self.palette.show_input(InputKind::RenamePath, &name, "New name, then Enter");
+            }
+            ExplorerAction::Delete(path) => self.delete_pending = Some(path),
+        }
+    }
+
+    pub(super) fn finish_new_path(&mut self, name: &str, folder: bool) {
+        let Some(dir) = self.path_target.take() else { return };
+        let Some(path) = child_path(&dir, name) else {
+            self.status = Some(format!("\"{name}\" isn't a name inside this folder"));
+            return;
+        };
+        if path.exists() {
+            self.status = Some(format!("{name} already exists"));
+            return;
+        }
+        let made = if folder {
+            std::fs::create_dir_all(&path)
+        } else {
+            path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, ""))
+        };
+        match made {
+            Ok(()) => {
+                self.explorer.refresh();
+                self.finder.mark_stale();
+                if !folder {
+                    self.open_file(&path);
+                }
+            }
+            Err(e) => self.status = Some(format!("Could not create {name}: {e}")),
+        }
+    }
+
+    pub(super) fn finish_rename_path(&mut self, name: &str) {
+        let Some(old) = self.path_target.take() else { return };
+        let Some(dir) = old.parent() else { return };
+        // A plain name: moving elsewhere isn't what Rename says.
+        let new = dir.join(name);
+        if child_path(dir, name).is_none() || name.contains(['/', '\\']) {
+            self.status = Some(format!("\"{name}\" isn't a valid name"));
+            return;
+        }
+        if new == old {
+            return;
+        }
+        if new.exists() && !same_path(&new, &old) {
+            self.status = Some(format!("{name} already exists"));
+            return;
+        }
+        match std::fs::rename(&old, &new) {
+            Ok(()) => {
+                // Open files follow, including those inside a renamed folder.
+                for i in 0..self.docs.len() {
+                    let moved =
+                        self.docs[i].path.as_ref().and_then(|p| p.strip_prefix(&old).ok()).map(|rest| new.join(rest));
+                    if let Some(path) = moved {
+                        self.watcher.watch_file(&path);
+                        self.docs[i].path = Some(path);
+                    }
+                }
+                self.explorer.refresh();
+                self.finder.mark_stale();
+            }
+            Err(e) => self.status = Some(format!("Could not rename: {e}")),
+        }
+    }
+
+    /// Asks before moving a file or folder to the Recycle Bin.
+    pub(super) fn delete_prompt(&mut self, ui: &mut egui::Ui) {
+        let Some(path) = self.delete_pending.clone() else { return };
+        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let unsaved = self.docs.iter().any(|d| d.is_dirty() && d.path.as_ref().is_some_and(|p| p.starts_with(&path)));
+        let mut choice = None;
+        egui::Frame::new().fill(theme::colors().hover_bg).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
+            let note = if unsaved { " It has unsaved changes." } else { "" };
+            ui.label(format!("Move \"{name}\" to the Recycle Bin?{note}"));
+            ui.horizontal(|ui| {
+                if ui.button("Move to Recycle Bin").clicked() {
+                    choice = Some(true);
+                }
+                if ui.button("Cancel").clicked() {
+                    choice = Some(false);
+                }
+            });
+        });
+        match choice {
+            Some(true) => {
+                self.delete_pending = None;
+                match trash::delete(&path) {
+                    Ok(()) => {
+                        self.explorer.refresh();
+                        self.finder.mark_stale();
+                    }
+                    Err(e) => self.status = Some(format!("Could not delete {name}: {e}")),
+                }
+            }
+            Some(false) => self.delete_pending = None,
+            None => {}
         }
     }
 
@@ -236,4 +411,11 @@ impl CodeApp {
             self.pending_close = Some(PendingClose::App);
         }
     }
+}
+
+/// `name` under `dir`, refusing anything that climbs out of it.
+fn child_path(dir: &Path, name: &str) -> Option<PathBuf> {
+    let name = Path::new(name.trim());
+    let plain = name.components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    (plain && !name.as_os_str().is_empty()).then(|| dir.join(name))
 }

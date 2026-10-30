@@ -16,8 +16,18 @@ struct Entry {
     is_dir: bool,
 }
 
+/// What the Explorer's context menu asks for (`None`: the open folder).
+pub enum ExplorerAction {
+    NewFile(Option<PathBuf>),
+    NewFolder(Option<PathBuf>),
+    Rename(PathBuf),
+    Delete(PathBuf),
+}
+
 #[derive(Default)]
 pub struct Explorer {
+    /// Chosen in a context menu, for the app to carry out.
+    pub action: Option<ExplorerAction>,
     pub root: Option<PathBuf>,
     expanded: HashSet<PathBuf>,
     /// Cached directory listings, cleared on refresh.
@@ -71,7 +81,29 @@ impl Explorer {
         for (path, name, is_dir) in entries {
             let expanded = self.expanded.contains(&path);
             let selected = active_file == Some(path.as_path());
-            if row(ui, depth, &name, selected, is_dir.then_some(expanded)).clicked() {
+            let response = row(ui, depth, &name, selected, is_dir.then_some(expanded));
+            response.context_menu(|ui| {
+                // New items go in the folder, or next to the file.
+                let dir_of = if is_dir { path.clone() } else { path.parent().unwrap_or(&path).to_path_buf() };
+                if ui.button("New File...").clicked() {
+                    self.action = Some(ExplorerAction::NewFile(Some(dir_of.clone())));
+                    ui.close();
+                }
+                if ui.button("New Folder...").clicked() {
+                    self.action = Some(ExplorerAction::NewFolder(Some(dir_of)));
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button("Rename...").clicked() {
+                    self.action = Some(ExplorerAction::Rename(path.clone()));
+                    ui.close();
+                }
+                if ui.button("Delete").clicked() {
+                    self.action = Some(ExplorerAction::Delete(path.clone()));
+                    ui.close();
+                }
+            });
+            if response.clicked() {
                 if is_dir {
                     if expanded {
                         self.expanded.remove(&path);

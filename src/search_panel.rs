@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use egui::text::LayoutJob;
 use egui::{RichText, TextFormat};
+use rust_code_core::find::FindOptions;
 use rust_code_core::search::{FileResult, LineMatch, MAX_MATCHES, Msg, Query, SearchHandle};
 
 use crate::icons::{self, Icon};
@@ -36,6 +37,19 @@ pub struct SearchPanel {
     files_searched: usize,
     truncated: bool,
     error: Option<String>,
+    show_replace: bool,
+    replacement: String,
+    /// Asking before replacing in every file.
+    confirming: bool,
+    /// Confirmed: the app carries it out.
+    pub replace_requested: bool,
+}
+
+/// What Replace All works on.
+pub struct ProjectReplace {
+    pub options: FindOptions,
+    pub with: String,
+    pub files: Vec<PathBuf>,
 }
 
 impl SearchPanel {
@@ -115,8 +129,67 @@ impl SearchPanel {
         }
 
         self.summary(ui);
+        self.replace_ui(ui);
         ui.separator();
         self.results_ui(ui, root)
+    }
+
+    fn replace_ui(&mut self, ui: &mut egui::Ui) {
+        let arrow = if self.show_replace { Icon::ChevronDown } else { Icon::ChevronRight };
+        let size = ui.text_style_height(&egui::TextStyle::Small);
+        let toggled = ui.horizontal(|ui| {
+            let icon = icons::show(ui, arrow, size, theme::colors().text_dim).interact(egui::Sense::click()).clicked();
+            icon || ui.small_button("replace").clicked()
+        });
+        if toggled.inner {
+            self.show_replace = !self.show_replace;
+            self.confirming = false;
+        }
+        if !self.show_replace {
+            return;
+        }
+        let hint = if self.query.regex { "Replace ($1 for groups)" } else { "Replace" };
+        ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text(hint));
+        let matches: usize = self.results.iter().map(|f| f.matches.len()).sum();
+        let files = self.results.len();
+        if self.confirming {
+            let more = if self.truncated { "at least " } else { "" };
+            ui.label(format!(
+                "Replace {more}{matches} occurrences in {files} files? Files that aren't open change on disk."
+            ));
+            ui.horizontal(|ui| {
+                if ui.button("Replace All").clicked() {
+                    self.confirming = false;
+                    self.replace_requested = true;
+                }
+                if ui.button("Cancel").clicked() {
+                    self.confirming = false;
+                }
+            });
+        } else if ui.add_enabled(files > 0 && !self.running, egui::Button::new("Replace All...")).clicked() {
+            self.confirming = true;
+        }
+    }
+
+    /// What Replace All should do: the search that produced the results shown.
+    pub fn project_replace(&self) -> Option<ProjectReplace> {
+        let q = self.searched.as_ref()?;
+        Some(ProjectReplace {
+            options: FindOptions {
+                query: q.text.clone(),
+                match_case: q.match_case,
+                whole_word: q.whole_word,
+                regex: q.regex,
+            },
+            with: self.replacement.clone(),
+            files: self.results.iter().map(|f| f.path.clone()).collect(),
+        })
+    }
+
+    /// Runs the search again (files changed).
+    pub fn search_again(&mut self, now: f64) {
+        self.searched = None;
+        self.edited_at = Some(now - DEBOUNCE_SECS);
     }
 
     fn summary(&self, ui: &mut egui::Ui) {

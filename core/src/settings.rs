@@ -39,6 +39,16 @@ pub struct EditorSettings {
     pub bracket_pair_colorization: bool,
     /// Format the file with its language server when saving.
     pub format_on_save: bool,
+    /// Columns per indent level (`.editorconfig` and detection take priority).
+    pub tab_size: usize,
+    /// Indent with spaces rather than tabs.
+    pub insert_spaces: bool,
+    /// Follow how each file is already indented.
+    pub detect_indentation: bool,
+    /// Type brackets and quotes in pairs.
+    pub auto_close_brackets: bool,
+    pub trim_trailing_whitespace: bool,
+    pub insert_final_newline: bool,
     /// Key handling: "default", "vim" (modal, Vim keys) or "helix" (select, then act).
     pub keyboard_mode: String,
 }
@@ -200,6 +210,12 @@ impl Default for EditorSettings {
             indent_guides: true,
             bracket_pair_colorization: true,
             format_on_save: false,
+            tab_size: 4,
+            insert_spaces: true,
+            detect_indentation: true,
+            auto_close_brackets: true,
+            trim_trailing_whitespace: false,
+            insert_final_newline: false,
             keyboard_mode: "default".to_owned(),
         }
     }

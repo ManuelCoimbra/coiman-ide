@@ -792,7 +792,7 @@ fn handle_events(
         match event {
             Event::Text(text) => {
                 if !text.is_empty() && !text.chars().any(char::is_control) {
-                    doc.buffer.insert(&text);
+                    doc.buffer.type_text(&text);
                     moved = true;
                 }
             }
@@ -1016,9 +1016,10 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         let buf = &doc.buffer;
 
         // Indent guides: one line per indentation level, also across blank lines.
-        let levels = if opts.indent_guides { indent_cols(buf, row.line) / TAB_WIDTH } else { 0 };
+        let guide = if buf.indent.use_tabs { TAB_WIDTH } else { buf.indent.size.max(1) };
+        let levels = if opts.indent_guides { indent_cols(buf, row.line) / guide } else { 0 };
         for level in 0..levels {
-            let x = (x0 + (level * TAB_WIDTH) as f32 * m.char_w).round() + 0.5;
+            let x = (x0 + (level * guide) as f32 * m.char_w).round() + 0.5;
             text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, pal.indent_guide));
         }
 

@@ -122,6 +122,12 @@ impl CodeApp {
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
         let new = self.settings.clone();
+        // Indentation and save rules may have changed.
+        let mut docs = std::mem::take(&mut self.docs);
+        for doc in &mut docs {
+            self.apply_file_rules(doc);
+        }
+        self.docs = docs;
         if first || new.editor.font_size != old.editor.font_size {
             self.font_size = new.editor.font_size.clamp(6.0, 72.0);
         }
