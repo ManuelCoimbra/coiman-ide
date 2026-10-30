@@ -61,6 +61,9 @@ is read and written on your machine.
 - Split the editor with `Ctrl+\\` or by dragging a tab onto the right half of the editor; each pane
   scrolls on its own. `Ctrl+1` / `Ctrl+2` move between them, `Shift+Alt+0` flips the layout, the
   divider drags, and **View > Single Editor** goes back to one. Drag tabs to reorder them
+- Bidi controls, invisible characters and Private Use Area characters show as a red `?`, with a
+  warning above the file and **Next** to step through them, naming each one in the status bar. They
+  stay in the file until you delete them (`editor.unicode_warnings`)
 - `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there

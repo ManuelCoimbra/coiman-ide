@@ -7,6 +7,7 @@ mod debug;
 mod dispatch;
 mod files;
 mod git;
+mod hidden;
 mod history;
 mod lsp;
 mod lsp_extra;
@@ -117,6 +118,7 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    hidden: hidden::HiddenChars,
     /// Folders for Open Recent, newest first.
     recent_folders: Vec<PathBuf>,
 
@@ -201,6 +203,7 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            hidden: Default::default(),
             recent_folders: rust_code_core::recent::load(),
             pending_close: None,
             allow_close: false,
@@ -340,6 +343,7 @@ impl eframe::App for CodeApp {
                 self.breadcrumbs(ui);
             }
             self.disk_conflict_bar(ui);
+            self.hidden_bar(ui);
             self.lsp_offer_bar(ui);
             self.find_bar(ui);
             let opts = editor_view::Options {

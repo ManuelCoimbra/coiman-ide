@@ -150,6 +150,8 @@ impl CodeApp {
         // Plugins last: their colors go over the server's.
         self.lsp_views_decorate(i, &mut deco);
         self.plugin_decorate(i, &mut deco);
+        // Over everything: these must stay visible.
+        self.hidden_decorate(i, &mut deco);
         if let Some(doc) = self.docs.get_mut(i) {
             deco.folds = doc.structure().folds.clone();
         }

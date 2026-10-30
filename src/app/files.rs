@@ -389,6 +389,7 @@ impl CodeApp {
         }
         let doc = self.docs.remove(index);
         self.views.remove(&doc.uid);
+        self.hidden_forget(doc.uid);
         self.lsp_did_close(&doc);
         if let Some(worker) = &self.syntax
             && doc.ts.is_some()

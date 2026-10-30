@@ -27,6 +27,7 @@ pub mod structure;
 pub mod syntax;
 pub mod theme;
 pub mod trust;
+pub mod unicode;
 pub mod vim;
 pub mod watcher;
 pub mod workspace;

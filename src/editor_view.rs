@@ -88,6 +88,8 @@ pub struct Decorations {
     pub highlights: Vec<std::sync::Arc<std::collections::HashMap<usize, Vec<Highlight>>>>,
     /// Text shown between characters, like inferred types.
     pub inlays: Option<Inlays>,
+    /// Columns by line of characters to draw as `?`, since they may not show.
+    pub hidden: Option<std::sync::Arc<std::collections::HashMap<usize, Vec<usize>>>>,
     /// Sorted by line.
     pub changes: Vec<ChangeMark>,
     /// Blame text shown after the end of this line.
@@ -355,6 +357,7 @@ struct Metrics {
     char_w: f32,
     gutter_w: f32,
     inlays: Option<Inlays>,
+    hidden: Option<std::sync::Arc<std::collections::HashMap<usize, Vec<usize>>>>,
 }
 
 /// Draws and runs the editor for `doc` in all remaining space of `ui`.
@@ -383,6 +386,7 @@ pub fn show(
         row_h,
         char_w,
         inlays: deco.inlays.clone(),
+        hidden: deco.hidden.clone(),
     };
     let text_rect = Rect::from_min_max(
         Pos2::new(rect.left() + m.gutter_w, rect.top()),
@@ -1503,6 +1507,7 @@ fn row_job(
         split.dedup_by_key(|r| r.0);
         runs = split;
     }
+    let hidden = m.hidden.as_ref().and_then(|h| h.get(&row.line));
     let mut hint_at = 0;
     let mut idx = seg_a;
     for (end, color, italic) in runs {
@@ -1518,10 +1523,12 @@ fn row_job(
             hint_at += 1;
         }
         let mut piece = String::with_capacity(stop - idx);
-        for &c in &chars[idx..stop] {
+        for (i, &c) in (idx..stop).zip(&chars[idx..stop]) {
             let w = char_width(c, col);
             if c == '\t' {
                 piece.extend(std::iter::repeat_n(' ', w));
+            } else if hidden.is_some_and(|h| h.contains(&i)) {
+                piece.push('?');
             } else {
                 piece.push(c);
             }

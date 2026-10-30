@@ -53,6 +53,8 @@ pub struct EditorSettings {
     pub inlay_hints: bool,
     /// Glide to the new position when keys move the view, instead of jumping.
     pub smooth_scrolling: bool,
+    /// Mark bidi controls and invisible or private use characters, and warn about them.
+    pub unicode_warnings: bool,
     pub trim_trailing_whitespace: bool,
     pub insert_final_newline: bool,
     /// Key handling: "default", "vim" (modal, Vim keys) or "helix" (select, then act).
@@ -223,6 +225,7 @@ impl Default for EditorSettings {
             semantic_highlighting: true,
             inlay_hints: true,
             smooth_scrolling: true,
+            unicode_warnings: true,
             trim_trailing_whitespace: false,
             insert_final_newline: false,
             keyboard_mode: "default".to_owned(),
