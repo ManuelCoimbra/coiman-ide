@@ -260,6 +260,11 @@ impl CodeApp {
                     doc.reveal = true;
                 }
             }
+            Command::SelectAllOccurrences => {
+                if let Some(doc) = self.active_doc() {
+                    doc.buffer.select_all_occurrences();
+                }
+            }
             Command::AddCursorAbove | Command::AddCursorBelow => {
                 if let Some(doc) = self.active_doc() {
                     doc.buffer.add_cursor_vertical(cmd == Command::AddCursorBelow);

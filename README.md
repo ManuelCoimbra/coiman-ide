@@ -61,6 +61,9 @@ is read and written on your machine.
 - Find and replace (`Ctrl+F`, `Ctrl+H`): match case, whole word, regular expressions with `$1`
   groups. The Search view replaces across the project after showing the count; open files change
   with undo and stay unsaved, others change on disk (UTF-8 only)
+- Multiple cursors: `Ctrl+D` adds the next occurrence, `Ctrl+Shift+L` selects all of them,
+  `Alt+click` and `Ctrl+Alt+Up/Down` add cursors. Column selection with `Shift+Alt`+drag (from the
+  cursor) or a middle-button drag
 - Brackets and quotes type in pairs, step over their closer, surround a selection, and Backspace
   removes an empty pair (`editor.auto_close_brackets`)
 - Indentation follows `.editorconfig`, then how the file is already indented, then

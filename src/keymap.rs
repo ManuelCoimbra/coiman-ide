@@ -64,6 +64,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+[", Command::OutdentLines, true),
     ("shift+tab", Command::OutdentLines, true),
     ("ctrl+d", Command::SelectNextOccurrence, true),
+    ("ctrl+shift+l", Command::SelectAllOccurrences, true),
     ("ctrl+alt+up", Command::AddCursorAbove, true),
     ("ctrl+alt+down", Command::AddCursorBelow, true),
     ("ctrl+shift+\\", Command::JumpToBracket, true),

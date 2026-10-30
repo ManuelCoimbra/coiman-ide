@@ -160,6 +160,8 @@ pub struct ViewState {
     line_clipboard: Option<String>,
     /// Whether the current mouse drag started on the vertical/horizontal scrollbar.
     dragging_scrollbar: Option<bool>,
+    /// Fixed corner (line, visual column) of the column selection being dragged.
+    column_anchor: Option<(usize, usize)>,
     /// Char clicked with Ctrl this frame.
     ctrl_click: Option<usize>,
     /// Gutter change marker clicked this frame.
@@ -552,6 +554,20 @@ fn inlay_cols(m: &Metrics, line: usize, from: usize, to: usize) -> usize {
 
 /// Document position under a screen point.
 fn pos_at(doc: &Document, view: &ViewState, layout: &Layout, m: &Metrics, text_rect: Rect, p: Pos2) -> usize {
+    let (row_start, row_end, line, col) = cell_at(doc, view, layout, m, text_rect, p);
+    doc.buffer.pos_at_visual_col(line, col).clamp(row_start, row_end)
+}
+
+/// The start and end of the row under `p`, its line, and the visual column
+/// under `p`, which may lie past the end of the line.
+fn cell_at(
+    doc: &Document,
+    view: &ViewState,
+    layout: &Layout,
+    m: &Metrics,
+    text_rect: Rect,
+    p: Pos2,
+) -> (usize, usize, usize, usize) {
     let y = p.y - text_rect.top() + view.scroll.y;
     let row_idx = ((y / m.row_h).floor().max(0.0) as usize).min(layout.total_rows.saturating_sub(1));
     let row = layout.row(doc, view, row_idx);
@@ -579,8 +595,7 @@ fn pos_at(doc: &Document, view: &ViewState, layout: &Layout, m: &Metrics, text_r
         }
         col = col.saturating_sub(taken);
     }
-    let pos = buf.pos_at_visual_col(row.line, row_col + col);
-    pos.clamp(row.start, row.end)
+    (row.start, row.end, row.line, row_col + col)
 }
 
 fn handle_scrolling(
@@ -651,8 +666,25 @@ fn handle_mouse(
     let pressed = response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed());
     let mods = ui.input(|i| i.modifiers);
     let pos = pos_at(doc, view, layout, m, text_rect, p);
+    let (_, _, line, col) = cell_at(doc, view, layout, m, text_rect, p);
+    let in_text = text_rect.x_range().contains(p.x);
+
+    if !ui.input(|i| i.pointer.primary_down() || i.pointer.middle_down()) {
+        view.column_anchor = None;
+    }
+    // The middle button drags a column selection from where it goes down.
+    if in_text
+        && response.is_pointer_button_down_on()
+        && ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Middle))
+    {
+        view.column_anchor = Some((line, col));
+        doc.buffer.select_column((line, col), (line, col));
+        return false;
+    }
 
     if pressed && p.x >= text_rect.left() - m.gutter_w && p.x < text_rect.right() {
+        view.column_anchor = None;
+        let cell = (line, col);
         let line = doc.buffer.char_to_line(pos);
         let gutter_left = text_rect.left() - m.gutter_w;
         // The left margin runs a test on test lines, and toggles a breakpoint elsewhere.
@@ -679,6 +711,12 @@ fn handle_mouse(
             let next = (line + 1 < doc.buffer.len_lines()).then(|| doc.buffer.line_start(line + 1));
             let end = next.unwrap_or_else(|| doc.buffer.len_chars());
             doc.buffer.set_single(Selection::new(doc.buffer.line_start(line), end));
+        } else if mods.alt && mods.shift {
+            // From the cursor to the pointer, like Shift+click but as a block.
+            let head = doc.buffer.primary().head;
+            let anchor = (doc.buffer.char_to_line(head), doc.buffer.visual_col(head));
+            view.column_anchor = Some(anchor);
+            doc.buffer.select_column(anchor, cell);
         } else if mods.alt {
             doc.buffer.add_selection(Selection::cursor(pos));
         } else if mods.command {
@@ -706,6 +744,17 @@ fn handle_mouse(
             let primary = sels.iter().position(|s| *s == doc.buffer.primary()).unwrap_or(0);
             sels[primary] = Selection::new(s, e);
             doc.buffer.set_selections(sels, primary);
+        }
+        return false;
+    }
+
+    if let Some(anchor) = view.column_anchor {
+        if response.dragged() && !pressed {
+            doc.buffer.select_column(anchor, (line, col));
+            if p.y < text_rect.top() || p.y > text_rect.bottom() {
+                ui.ctx().request_repaint();
+                return true;
+            }
         }
         return false;
     }

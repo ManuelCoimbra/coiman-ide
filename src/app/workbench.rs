@@ -229,6 +229,7 @@ impl CodeApp {
                 item(ui, "Duplicate Selection", Command::DuplicateSelection);
                 ui.separator();
                 item(ui, "Add Next Occurrence", Command::SelectNextOccurrence);
+                item(ui, "Select All Occurrences", Command::SelectAllOccurrences);
                 ui.separator();
                 item(ui, "Sort Lines Ascending", Command::SortLinesAscending);
                 item(ui, "Sort Lines Descending", Command::SortLinesDescending);

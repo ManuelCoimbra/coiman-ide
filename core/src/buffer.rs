@@ -513,6 +513,56 @@ impl Buffer {
         }
     }
 
+    /// Selects every occurrence of the primary selection. With no selection,
+    /// takes the word at the cursor and matches it as a whole word.
+    pub fn select_all_occurrences(&mut self) {
+        let primary = self.primary();
+        let whole_word = primary.is_empty();
+        let (start, end) = if whole_word {
+            let Some(word) = self.word_at(primary.head) else { return };
+            word
+        } else {
+            (primary.start(), primary.end())
+        };
+        let needle: Vec<char> = self.rope.slice(start..end).chars().collect();
+        let hay: Vec<char> = self.rope.chars().collect();
+        let mut sels = Vec::new();
+        let mut at = 0;
+        while at + needle.len() <= hay.len() {
+            let hit = hay[at..at + needle.len()] == needle[..]
+                && (!whole_word || self.word_at(at) == Some((at, at + needle.len())));
+            if hit {
+                sels.push(Selection::new(at, at + needle.len()));
+                at += needle.len();
+            } else {
+                at += 1;
+            }
+        }
+        let primary = sels.iter().position(|s| s.start() == start).unwrap_or(0);
+        self.set_selections(sels, primary);
+    }
+
+    /// Column selection: one selection per line in the block between two
+    /// (line, visual column) corners. Lines too short to reach it are left out.
+    pub fn select_column(&mut self, anchor: (usize, usize), head: (usize, usize)) {
+        let last = self.len_lines() - 1;
+        let (anchor_line, head_line) = (anchor.0.min(last), head.0.min(last));
+        let left = anchor.1.min(head.1);
+        let mut sels = Vec::new();
+        let mut primary = 0;
+        for line in anchor_line.min(head_line)..=anchor_line.max(head_line) {
+            if self.visual_col(self.line_end(line)) < left && line != head_line {
+                continue;
+            }
+            if line == head_line {
+                primary = sels.len();
+            }
+            let from = self.pos_at_visual_col(line, anchor.1);
+            sels.push(Selection::new(from, self.pos_at_visual_col(line, head.1)));
+        }
+        self.set_selections(sels, primary);
+    }
+
     fn find_chars(&self, needle: &[char], from: usize, to: usize) -> Option<usize> {
         if needle.is_empty() || to < from + needle.len() {
             return None;
@@ -1311,6 +1361,52 @@ three",
         assert_eq!(b.visual_col(1), 4);
         assert_eq!(b.pos_at_visual_col(0, 4), 1);
         assert_eq!(b.pos_at_visual_col(0, 1), 0);
+    }
+
+    fn selected(b: &Buffer) -> Vec<String> {
+        b.selections().iter().map(|s| b.rope().slice(s.start()..s.end()).to_string()).collect()
+    }
+
+    #[test]
+    fn selects_all_occurrences() {
+        let mut b = Buffer::new("foo food foo\nfoo");
+        // From the cursor: whole words only, and the word stays primary.
+        b.set_single(Selection::cursor(10));
+        b.select_all_occurrences();
+        assert_eq!(selected(&b), ["foo", "foo", "foo"]);
+        assert_eq!(b.primary().start(), 9);
+        // From a selection: any match, without overlaps.
+        b.set_single(Selection::new(0, 3));
+        b.select_all_occurrences();
+        assert_eq!(selected(&b).len(), 4);
+        let mut b = Buffer::new("aaaa");
+        b.set_single(Selection::new(0, 2));
+        b.select_all_occurrences();
+        assert_eq!(selected(&b), ["aa", "aa"]);
+        // Nothing to take: nothing changes.
+        let mut b = Buffer::new("  ");
+        b.set_single(Selection::cursor(1));
+        b.select_all_occurrences();
+        assert_eq!(b.selections(), [Selection::cursor(1)]);
+    }
+
+    #[test]
+    fn selects_a_column_block() {
+        let mut b = Buffer::new("abcdef\nab\n\nabcdef");
+        b.select_column((0, 1), (3, 4));
+        // The empty line can't reach the block; the short one gives what it has.
+        assert_eq!(selected(&b), ["bcd", "b", "bcd"]);
+        assert_eq!(b.primary().head, 11 + 4);
+        // Dragging up and left keeps the head at the pointer.
+        b.select_column((3, 4), (0, 1));
+        assert_eq!(selected(&b), ["bcd", "b", "bcd"]);
+        assert_eq!(b.primary().head, 1);
+        // Zero width: a cursor per line.
+        b.select_column((0, 2), (1, 2));
+        assert_eq!(b.selections().iter().map(|s| s.head).collect::<Vec<_>>(), [2, 9]);
+        // Past the end of the text.
+        b.select_column((3, 0), (99, 2));
+        assert_eq!(selected(&b), ["ab"]);
     }
 
     #[test]
