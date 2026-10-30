@@ -2,6 +2,7 @@
 //! when changed. The file stays the source of truth and can still be edited.
 
 use std::collections::HashMap;
+use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{self, RichText};
 use toml::Value;
@@ -17,6 +18,7 @@ enum Kind {
     Decimal(f64, f64),
     Choice(&'static [(&'static str, &'static str)]),
     Text(&'static str),
+    Font,
 }
 
 struct Row {
@@ -39,6 +41,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
     (
         "Editor",
         &[
+            row("editor", "font_family", "Font", "Fixed-width fonts installed on this computer.", Kind::Font),
             row("editor", "font_size", "Font size", "Size of the code.", Kind::Decimal(6.0, 72.0)),
             row(
                 "editor",
@@ -130,6 +133,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "Restore unsaved changes",
                 "Bring them back on the next launch instead of asking on exit.",
                 Kind::Toggle,
+            ),
+            row(
+                "files",
+                "auto_save",
+                "Auto save",
+                "Save without asking, after you stop typing or when you leave the file or window.",
+                Kind::Choice(&[("off", "Off"), ("after_delay", "After a delay"), ("focus_change", "On focus change")]),
+            ),
+            row(
+                "files",
+                "auto_save_delay_ms",
+                "Auto save delay (ms)",
+                "For \"After a delay\".",
+                Kind::Whole(100, 60_000),
             ),
             row("files", "eol", "Line ending for new files", "", Kind::Choice(LINE_ENDINGS)),
             row("files", "encoding", "Encoding for new files", "", Kind::Choice(ENCODINGS)),
@@ -271,6 +288,10 @@ pub(super) struct SettingsUi {
     /// Text being typed and numbers being dragged, saved when finished.
     texts: HashMap<&'static str, String>,
     numbers: HashMap<&'static str, f64>,
+    /// Fixed-width fonts, once looked up.
+    fonts: Vec<String>,
+    fonts_loading: Option<Receiver<Vec<String>>>,
+    fonts_loaded: bool,
 }
 
 enum Action {
@@ -324,6 +345,26 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
                 saved.clone_into(text);
             }
         }
+        Kind::Font => {
+            let current = value.and_then(Value::as_str).unwrap_or("");
+            let shown = if current.is_empty() { "Built-in" } else { current };
+            egui::ComboBox::new(("settings", table, key), "").selected_text(shown).width(220.0).height(320.0).show_ui(
+                ui,
+                |ui| {
+                    if ui.selectable_label(current.is_empty(), "Built-in").clicked() {
+                        *out = Some(Action::Set(table, key, literal(Value::String(String::new()))));
+                    }
+                    for name in &state.fonts {
+                        if ui.selectable_label(name == current, name).clicked() {
+                            *out = Some(Action::Set(table, key, literal(Value::String(name.clone()))));
+                        }
+                    }
+                    if state.fonts_loading.is_some() {
+                        ui.label("Looking for fonts…");
+                    }
+                },
+            );
+        }
         Kind::Whole(low, high) => {
             let saved = value.and_then(Value::as_integer).unwrap_or(0) as f64;
             if let Some(v) = number(ui, state, key, saved, low as f64, high as f64, 0) {
@@ -374,6 +415,20 @@ impl CodeApp {
         let mut open = true;
         let mut action = None;
         let state = &mut self.settings_ui;
+        if !state.fonts_loaded {
+            state.fonts_loaded = true;
+            let (tx, rx) = mpsc::channel();
+            state.fonts_loading = Some(rx);
+            let wake = ctx.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(rust_code_core::fonts::monospace_families(&rust_code_core::fonts::installed()));
+                wake.request_repaint();
+            });
+        }
+        if let Some(fonts) = state.fonts_loading.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            state.fonts = fonts;
+            state.fonts_loading = None;
+        }
         egui::Window::new("Settings")
             .open(&mut open)
             .collapsible(false)

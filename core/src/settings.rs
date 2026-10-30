@@ -33,6 +33,9 @@ pub struct Settings {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct EditorSettings {
+    /// A fixed-width font installed on the system, or a path to a font file.
+    /// Empty uses the built-in font.
+    pub font_family: String,
     pub font_size: f32,
     pub word_wrap: bool,
     pub indent_guides: bool,
@@ -75,6 +78,10 @@ pub struct WorkbenchSettings {
 pub struct FilesSettings {
     /// Restore unsaved changes on the next launch instead of asking on exit.
     pub hot_exit: bool,
+    /// Save without asking: "off", "after_delay" or "focus_change".
+    pub auto_save: String,
+    /// How long after the last edit "after_delay" saves.
+    pub auto_save_delay_ms: u64,
     /// Line ending for new files: "auto" (CRLF on Windows, LF elsewhere), "lf" or "crlf".
     pub eol: String,
     /// Encoding for new files (VS Code ids: "utf8", "utf8bom", "utf16le", "windows1252", ...).
@@ -222,6 +229,7 @@ impl FilesSettings {
 impl Default for EditorSettings {
     fn default() -> Self {
         Self {
+            font_family: String::new(),
             font_size: 14.0,
             word_wrap: false,
             indent_guides: true,
@@ -250,7 +258,13 @@ impl Default for WorkbenchSettings {
 
 impl Default for FilesSettings {
     fn default() -> Self {
-        Self { hot_exit: true, eol: "auto".to_owned(), encoding: "utf8".to_owned() }
+        Self {
+            hot_exit: true,
+            auto_save: "off".to_owned(),
+            auto_save_delay_ms: 1000,
+            eol: "auto".to_owned(),
+            encoding: "utf8".to_owned(),
+        }
     }
 }
 

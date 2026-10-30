@@ -2,6 +2,9 @@
 
 A lightweight VS Code–style editor written in Rust with [egui](https://github.com/emilk/egui).
 
+The code font is `editor.font_family`: any fixed-width font installed on the computer, picked in
+Settings, or a path to a font file.
+
 Settings (`Ctrl+,`) and keyboard shortcuts (`Ctrl+K Ctrl+S`) each have a window, so no file editing
 is needed; **Edit as File** still opens the TOML behind them.
 
@@ -73,6 +76,8 @@ is read and written on your machine.
 - `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
+- Auto save (`files.auto_save`): after a delay, or on leaving the file or window. Saves after a
+  delay don't each add a local history entry, and files changed on disk wait for you
 - Find and replace (`Ctrl+F`, `Ctrl+H`): match case, whole word, regular expressions with `$1`
   groups. The Search view replaces across the project after showing the count; open files change
   with undo and stay unsaved, others change on disk (UTF-8 only)
@@ -142,7 +147,8 @@ push). All git work runs in the background.
   unsaved edits; `git.blame_inline` or **Git: Toggle Inline Blame** turns it off.
 - **Source Control view** (`Ctrl+Shift+G`): commit message (`Ctrl+Enter` commits), staged,
   unstaged and conflicted files with stage / unstage / discard (discard asks first), and
-  **Stage All and Commit** when nothing is staged.
+  **Stage All and Commit** when nothing is staged. **Pull**, **Push** (publishing a new branch) and
+  **Fetch** show how many commits each way; they run only when you ask, using your Git credentials.
 - **Side-by-side diff**: click a file for index vs working tree (or HEAD vs index for
   staged files), with per-change Stage / Revert / Unstage, previous/next change and
   **Ignore whitespace**.

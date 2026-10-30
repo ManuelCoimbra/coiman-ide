@@ -344,7 +344,9 @@ impl CodeApp {
                     self.settings_reload = true;
                 }
                 self.lsp_did_save(index);
-                self.history_record(index, rust_code_core::history::Source::Save);
+                if !self.auto_save.skip_history {
+                    self.history_record(index, rust_code_core::history::Source::Save);
+                }
                 self.plugins_saved(index);
                 true
             }

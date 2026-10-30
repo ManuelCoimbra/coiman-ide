@@ -966,7 +966,14 @@ impl CodeApp {
                 }
             }
             if let Some(msg) = &self.status {
-                ui.label(white(msg.clone()));
+                // Long messages, like git's errors, would run into the right side.
+                const ROOM: usize = 90;
+                if msg.chars().count() > ROOM {
+                    let cut: String = msg.chars().take(ROOM).collect();
+                    ui.label(white(format!("{cut}…"))).on_hover_text(msg);
+                } else {
+                    ui.label(white(msg.clone()));
+                }
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 if let Some(doc) = self.docs.get(self.active) {

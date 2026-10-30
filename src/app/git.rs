@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 
+use crate::commands::Command;
 use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Vec2};
 use rust_code_core::git::{self, FileChange, Hunk, Repo, Status};
 
@@ -955,6 +956,30 @@ impl CodeApp {
         });
     }
 
+    /// Push, pull or fetch, in the background. Nothing else reaches the network.
+    pub(super) fn git_remote(&mut self, ctx: &egui::Context, command: Command) {
+        if self.git.repo.is_none() {
+            self.status = Some("Open a folder in a Git repository first".to_owned());
+            return;
+        }
+        if self.git.busy.is_some() {
+            return;
+        }
+        let (busy, done): (&str, &str) = match command {
+            Command::GitPush => ("Pushing…", "Pushed"),
+            Command::GitPull => ("Pulling…", "Pulled"),
+            _ => ("Fetching…", "Fetched"),
+        };
+        self.git_job(ctx, Some(busy.to_owned()), move |repo| {
+            let result = match command {
+                Command::GitPush => repo.push(),
+                Command::GitPull => repo.pull(),
+                _ => repo.fetch(),
+            };
+            Msg::Done { result: result.map(|()| done.to_owned()) }
+        });
+    }
+
     pub(super) fn git_checkout(&mut self, ctx: &egui::Context) {
         if self.git.repo.is_none() {
             self.status = Some("Open a folder in a Git repository first".to_owned());
@@ -1022,6 +1047,28 @@ impl CodeApp {
         {
             self.git_checkout(&ctx);
         }
+        ui.horizontal(|ui| {
+            let busy = self.git.busy.is_some();
+            let pull = format!("Pull {}", status.behind);
+            let push = format!("Push {}", status.ahead);
+            for (label, tip, command) in [
+                (
+                    if status.behind > 0 { pull.as_str() } else { "Pull" },
+                    "Get new commits from the remote",
+                    Command::GitPull,
+                ),
+                (
+                    if status.ahead > 0 { push.as_str() } else { "Push" },
+                    "Send your commits to the remote",
+                    Command::GitPush,
+                ),
+                ("Fetch", "See what's new on the remote without changing anything here", Command::GitFetch),
+            ] {
+                if ui.add_enabled(!busy, egui::Button::new(label)).on_hover_text(tip).clicked() {
+                    self.git_remote(&ctx, command);
+                }
+            }
+        });
         let hint = format!("Message (Ctrl+Enter to commit on '{}')", status.branch);
         let edit = ui.add(
             egui::TextEdit::multiline(&mut self.git.message)

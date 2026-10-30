@@ -115,6 +115,42 @@ impl CodeApp {
         self.git_refresh_soon(ctx, 0.0);
     }
 
+    /// Uses a font for code. Loading it takes a moment, so it happens off to the side.
+    fn apply_font_family(&mut self, ctx: &egui::Context, first: bool, family: &str) {
+        self.font_load = None;
+        if family.trim().is_empty() {
+            if !first {
+                ctx.set_fonts(egui::FontDefinitions::default());
+            }
+            return;
+        }
+        let (family, wake) = (family.trim().to_owned(), super::repaint(ctx));
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.font_load = Some(rx);
+        std::thread::spawn(move || {
+            let _ = tx.send(rust_code_core::fonts::load(&family));
+            wake();
+        });
+    }
+
+    pub(super) fn pump_font_load(&mut self, ctx: &egui::Context) {
+        let Some(result) = self.font_load.as_ref().and_then(|rx| rx.try_recv().ok()) else { return };
+        self.font_load = None;
+        match result {
+            Ok((bytes, index)) => {
+                const NAME: &str = "editor font";
+                let mut font = egui::FontData::from_owned(bytes);
+                font.index = index;
+                let mut fonts = egui::FontDefinitions::default();
+                fonts.font_data.insert(NAME.to_owned(), std::sync::Arc::new(font));
+                // The built-in fonts stay behind it for characters it lacks.
+                fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, NAME.to_owned());
+                ctx.set_fonts(fonts);
+            }
+            Err(e) => self.status = Some(e),
+        }
+    }
+
     /// Reloads settings, keybindings and the color theme, applying what changed.
     pub(super) fn reload_settings(&mut self, ctx: &egui::Context) {
         let loaded = settings::load(self.explorer.root.as_deref());
@@ -138,6 +174,9 @@ impl CodeApp {
             self.apply_file_rules(doc);
         }
         self.docs = docs;
+        if first || new.editor.font_family != old.editor.font_family {
+            self.apply_font_family(ctx, first, &new.editor.font_family);
+        }
         if first || new.editor.font_size != old.editor.font_size {
             self.font_size = new.editor.font_size.clamp(6.0, 72.0);
         }

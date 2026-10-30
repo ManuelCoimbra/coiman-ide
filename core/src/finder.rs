@@ -194,7 +194,8 @@ mod tests {
         let mut results = Vec::new();
         for _ in 0..100 {
             results = f.results(10);
-            if !results.is_empty() {
+            // Under load the first answers can still be from before the query.
+            if results.len() == 1 {
                 break;
             }
             std::thread::sleep(Duration::from_millis(10));

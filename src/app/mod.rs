@@ -1,6 +1,7 @@
 //! Main application state and the per-frame loop. The behaviour is split by
 //! area into submodules that each add methods to [`CodeApp`].
 
+mod autosave;
 mod cargo;
 mod config;
 mod debug;
@@ -122,6 +123,9 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    auto_save: autosave::AutoSave,
+    /// A font being loaded in the background: what it is, or why it can't be.
+    font_load: Option<std::sync::mpsc::Receiver<rust_code_core::fonts::Loaded>>,
     settings_ui: settings_ui::SettingsUi,
     keys_ui: keys_ui::KeysUi,
     window: Option<rust_code_core::session::WindowState>,
@@ -217,6 +221,8 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            auto_save: Default::default(),
+            font_load: None,
             settings_ui: Default::default(),
             keys_ui: Default::default(),
             window: None,
@@ -283,6 +289,8 @@ impl eframe::App for CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.pump_auto_save(&ctx);
+        self.pump_font_load(&ctx);
         self.refresh_cargo_project(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);

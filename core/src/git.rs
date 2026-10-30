@@ -1,7 +1,7 @@
 //! Git through the `git` command line, as VS Code does: status, file contents
 //! at HEAD and in the index, line diffs, staging single hunks by writing index
-//! blobs, blame, commit and branches. Only local commands are used; nothing
-//! here fetches, pulls or pushes.
+//! blobs, blame, commit and branches. Fetch, pull and push are the only commands
+//! that reach the network, and only run when asked for.
 
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -168,6 +168,30 @@ impl Repo {
         let hash = git(&self.root, &["hash-object", "-w", "--stdin", &path_arg], Some(content.as_bytes())).map(text)?;
         let info = format!("{mode},{},{rel}", hash.trim());
         self.run(&["update-index", "--add", "--cacheinfo", &info]).map(drop)
+    }
+
+    fn first_remote(&self) -> Result<String, String> {
+        let remotes = self.run(&["remote"])?;
+        remotes.lines().next().map(str::to_owned).ok_or_else(|| "This repository has no remote".to_owned())
+    }
+
+    pub fn fetch(&self) -> Result<(), String> {
+        self.first_remote()?;
+        self.run(&["fetch"]).map(drop)
+    }
+
+    pub fn pull(&self) -> Result<(), String> {
+        self.first_remote()?;
+        self.run(&["pull"]).map(drop)
+    }
+
+    /// Pushes the current branch, publishing it if it isn't on a remote yet.
+    pub fn push(&self) -> Result<(), String> {
+        if self.run(&["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).is_ok() {
+            return self.run(&["push"]).map(drop);
+        }
+        let remote = self.first_remote()?;
+        self.run(&["push", "-u", &remote, "HEAD"]).map(drop)
     }
 
     pub fn commit(&self, message: &str) -> Result<(), String> {
@@ -390,6 +414,66 @@ pub fn apply_hunks(base: &str, new: &str, hunks: &[Hunk], nl: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pushes_fetches_and_pulls() {
+        let dir = std::env::temp_dir().join(format!("rust-code-git-remote-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (a, b, bare) = (dir.join("a"), dir.join("b"), dir.join("bare.git"));
+        for d in [&a, &b, &bare] {
+            std::fs::create_dir_all(d).unwrap();
+        }
+        let sh = |d: &Path, args: &[&str]| {
+            let out = std::process::Command::new("git").current_dir(d).args(args).output().unwrap();
+            assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        let setup = |d: &Path| {
+            sh(d, &["config", "user.name", "t"]);
+            sh(d, &["config", "user.email", "t@t"]);
+        };
+        sh(&bare, &["init", "--bare", "-q"]);
+        sh(&a, &["init", "-q"]);
+        setup(&a);
+        let repo = Repo { root: a.clone() };
+
+        std::fs::write(a.join("f"), "1\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("one").unwrap();
+        assert_eq!(repo.push().unwrap_err(), "This repository has no remote");
+        assert_eq!(repo.fetch().unwrap_err(), "This repository has no remote");
+        assert_eq!(repo.pull().unwrap_err(), "This repository has no remote");
+
+        // The first push publishes the branch.
+        sh(&a, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        repo.push().unwrap();
+
+        // A second copy sees new commits after fetch, and gets them with pull.
+        sh(&dir, &["clone", "-q", bare.to_str().unwrap(), "b"]);
+        setup(&b);
+        let other = Repo { root: b.clone() };
+        std::fs::write(a.join("f"), "2\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("two").unwrap();
+        assert_eq!(repo.status().unwrap().ahead, 1);
+        repo.push().unwrap();
+        assert_eq!(repo.status().unwrap().ahead, 0);
+        other.fetch().unwrap();
+        assert_eq!(other.status().unwrap().behind, 1);
+        other.pull().unwrap();
+        assert_eq!(other.status().unwrap().behind, 0);
+        assert_eq!(std::fs::read_to_string(b.join("f")).unwrap().trim(), "2");
+
+        // A push the remote refuses reports git's reason.
+        std::fs::write(b.join("f"), "3\n").unwrap();
+        other.stage(&["."]).unwrap();
+        other.commit("three").unwrap();
+        other.push().unwrap();
+        std::fs::write(a.join("g"), "x\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("four").unwrap();
+        assert!(repo.push().unwrap_err().contains("rejected"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn stages_only_the_selected_lines() {

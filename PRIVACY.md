@@ -31,6 +31,8 @@ from where:
 
   Nothing runs until you click **Install**. npm, pip, dotnet and go tools install
   into those tools' own global folders.
+- **Git: Push, Pull and Fetch.** They run `git` against your repository's remote,
+  and only when you click them or run the command. Nothing fetches on a timer.
 - **Language servers themselves** are separate programs, as in other editors.
   Some fetch what your project needs. rust-analyzer runs `cargo metadata` and
   `cargo check`, so Cargo downloads dependencies from crates.io. jdtls may

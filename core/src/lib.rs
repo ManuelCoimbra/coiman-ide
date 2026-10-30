@@ -12,6 +12,7 @@ pub mod editorconfig;
 pub mod encoding;
 pub mod find;
 pub mod finder;
+pub mod fonts;
 pub mod git;
 pub mod highlight;
 pub mod history;
