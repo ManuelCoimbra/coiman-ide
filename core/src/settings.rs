@@ -47,6 +47,10 @@ pub struct EditorSettings {
     pub detect_indentation: bool,
     /// Type brackets and quotes in pairs.
     pub auto_close_brackets: bool,
+    /// Color symbols by what the language server says they are.
+    pub semantic_highlighting: bool,
+    /// Show inferred types and parameter names in the text.
+    pub inlay_hints: bool,
     pub trim_trailing_whitespace: bool,
     pub insert_final_newline: bool,
     /// Key handling: "default", "vim" (modal, Vim keys) or "helix" (select, then act).
@@ -214,6 +218,8 @@ impl Default for EditorSettings {
             insert_spaces: true,
             detect_indentation: true,
             auto_close_brackets: true,
+            semantic_highlighting: true,
+            inlay_hints: true,
             trim_trailing_whitespace: false,
             insert_final_newline: false,
             keyboard_mode: "default".to_owned(),

@@ -46,7 +46,24 @@ pub(super) enum Setup {
 }
 
 /// What a request in flight was for.
-enum Pending {
+pub(super) enum Pending {
+    SemanticTokens {
+        uid: u64,
+        ci: usize,
+        lines: usize,
+    },
+    InlayHints {
+        uid: u64,
+        lines: usize,
+    },
+    SymbolHighlights {
+        uid: u64,
+        version: u64,
+    },
+    Signature {
+        uid: u64,
+    },
+    WorkspaceSymbols,
     Completion {
         uid: u64,
     },
@@ -118,9 +135,10 @@ pub(super) struct LspState {
     setups: HashMap<ServerKind, Setup>,
     /// Servers whose install offer was dismissed for this session.
     offer_dismissed: HashSet<ServerKind>,
-    clients: Vec<Client>,
+    pub(super) clients: Vec<Client>,
     /// Requests in flight, by (server, server root, request id).
-    pending: HashMap<(ServerKind, PathBuf, i64), Pending>,
+    pub(super) pending: HashMap<(ServerKind, PathBuf, i64), Pending>,
+    pub(super) extra: super::lsp_extra::LspExtra,
     /// Diagnostics by file (key: [`path_key`]), with the path as reported.
     diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
     /// Buffer version last sent to the server, per document uid.
@@ -138,13 +156,13 @@ pub(super) struct LspState {
     format_save: Option<(u64, f64)>,
     rename_at: Option<(u64, usize)>,
     /// Last screen rectangle of the primary cursor.
-    cursor_rect: Option<Rect>,
+    pub(super) cursor_rect: Option<Rect>,
     /// Show the problems under the cursor after the next editor frame (F8).
     show_problem_at_cursor: bool,
 }
 
 /// Path, LSP language id and server of a document a server should handle.
-fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, ServerKind)> {
+pub(super) fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, ServerKind)> {
     let lang = language_id(&doc.extension())?;
     let kind = ServerKind::for_language(lang)?;
     Some((doc.path.clone().filter(|_| !doc.large)?, lang, kind))
@@ -268,6 +286,7 @@ impl CodeApp {
             self.handle_event(kind, &root, ev);
         }
         self.lsp.clients.retain(|c| !c.has_exited());
+        self.refresh_lsp_views(ctx);
 
         let now = ctx.input(|i| i.time);
         if let Some((uid, started)) = self.lsp.format_save {
@@ -413,7 +432,7 @@ impl CodeApp {
         self.lsp.setups.clear();
     }
 
-    fn doc_index(&self, uid: u64) -> Option<usize> {
+    pub(super) fn doc_index(&self, uid: u64) -> Option<usize> {
         self.docs.iter().position(|d| d.uid == uid)
     }
 
@@ -462,7 +481,10 @@ impl CodeApp {
                     | "client/registerCapability"
                     | "client/unregisterCapability"
                     | "window/showMessageRequest" => Ok(Value::Null),
-                    m if m.ends_with("/refresh") => Ok(Value::Null),
+                    m if m.ends_with("/refresh") => {
+                        self.lsp_views_stale();
+                        Ok(Value::Null)
+                    }
                     _ => Err((-32601, format!("{method} is not supported"))),
                 };
                 if let Some(client) = self.lsp.clients.iter_mut().find(|c| c.kind == kind && c.root == root) {
@@ -527,7 +549,13 @@ impl CodeApp {
                             c.waiting = false;
                         }
                     }
-                    Pending::Hover { .. } => {}
+                    // Routine too, and the user didn't ask for these.
+                    Pending::Hover { .. }
+                    | Pending::SemanticTokens { .. }
+                    | Pending::InlayHints { .. }
+                    | Pending::SymbolHighlights { .. }
+                    | Pending::Signature { .. }
+                    | Pending::WorkspaceSymbols => {}
                     Pending::Format { uid, save: true, .. } => self.finish_format_save(uid, None),
                     _ => self.status = Some(format!("{}: {e}", kind.name())),
                 }
@@ -557,12 +585,17 @@ impl CodeApp {
                 }
             }
             Pending::Execute => {}
+            Pending::SemanticTokens { uid, ci, lines } => self.on_semantic_tokens(uid, ci, lines, value),
+            Pending::InlayHints { uid, lines } => self.on_inlay_hints(uid, lines, value),
+            Pending::SymbolHighlights { uid, version } => self.on_symbol_highlights(uid, version, value),
+            Pending::Signature { uid } => self.on_signature(uid, value),
+            Pending::WorkspaceSymbols => self.on_workspace_symbols(value),
         }
     }
 
     /// Sends a request about document `i`. `params` gets the document and its
     /// `textDocument` identifier. Returns false when no server handles it.
-    fn request_for(
+    pub(super) fn request_for(
         &mut self,
         i: usize,
         method: &str,
@@ -597,7 +630,7 @@ impl CodeApp {
         }
     }
 
-    fn position_params(doc: &Document, td: Value, pos: usize) -> Value {
+    pub(super) fn position_params(doc: &Document, td: Value, pos: usize) -> Value {
         json!({ "textDocument": td, "position": convert::position_of(doc.buffer.rope(), pos) })
     }
 
@@ -738,7 +771,7 @@ impl CodeApp {
     }
 
     /// Opens `path` and moves the cursor to `range` (selecting it if `select`).
-    fn jump_to(&mut self, path: &Path, range: lt::Range, select: bool) {
+    pub(super) fn jump_to(&mut self, path: &Path, range: lt::Range, select: bool) {
         match self.doc_index_by_path(path) {
             Some(i) => self.active = i,
             None => self.open_file(path),
@@ -1222,6 +1255,7 @@ impl CodeApp {
         self.lsp.cursor_rect = Some(out.cursor_rect);
         let focused = self.editor_focused(ctx);
         self.completion_after_typing(typed, focused);
+        self.signature_after_typing(typed);
         self.update_hover(ctx, uid, out.hover, head);
         if let Some(pos) = out.ctrl_click {
             self.request_locations("textDocument/definition", "Definitions", Some(pos));
@@ -1538,6 +1572,7 @@ impl CodeApp {
 
     /// Completion list and hover popups, drawn over everything.
     pub(super) fn lsp_popups(&mut self, ctx: &egui::Context) {
+        self.signature_popup(ctx);
         let active_uid = self.docs.get(self.active).map(|d| d.uid);
         let font = egui::FontId::monospace(self.font_size);
         let mut accept = None;

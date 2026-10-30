@@ -71,6 +71,8 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+k ctrl+i", Command::ShowHover, true),
     ("f12", Command::GoToDefinition, true),
     ("ctrl+f12", Command::GoToImplementation, true),
+    ("ctrl+t", Command::GoToWorkspaceSymbol, false),
+    ("ctrl+shift+space", Command::TriggerSignatureHelp, true),
     ("shift+f12", Command::FindReferences, true),
     ("f2", Command::RenameSymbol, true),
     ("ctrl+.", Command::QuickFix, true),

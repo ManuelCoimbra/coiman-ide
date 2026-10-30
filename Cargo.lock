@@ -3432,6 +3432,7 @@ dependencies = [
  "eframe",
  "egui",
  "rfd",
+ "ropey",
  "rust-code-core",
  "serde",
  "serde_json",

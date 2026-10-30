@@ -362,12 +362,32 @@ fn client_capabilities() -> Value {
                 },
             },
             "formatting": {},
+            "typeDefinition": { "linkSupport": true },
+            "documentHighlight": {},
+            "signatureHelp": {
+                "signatureInformation": {
+                    "documentationFormat": ["markdown", "plaintext"],
+                    "parameterInformation": { "labelOffsetSupport": true },
+                },
+            },
+            "inlayHint": {},
+            "semanticTokens": {
+                "requests": { "full": true },
+                "tokenTypes": ["namespace", "type", "class", "enum", "interface", "struct", "typeParameter",
+                               "parameter", "variable", "property", "enumMember", "function", "method", "macro",
+                               "keyword", "modifier", "comment", "string", "number", "operator"],
+                "tokenModifiers": [],
+                "formats": ["relative"],
+            },
         },
         "workspace": {
             "applyEdit": true,
             "workspaceEdit": { "documentChanges": true, "resourceOperations": ["create", "rename", "delete"] },
             "configuration": true,
             "workspaceFolders": true,
+            "symbol": {},
+            "semanticTokens": { "refreshSupport": true },
+            "inlayHint": { "refreshSupport": true },
         },
         "window": { "workDoneProgress": true, "showMessage": {} },
     })

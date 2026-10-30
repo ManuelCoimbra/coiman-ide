@@ -105,6 +105,11 @@ impl CodeApp {
             Command::TriggerSuggest => self.request_completion(None),
             Command::ShowHover => self.show_hover_at_cursor(),
             Command::GoToDefinition => self.request_locations("textDocument/definition", "Definitions", None),
+            Command::GoToTypeDefinition => {
+                self.request_locations("textDocument/typeDefinition", "Type Definitions", None)
+            }
+            Command::GoToWorkspaceSymbol => self.open_palette("#"),
+            Command::TriggerSignatureHelp => self.request_signature(),
             Command::GoToImplementation => {
                 self.request_locations("textDocument/implementation", "Implementations", None);
             }

@@ -9,6 +9,7 @@ mod files;
 mod git;
 mod history;
 mod lsp;
+mod lsp_extra;
 mod outline;
 mod plugins;
 mod workbench;
@@ -346,6 +347,8 @@ impl eframe::App for CodeApp {
             self.git_decorate(self.active, &mut deco);
             self.cargo_decorate(self.active, &mut deco);
             self.debug_decorate(self.active, &mut deco);
+            // Plugins last: their colors go over the server's.
+            self.lsp_views_decorate(self.active, &mut deco);
             self.plugin_decorate(self.active, &mut deco);
             if let Some(doc) = self.docs.get_mut(self.active) {
                 deco.folds = doc.structure().folds.clone();
@@ -398,9 +401,11 @@ impl eframe::App for CodeApp {
         if self.palette.open {
             self.palette.plugin_commands = self.plugin_commands();
         }
+        self.pump_workspace_symbols();
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
+            Some(PaletteResult::WorkspaceSymbol(i)) => self.picked_workspace_symbol(i),
             Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
             Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),

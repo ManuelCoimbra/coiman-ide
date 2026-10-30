@@ -225,7 +225,7 @@ impl CodeApp {
     /// Plugin coloring for document `i`.
     pub(super) fn plugin_decorate(&self, i: usize, deco: &mut Decorations) {
         if let Some(path) = self.docs.get(i).and_then(|d| d.path.as_deref()) {
-            deco.highlights = self.plugins.highlights.get(&path_key(path)).cloned();
+            deco.highlights.extend(self.plugins.highlights.get(&path_key(path)).cloned());
         }
     }
 

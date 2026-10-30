@@ -272,6 +272,8 @@ impl CodeApp {
                 ui.separator();
                 item(ui, "Go to Definition", Command::GoToDefinition);
                 item(ui, "Go to Implementations", Command::GoToImplementation);
+                item(ui, "Go to Type Definition", Command::GoToTypeDefinition);
+                item(ui, "Go to Symbol in Workspace...", Command::GoToWorkspaceSymbol);
                 item(ui, "Go to References", Command::FindReferences);
                 ui.separator();
                 item(ui, "Next Problem", Command::NextProblem);

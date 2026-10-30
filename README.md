@@ -294,6 +294,12 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Completion | As you type, after `.`/`:`, or `Ctrl+Space`; `Enter`/`Tab` accepts, snippets place the cursor, auto-imports are added |
 | Hover | Rest the pointer on a symbol, or `Ctrl+K Ctrl+I` at the cursor |
 | Go to Definition / Implementations | `F12` or `Ctrl+Click` / `Ctrl+F12` |
+| Go to Type Definition | **Go > Go to Type Definition**, or the command palette |
+| Workspace symbols | `Ctrl+T`, or type `#` in the palette |
+| Signature help | Shows after `(` and `,`; `Ctrl+Shift+Space` at the cursor |
+| Inlay hints | Inferred types and parameter names inside the line (`editor.inlay_hints`) |
+| Semantic highlighting | Colors from the server over the syntax colors (`editor.semantic_highlighting`) |
+| Symbol highlight | Other uses of the symbol under the cursor are marked |
 | Find References | `Shift+F12`, results in the References panel |
 | Rename Symbol | `F2`; files that aren't open are opened with the changes unsaved, so you can review and undo |
 | Code actions | `Ctrl+.` (quick fixes, refactors) |

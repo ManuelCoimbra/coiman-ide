@@ -46,7 +46,10 @@ pub struct Mark {
     pub message: String,
 }
 
-/// Coloring a plugin put on part of a line (columns in characters).
+/// By line: (char column, text), sorted by column.
+pub type Inlays = std::sync::Arc<std::collections::HashMap<usize, Vec<(usize, String)>>>;
+
+/// Coloring on part of a line (columns in characters).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Highlight {
     pub start: usize,
@@ -76,8 +79,10 @@ pub struct ChangeMark {
 pub struct Decorations {
     /// Sorted by `start`.
     pub marks: Vec<Mark>,
-    /// Plugin coloring by line.
-    pub highlights: Option<std::sync::Arc<std::collections::HashMap<usize, Vec<Highlight>>>>,
+    /// Coloring by line, in layers: later ones paint over earlier ones.
+    pub highlights: Vec<std::sync::Arc<std::collections::HashMap<usize, Vec<Highlight>>>>,
+    /// Text shown between characters, like inferred types.
+    pub inlays: Option<Inlays>,
     /// Sorted by line.
     pub changes: Vec<ChangeMark>,
     /// Blame text shown after the end of this line.
@@ -340,6 +345,7 @@ struct Metrics {
     row_h: f32,
     char_w: f32,
     gutter_w: f32,
+    inlays: Option<Inlays>,
 }
 
 /// Draws and runs the editor for `doc` in all remaining space of `ui`.
@@ -362,7 +368,13 @@ pub fn show(
     let row_h = ui.fonts_mut(|f| f.row_height(&font_id));
     let char_w = ui.fonts_mut(|f| f.glyph_width(&font_id, '0'));
     let digits = doc.buffer.len_lines().to_string().len().max(3);
-    let m = Metrics { gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE + FOLD_ZONE, font_id, row_h, char_w };
+    let m = Metrics {
+        gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE + FOLD_ZONE,
+        font_id,
+        row_h,
+        char_w,
+        inlays: deco.inlays.clone(),
+    };
     let text_rect = Rect::from_min_max(
         Pos2::new(rect.left() + m.gutter_w, rect.top()),
         Pos2::new(rect.right() - SCROLLBAR, rect.bottom()),
@@ -524,10 +536,18 @@ pub fn show(
 
 /// X offset (in points, relative to the text area) of `pos` on the row starting at `row_start`.
 fn col_x(buf: &Buffer, row_start: usize, pos: usize, m: &Metrics) -> f32 {
-    let line_start = buf.line_start(buf.char_to_line(row_start));
+    let line = buf.char_to_line(row_start);
+    let line_start = buf.line_start(line);
     let row_col = visual_width(buf.rope().slice(line_start..row_start).chars());
-    let pos_col = visual_width(buf.rope().slice(line_start..pos.max(row_start)).chars());
-    (pos_col - row_col) as f32 * m.char_w
+    let pos = pos.max(row_start);
+    let pos_col = visual_width(buf.rope().slice(line_start..pos).chars());
+    (pos_col - row_col + inlay_cols(m, line, row_start - line_start, pos - line_start)) as f32 * m.char_w
+}
+
+/// Columns taken by inlay hints in a row, up to and including char column `to`.
+fn inlay_cols(m: &Metrics, line: usize, from: usize, to: usize) -> usize {
+    let Some(hints) = m.inlays.as_ref().and_then(|i| i.get(&line)) else { return 0 };
+    hints.iter().filter(|(col, _)| (from..=to).contains(col)).map(|(_, t)| t.chars().count()).sum()
 }
 
 /// Document position under a screen point.
@@ -539,7 +559,26 @@ fn pos_at(doc: &Document, view: &ViewState, layout: &Layout, m: &Metrics, text_r
     let line_start = buf.line_start(row.line);
     let row_col = visual_width(buf.rope().slice(line_start..row.start).chars());
     let x = p.x - text_rect.left() + view.scroll.x;
-    let col = (x / m.char_w).round().max(0.0) as usize;
+    let mut col = (x / m.char_w).round().max(0.0) as usize;
+    // Screen column to text column: hints take room but aren't text.
+    if let Some(hints) = m.inlays.as_ref().and_then(|i| i.get(&row.line)) {
+        let in_row = (row.start - line_start)..=(row.end - line_start);
+        let mut taken = 0;
+        for (hint, text) in hints.iter().filter(|(c, _)| in_row.contains(c)) {
+            let at = buf.visual_col(line_start + *hint) - row_col + taken;
+            let len = text.chars().count();
+            if col <= at {
+                break;
+            }
+            if col < at + len {
+                // Inside the hint: the place it sits.
+                col = at;
+                break;
+            }
+            taken += len;
+        }
+        col = col.saturating_sub(taken);
+    }
     let pos = buf.pos_at_visual_col(row.line, row_col + col);
     pos.clamp(row.start, row.end)
 }
@@ -1071,8 +1110,10 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         }
 
         // Plugin coloring: backgrounds under the text, the rest in the text itself.
-        let line_highlights = deco.highlights.as_ref().and_then(|h| h.get(&row.line));
-        if let Some(highlights) = line_highlights {
+        let line_highlights: Vec<Highlight> =
+            deco.highlights.iter().filter_map(|h| h.get(&row.line)).flatten().cloned().collect();
+        if !line_highlights.is_empty() {
+            let highlights = &line_highlights;
             let line_start = buf.line_start(row.line);
             for h in highlights {
                 let (a, b) = ((line_start + h.start).max(row.start), (line_start + h.end).min(row.end));
@@ -1088,7 +1129,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         }
 
         // Text.
-        let job = row_job(doc, view, &row, m, line_highlights.map(Vec::as_slice));
+        let job = row_job(doc, view, &row, m, Some(&line_highlights).filter(|h| !h.is_empty()).map(|h| h.as_slice()));
         let galley = ui.fonts_mut(|f| f.layout_job(job));
         text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
         let buf = &doc.buffer;
@@ -1365,6 +1406,29 @@ fn row_job(
     }
 
     let mut job = LayoutJob::default();
+    let hint_format =
+        TextFormat { font_id: m.font_id.clone(), color: theme::colors().text_dim, italics: true, ..Default::default() };
+    let hints: Vec<(usize, String)> = m
+        .inlays
+        .as_ref()
+        .and_then(|i| i.get(&row.line))
+        .map(|h| h.iter().filter(|(c, _)| (seg_a..=seg_b).contains(c)).cloned().collect())
+        .unwrap_or_default();
+    if !hints.is_empty() {
+        // Runs also end at hints, so hints land between pieces.
+        let mut split = Vec::with_capacity(runs.len() + hints.len());
+        let mut from = 0;
+        for &(end, color, italic) in &runs {
+            for (col, _) in hints.iter().filter(|(c, _)| *c > from && *c < end) {
+                split.push((*col, color, italic));
+            }
+            split.push((end, color, italic));
+            from = end;
+        }
+        split.dedup_by_key(|r| r.0);
+        runs = split;
+    }
+    let mut hint_at = 0;
     let mut idx = seg_a;
     for (end, color, italic) in runs {
         if end <= idx {
@@ -1373,6 +1437,10 @@ fn row_job(
         let stop = end.min(seg_b);
         if stop <= idx {
             break;
+        }
+        while let Some((_, text)) = hints.get(hint_at).filter(|(c, _)| *c <= idx) {
+            job.append(text, 0.0, hint_format.clone());
+            hint_at += 1;
         }
         let mut piece = String::with_capacity(stop - idx);
         for &c in &chars[idx..stop] {
@@ -1393,6 +1461,10 @@ fn row_job(
         if idx >= seg_b {
             break;
         }
+    }
+    // Hints after the last character.
+    for (_, text) in &hints[hint_at.min(hints.len())..] {
+        job.append(text, 0.0, hint_format.clone());
     }
     job.wrap.max_width = f32::INFINITY;
     job

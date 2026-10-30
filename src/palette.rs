@@ -16,6 +16,8 @@ pub enum PaletteResult {
     /// A plugin command (its palette key).
     RunPlugin(String),
     GoToLine(usize),
+    /// A symbol from `#`, by its place in `symbols`.
+    WorkspaceSymbol(usize),
     /// An item chosen in a picker.
     Picked(PickerKind, String),
     /// Text entered in an input box.
@@ -70,6 +72,8 @@ pub struct Palette {
     input: Option<(InputKind, &'static str)>,
     /// Commands of running plugins: (title, key).
     pub plugin_commands: Vec<(String, String)>,
+    /// Results for a `#` query: (name, container).
+    pub symbols: Vec<(String, String)>,
 }
 
 impl Palette {
@@ -94,6 +98,14 @@ impl Palette {
         self.show_with("");
         self.selected = items.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
         self.picker = Some(Picker { kind, items, placeholder });
+    }
+
+    /// What's being searched after `#`, while the palette shows symbols.
+    pub fn symbol_query(&self) -> Option<&str> {
+        if !self.open || self.picker.is_some() || self.input.is_some() {
+            return None;
+        }
+        self.query.strip_prefix('#').map(str::trim)
     }
 
     pub fn ui(&mut self, ctx: &egui::Context, finder: &mut FileFinder, keymap: &Keymap) -> Option<PaletteResult> {
@@ -128,6 +140,11 @@ impl Palette {
                 if fuzzy_match(title, q) {
                     items.push((title.clone(), "plugin".to_owned(), PaletteResult::RunPlugin(key.clone()), Vec::new()));
                 }
+            }
+        } else if self.query.starts_with('#') {
+            empty_text = "Type to search symbols in the project (needs a language server)";
+            for (i, (name, detail)) in self.symbols.iter().enumerate() {
+                items.push((name.clone(), detail.clone(), PaletteResult::WorkspaceSymbol(i), Vec::new()));
             }
         } else if let Some(q) = self.query.strip_prefix(':') {
             let line = q.trim().parse::<usize>().ok();
@@ -184,7 +201,7 @@ impl Palette {
                             .hint_text(
                                 self.picker
                                     .as_ref()
-                                    .map_or("Search files by name (> for commands, : for line)", |p| p.placeholder),
+                                    .map_or("Search files by name (> commands, : line, # symbols)", |p| p.placeholder),
                             )
                             .desired_width(f32::INFINITY),
                     );
