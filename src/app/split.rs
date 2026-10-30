@@ -62,6 +62,15 @@ impl CodeApp {
         self.split = None;
     }
 
+    /// After closing the focused tab: if the next tab is the one the other pane
+    /// already shows, one pane is enough.
+    pub(super) fn close_split_if_doubled(&mut self) {
+        let active = self.docs.get(self.active).map(|d| d.uid);
+        if self.split.as_ref().is_some_and(|s| Some(s.other) == active) {
+            self.split = None;
+        }
+    }
+
     pub(super) fn toggle_split_layout(&mut self) {
         if let Some(split) = &mut self.split {
             split.side_by_side = !split.side_by_side;

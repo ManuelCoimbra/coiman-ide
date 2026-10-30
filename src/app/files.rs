@@ -399,8 +399,12 @@ impl CodeApp {
             self.closed_editors.retain(|p| p != &path);
             self.closed_editors.push(path);
         }
+        let closed_active = index == self.active;
         if self.active > index || self.active >= self.docs.len() {
             self.active = self.active.saturating_sub(1);
+        }
+        if closed_active {
+            self.close_split_if_doubled();
         }
     }
 
