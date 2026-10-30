@@ -270,7 +270,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShrinkSelection, "Shrink Selection"),
     (Command::SelectFunction, "Select Function"),
     (Command::SelectFunctionBody, "Select Function Body"),
-    (Command::SelectType, "Select Type (struct, enum, trait, impl)"),
+    (Command::SelectType, "Select Type"),
     (Command::SelectArgument, "Select Argument"),
     (Command::SelectComment, "Select Comment"),
     (Command::NextFunction, "Go to Next Function"),

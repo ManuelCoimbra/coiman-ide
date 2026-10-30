@@ -20,6 +20,15 @@ pub struct Session {
     pub root: Option<PathBuf>,
     pub active: usize,
     pub docs: Vec<SessionDoc>,
+    pub window: Option<WindowState>,
+}
+
+/// The window's size, in points.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct WindowState {
+    pub width: f32,
+    pub height: f32,
+    pub maximized: bool,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -44,7 +53,7 @@ impl Session {
                     .then(|| d.text()),
             })
             .collect();
-        Self { version: VERSION, root: root.map(Path::to_path_buf), active, docs }
+        Self { version: VERSION, root: root.map(Path::to_path_buf), active, docs, window: None }
     }
 
     /// Rebuilds documents. Files that no longer exist are dropped unless they have
@@ -147,6 +156,7 @@ mod tests {
             version: VERSION,
             root: None,
             active: 0,
+            window: None,
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

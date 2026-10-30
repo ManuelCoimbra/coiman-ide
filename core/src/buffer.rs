@@ -5,11 +5,23 @@
 //! its `\r` as the last visible-but-skipped char; see [`Buffer::line_end`].
 
 use ropey::Rope;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::edit_ops::{Edit, Sel};
 use tree_sitter::{InputEdit, Point};
 
 pub const TAB_WIDTH: usize = 4;
+
+/// Columns a tab takes on screen (`editor.tab_size`).
+static SHOWN_TAB_WIDTH: AtomicUsize = AtomicUsize::new(TAB_WIDTH);
+
+pub fn tab_width() -> usize {
+    SHOWN_TAB_WIDTH.load(Ordering::Relaxed)
+}
+
+pub fn set_tab_width(columns: usize) {
+    SHOWN_TAB_WIDTH.store(columns.clamp(1, 16), Ordering::Relaxed);
+}
 const MAX_UNDO: usize = 1000;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -227,7 +239,7 @@ impl Buffer {
         (line + 1, pos - self.line_start(line) + 1)
     }
 
-    /// Visual column of `pos`, expanding tabs to [`TAB_WIDTH`].
+    /// Visual column of `pos`, expanding tabs to [`tab_width`].
     pub fn visual_col(&self, pos: usize) -> usize {
         let line = self.char_to_line(pos);
         let start = self.line_start(line);
@@ -1067,7 +1079,12 @@ fn char_class(c: char) -> u8 {
 
 /// Display width of `c` at visual column `col` (tabs jump to the next stop).
 pub fn char_width(c: char, col: usize) -> usize {
-    if c == '\t' { TAB_WIDTH - col % TAB_WIDTH } else { 1 }
+    if c == '\t' {
+        let width = tab_width();
+        width - col % width
+    } else {
+        1
+    }
 }
 
 pub fn visual_width(chars: impl Iterator<Item = char>) -> usize {

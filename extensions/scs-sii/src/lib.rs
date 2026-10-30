@@ -87,6 +87,8 @@ struct Scan {
     items: Vec<Decoration>,
     problems: Vec<Problem>,
     tree: Vec<TreeItem>,
+    /// `class : name` at the top level, which a `{` on the next line makes a unit.
+    pending: Option<(u32, String, usize, String, String)>,
     open: Vec<u32>,
     seen: HashMap<String, u32>,
     counts: HashMap<String, usize>,
@@ -150,6 +152,7 @@ impl Scan {
         if trimmed.is_empty() {
             return;
         }
+        let pending = self.pending.take();
         if trimmed == "SiiNunit" {
             self.has_header = true;
             self.items.push(color(number, indent, indent + 8, KEYWORD));
@@ -167,7 +170,10 @@ impl Scan {
             self.problems.push(problem(number, indent, code_end, Severity::Error, message));
         }
         if trimmed == "{" {
-            self.open.push(number);
+            match pending {
+                Some((line, code, indent, class, name)) => self.unit(line, &code, indent, &class, &name),
+                None => self.open.push(number),
+            }
             return;
         }
         if trimmed == "}" {
@@ -185,6 +191,10 @@ impl Scan {
         }
         if let Some(byte) = code.find(':') {
             let key = code[..byte].trim();
+            if self.open.len() == 1 {
+                let name = code[byte + 1..].trim().to_owned();
+                self.pending = Some((number, code.clone(), indent, key.to_owned(), name));
+            }
             self.items.push(color(number, indent, indent + chars_len(key), KEY));
             let after = &code[byte + 1..];
             let value = after.trim();

@@ -208,7 +208,7 @@ impl CodeApp {
             }
             Command::RestartLanguageServer => {
                 self.restart_lsp();
-                self.status = Some("Restarting rust-analyzer…".to_owned());
+                self.status = Some("Restarting language servers…".to_owned());
             }
             Command::ShowExplorer => {
                 self.sidebar_visible = true;
@@ -474,7 +474,13 @@ impl CodeApp {
                             doc.buffer.indent.use_tabs = false;
                             doc.buffer.indent.size = size;
                         }
-                        _ => self.apply_file_rules(doc),
+                        _ => {}
+                    }
+                    if label == "Tabs" || size.is_some() {
+                        self.indent_chosen.insert(doc.uid, doc.buffer.indent);
+                    } else {
+                        self.indent_chosen.remove(&doc.uid);
+                        self.apply_file_rules(doc);
                     }
                 }
                 self.docs = docs;

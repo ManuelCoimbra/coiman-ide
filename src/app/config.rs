@@ -67,7 +67,7 @@ impl CodeApp {
             ui.horizontal_wrapped(|ui| {
                 let name = folder.file_name().map_or_else(|| folder.display().to_string(), |n| n.to_string_lossy().into_owned());
                 ui.label(format!(
-                    "Restricted Mode: do you trust the authors of \"{name}\"? Trusting lets its settings, language servers, Git, Cargo builds, run configurations and debugging run, and they can run code on your computer. Until then you can read and edit its files."
+                    "Restricted Mode: do you trust the authors of \"{name}\"? Trusting lets its settings, language servers, Git, builds, run configurations and debugging run, and they can run code on your computer. Until then you can read and edit its files."
                 ))
                 .on_hover_text(folder.display().to_string());
                 if ui.button("Trust Folder").clicked() {
@@ -124,6 +124,7 @@ impl CodeApp {
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
         let new = self.settings.clone();
+        crate::buffer::set_tab_width(new.editor.tab_size);
         // Servers read these when they start.
         if !first
             && (old.lsp.rust_analyzer_memory != new.lsp.rust_analyzer_memory

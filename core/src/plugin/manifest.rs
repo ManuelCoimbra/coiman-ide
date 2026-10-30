@@ -104,6 +104,17 @@ pub struct Manifest {
     pub panels: Vec<ViewDecl>,
     #[serde(default)]
     pub tree_views: Vec<ViewDecl>,
+    #[serde(default)]
+    pub languages: Vec<LanguageDecl>,
+}
+
+/// A language for file extensions the editor doesn't know.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LanguageDecl {
+    pub name: String,
+    pub extensions: Vec<String>,
+    #[serde(default)]
+    pub line_comment: Option<String>,
 }
 
 /// Parses and checks a `plugin.toml`.
@@ -203,6 +214,7 @@ fn contributions(m: &Manifest) -> BTreeSet<String> {
     out.extend(m.status_items.iter().map(|c| format!("Status item: {}", c.id)));
     out.extend(m.panels.iter().map(|c| format!("Panel: {}", c.title)));
     out.extend(m.tree_views.iter().map(|c| format!("Tree view: {}", c.title)));
+    out.extend(m.languages.iter().map(|l| format!("Language: {}", l.name)));
     out
 }
 

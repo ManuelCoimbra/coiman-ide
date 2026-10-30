@@ -76,6 +76,8 @@ pub struct Palette {
     pub plugin_commands: Vec<(String, String)>,
     /// Results for a `#` query: (name, container).
     pub symbols: Vec<(String, String)>,
+    /// Commands that don't apply here.
+    pub hidden_commands: &'static [Command],
 }
 
 impl Palette {
@@ -134,7 +136,7 @@ impl Palette {
         } else if let Some(q) = self.query.strip_prefix('>') {
             let q = q.trim();
             for (cmd, name) in COMMANDS {
-                if fuzzy_match(name, q) {
+                if fuzzy_match(name, q) && !self.hidden_commands.contains(cmd) {
                     items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), Vec::new()));
                 }
             }
@@ -192,7 +194,7 @@ impl Palette {
 
         let mut result = None;
         let width = (ctx.content_rect().width() * 0.5).clamp(400.0, 700.0);
-        egui::Area::new(egui::Id::unique("command_palette"))
+        let area = egui::Area::new(egui::Id::unique("command_palette"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
             .show(ctx, |ui| {
@@ -256,6 +258,7 @@ impl Palette {
         if enter && !items.is_empty() {
             result = Some(self.selected);
         }
+        self.close_on_click_outside(ctx, area.response.rect);
         let picked = result.map(|i| items.swap_remove(i).2);
         if picked.is_some() {
             self.open = false;
@@ -265,10 +268,18 @@ impl Palette {
 }
 
 impl Palette {
+    fn close_on_click_outside(&mut self, ctx: &egui::Context, rect: egui::Rect) {
+        let outside =
+            ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)));
+        if outside {
+            self.open = false;
+        }
+    }
+
     fn input_ui(&mut self, ctx: &egui::Context, kind: InputKind, placeholder: &str) -> Option<PaletteResult> {
         let enter = ctx.input(|i| i.key_pressed(Key::Enter));
         let width = (ctx.content_rect().width() * 0.4).clamp(300.0, 500.0);
-        egui::Area::new(egui::Id::unique("palette_input"))
+        let area = egui::Area::new(egui::Id::unique("palette_input"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
             .show(ctx, |ui| {
@@ -290,6 +301,7 @@ impl Palette {
                     ui.label(RichText::new(placeholder).small().color(theme::colors().text_dim));
                 });
             });
+        self.close_on_click_outside(ctx, area.response.rect);
         if enter && !self.query.trim().is_empty() {
             self.open = false;
             return Some(PaletteResult::Input(kind, self.query.trim().to_owned()));

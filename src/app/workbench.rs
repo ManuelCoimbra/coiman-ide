@@ -184,6 +184,7 @@ impl CodeApp {
         let mut cmd = None;
         let mut end = 0.0;
         let keymap = &self.keymap;
+        let cargo_project = self.cargo_project;
         egui::MenuBar::new().ui(ui, |ui| {
             let mut item = |ui: &mut egui::Ui, label: &str, c: Command| {
                 if ui.add(egui::Button::new(label).shortcut_text(keymap.shortcut_text(c))).clicked() {
@@ -294,29 +295,33 @@ impl CodeApp {
                 item(ui, "Move Terminal into New Window", Command::DetachTerminal);
             });
             let run = ui.menu_button("Run", |ui| {
-                item(ui, "Start Debugging", Command::StartDebugging);
-                item(ui, "Stop Debugging", Command::StopDebugging);
-                item(ui, "Restart Debugging", Command::RestartDebugging);
-                item(ui, "Step Over", Command::StepOver);
-                item(ui, "Step Into", Command::StepInto);
-                item(ui, "Step Out", Command::StepOut);
-                ui.separator();
-                item(ui, "Toggle Breakpoint", Command::ToggleBreakpoint);
-                item(ui, "Conditional Breakpoint...", Command::ConditionalBreakpoint);
-                item(ui, "Logpoint...", Command::AddLogpoint);
-                ui.separator();
+                if cargo_project {
+                    item(ui, "Start Debugging", Command::StartDebugging);
+                    item(ui, "Stop Debugging", Command::StopDebugging);
+                    item(ui, "Restart Debugging", Command::RestartDebugging);
+                    item(ui, "Step Over", Command::StepOver);
+                    item(ui, "Step Into", Command::StepInto);
+                    item(ui, "Step Out", Command::StepOut);
+                    ui.separator();
+                    item(ui, "Toggle Breakpoint", Command::ToggleBreakpoint);
+                    item(ui, "Conditional Breakpoint...", Command::ConditionalBreakpoint);
+                    item(ui, "Logpoint...", Command::AddLogpoint);
+                    ui.separator();
+                }
                 item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Select and Run Configuration...", Command::SelectRunConfig);
                 item(ui, "Open Configurations", Command::OpenRunConfigs);
-                ui.separator();
-                item(ui, "Run Test at Cursor", Command::TestAtCursor);
-                item(ui, "Run Tests in Current File", Command::TestCurrentFile);
-                item(ui, "Run All Tests", Command::TestAll);
-                item(ui, "Cancel Test Run", Command::CancelTests);
-                ui.separator();
-                item(ui, "Cargo Check", Command::CargoCheck);
-                item(ui, "Cargo Clippy", Command::CargoClippy);
+                if cargo_project {
+                    ui.separator();
+                    item(ui, "Run Test at Cursor", Command::TestAtCursor);
+                    item(ui, "Run Tests in Current File", Command::TestCurrentFile);
+                    item(ui, "Run All Tests", Command::TestAll);
+                    item(ui, "Cancel Test Run", Command::CancelTests);
+                    ui.separator();
+                    item(ui, "Cargo Check", Command::CargoCheck);
+                    item(ui, "Cargo Clippy", Command::CargoClippy);
+                }
             });
             end = run.response.rect.max.x;
         });
@@ -352,10 +357,12 @@ impl CodeApp {
         icon(ui, Icon::Search, "Search (Ctrl+Shift+F)", side == Some(SidebarView::Search), Command::ShowSearch);
         let git = side == Some(SidebarView::Git);
         icon(ui, Icon::SourceControl, "Source Control (Ctrl+Shift+G)", git, Command::ShowSourceControl);
-        let testing = side == Some(SidebarView::Testing);
-        icon(ui, Icon::Beaker, "Testing", testing, Command::ShowTesting);
-        let debugging = side == Some(SidebarView::Debug);
-        icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
+        if self.cargo_project {
+            let testing = side == Some(SidebarView::Testing);
+            icon(ui, Icon::Beaker, "Testing", testing, Command::ShowTesting);
+            let debugging = side == Some(SidebarView::Debug);
+            icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
+        }
         let extensions = side == Some(SidebarView::Extensions);
         icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
         let terminal = self.panel_visible && self.panel_tab == PanelTab::Terminal;
@@ -374,6 +381,7 @@ impl CodeApp {
                 (PanelTab::DebugConsole, "DEBUG CONSOLE".to_owned()),
                 (PanelTab::Terminal, "TERMINAL".to_owned()),
             ];
+            tabs.retain(|t| t.0 != PanelTab::DebugConsole || self.cargo_project);
             for (i, p) in self.plugins.panels.iter().enumerate() {
                 tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
             }
@@ -979,8 +987,12 @@ impl CodeApp {
                         status_cmd = Some(Command::ChangeEncoding);
                     }
                     let indent = doc.buffer.indent;
-                    let kind = if indent.use_tabs { "Tabs" } else { "Spaces" };
-                    if clickable(ui, format!("{kind}: {}", indent.size), "Select Indentation") {
+                    let label = if indent.use_tabs {
+                        format!("Tabs: {}", crate::buffer::tab_width())
+                    } else {
+                        format!("Spaces: {}", indent.size)
+                    };
+                    if clickable(ui, label, "Select Indentation") {
                         status_cmd = Some(Command::ChangeIndentation);
                     }
                     let (line, col) = doc.cursor();

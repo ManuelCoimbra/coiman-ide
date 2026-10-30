@@ -3,6 +3,7 @@
 //! and `cargo check`/`clippy` results in Problems. Cargo runs in the
 //! background and its output streams into the Output panel.
 
+use crate::commands::Command;
 use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -60,6 +61,30 @@ enum Msg {
     Scanned(PathBuf, Vec<(PathBuf, FileTarget, Vec<TestItem>)>),
     Nextest(bool),
 }
+
+/// Commands that only work in a Cargo project: hidden everywhere else.
+pub(super) const CARGO_ONLY: &[Command] = &[
+    Command::StartDebugging,
+    Command::StopDebugging,
+    Command::RestartDebugging,
+    Command::StepOver,
+    Command::StepInto,
+    Command::StepOut,
+    Command::PauseDebugging,
+    Command::ToggleBreakpoint,
+    Command::ConditionalBreakpoint,
+    Command::AddLogpoint,
+    Command::ShowDebug,
+    Command::ShowDebugConsole,
+    Command::DebugTestAtCursor,
+    Command::ShowTesting,
+    Command::TestAtCursor,
+    Command::TestCurrentFile,
+    Command::TestAll,
+    Command::CancelTests,
+    Command::CargoCheck,
+    Command::CargoClippy,
+];
 
 pub(super) struct CargoState {
     /// Programs offered by Run Program when several fit.
@@ -235,6 +260,21 @@ impl CodeApp {
         self.cargo.output.push(line);
         if self.cargo.output.len() > MAX_OUTPUT {
             self.cargo.output.drain(..self.cargo.output.len() - MAX_OUTPUT);
+        }
+    }
+
+    /// Keeps `cargo_project` current: when the folder or file changes, and every
+    /// few seconds in case a `Cargo.toml` appeared or went away.
+    pub(super) fn refresh_cargo_project(&mut self, ctx: &egui::Context) {
+        let key = self.explorer.root.clone().or_else(|| self.docs.get(self.active)?.path.clone());
+        let now = ctx.input(|i| i.time);
+        if key != self.cargo_project_for.0 || now >= self.cargo_project_for.1 {
+            self.cargo_project_for = (key, now + 3.0);
+            self.cargo_project = self.cargo_root_dir().is_some();
+        }
+        if !self.cargo_project && matches!(self.sidebar_view, SidebarView::Testing | SidebarView::Debug) {
+            self.sidebar_view = SidebarView::Explorer;
+            self.status = Some("Testing and debugging work in Cargo projects".to_owned());
         }
     }
 

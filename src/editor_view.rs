@@ -5,7 +5,7 @@
 use egui::text::LayoutJob;
 use egui::{Color32, Event, EventFilter, FontId, Key, Modifiers, Pos2, Rect, Sense, Stroke, TextFormat, Vec2};
 
-use crate::buffer::{Buffer, Change, Selection, TAB_WIDTH, char_width, visual_width};
+use crate::buffer::{Buffer, Change, Selection, char_width, tab_width, visual_width};
 use crate::document::Document;
 use crate::theme;
 
@@ -1134,7 +1134,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         let buf = &doc.buffer;
 
         // Indent guides: one line per indentation level, also across blank lines.
-        let guide = if buf.indent.use_tabs { TAB_WIDTH } else { buf.indent.size.max(1) };
+        let guide = if buf.indent.use_tabs { tab_width() } else { buf.indent.size.max(1) };
         let levels = if opts.indent_guides { indent_cols(buf, row.line) / guide } else { 0 };
         for level in 0..levels {
             let x = (x0 + (level * guide) as f32 * m.char_w).round() + 0.5;

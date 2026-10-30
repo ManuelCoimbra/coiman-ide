@@ -50,7 +50,6 @@ fn tokens_for(language: &str) -> &'static [&'static str] {
     match language {
         "Python" | "Shell Script" | "PowerShell" | "TOML" | "YAML" | "Ruby" | "R" => &["#"],
         "SQL" | "Lua" => &["--"],
-        "SCS Unit" => &["#", "//"],
         "HTML" | "XML" | "CSS" | "Markdown" | "Plain Text" | "JSON" => &[],
         _ => &["//"],
     }

@@ -1,3 +1,5 @@
 /target
 /graphify-out
+/reports
+/research_notes
 /examples/plugins/*/plugin.wasm

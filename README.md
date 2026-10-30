@@ -2,6 +2,9 @@
 
 A lightweight VS Code–style editor written in Rust with [egui](https://github.com/emilk/egui).
 
+`<config>` below is your config folder: `%APPDATA%\rust-code` on Windows,
+`$XDG_CONFIG_HOME/rust-code` or `~/.config/rust-code` elsewhere.
+
 ## Run
 
 ```
@@ -77,7 +80,7 @@ is read and written on your machine.
   removes an empty pair (`editor.auto_close_brackets`)
 - Indentation follows `.editorconfig`, then how the file is already indented, then
   `editor.tab_size` and `editor.insert_spaces`. `.editorconfig` also sets
-  `trim_trailing_whitespace` and `insert_final_newline` on save. Tabs always display 4 columns wide
+  `trim_trailing_whitespace` and `insert_final_newline` on save. Tabs display `editor.tab_size` columns wide
 - Custom editor widget on a rope (`ropey`): only visible rows are laid out and drawn, so
   million-line files stay responsive; files over 16 MB / 100k lines open in large-file mode
   (no highlighting or wrap)
@@ -118,7 +121,7 @@ is read and written on your machine.
 - Line endings: click `LF`/`CRLF` in the status bar to convert the file (undoable). New
   files use `files.eol` (`"auto"`, `"lf"`, `"crlf"`) and `files.encoding`
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
-  (backed up every second to `%APPDATA%\rust-code\session.json`; no "save changes?" prompt on exit)
+  (backed up every second to `<config>\session.json`; no "save changes?" prompt on exit)
 - Zoom (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`), toggle side bar (`Ctrl+B`)
 
 ### Source control (Git)
@@ -196,7 +199,7 @@ changes your mind later. The built-in terminal is your own shell and stays avail
 
 Rust Code debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug
 Adapter Protocol. It uses `debug.codelldb_path`, then its own copy in
-`%APPDATA%\rust-code\codelldb`, then an installed VS Code CodeLLDB extension. If none is
+`<config>\codelldb`, then an installed VS Code CodeLLDB extension. If none is
 found, the Debug view offers to download it (about 135 MB once unpacked). Nothing is
 downloaded unless you click **Download**.
 
@@ -245,7 +248,7 @@ Plugins are WebAssembly components written against `core/wit/plugin.wit` and run
   signed with the publisher's Ed25519 key. A plugin installs only if its files match their
   hashes and the signature verifies. The first install from a publisher shows the key's
   fingerprint and asks you to trust it.
-- **Lockfile**: `%APPDATA%\rust-code\plugins\plugins.lock` records each plugin's version,
+- **Lockfile**: `<config>\plugins\plugins.lock` records each plugin's version,
   source, publisher key, file hashes and granted permissions. A plugin whose files changed
   since install isn't loaded; **Reinstall…** fetches it again.
 - **Updates** are only looked for when you check the registry. Before updating you see:
@@ -263,7 +266,8 @@ Plugins are WebAssembly components written against `core/wit/plugin.wit` and run
   `!`, `?` or `*`.
 - **Trailing Spaces**: marks whitespace at line ends.
 - **Color Preview**: `#rgb`, `#rrggbb` and `rgb()` shown in their own color.
-- **SCS Units**: Euro Truck Simulator 2 and American Truck Simulator `.sii` files get colors, a
+- **SCS Units** (optional, not installed by default; **Plugins: Install from Folder...** on
+  `extensions/scs-sii`): Euro Truck Simulator 2 and American Truck Simulator `.sii` files get colors, a
   **SII Units** list in the Explorer, and checks for unbalanced braces, unclosed strings, duplicate
   unit names, malformed lines and a missing `SiiNunit`.
 
@@ -299,7 +303,7 @@ arguments):
 The bar says exactly what it will run or download, and nothing happens unless you click
 **Install** (**Don't Ask Again** sets `lsp.ask_to_install = false`). Without the tools to
 install a server (Node.js, the .NET SDK, Go), it says what to install. Downloaded servers go to
-`%APPDATA%\rust-code\lsp`. The status bar shows the active file's server.
+`<config>\lsp`. The status bar shows the active file's server.
 
 | Feature | How |
 | --- | --- |
@@ -358,7 +362,7 @@ case is also run in real Vim (`vim -u NONE`, found on `PATH`, in Git for Windows
 ### Local history
 
 A copy of each file is kept every time it is saved and when another program changes it,
-independently of Git, in `%APPDATA%\rust-code\history` (50 versions or 30 days per file by
+independently of Git, in `<config>\history` (50 versions or 30 days per file by
 default; `history.enabled`, `history.max_entries`, `history.max_days`, `history.max_file_kb`).
 
 - The **Timeline** section of the Explorer lists the active file's versions ("Saved · 3
@@ -411,14 +415,14 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
 ### Settings, keybindings and themes
 
 - **Settings** (`Ctrl+,`): TOML, layered defaults → user
-  (`%APPDATA%\rust-code\settings.toml`) → workspace (`<folder>/.rust-code/settings.toml`).
+  (`<config>\settings.toml`) → workspace (`<folder>/.rust-code/settings.toml`).
   Files can `extends = "other.toml"` and have `[windows]` / `[macos]` / `[linux]` tables.
   Unknown keys and errors show in the status bar; saving a settings file applies it.
   Separate `editor.font_size` and `workbench.ui_font_size`.
-- **Keybindings** (`Ctrl+K Ctrl+S`): `%APPDATA%\rust-code\keybindings.toml` with VS Code
+- **Keybindings** (`Ctrl+K Ctrl+S`): `<config>\keybindings.toml` with VS Code
   command IDs, two-key chords, `when = "editorTextFocus"`, and `-command` to remove a
   default. Menus and the palette show the active shortcuts.
 - **Color themes** (`Ctrl+K Ctrl+T`): any VS Code theme. The picker lists themes from the
-  installed VS Code (bundled and `~/.vscode/extensions`) and `%APPDATA%\rust-code\themes`;
+  installed VS Code (bundled and `~/.vscode/extensions`) and `<config>\themes`;
   `workbench.color_theme` also accepts a path to a theme `.json`. Theme files may use
   comments and `include`; token colors apply to tree-sitter and syntect highlighting.

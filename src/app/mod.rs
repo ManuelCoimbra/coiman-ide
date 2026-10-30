@@ -15,6 +15,7 @@ mod lsp_room;
 mod outline;
 mod plugins;
 mod split;
+mod window;
 mod workbench;
 
 use std::path::PathBuf;
@@ -119,6 +120,14 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    window: Option<rust_code_core::session::WindowState>,
+    window_fitted: bool,
+    /// Indentation picked from the status bar, by document.
+    indent_chosen: std::collections::HashMap<u64, crate::buffer::Indent>,
+    /// Whether the open folder or active file belongs to a Cargo project.
+    cargo_project: bool,
+    /// What `cargo_project` was worked out for, and when to check again.
+    cargo_project_for: (Option<PathBuf>, f64),
     hidden: hidden::HiddenChars,
     /// Folders for Open Recent, newest first.
     recent_folders: Vec<PathBuf>,
@@ -204,6 +213,11 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            window: None,
+            window_fitted: false,
+            indent_chosen: Default::default(),
+            cargo_project: false,
+            cargo_project_for: (None, 0.0),
             hidden: Default::default(),
             recent_folders: rust_code_core::recent::load(),
             pending_close: None,
@@ -239,6 +253,7 @@ impl CodeApp {
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
         if let Some(saved) = session::load() {
+            app.window = saved.window;
             app.restore_session(saved);
         }
         if let Some(path) = start_path {
@@ -261,6 +276,8 @@ impl eframe::App for CodeApp {
         if std::mem::take(&mut self.settings_reload) {
             self.reload_settings(&ctx);
         }
+        self.track_window(&ctx);
+        self.refresh_cargo_project(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
         self.pump_watcher(&ctx);
@@ -401,7 +418,7 @@ impl eframe::App for CodeApp {
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
                 }
-                if let Some(line) = out.breakpoint_click {
+                if let Some(line) = out.breakpoint_click.filter(|_| self.cargo_project) {
                     self.toggle_breakpoint(line);
                 }
                 // Vim commands arrive as text too; only insert-mode typing drives completion.
@@ -423,6 +440,7 @@ impl eframe::App for CodeApp {
 
         if self.palette.open {
             self.palette.plugin_commands = self.plugin_commands();
+            self.palette.hidden_commands = if self.cargo_project { &[] } else { cargo::CARGO_ONLY };
         }
         self.pump_workspace_symbols();
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {

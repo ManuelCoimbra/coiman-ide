@@ -695,7 +695,7 @@ impl CodeApp {
         });
     }
 
-    fn cargo_root_dir(&self) -> Option<PathBuf> {
+    pub(super) fn cargo_root_dir(&self) -> Option<PathBuf> {
         if let Some(root) = self.explorer.root.as_ref().filter(|r| r.join("Cargo.toml").exists()) {
             return Some(root.clone());
         }

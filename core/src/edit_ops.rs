@@ -156,12 +156,12 @@ pub fn comment_token(ext: &str) -> Option<&'static str> {
     Some(match ext {
         "rs" | "c" | "h" | "cpp" | "cc" | "hpp" | "hh" | "hxx" | "cxx" | "c++" | "inl" | "cs" | "java" | "js"
         | "mjs" | "cjs" | "ts" | "mts" | "cts" | "tsx" | "jsx" | "go" | "swift" | "kt" | "kts" | "dart" | "scala"
-        | "php" | "scss" | "json" | "jsonc" | "sii" | "sui" => "//",
+        | "php" | "scss" | "json" | "jsonc" => "//",
         "py" | "pyw" | "pyi" | "sh" | "bash" | "zsh" | "toml" | "yaml" | "yml" | "ps1" | "rb" | "pl" | "r" | "cfg"
         | "conf" | "ini" | "txt" => "#",
         "sql" | "lua" | "hs" => "--",
         "bat" | "cmd" => "REM",
-        _ => return None,
+        _ => return crate::languages::line_comment(ext),
     })
 }
 

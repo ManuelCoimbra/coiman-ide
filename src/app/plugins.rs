@@ -30,7 +30,7 @@ use crate::theme;
 
 /// Extensions that ship with Rust Code: sandboxed plugins like any other, with
 /// no download. They can be turned off in the Extensions view.
-const BUILT_IN: [(&str, &[u8]); 4] = [
+const BUILT_IN: [(&str, &[u8]); 3] = [
     (
         include_str!("../../extensions/comment-highlights/plugin.toml"),
         include_bytes!("../../extensions/comment-highlights/plugin.wasm"),
@@ -43,8 +43,11 @@ const BUILT_IN: [(&str, &[u8]); 4] = [
         include_str!("../../extensions/color-preview/plugin.toml"),
         include_bytes!("../../extensions/color-preview/plugin.wasm"),
     ),
-    (include_str!("../../extensions/scs-sii/plugin.toml"), include_bytes!("../../extensions/scs-sii/plugin.wasm")),
 ];
+
+/// Ids of those. An extension that used to ship with the app can be uninstalled.
+const BUILT_IN_IDS: [&str; 3] =
+    ["rust-code.comment-highlights", "rust-code.trailing-spaces", "rust-code.color-preview"];
 
 /// `Locked::source` of a built-in extension.
 const BUILT_IN_SOURCE: &str = "built-in";
@@ -223,7 +226,15 @@ impl CodeApp {
     }
 
     /// Plugin coloring for document `i`.
+    /// Tells the editor which languages the enabled plugins add.
+    fn sync_plugin_languages(&self) {
+        let enabled = self.plugins.infos.iter().filter(|i| self.plugins.lock.get(&i.id).is_some_and(|l| l.enabled));
+        let decls: Vec<_> = enabled.filter_map(|i| i.manifest.as_ref()).flat_map(|m| m.languages.clone()).collect();
+        rust_code_core::languages::set(&decls);
+    }
+
     pub(super) fn plugin_decorate(&self, i: usize, deco: &mut Decorations) {
+        self.sync_plugin_languages();
         if let Some(path) = self.docs.get(i).and_then(|d| d.path.as_deref()) {
             deco.highlights.extend(self.plugins.highlights.get(&path_key(path)).cloned());
         }
@@ -428,6 +439,7 @@ impl CodeApp {
                 edited = !switched;
                 self.plugins.edit_pending = None;
                 self.plugins.last_doc = key;
+                self.sync_plugin_languages();
                 let doc = self.docs.get(self.active).map(|d| {
                     let (line, column) = d.cursor();
                     // Very large files stay out of plugins.
@@ -960,7 +972,8 @@ impl CodeApp {
                 ui.label(RichText::new(name).strong());
                 ui.label(RichText::new(&locked.version).small().color(pal.text_dim));
                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    if locked.source != BUILT_IN_SOURCE && icons::button(ui, Icon::Trash, "Uninstall").clicked() {
+                    let removable = locked.source != BUILT_IN_SOURCE || !BUILT_IN_IDS.contains(&info.id.as_str());
+                    if removable && icons::button(ui, Icon::Trash, "Uninstall").clicked() {
                         actions.push(Action::Uninstall(info.id.clone()));
                     }
                     let mut enabled = locked.enabled;
@@ -1104,7 +1117,8 @@ impl CodeApp {
     /// Plugin tree views, as sections at the bottom of the Explorer.
     pub(super) fn plugin_tree_sections(&mut self, ui: &mut egui::Ui) {
         let mut run = None;
-        for tree in &mut self.plugins.trees {
+        // A plugin with nothing to show takes no room.
+        for tree in self.plugins.trees.iter_mut().filter(|t| !t.items.is_empty()) {
             let open = tree.open;
             let panel = egui::Panel::bottom(egui::Id::unique(("plugin_tree", &tree.plugin, &tree.id)))
                 .resizable(open)
@@ -1128,9 +1142,6 @@ impl CodeApp {
                 }
                 if open {
                     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                        if tree.items.is_empty() {
-                            ui.label(RichText::new("Nothing here.").color(theme::colors().text_dim));
-                        }
                         tree_rows(ui, &tree.items, &mut tree.expanded, "", 0, &mut |item: &TreeItem| {
                             if let Some(c) = &item.command {
                                 run = Some((tree.plugin.clone(), c.clone(), item.id.clone()));

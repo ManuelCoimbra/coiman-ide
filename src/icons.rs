@@ -276,7 +276,6 @@ pub enum FileKind {
     License,
     Wasm,
     Text,
-    GameData,
     Other,
 }
 
@@ -313,7 +312,6 @@ pub fn file_kind(name: &str) -> FileKind {
         "png" | "jpg" | "jpeg" | "gif" | "svg" | "ico" | "bmp" | "webp" => FileKind::Image,
         "wasm" | "wit" | "wat" => FileKind::Wasm,
         "txt" | "log" | "csv" => FileKind::Text,
-        "sii" | "sui" => FileKind::GameData,
         _ => FileKind::Other,
     }
 }
@@ -338,7 +336,6 @@ fn kind_color(kind: FileKind) -> Color32 {
         FileKind::Shell => Color32::from_rgb(0x89, 0xD1, 0x85),
         FileKind::Git => Color32::from_rgb(0xF0, 0x50, 0x33),
         FileKind::Wasm => Color32::from_rgb(0x65, 0x4F, 0xF0),
-        FileKind::GameData => Color32::from_rgb(0x8F, 0xBC, 0x5A),
     }
 }
 
@@ -448,7 +445,7 @@ pub fn paint_file(painter: &egui::Painter, rect: Rect, name: &str) {
             pen.line(&[(0.42, 0.68), (0.38, 0.86)]);
             pen.line(&[(0.58, 0.68), (0.62, 0.86)]);
         }
-        FileKind::Text | FileKind::GameData => {
+        FileKind::Text => {
             page();
             for y in [0.46, 0.6, 0.74] {
                 pen.line(&[(0.32, y), (0.7, y)]);

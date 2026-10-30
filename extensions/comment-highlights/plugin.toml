@@ -1,6 +1,6 @@
 id = "rust-code.comment-highlights"
 name = "Comment Highlights"
-version = "1.0.0"
+version = "1.0.1"
 description = "Colors TODO, FIXME, NOTE and similar tags in comments, and comments starting with !, ? or *."
 permissions = ["editor-read"]
 events = ["edited", "active-changed", "saved"]

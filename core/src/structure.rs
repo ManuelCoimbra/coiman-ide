@@ -36,16 +36,16 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
-    /// Short label, e.g. "fn".
+    /// Short label, e.g. "function".
     pub fn word(self) -> &'static str {
         match self {
-            SymbolKind::Function => "fn",
+            SymbolKind::Function => "function",
             SymbolKind::Struct => "struct",
             SymbolKind::Enum => "enum",
             SymbolKind::Trait => "trait",
             SymbolKind::Impl => "impl",
-            SymbolKind::Module => "mod",
-            SymbolKind::Constant => "const",
+            SymbolKind::Module => "module",
+            SymbolKind::Constant => "constant",
             SymbolKind::TypeAlias => "type",
             SymbolKind::Macro => "macro",
             SymbolKind::Field => "field",
@@ -564,12 +564,12 @@ mod tests {
         assert_eq!(
             names,
             vec![
-                ("fn add".into(), 0),
+                ("function add".into(), 0),
                 ("struct P".into(), 0),
                 ("field x".into(), 1),
                 ("field y".into(), 1),
                 ("impl Display for P".into(), 0),
-                ("fn fmt".into(), 1),
+                ("function fmt".into(), 1),
             ]
         );
         assert_eq!((syms[0].line, syms[0].start_line, syms[0].end_line), (2, 2, 5));

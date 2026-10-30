@@ -386,7 +386,6 @@ pub fn language_name(ext: &str) -> &'static str {
         "xml" => "XML",
         "sql" => "SQL",
         "lua" => "Lua",
-        "sii" | "sui" => "SCS Unit",
-        _ => "Plain Text",
+        _ => crate::languages::name(ext).unwrap_or("Plain Text"),
     }
 }

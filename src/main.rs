@@ -34,10 +34,13 @@ fn main() -> eframe::Result {
     // Optional argument: a folder (opened in the explorer) or a file.
     let start_path = args.first().map(PathBuf::from);
 
+    let saved_window = session::load().and_then(|s| s.window);
+    let size = saved_window.map_or([1280.0, 800.0], |w| [w.width, w.height]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Rust Code")
-            .with_inner_size([1280.0, 800.0])
+            .with_inner_size(size)
+            .with_maximized(saved_window.is_some_and(|w| w.maximized))
             .with_min_inner_size([640.0, 400.0])
             // The app draws its own title bar (menus, title, window buttons).
             .with_decorations(false),

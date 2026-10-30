@@ -55,14 +55,14 @@ from where:
 | Location | Read | Written | Why |
 | --- | --- | --- | --- |
 | Files and folders you open | yes | when you save | editing |
-| `%APPDATA%\rust-code\settings.toml`, `keybindings.toml` | yes | when you edit them, pick a theme, or choose "Don't Ask Again" | your settings |
-| `%APPDATA%\rust-code\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
-| `%APPDATA%\rust-code\themes\*.json` | yes | never | your extra color themes |
-| `%APPDATA%\rust-code\trusted_folders.toml` | yes | when you trust or restrict a folder | which folders may run things (workspace trust) |
-| `%APPDATA%\rust-code\history\` | yes | on every save (and outside change) of a file | local history: earlier versions of your files (`history.enabled = false` turns it off) |
-| `%APPDATA%\rust-code\plugins\` (plugin files, `plugins.lock`) | yes | when you install, update, uninstall, enable or change a plugin's permissions | installed plugins, their hashes, trusted publisher keys and what you granted |
-| `%APPDATA%\rust-code\lsp\` | yes | when you agree to download a language server (clangd, jdtls, its Java runtime) | language servers Rust Code installed itself; jdtls keeps its index there too |
-| `%APPDATA%\rust-code\codelldb\` | yes | when you agree to download the debugger | CodeLLDB, the debug adapter |
+| `<config>\settings.toml`, `keybindings.toml` | yes | when you edit them, pick a theme, or choose "Don't Ask Again" | your settings |
+| `<config>\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
+| `<config>\themes\*.json` | yes | never | your extra color themes |
+| `<config>\trusted_folders.toml` | yes | when you trust or restrict a folder | which folders may run things (workspace trust) |
+| `<config>\history\` | yes | on every save (and outside change) of a file | local history: earlier versions of your files (`history.enabled = false` turns it off) |
+| `<config>\plugins\` (plugin files, `plugins.lock`) | yes | when you install, update, uninstall, enable or change a plugin's permissions | installed plugins, their hashes, trusted publisher keys and what you granted |
+| `<config>\lsp\` | yes | when you agree to download a language server (clangd, jdtls, its Java runtime) | language servers Rust Code installed itself; jdtls keeps its index there too |
+| `<config>\codelldb\` | yes | when you agree to download the debugger | CodeLLDB, the debug adapter |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |
 | Installed VS Code themes (`%LOCALAPPDATA%\Programs\Microsoft VS Code`, `~\.vscode\extensions`) | theme files only | never | the Color Theme picker |
 | An installed VS Code CodeLLDB extension (`~\.vscode\extensions\vadimcn.vscode-lldb-*`) | its adapter only | never | debugging without a second download |
@@ -74,3 +74,5 @@ Turning off `files.hot_exit` stops unsaved text from being stored in
 
 Release builds are not yet code-signed. Until they are, build from source with
 `cargo build --release` if you need to verify what you run.
+
+`<config>` is `%APPDATA%\rust-code` on Windows, `$XDG_CONFIG_HOME/rust-code` or `~/.config/rust-code` elsewhere.

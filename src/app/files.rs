@@ -75,8 +75,9 @@ impl CodeApp {
 
     /// Writes the session if it changed. Returns false if writing failed.
     pub(super) fn save_session(&mut self) -> bool {
-        let session =
+        let mut session =
             Session::capture(self.explorer.root.as_deref(), &self.docs, self.active, self.settings.files.hot_exit);
+        session.window = self.window;
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
@@ -120,6 +121,10 @@ impl CodeApp {
         doc.buffer.pair_single_quote = !matches!(doc.extension().as_str(), "rs" | "md" | "markdown" | "txt");
         doc.trim_trailing_whitespace = config.trim_trailing_whitespace.unwrap_or(editor.trim_trailing_whitespace);
         doc.insert_final_newline = config.insert_final_newline.unwrap_or(editor.insert_final_newline);
+        // Picked from the status bar: stays until the user asks to detect again.
+        if let Some(indent) = self.indent_chosen.get(&doc.uid) {
+            doc.buffer.indent = *indent;
+        }
     }
 
     pub(super) fn add_doc(&mut self, mut doc: Document) {
@@ -390,6 +395,7 @@ impl CodeApp {
         let doc = self.docs.remove(index);
         self.views.remove(&doc.uid);
         self.hidden_forget(doc.uid);
+        self.indent_chosen.remove(&doc.uid);
         self.lsp_did_close(&doc);
         if let Some(worker) = &self.syntax
             && doc.ts.is_some()
