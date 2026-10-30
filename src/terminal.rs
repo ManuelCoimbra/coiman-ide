@@ -13,10 +13,15 @@ use rust_code_core::pty::alacritty_terminal::term::cell::Flags;
 use rust_code_core::pty::alacritty_terminal::term::color::Colors;
 use rust_code_core::pty::alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
 use rust_code_core::pty::{Notice, Session, Size, default_shell};
+use rust_code_core::termfind::{self, Row};
 
 use crate::theme;
 
 const SCROLLBAR: f32 = 10.0;
+/// Seconds between finding again while output arrives.
+const SEARCH_REFRESH: f64 = 0.3;
+/// Matches kept at most.
+const SEARCH_LIMIT: usize = 5000;
 
 /// VS Code's default ANSI colors (Dark+): black, red, green, yellow, blue,
 /// magenta, cyan, white, then the bright variants.
@@ -102,11 +107,32 @@ pub struct Terminals {
     pub focus_requested: bool,
     /// Shown in its own window instead of the bottom panel.
     pub detached: bool,
+    search: Option<Search>,
+}
+
+/// Find in the terminal: the bar's state and what it found.
+#[derive(Default)]
+struct Search {
+    query: String,
+    match_case: bool,
+    focus: bool,
+    /// Each match's cells, as (line, column), top to bottom.
+    matches: Vec<Vec<(i32, usize)>>,
+    current: usize,
+    /// What `matches` was worked out for: query, case, tab.
+    made_for: Option<(String, bool, u64)>,
+    next_refresh: f64,
+    reveal: bool,
 }
 
 impl Terminals {
     pub fn new(cwd: PathBuf) -> Self {
-        Self { tabs: Vec::new(), active: 0, next_id: 1, cwd, focus_requested: false, detached: false }
+        Self { tabs: Vec::new(), active: 0, next_id: 1, cwd, focus_requested: false, detached: false, search: None }
+    }
+
+    /// Shows the find bar, ready for typing.
+    pub fn open_search(&mut self) {
+        self.search.get_or_insert_default().focus = true;
     }
 
     /// Folder new terminals start in.
@@ -214,6 +240,9 @@ impl Terminals {
         if ui.small_button(small("Kill")).on_hover_text("Kill the active terminal").clicked() {
             action = Some(Action::Kill);
         }
+        if crate::icons::button(ui, crate::icons::Icon::Search, "Find (Ctrl+F)").clicked() {
+            self.open_search();
+        }
         if crate::icons::button(ui, crate::icons::Icon::Plus, "New Terminal (Ctrl+Shift+`)").clicked() {
             action = Some(Action::New);
         }
@@ -267,10 +296,19 @@ impl Terminals {
 
         let grid = Grid { rect: text_rect, char_w, row_h };
         if focused {
+            if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::F)) {
+                self.search.get_or_insert_default().focus = true;
+            }
             handle_keys(ui, &tab.session);
         }
         handle_mouse(ui, tab, &response, &grid);
         paint(ui, &tab.session, &grid, &font, focused, rect);
+        if let Some(search) = &mut self.search
+            && !search_bar(ui, tab, search, &grid, rect)
+        {
+            self.search = None;
+            self.focus_requested = true;
+        }
     }
 }
 
@@ -290,6 +328,140 @@ impl Grid {
         let side = if x.fract() < 0.5 { Side::Left } else { Side::Right };
         (Point::new(Line(row as i32 - display_offset as i32), Column(col)), side)
     }
+}
+
+/// All the terminal's text, scrollback included, as searchable rows.
+fn searchable_rows(session: &Session) -> (Vec<Row>, i32) {
+    let term = session.term();
+    let grid = term.grid();
+    let top = -(grid.history_size() as i32);
+    let columns = grid.columns();
+    let rows = (top..grid.screen_lines() as i32)
+        .map(|line| {
+            let row = &grid[Line(line)];
+            let mut chars: Vec<(char, usize)> = (0..columns)
+                .map(|c| &row[Column(c)])
+                .enumerate()
+                .filter(|(_, cell)| !cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER))
+                .map(|(c, cell)| (if cell.c == '\0' { ' ' } else { cell.c }, c))
+                .collect();
+            let wraps = row[Column(columns - 1)].flags.contains(Flags::WRAPLINE);
+            if !wraps {
+                while chars.last().is_some_and(|c| c.0 == ' ') {
+                    chars.pop();
+                }
+            }
+            Row { chars, wraps }
+        })
+        .collect();
+    (rows, top)
+}
+
+/// Finds again when the query changed, and now and then as output arrives.
+fn refresh_search(ui: &egui::Ui, tab: &Tab, search: &mut Search) {
+    let now = ui.input(|i| i.time);
+    let wanted = (search.query.clone(), search.match_case, tab.id);
+    let changed = search.made_for.as_ref() != Some(&wanted);
+    if !changed && now < search.next_refresh {
+        ui.ctx().request_repaint_after(std::time::Duration::from_secs_f64(search.next_refresh - now));
+        return;
+    }
+    search.next_refresh = now + SEARCH_REFRESH;
+    let (rows, top) = searchable_rows(&tab.session);
+    search.matches = termfind::find(&rows, &search.query, search.match_case, SEARCH_LIMIT)
+        .into_iter()
+        .map(|m| m.into_iter().map(|(row, col)| (row as i32 + top, col)).collect())
+        .collect();
+    if changed {
+        // Start from the latest output.
+        search.current = search.matches.len().saturating_sub(1);
+        search.reveal = true;
+    }
+    search.current = search.current.min(search.matches.len().saturating_sub(1));
+    search.made_for = Some(wanted);
+}
+
+/// Draws the find bar and the matches. Returns false when it should close.
+fn search_bar(ui: &mut egui::Ui, tab: &Tab, search: &mut Search, grid: &Grid, rect: Rect) -> bool {
+    refresh_search(ui, tab, search);
+    let pal = theme::colors();
+    if search.reveal {
+        search.reveal = false;
+        if let Some(&(line, _)) = search.matches.get(search.current).and_then(|m| m.first()) {
+            let mut term = tab.session.term();
+            let (offset, screen) = (term.grid().display_offset() as i32, term.grid().screen_lines() as i32);
+            let visible = -offset <= line && line < screen - offset;
+            if !visible {
+                let target = (screen / 2 - line).clamp(0, term.grid().history_size() as i32);
+                term.scroll_display(Scroll::Delta(target - offset));
+            }
+        }
+    }
+    let offset = tab.session.term().grid().display_offset() as i32;
+    let painter = ui.painter_at(rect);
+    for (i, found) in search.matches.iter().enumerate() {
+        for &(line, col) in found {
+            let row = line + offset;
+            if row < 0 || row as f32 * grid.row_h > grid.rect.height() {
+                continue;
+            }
+            let at = grid.rect.min + Vec2::new(col as f32 * grid.char_w, row as f32 * grid.row_h);
+            let color = if i == search.current {
+                Color32::from_rgba_unmultiplied(0xFF, 0x96, 0x32, 110)
+            } else {
+                Color32::from_rgba_unmultiplied(0xFF, 0xD7, 0x00, 60)
+            };
+            painter.rect_filled(Rect::from_min_size(at, Vec2::new(grid.char_w, grid.row_h)), 0.0, color);
+        }
+    }
+
+    let mut keep = true;
+    let width = 380.0_f32.min(rect.width() - 20.0);
+    let bar = Rect::from_min_size(Pos2::new(rect.right() - width - 16.0, rect.top() + 2.0), Vec2::new(width, 28.0));
+    let mut child =
+        ui.new_child(egui::UiBuilder::new().max_rect(bar).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    let mut step: Option<bool> = None;
+    egui::Frame::new().fill(pal.sidebar_bg).inner_margin(4.0).corner_radius(4.0).show(&mut child, |ui| {
+        ui.set_width(width - 8.0);
+        ui.horizontal(|ui| {
+            let edit = ui.add(egui::TextEdit::singleline(&mut search.query).hint_text("Find").desired_width(150.0));
+            if std::mem::take(&mut search.focus) {
+                edit.request_focus();
+            }
+            let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+            if enter {
+                step = Some(!ui.input(|i| i.modifiers.shift));
+                edit.request_focus();
+            }
+            if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
+                keep = false;
+            }
+            ui.toggle_value(&mut search.match_case, "Aa").on_hover_text("Match case");
+            let count = match search.matches.len() {
+                0 if search.query.is_empty() => String::new(),
+                0 => "No results".to_owned(),
+                n => format!("{}/{n}", search.current + 1),
+            };
+            ui.label(egui::RichText::new(count).small().color(pal.text_dim));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("Close").clicked() {
+                    keep = false;
+                }
+                if ui.small_button("Next").clicked() {
+                    step = Some(true);
+                }
+                if ui.small_button("Prev").clicked() {
+                    step = Some(false);
+                }
+            });
+        });
+    });
+    let n = search.matches.len();
+    if let Some(forward) = step.filter(|_| n > 0) {
+        search.current = if forward { (search.current + 1) % n } else { (search.current + n - 1) % n };
+        search.reveal = true;
+    }
+    keep
 }
 
 /// The bytes a key press sends to the program, or `None` if it sends nothing.

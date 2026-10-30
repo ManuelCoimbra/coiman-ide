@@ -356,6 +356,21 @@ impl CodeApp {
             Command::GitStash => self.git_stash(ctx),
             Command::GitShowHistory => self.git_show_history(),
             Command::MarkdownPreview => self.toggle_markdown_preview(),
+            Command::ToggleBookmark => self.toggle_bookmark(),
+            Command::NextBookmark => self.next_bookmark(true),
+            Command::PreviousBookmark => self.next_bookmark(false),
+            Command::ListBookmarks => self.list_bookmarks(),
+            Command::InsertSnippet => self.pick_snippet(),
+            Command::ManageSnippets => self.snippets_ui.show(),
+            Command::TerminalFind => {
+                if self.terminal.is_empty() {
+                    self.status = Some("No terminal is running".to_owned());
+                } else {
+                    self.panel_visible = true;
+                    self.panel_tab = PanelTab::Terminal;
+                    self.terminal.open_search();
+                }
+            }
             Command::SplitEditor => self.split_editor(),
             Command::CloseSplit => self.close_split(),
             Command::ToggleSplitLayout => self.toggle_split_layout(),
@@ -495,6 +510,8 @@ impl CodeApp {
                 }
                 self.docs = docs;
             }
+            PickerKind::Bookmark => self.picked_bookmark(label),
+            PickerKind::Snippet => self.picked_snippet(label),
             PickerKind::LineEnding => {
                 if let Some(doc) = self.active_doc() {
                     doc.set_line_ending(if label == "CRLF" { "\r\n" } else { "\n" });
@@ -536,6 +553,16 @@ impl CodeApp {
             return;
         }
         let editor_focused = self.editor_focused(ctx);
+        // Tab after a snippet's prefix inserts the snippet; modal editing has its own keys.
+        if editor_focused
+            && self.chord.is_none()
+            && self.vim.is_none()
+            && ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers.is_none())
+            && self.expand_snippet_prefix()
+        {
+            ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+            return;
+        }
         // Tab with a multi-line selection indents the lines instead of replacing them.
         if editor_focused && self.chord.is_none() {
             let multi_line = self.docs.get(self.active).is_some_and(|d| {

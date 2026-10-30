@@ -207,6 +207,7 @@ impl CodeApp {
                     item(ui, "Settings", Command::OpenUserSettings);
                     item(ui, "Workspace Settings", Command::OpenWorkspaceSettings);
                     item(ui, "Keyboard Shortcuts", Command::OpenKeybindings);
+                    item(ui, "Snippets", Command::ManageSnippets);
                     item(ui, "Color Theme", Command::SelectTheme);
                 });
                 ui.separator();
@@ -219,6 +220,7 @@ impl CodeApp {
                 item(ui, "Find in Files", Command::ShowSearch);
                 ui.separator();
                 item(ui, "Toggle Line Comment", Command::ToggleLineComment);
+                item(ui, "Insert Snippet...", Command::InsertSnippet);
                 ui.separator();
                 item(ui, "Rename Symbol", Command::RenameSymbol);
                 item(ui, "Quick Fix...", Command::QuickFix);
@@ -287,6 +289,11 @@ impl CodeApp {
                 item(ui, "Go to Symbol in Workspace...", Command::GoToWorkspaceSymbol);
                 item(ui, "Go to References", Command::FindReferences);
                 ui.separator();
+                item(ui, "Toggle Bookmark", Command::ToggleBookmark);
+                item(ui, "Next Bookmark", Command::NextBookmark);
+                item(ui, "Previous Bookmark", Command::PreviousBookmark);
+                item(ui, "All Bookmarks...", Command::ListBookmarks);
+                ui.separator();
                 item(ui, "Next Problem", Command::NextProblem);
                 item(ui, "Previous Problem", Command::PreviousProblem);
             });
@@ -294,6 +301,7 @@ impl CodeApp {
                 item(ui, "New Terminal", Command::NewTerminal);
                 item(ui, "Toggle Terminal", Command::ToggleTerminal);
                 ui.separator();
+                item(ui, "Find in Terminal", Command::TerminalFind);
                 item(ui, "Clear Terminal", Command::ClearTerminal);
                 item(ui, "Kill Terminal", Command::KillTerminal);
                 item(ui, "Move Terminal into New Window", Command::DetachTerminal);

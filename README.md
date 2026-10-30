@@ -76,6 +76,13 @@ is read and written on your machine.
 - `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
+- Bookmarks: `Ctrl+Alt+K` toggles, `Ctrl+Alt+L` / `Ctrl+Alt+J` go next and previous, **Bookmarks: List
+  All** covers every file. They follow their lines as you edit and survive a restart
+- Your own snippets (**Snippets: Manage**): type a prefix and press Tab, or **Snippets: Insert
+  Snippet**. Bodies use `$1`, `${1:text}` and `$0`, kept in `<config>/snippets.toml`. Only the first
+  stop is selected; there is no tabbing between stops yet
+- Terminal search (`Ctrl+F` in a terminal): scrollback included, across wrapped lines, with match
+  case; `Enter` and `Shift+Enter` move through matches
 - Markdown preview (`Ctrl+K V`, **View > Markdown Preview**) beside the editor, updating as you type.
   Links open only when clicked, and images show as their alt text: nothing is fetched
 - Auto save (`files.auto_save`): after a delay, or on leaving the file or window. Saves after a

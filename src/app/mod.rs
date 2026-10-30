@@ -2,6 +2,7 @@
 //! area into submodules that each add methods to [`CodeApp`].
 
 mod autosave;
+mod bookmarks;
 mod cargo;
 mod config;
 mod debug;
@@ -18,6 +19,7 @@ mod md_preview;
 mod outline;
 mod plugins;
 mod settings_ui;
+mod snippets_ui;
 mod split;
 mod window;
 mod workbench;
@@ -124,6 +126,8 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    bookmarks: bookmarks::BookmarkState,
+    snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
@@ -223,6 +227,8 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            bookmarks: Default::default(),
+            snippets_ui: Default::default(),
             md_preview: Default::default(),
             auto_save: Default::default(),
             font_load: None,
@@ -292,6 +298,7 @@ impl eframe::App for CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.pump_bookmarks();
         self.pump_auto_save(&ctx);
         self.pump_font_load(&ctx);
         self.refresh_cargo_project(&ctx);
@@ -459,6 +466,7 @@ impl eframe::App for CodeApp {
         self.lsp_room(&ctx);
         self.settings_window(&ctx);
         self.keys_window(&ctx);
+        self.snippets_window(&ctx);
         self.git_popups(&ctx);
         self.terminal_window(&ctx);
 

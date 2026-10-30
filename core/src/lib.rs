@@ -2,6 +2,7 @@
 //! settings, themes, sessions and workspace services. No UI dependencies, so
 //! everything here can be tested and benchmarked headlessly.
 
+pub mod bookmarks;
 pub mod buffer;
 pub mod cargo;
 pub mod commands;
@@ -26,8 +27,10 @@ pub mod run;
 pub mod search;
 pub mod session;
 pub mod settings;
+pub mod snippets;
 pub mod structure;
 pub mod syntax;
+pub mod termfind;
 pub mod theme;
 pub mod trust;
 pub mod unicode;

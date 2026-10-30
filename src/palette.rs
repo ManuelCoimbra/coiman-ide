@@ -41,6 +41,8 @@ pub enum InputKind {
 pub enum PickerKind {
     Theme,
     LineEnding,
+    Bookmark,
+    Snippet,
     Indentation,
     RecentFolder,
     /// "Reopen with Encoding" or "Save with Encoding".

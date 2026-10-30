@@ -100,6 +100,8 @@ pub struct Decorations {
     pub breakpoints: Vec<(usize, Color32, bool)>,
     /// The line the debugger is paused on.
     pub debug_line: Option<usize>,
+    /// Bookmarked lines, sorted.
+    pub bookmarks: Vec<usize>,
     /// Lines with a runnable test, and its last result (gutter run buttons).
     pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
 }
@@ -1304,6 +1306,11 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 Vec2::splat(size),
             )
         };
+        if row.first && deco.bookmarks.binary_search(&row.line).is_ok() {
+            let left = text_rect.left() - m.gutter_w + 1.0;
+            let bar = Rect::from_min_max(Pos2::new(left, y + 1.0), Pos2::new(left + 4.0, y + m.row_h - 1.0));
+            painter.rect_filled(bar, 1.0, pal.accent);
+        }
         let breakpoint = deco.breakpoints.iter().find(|b| b.0 == row.line).filter(|_| row.first);
         if let Some((_, color, special)) = breakpoint {
             let r = margin(m.row_h * 0.55);
