@@ -230,6 +230,15 @@ impl Keymap {
         self.bindings.iter().rev().find(|b| b.command == cmd).map(|b| format_keys(&b.keys)).unwrap_or_default()
     }
 
+    pub fn is_editor_only(&self, cmd: Command) -> bool {
+        self.bindings.iter().rev().find(|b| b.command == cmd).is_some_and(|b| b.editor_only)
+    }
+
+    /// Commands these exact keys run.
+    pub fn commands_using(&self, keys: &[KeyboardShortcut]) -> Vec<Command> {
+        self.bindings.iter().filter(|b| b.keys == keys).map(|b| b.command).collect()
+    }
+
     /// Consumes a matching shortcut from this frame's input. `chord` holds the
     /// first stroke of a two-stroke binding between frames.
     pub fn process(
@@ -305,7 +314,7 @@ impl Keymap {
     }
 }
 
-fn is_modifier(key: egui::Key) -> bool {
+pub fn is_modifier(key: egui::Key) -> bool {
     use egui::Key as K;
     matches!(
         key,
@@ -318,6 +327,51 @@ fn is_modifier(key: egui::Key) -> bool {
             | K::SuperLeft
             | K::SuperRight
     )
+}
+
+/// A change to one command's keys in the keybindings file.
+pub enum BindingChange {
+    /// Replaces its keys.
+    Set { keys: String, editor_only: bool },
+    /// Leaves it with no keys.
+    Remove,
+    /// Back to its default keys.
+    Reset,
+}
+
+/// The keybindings file with `change` made for command `id`. Comments at the
+/// top stay; bindings are rewritten, so comments among them don't.
+pub fn set_binding_in_text(text: &str, id: &str, change: &BindingChange) -> Result<String, String> {
+    use toml::{Table, Value};
+    let mut file: Table = toml::from_str(text).map_err(|e| format!("keybindings: {}", e.message()))?;
+    let mut bindings = match file.remove("bindings") {
+        Some(Value::Array(items)) => items,
+        _ => Vec::new(),
+    };
+    let removal = format!("-{id}");
+    bindings.retain(|b| b.get("command").and_then(Value::as_str).is_none_or(|c| c != id && c != removal));
+    let binding = |pairs: &[(&str, &str)]| {
+        Value::Table(pairs.iter().map(|(k, v)| ((*k).to_owned(), Value::String((*v).to_owned()))).collect())
+    };
+    match change {
+        BindingChange::Reset => {}
+        BindingChange::Remove => bindings.push(binding(&[("command", &removal)])),
+        BindingChange::Set { keys, editor_only } => {
+            bindings.push(binding(&[("command", &removal)]));
+            let mut pairs = vec![("key", keys.as_str()), ("command", id)];
+            if *editor_only {
+                pairs.push(("when", "editorTextFocus"));
+            }
+            bindings.push(binding(&pairs));
+        }
+    }
+    if !bindings.is_empty() {
+        file.insert("bindings".to_owned(), Value::Array(bindings));
+    }
+    let body = toml::to_string(&file).map_err(|e| format!("keybindings: {e}"))?;
+    let comments: String =
+        text.lines().take_while(|l| l.starts_with('#') || l.is_empty()).map(|l| format!("{l}\n")).collect();
+    Ok(format!("{comments}{body}"))
 }
 
 /// Parses "ctrl+shift+k" or a chord "ctrl+k ctrl+o".
@@ -437,6 +491,48 @@ fn format_stroke(k: &KeyboardShortcut) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn editing_the_keybindings_file_round_trips() {
+        let dir = std::env::temp_dir().join(format!("rust-code-keys-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("keybindings.toml");
+        let id = command_id(Command::DeleteLines);
+        let load = |text: &str| {
+            std::fs::write(&path, text).unwrap();
+            let (km, problems) = Keymap::load(Some(&path));
+            assert_eq!(problems, Vec::<String>::new());
+            km
+        };
+
+        let header = Keymap::defaults().default_file_contents();
+        let set = BindingChange::Set { keys: "Ctrl+K Ctrl+Y".to_owned(), editor_only: true };
+        let text = set_binding_in_text(&header, id, &set).unwrap();
+        assert!(text.starts_with("# Rust Code keybindings"));
+        let km = load(&text);
+        assert_eq!(km.shortcut_text(Command::DeleteLines), "Ctrl+K Ctrl+Y");
+        assert!(km.is_editor_only(Command::DeleteLines));
+        assert_eq!(km.commands_using(&parse_keys("ctrl+shift+k").unwrap()), Vec::new());
+        assert_eq!(km.commands_using(&parse_keys("ctrl+k ctrl+y").unwrap()), [Command::DeleteLines]);
+
+        // Changing again replaces, and other commands' bindings stay.
+        let other = BindingChange::Set { keys: "F7".to_owned(), editor_only: false };
+        let text = set_binding_in_text(&text, command_id(Command::JoinLines), &other).unwrap();
+        let again = BindingChange::Set { keys: "F6".to_owned(), editor_only: true };
+        let text = set_binding_in_text(&text, id, &again).unwrap();
+        let km = load(&text);
+        assert_eq!(km.shortcut_text(Command::DeleteLines), "F6");
+        assert_eq!(km.shortcut_text(Command::JoinLines), "F7");
+
+        let text = set_binding_in_text(&text, id, &BindingChange::Remove).unwrap();
+        assert_eq!(load(&text).shortcut_text(Command::DeleteLines), "");
+        let text = set_binding_in_text(&text, id, &BindingChange::Reset).unwrap();
+        assert_eq!(load(&text).shortcut_text(Command::DeleteLines), "Ctrl+Shift+K");
+
+        // A broken file is reported, not overwritten.
+        assert!(set_binding_in_text("[[[", id, &BindingChange::Reset).is_err());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_chord_survives_pressing_ctrl_again() {

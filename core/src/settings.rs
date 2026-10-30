@@ -415,6 +415,25 @@ pub fn set_value_in_text(text: &str, table: &str, key: &str, value: &str) -> Str
     lines.join("\n") + "\n"
 }
 
+/// Takes `[table] key = ...` out of a settings file, keeping everything else.
+pub fn remove_value_in_text(text: &str, table: &str, key: &str) -> String {
+    let header = format!("[{table}]");
+    let mut in_table = false;
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let t = line.trim();
+        if t.starts_with('[') {
+            in_table = t == header;
+        }
+        if in_table && !t.starts_with('#') && t.split('=').next().is_some_and(|k| k.trim() == key) && t.contains('=') {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
 /// Contents for a new user settings file: every setting, commented, with its default.
 pub fn default_file_contents() -> String {
     let defaults = toml::to_string_pretty(&Settings::default()).unwrap_or_default();
@@ -469,6 +488,16 @@ mod tests {
         assert!(s.editor.word_wrap, "inherited from base.toml");
         assert_eq!(problems, vec!["Unknown setting `other_os`".to_owned()]);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn removes_only_the_named_setting() {
+        let text = "# note\n[editor]\nfont_size = 15.0\n# tab_size = 4\ntab_size = 2\n[files]\ntab_size = 9\n";
+        assert_eq!(
+            remove_value_in_text(text, "editor", "tab_size"),
+            "# note\n[editor]\nfont_size = 15.0\n# tab_size = 4\n[files]\ntab_size = 9\n"
+        );
+        assert_eq!(remove_value_in_text(text, "git", "enabled"), text);
     }
 
     #[test]

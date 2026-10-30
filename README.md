@@ -2,6 +2,9 @@
 
 A lightweight VS Code–style editor written in Rust with [egui](https://github.com/emilk/egui).
 
+Settings (`Ctrl+,`) and keyboard shortcuts (`Ctrl+K Ctrl+S`) each have a window, so no file editing
+is needed; **Edit as File** still opens the TOML behind them.
+
 `<config>` below is your config folder: `%APPDATA%\rust-code` on Windows,
 `$XDG_CONFIG_HOME/rust-code` or `~/.config/rust-code` elsewhere.
 

@@ -183,9 +183,31 @@ impl CodeApp {
         key: &str,
         value: &str,
     ) -> Result<(), String> {
-        let path = settings::user_settings_path().ok_or("No config directory available")?;
-        let text = std::fs::read_to_string(&path).unwrap_or_else(|_| settings::default_file_contents());
-        let updated = settings::set_value_in_text(&text, table, key, value);
+        self.change_setting(ctx, false, table, key, Some(value))
+    }
+
+    /// Sets a value (a TOML literal), or removes it to fall back on the next
+    /// layer, in the user's settings or the open folder's, and applies it.
+    pub(super) fn change_setting(
+        &mut self,
+        ctx: &egui::Context,
+        workspace: bool,
+        table: &str,
+        key: &str,
+        value: Option<&str>,
+    ) -> Result<(), String> {
+        let (path, empty) = match (&self.explorer.root, workspace) {
+            (Some(root), true) => (settings::workspace_settings_path(root), String::new()),
+            _ => {
+                let path = settings::user_settings_path().ok_or("No config directory available")?;
+                (path, settings::default_file_contents())
+            }
+        };
+        let text = std::fs::read_to_string(&path).unwrap_or(empty);
+        let updated = match value {
+            Some(value) => settings::set_value_in_text(&text, table, key, value),
+            None => settings::remove_value_in_text(&text, table, key),
+        };
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }

@@ -318,18 +318,22 @@ impl CodeApp {
                 }
             }
             Command::OpenUserSettings => {
+                self.settings_ui.workspace = false;
+                self.settings_ui.open = true;
+            }
+            Command::OpenSettingsFile => {
                 self.open_config_file(settings::user_settings_path(), settings::default_file_contents());
             }
-            Command::OpenWorkspaceSettings => match self.explorer.root.clone() {
-                Some(root) => {
-                    self.open_config_file(
-                        Some(settings::workspace_settings_path(&root)),
-                        settings::default_file_contents(),
-                    );
+            Command::OpenWorkspaceSettings => {
+                if self.explorer.root.is_some() {
+                    self.settings_ui.workspace = true;
+                    self.settings_ui.open = true;
+                } else {
+                    self.status = Some("Open a folder to use workspace settings".to_owned());
                 }
-                None => self.status = Some("Open a folder to use workspace settings".to_owned()),
-            },
-            Command::OpenKeybindings => {
+            }
+            Command::OpenKeybindings => self.keys_ui.open = true,
+            Command::OpenKeybindingsFile => {
                 let contents = Keymap::defaults().default_file_contents();
                 self.open_config_file(settings::user_keybindings_path(), contents);
             }

@@ -9,11 +9,13 @@ mod files;
 mod git;
 mod hidden;
 mod history;
+mod keys_ui;
 mod lsp;
 mod lsp_extra;
 mod lsp_room;
 mod outline;
 mod plugins;
+mod settings_ui;
 mod split;
 mod window;
 mod workbench;
@@ -120,6 +122,8 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    settings_ui: settings_ui::SettingsUi,
+    keys_ui: keys_ui::KeysUi,
     window: Option<rust_code_core::session::WindowState>,
     window_fitted: bool,
     /// Indentation picked from the status bar, by document.
@@ -213,6 +217,8 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            settings_ui: Default::default(),
+            keys_ui: Default::default(),
             window: None,
             window_fitted: false,
             indent_chosen: Default::default(),
@@ -293,7 +299,7 @@ impl eframe::App for CodeApp {
             }
             self.terminal.detached = false;
         }
-        if self.pending_close.is_none() && !self.palette.open {
+        if self.pending_close.is_none() && !self.palette.open && !self.keys_ui.capturing() {
             if self.editor_focused(&ctx) {
                 self.lsp_keys(&ctx);
             }
@@ -435,6 +441,8 @@ impl eframe::App for CodeApp {
         });
         self.lsp_popups(&ctx);
         self.lsp_room(&ctx);
+        self.settings_window(&ctx);
+        self.keys_window(&ctx);
         self.git_popups(&ctx);
         self.terminal_window(&ctx);
 
