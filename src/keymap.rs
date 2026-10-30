@@ -238,8 +238,10 @@ impl Keymap {
             |b: &Binding| (!b.editor_only || editor_focused) && (!terminal_focused || runs_in_terminal(b.command));
         if let Some(first) = *chord {
             // Wait across idle frames; resolve on the next real key press.
-            let key_pressed =
-                ctx.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Key { pressed: true, .. })));
+            // Modifiers arrive as keys too, and most people press Ctrl again.
+            let key_pressed = ctx.input(|i| {
+                i.events.iter().any(|e| matches!(e, egui::Event::Key { key, pressed: true, .. } if !is_modifier(*key)))
+            });
             if !key_pressed {
                 return None;
             }
@@ -296,6 +298,21 @@ impl Keymap {
         }
         out
     }
+}
+
+fn is_modifier(key: egui::Key) -> bool {
+    use egui::Key as K;
+    matches!(
+        key,
+        K::ControlLeft
+            | K::ControlRight
+            | K::AltLeft
+            | K::AltRight
+            | K::ShiftLeft
+            | K::ShiftRight
+            | K::SuperLeft
+            | K::SuperRight
+    )
 }
 
 /// Parses "ctrl+shift+k" or a chord "ctrl+k ctrl+o".
@@ -415,6 +432,28 @@ fn format_stroke(k: &KeyboardShortcut) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_chord_survives_pressing_ctrl_again() {
+        let km = Keymap::defaults();
+        let ctx = egui::Context::default();
+        let mut chord = None;
+        let mut press = |key, modifiers| {
+            let event = egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
+            let max_texture_side = Some(4096);
+            ctx.begin_pass(egui::RawInput { events: vec![event], max_texture_side, ..Default::default() });
+            let command = km.process(&ctx, &mut chord, true, false);
+            ctx.end_pass().textures_delta.clear();
+            command
+        };
+        assert_eq!(press(Key::K, Modifiers::COMMAND), None);
+        assert_eq!(press(Key::ControlLeft, Modifiers::COMMAND), None);
+        assert_eq!(press(Key::R, Modifiers::COMMAND), Some(Command::GitRevertHunk));
+        // Any other key still ends the chord.
+        assert_eq!(press(Key::K, Modifiers::COMMAND), None);
+        assert_eq!(press(Key::A, Modifiers::NONE), None);
+        assert_eq!(press(Key::R, Modifiers::COMMAND), None);
+    }
 
     #[test]
     fn every_command_has_an_id_and_round_trips() {

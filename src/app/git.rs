@@ -130,7 +130,7 @@ struct Confirm {
 pub(super) struct GitState {
     repo: Option<Repo>,
     /// Folder the repository was looked up for.
-    discovered_for: Option<PathBuf>,
+    pub(super) discovered_for: Option<PathBuf>,
     me: Option<String>,
     status: Option<Status>,
     tx: Sender<Msg>,
@@ -474,49 +474,72 @@ impl CodeApp {
 
     /// Stages one hunk of the change from `base` (index) to `new`.
     fn stage_hunk_text(&mut self, ctx: &egui::Context, path: &Path, base: &str, new: &str, h: &Hunk) {
-        let (old_lines, new_lines) = (git::lines(base), git::lines(new));
-        let content = git::replace_lines(&old_lines, h.old.clone(), &new_lines[h.new.clone()], line_ending_of(base));
+        self.stage_hunks(ctx, path, base, new, std::slice::from_ref(h));
+    }
+
+    fn stage_hunks(&mut self, ctx: &egui::Context, path: &Path, base: &str, new: &str, hunks: &[Hunk]) {
+        let content = git::apply_hunks(base, new, hunks, line_ending_of(base));
         self.write_index(ctx, path, content, "Staged change");
     }
 
     /// Puts the index's lines back in place of hunk `h` in document `i` (undoable).
     fn revert_hunk_in_doc(&mut self, i: usize, base: &str, h: &Hunk) {
+        self.revert_hunks_in_doc(i, base, std::slice::from_ref(h));
+    }
+
+    /// The same for several hunks, as one undo step.
+    fn revert_hunks_in_doc(&mut self, i: usize, base: &str, hunks: &[Hunk]) {
         let Some(doc) = self.docs.get_mut(i) else { return };
-        let old: Vec<&str> = git::lines(base)[h.old.clone()].to_vec();
+        let base_lines = git::lines(base);
         let buf = &doc.buffer;
         let rope = buf.rope();
         let nl = buf.line_ending;
-        let start = rope.line_to_char(h.new.start.min(rope.len_lines()));
-        let end = rope.line_to_char(h.new.end.min(rope.len_lines()));
         let ends_with_nl = rope.len_chars() > 0 && rope.char(rope.len_chars() - 1) == '\n';
-        let mut text: String = old.iter().map(|l| format!("{l}{nl}")).collect();
-        if end == rope.len_chars() && !ends_with_nl && !text.is_empty() {
-            if h.new.is_empty() {
-                // Re-adding lines after a last line that has no line ending.
-                text = format!("{nl}{}", text.strip_suffix(nl).unwrap_or(&text));
-            } else {
-                text.truncate(text.len() - nl.len());
-            }
-        }
-        doc.buffer.apply_edits(vec![(start, end, text)]);
+        let edits = hunks
+            .iter()
+            .map(|h| {
+                let start = rope.line_to_char(h.new.start.min(rope.len_lines()));
+                let end = rope.line_to_char(h.new.end.min(rope.len_lines()));
+                let mut text: String = base_lines[h.old.clone()].iter().map(|l| format!("{l}{nl}")).collect();
+                if end == rope.len_chars() && !ends_with_nl && !text.is_empty() {
+                    if h.new.is_empty() {
+                        // Re-adding lines after a last line that has no line ending.
+                        text = format!("{nl}{}", text.strip_suffix(nl).unwrap_or(&text));
+                    } else {
+                        text.truncate(text.len() - nl.len());
+                    }
+                }
+                (start, end, text)
+            })
+            .collect();
+        doc.buffer.apply_edits(edits);
         doc.reveal = true;
     }
 
-    /// Stage (or revert) the hunk under the cursor.
+    /// Stage (or revert) the selected lines, or the hunk under the cursor.
     pub(super) fn hunk_at_cursor(&mut self, ctx: &egui::Context, stage: bool) {
         let Some(doc) = self.docs.get(self.active) else { return };
-        let line = doc.buffer.char_to_line(doc.buffer.primary().head);
+        let sel = doc.buffer.primary();
         let Some(path) = doc.path.clone() else { return };
-        let Some(h) = hunk_at(self.active_hunks(), line).cloned() else {
-            self.status = Some("No change at the cursor".to_owned());
-            return;
+        let hunks: Vec<Hunk> = if sel.is_empty() {
+            hunk_at(self.active_hunks(), doc.buffer.char_to_line(sel.head)).into_iter().cloned().collect()
+        } else {
+            // A selection ending at the start of a line doesn't include that line.
+            let last = doc.buffer.char_to_line(sel.end());
+            let end = if doc.buffer.line_start(last) == sel.end() { last } else { last + 1 };
+            git::hunks_in_lines(self.active_hunks(), doc.buffer.char_to_line(sel.start())..end)
         };
+        if hunks.is_empty() {
+            let place = if sel.is_empty() { "at the cursor" } else { "in the selection" };
+            self.status = Some(format!("No change {place}"));
+            return;
+        }
         let Some(base) = self.base_text(&path).map(str::to_owned) else { return };
         if stage {
             let text = doc.text();
-            self.stage_hunk_text(ctx, &path, &base, &text, &h);
+            self.stage_hunks(ctx, &path, &base, &text, &hunks);
         } else {
-            self.revert_hunk_in_doc(self.active, &base, &h);
+            self.revert_hunks_in_doc(self.active, &base, &hunks);
         }
     }
 

@@ -353,9 +353,71 @@ pub fn replace_lines(base: &[&str], range: Range<usize>, with: &[&str], nl: &str
     text
 }
 
+/// The parts of `hunks` on lines `selected` of the new text, for staging or
+/// reverting only those lines. In a replaced run, new lines pair with old ones
+/// by position, and a selection reaching its end takes all the old lines left.
+/// A deletion counts when the selection touches the place it happened.
+pub fn hunks_in_lines(hunks: &[Hunk], selected: Range<usize>) -> Vec<Hunk> {
+    let mut out = Vec::new();
+    for h in hunks {
+        if h.new.is_empty() {
+            if (selected.start..=selected.end).contains(&h.new.start) {
+                out.push(h.clone());
+            }
+            continue;
+        }
+        let (from, to) = (selected.start.max(h.new.start), selected.end.min(h.new.end));
+        if from >= to {
+            continue;
+        }
+        let at = |line: usize| (h.old.start + (line - h.new.start)).min(h.old.end);
+        let old_end = if to == h.new.end { h.old.end } else { at(to) };
+        out.push(Hunk { old: at(from)..old_end, new: from..to });
+    }
+    out
+}
+
+/// `base` with `hunks` (ascending, from a diff against `new`) applied.
+pub fn apply_hunks(base: &str, new: &str, hunks: &[Hunk], nl: &str) -> String {
+    let new_lines = lines(new);
+    let mut text = base.to_owned();
+    for h in hunks.iter().rev() {
+        text = replace_lines(&lines(&text), h.old.clone(), &new_lines[h.new.clone()], nl);
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stages_only_the_selected_lines() {
+        let base = "a\nb\nc\nd\n";
+        let new = "a\nB\nC\nd\nx\ny\n";
+        let hunks = diff_lines(&lines(base), &lines(new), false);
+        let staged = |selected| apply_hunks(base, new, &hunks_in_lines(&hunks, selected), "\n");
+        // One line of a replaced run: the old line at its place goes.
+        assert_eq!(staged(1..2), "a\nB\nc\nd\n");
+        assert_eq!(staged(2..3), "a\nb\nC\nd\n");
+        // One added line; both runs at once.
+        assert_eq!(staged(4..5), "a\nb\nc\nd\nx\n");
+        assert_eq!(staged(1..6), new);
+        // An unchanged line selects nothing.
+        assert_eq!(staged(0..1), base);
+
+        // More old lines than new: reaching the end takes the rest.
+        let hunks = [Hunk { old: 1..4, new: 1..2 }];
+        assert_eq!(hunks_in_lines(&hunks, 1..2), [Hunk { old: 1..4, new: 1..2 }]);
+        // More new lines than old: the extras only add.
+        let hunks = [Hunk { old: 1..2, new: 1..4 }];
+        assert_eq!(hunks_in_lines(&hunks, 2..3), [Hunk { old: 2..2, new: 2..3 }]);
+        // A deletion, from either line beside it.
+        let hunks = [Hunk { old: 1..2, new: 1..1 }];
+        assert_eq!(hunks_in_lines(&hunks, 0..1).len(), 1);
+        assert_eq!(hunks_in_lines(&hunks, 1..2).len(), 1);
+        assert!(hunks_in_lines(&hunks, 2..3).is_empty());
+    }
 
     #[test]
     fn diff_groups_changes_into_hunks() {

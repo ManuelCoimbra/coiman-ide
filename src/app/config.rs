@@ -110,6 +110,8 @@ impl CodeApp {
         // Stops what was running; what is allowed starts again on the next frame.
         self.restart_lsp();
         self.settings_reload = true;
+        // The lookup failed, or may no longer be allowed: do it again.
+        self.git.discovered_for = None;
         self.git_refresh_soon(ctx, 0.0);
     }
 

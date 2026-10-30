@@ -120,7 +120,8 @@ push). All git work runs in the background.
 - **Gutter markers** beside the line numbers: green added, blue modified, red wedge for
   deleted lines, compared with the index. Click one to see the old lines and **Stage** or
   **Revert** just that change; `Alt+F5` / `Shift+Alt+F5` jump between changes;
-  `Ctrl+K Ctrl+Alt+S` stages and `Ctrl+K Ctrl+R` reverts the change at the cursor.
+  `Ctrl+K Ctrl+Alt+S` stages and `Ctrl+K Ctrl+R` reverts the change at the cursor, or only the
+  selected lines when there is a selection.
   Reverting edits the buffer, so it can be undone.
 - **Inline blame** after the cursor line ("You, 3 days ago • Fix parser"), including
   unsaved edits; `git.blame_inline` or **Git: Toggle Inline Blame** turns it off.
