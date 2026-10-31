@@ -29,6 +29,7 @@ mod settings_ui;
 mod snippets_ui;
 mod split;
 mod tables;
+mod test_panel;
 mod traces;
 mod web;
 mod window;
@@ -155,6 +156,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    tests: test_panel::Tests,
     tables: tables::Tables,
     traces: traces::Traces,
     cpp: cpp::Cpp,
@@ -275,6 +277,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            tests: Default::default(),
             tables: Default::default(),
             traces: Default::default(),
             cpp: Default::default(),
@@ -366,6 +369,7 @@ impl eframe::App for CodeApp {
         self.pump_font_load(&ctx);
         self.pump_symbol_font(&ctx);
         self.refresh_cargo_project(&ctx);
+        self.pump_tests(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
         self.pump_watcher(&ctx);

@@ -44,6 +44,7 @@ pub mod symbols;
 pub mod syntax;
 pub mod table;
 pub mod termfind;
+pub mod testing;
 pub mod theme;
 pub mod trust;
 pub mod unicode;

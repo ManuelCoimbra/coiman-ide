@@ -29,11 +29,11 @@ pub enum Outcome {
 }
 
 /// `text` as one argument for the shell ([`crate`]'s terminals use PowerShell on Windows).
-fn quote(text: &str) -> String {
+pub(crate) fn quote(text: &str) -> String {
     if cfg!(windows) { format!("'{}'", text.replace('\'', "''")) } else { format!("'{}'", text.replace('\'', r"'\''")) }
 }
 
-fn q(path: &Path) -> String {
+pub(crate) fn q(path: &Path) -> String {
     quote(&path.to_string_lossy())
 }
 
@@ -646,7 +646,7 @@ pub fn test_lines(file: &Path, source: &str) -> Vec<(usize, String)> {
 }
 
 /// `text` matching only itself as a regular expression.
-fn regex_escape(text: &str) -> String {
+pub(crate) fn regex_escape(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
         if r"\^$.|?*+()[]{}".contains(c) {
@@ -898,7 +898,7 @@ fn project_file(file: &Path, root: Option<&Path>) -> Option<Result<Outcome, Stri
 // ----- interpreted languages -----------------------------------------------------------
 
 /// The project's Python, by the answer every tool shares.
-fn python_program(file: &Path, root: Option<&Path>) -> Result<String, String> {
+pub(crate) fn python_program(file: &Path, root: Option<&Path>) -> Result<String, String> {
     let start = file.parent().unwrap_or(file);
     let env = crate::environment::resolve(start, root).ok_or_else(|| "Python isn't on PATH".to_owned())?;
     // A name found on PATH reads better, and behaves the same.

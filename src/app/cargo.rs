@@ -70,11 +70,8 @@ pub(super) const TESTING_ONLY: &[Command] = &[
     Command::RemoveDbgFromFile,
     Command::RemoveDbgFromWorkspace,
     Command::DebugTestAtCursor,
-    Command::ShowTesting,
     Command::TestAtCursor,
     Command::TestCurrentFile,
-    Command::TestAll,
-    Command::CancelTests,
     Command::CargoCheck,
     Command::CargoClippy,
 ];
@@ -96,11 +93,8 @@ pub(super) const CARGO_ONLY: &[Command] = &[
     Command::ShowDebug,
     Command::ShowDebugConsole,
     Command::DebugTestAtCursor,
-    Command::ShowTesting,
     Command::TestAtCursor,
     Command::TestCurrentFile,
-    Command::TestAll,
-    Command::CancelTests,
     Command::CargoCheck,
     Command::CargoClippy,
 ];
@@ -191,7 +185,7 @@ fn key(path: &Path) -> PathBuf {
     if cfg!(windows) { PathBuf::from(path.to_string_lossy().to_lowercase()) } else { path.to_path_buf() }
 }
 
-fn outcome_icon(outcome: Option<Outcome>) -> (Icon, Color32) {
+pub(super) fn outcome_icon(outcome: Option<Outcome>) -> (Icon, Color32) {
     match outcome {
         None => (Icon::Play, Color32::from_rgb(0x89, 0xD1, 0x85)),
         Some(Outcome::Running) => (Icon::Dot, Color32::from_rgb(0xE2, 0xC0, 0x8D)),
@@ -396,7 +390,16 @@ impl CodeApp {
         });
     }
 
-    fn push_output(&mut self, line: String) {
+    /// Starts the Output panel afresh on a new run.
+    pub(super) fn begin_output(&mut self, title: String) {
+        self.cargo.output.clear();
+        self.cargo.output.push(format!("> {title}"));
+        self.cargo.output_title = title;
+        self.panel_visible = true;
+        self.panel_tab = PanelTab::Output;
+    }
+
+    pub(super) fn push_output(&mut self, line: String) {
         self.cargo.output.push(line);
         if self.cargo.output.len() > MAX_OUTPUT {
             self.cargo.output.drain(..self.cargo.output.len() - MAX_OUTPUT);
@@ -412,7 +415,7 @@ impl CodeApp {
             self.cargo_project_for = (key, now + 3.0);
             self.cargo_project = self.cargo_root_dir().is_some();
         }
-        let testing_gone = !self.cargo_project && self.sidebar_view == SidebarView::Testing;
+        let testing_gone = !self.testing_available() && self.sidebar_view == SidebarView::Testing;
         if testing_gone || (self.sidebar_view == SidebarView::Debug && !self.can_debug()) {
             self.sidebar_view = SidebarView::Explorer;
         }
@@ -466,6 +469,7 @@ impl CodeApp {
     }
 
     pub(super) fn cancel_job(&mut self) {
+        self.cancel_test_run();
         self.cargo.lock_wait = false;
         if let Some(mut job) = self.cargo.job.take() {
             let _ = job.child.kill();
@@ -672,6 +676,9 @@ impl CodeApp {
     }
 
     pub(super) fn test_all(&mut self, ctx: &egui::Context) {
+        if !self.cargo_project && self.run_all_other_tests(ctx) {
+            return;
+        }
         let Some(root) = self.cargo_root() else {
             self.status = Some("Open a Cargo project first".to_owned());
             return;
@@ -685,6 +692,10 @@ impl CodeApp {
             return;
         }
         if let Some(id) = self.other_test_at(line) {
+            let file = self.docs[self.active].path.clone();
+            if file.is_some_and(|f| self.run_one_test(ctx, &f, &id, line)) {
+                return;
+            }
             for i in 0..self.docs.len() {
                 if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {
                     let why = format!("Nothing was run: {} couldn't be saved", self.docs[i].title());
@@ -718,7 +729,14 @@ impl CodeApp {
             && !found.is_empty()
         {
             let color = Color32::from_rgb(0x89, 0xD1, 0x85);
-            deco.runnables = found.iter().map(|(line, _)| (*line, None, color)).collect();
+            let file = self.docs.get(i).and_then(|d| d.path.clone());
+            deco.runnables = found
+                .iter()
+                .map(|(line, _)| match file.as_deref().and_then(|f| self.test_outcome_at(f, *line)) {
+                    Some((icon, color)) => (*line, Some(icon), color),
+                    None => (*line, None, color),
+                })
+                .collect();
             return;
         }
         let Some(f) = self.active_tests() else { return };
@@ -735,6 +753,10 @@ impl CodeApp {
     // ----- views -------------------------------------------------------------------------
 
     pub(super) fn show_testing(&mut self, ctx: &egui::Context) {
+        if !self.testing_available() {
+            self.status = Some("No tests or test runner found in this folder".to_owned());
+            return;
+        }
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Testing;
         if self.cargo.scanned_for != self.cargo_root() {
@@ -744,6 +766,10 @@ impl CodeApp {
 
     /// The Testing side bar view: every test, its last result, run buttons.
     pub(super) fn testing_view(&mut self, ui: &mut egui::Ui) {
+        if self.showing_other_tests(ui) {
+            self.other_tests_view(ui);
+            return;
+        }
         let ctx = ui.ctx().clone();
         let pal = theme::colors();
         let running = matches!(self.cargo.job, Some(Job { kind: JobKind::Tests(_), .. }));

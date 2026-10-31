@@ -418,7 +418,7 @@ impl CodeApp {
         icon(ui, Icon::Search, "Search (Ctrl+Shift+F)", side == Some(SidebarView::Search), Command::ShowSearch);
         let git = side == Some(SidebarView::Git);
         icon(ui, Icon::SourceControl, "Source Control (Ctrl+Shift+G)", git, Command::ShowSourceControl);
-        if self.cargo_project {
+        if self.testing_available() {
             let testing = side == Some(SidebarView::Testing);
             icon(ui, Icon::Beaker, "Testing", testing, Command::ShowTesting);
         }

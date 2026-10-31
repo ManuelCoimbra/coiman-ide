@@ -3982,6 +3982,7 @@ dependencies = [
  "oxc_span",
  "oxc_transformer",
  "portable-pty",
+ "quick-xml 0.41.0",
  "regex",
  "ropey",
  "serde",
