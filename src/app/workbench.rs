@@ -107,14 +107,16 @@ impl CodeApp {
             egui::pos2(bar.max.x - 3.0 * BUTTON - RUN_BUTTON, bar.min.y),
             egui::vec2(RUN_BUTTON, HEIGHT),
         );
-        let run = ui.interact(run_rect, egui::Id::unique("run_program"), Sense::click());
-        if run.hovered() {
-            ui.painter().rect_filled(run_rect, 0.0, pal.hover_bg);
-        }
-        let icon = egui::Rect::from_center_size(run_rect.center(), egui::vec2(16.0, 16.0));
-        icons::paint(ui.painter(), icon, Icon::Play, Color32::from_rgb(0x89, 0xD1, 0x85));
-        if run.on_hover_text("Run Program (Shift+F10)").clicked() {
-            cmd = Some(Command::RunProgram);
+        if self.run_button_visible() {
+            let run = ui.interact(run_rect, egui::Id::unique("run_program"), Sense::click());
+            if run.hovered() {
+                ui.painter().rect_filled(run_rect, 0.0, pal.hover_bg);
+            }
+            let icon = egui::Rect::from_center_size(run_rect.center(), egui::vec2(16.0, 16.0));
+            icons::paint(ui.painter(), icon, Icon::Play, Color32::from_rgb(0x89, 0xD1, 0x85));
+            if run.on_hover_text("Run Program (Shift+F10)").clicked() {
+                cmd = Some(Command::RunProgram);
+            }
         }
 
         // Window buttons.

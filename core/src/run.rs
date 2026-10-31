@@ -487,6 +487,20 @@ fn typescript_program(file: &Path, root: Option<&Path>) -> Result<String, String
     Ok("node".to_owned())
 }
 
+/// File types `plan` has a way to run.
+const RUNNABLE_TYPES: &[&str] = &[
+    "py", "pyw", "js", "mjs", "cjs", "ts", "mts", "cts", "java", "c", "cpp", "cc", "cxx", "c++", "rs", "go", "cs",
+    "sh", "bash", "zsh", "ps1", "bat", "cmd", "rb", "php", "lua", "pl", "r", "dart", "swift", "kts", "kt", "html",
+    "htm",
+];
+
+/// Whether a file could run, judged from its name alone: cheap enough for every
+/// frame. Whether it really does takes `plan`.
+pub fn may_run(file: &Path) -> bool {
+    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    name_of(file) == "Cargo.toml" || (RUNNABLE_TYPES.contains(&ext.as_str()) && never_runs(file, &ext).is_none())
+}
+
 /// Why a kind of file never runs, when it's certain.
 fn never_runs(file: &Path, ext: &str) -> Option<String> {
     let name = name_of(file);
@@ -636,6 +650,20 @@ mod tests {
         assert!(plan(&tmp.join("lib.c"), "int f(void){return 0;}", Some(&tmp)).unwrap_err().contains("no main"));
         assert!(plan(&tmp.join("make/m.c"), "int main(void){return 0;}", Some(&tmp)).unwrap_err().contains("Make"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn may_run_agrees_with_plan() {
+        for ext in RUNNABLE_TYPES {
+            let file = PathBuf::from(format!("/no/such/place/a.{ext}"));
+            assert!(may_run(&file), "{ext}");
+            let known = plan(&file, "", None).map_or_else(|e| !e.contains("doesn't know"), |_| true);
+            assert!(known, "plan has no way to run .{ext}");
+        }
+        assert!(may_run(Path::new("/p/Cargo.toml")));
+        for name in ["a.json", "a.css", "README.md", "a.h", "a.d.ts", "a.pyi", "a.xyz", "Makefile", "other.toml"] {
+            assert!(!may_run(Path::new(name)), "{name}");
+        }
     }
 
     #[test]

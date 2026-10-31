@@ -92,8 +92,8 @@ pub(super) const CARGO_ONLY: &[Command] = &[
 pub(super) struct CargoState {
     /// Programs offered by Run Program when several fit.
     run_targets: Vec<run::RunPlan>,
-    /// Why Run did nothing, and when it was refused.
-    run_refusal: Option<(String, f64)>,
+    /// Why Run did nothing, when it was refused, and for which tab.
+    run_refusal: Option<(String, f64, Option<u64>)>,
     /// Tests by file key.
     tests: HashMap<PathBuf, FileTests>,
     scanned_for: Option<PathBuf>,
@@ -774,16 +774,30 @@ impl CodeApp {
         self.palette.show_picker(PickerKind::RunConfig, names, &current, "Select a configuration to run");
     }
 
+    /// Whether the title bar offers Run: for a file that could run, or with
+    /// nothing open, for the folder's Cargo project.
+    pub(super) fn run_button_visible(&self) -> bool {
+        match self.docs.get(self.active) {
+            Some(doc) => doc.path.as_deref().is_some_and(run::may_run),
+            None => self.cargo_root().is_some(),
+        }
+    }
+
     /// Says why Run did nothing, beside the button: the status bar may be hidden.
     fn refuse_run(&mut self, ctx: &egui::Context, why: String) {
         self.status = Some(why.clone());
-        self.cargo.run_refusal = Some((why, ctx.input(|i| i.time)));
+        let tab = self.docs.get(self.active).map(|d| d.uid);
+        self.cargo.run_refusal = Some((why, ctx.input(|i| i.time), tab));
     }
 
     pub(super) fn run_refusal_ui(&mut self, ctx: &egui::Context) {
-        let Some((why, since)) = &self.cargo.run_refusal else { return };
+        let Some((why, since, tab)) = &self.cargo.run_refusal else { return };
         let left = RUN_REFUSAL_SECONDS - (ctx.input(|i| i.time) - since);
-        if left <= 0.0 {
+        // It's about that tab: on another it would read as being about this one.
+        if left <= 0.0 || *tab != self.docs.get(self.active).map(|d| d.uid) {
+            if self.status.as_deref() == Some(why.as_str()) {
+                self.status = None;
+            }
             self.cargo.run_refusal = None;
             return;
         }
