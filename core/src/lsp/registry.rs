@@ -26,6 +26,9 @@ pub struct Language {
     pub run: Option<&'static str>,
     /// An interactive session to send code to.
     pub repl: Option<&'static str>,
+    /// A debug adapter speaking DAP over stdio, and its `type` for `launch`.
+    pub debugger: Option<&'static str>,
+    pub debug_type: Option<&'static str>,
     /// What to do first, or how to install the server, for the doctor.
     pub hint: Option<&'static str>,
     /// Whether the server runs the project's own code, such as build scripts.
@@ -51,6 +54,10 @@ struct LanguageEntry {
     run: Option<String>,
     #[serde(default)]
     repl: Option<String>,
+    #[serde(default)]
+    debugger: Option<String>,
+    #[serde(default)]
+    debug_type: Option<String>,
     #[serde(default)]
     hint: Option<String>,
     #[serde(default = "assume_it_does")]
@@ -84,6 +91,8 @@ fn into_language(entry: LanguageEntry, from_user: bool) -> &'static Language {
         root_markers: Box::leak(markers.into_boxed_slice()),
         run: entry.run.map(leak),
         repl: entry.repl.map(leak),
+        debugger: entry.debugger.map(leak),
+        debug_type: entry.debug_type.map(leak),
         hint: entry.hint.map(leak),
         runs_project_code: entry.runs_project_code,
         from_user,
@@ -140,6 +149,8 @@ pub fn user_file_template() -> String {
      # root_markers = [\"gleam.toml\"] # files that mark a project\n\
      # run = \"gleam run\"             # what Run does; {file} is the file's path\n\
      # repl = \"gleam shell\"          # what Ctrl+Enter sends code to\n\
+     # debugger = \"my-dap --stdio\"   # a debug adapter, for F5\n\
+     # debug_type = \"my\"             # its `type` in the launch request\n\
      # hint = \"Install it from gleam.run\"   # what Language: Doctor suggests\n\
      # runs_project_code = true      # shown by the doctor; assumed unless false\n"
         .to_owned()

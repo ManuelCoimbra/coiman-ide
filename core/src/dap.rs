@@ -188,6 +188,98 @@ pub fn launch_args(program: &Path, args: &[String], cwd: &Path, step_into_std: b
     })
 }
 
+// ----- adapters besides CodeLLDB ----------------------------------------------------
+
+/// Which debugger a session uses.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DebugKind {
+    /// CodeLLDB, for what cargo built.
+    Lldb,
+    /// debugpy, from the project's Python, with what activates its environment.
+    Python { python: PathBuf, env: Vec<(String, String)> },
+    /// An adapter named by a language's entry in `languages.toml`.
+    Data { command: String, debug_type: String },
+}
+
+impl DebugKind {
+    pub fn name(&self) -> String {
+        match self {
+            Self::Lldb => "CodeLLDB".to_owned(),
+            Self::Python { .. } => "debugpy".to_owned(),
+            Self::Data { command, .. } => command.split_whitespace().next().unwrap_or(command).to_owned(),
+        }
+    }
+
+    /// The program to start, for anything but CodeLLDB, which has its own search.
+    pub fn adapter(&self) -> Option<Adapter> {
+        match self {
+            Self::Lldb => None,
+            Self::Python { python, .. } => {
+                Some(Adapter { program: python.clone(), args: vec!["-m".to_owned(), "debugpy.adapter".to_owned()] })
+            }
+            Self::Data { command, .. } => {
+                let mut words = command.split_whitespace();
+                let program = crate::lsp::servers::which(words.next()?)?;
+                Some(Adapter { program, args: words.map(str::to_owned).collect() })
+            }
+        }
+    }
+
+    /// The `launch` request for this debugger.
+    pub fn launch_args(&self, program: &Path, args: &[String], cwd: &Path, step_into_std: bool) -> Value {
+        let name = program.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+        match self {
+            Self::Lldb => launch_args(program, args, cwd, step_into_std),
+            Self::Python { python, env } => json!({
+                "type": "python",
+                "request": "launch",
+                "name": name,
+                "program": program,
+                "args": args,
+                "cwd": cwd,
+                "python": python,
+                "console": "integratedTerminal",
+                "justMyCode": !step_into_std,
+                "env": env.iter().map(|(k, v)| (k.clone(), Value::String(v.clone()))).collect::<serde_json::Map<_, _>>(),
+            }),
+            Self::Data { debug_type, .. } => json!({
+                "type": debug_type,
+                "request": "launch",
+                "name": name,
+                "program": program,
+                "args": args,
+                "cwd": cwd,
+                "stopOnEntry": false,
+            }),
+        }
+    }
+}
+
+/// Whether debugpy is installed in this Python.
+pub fn python_has_debugpy(python: &Path) -> bool {
+    quiet_command(python)
+        .args(["-c", "import debugpy"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Installs debugpy into this Python from PyPI. Only after the user agreed.
+pub fn install_debugpy(python: &Path) -> Result<(), String> {
+    let out = quiet_command(python)
+        .args(["-m", "pip", "install", "--disable-pip-version-check", "debugpy"])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run pip: {e}"))?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let text = String::from_utf8_lossy(&out.stderr);
+    Err(text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("pip failed").to_owned())
+}
+
 // ----- finding and installing CodeLLDB ---------------------------------------------
 
 fn exe(name: &str) -> String {
@@ -338,5 +430,28 @@ mod tests {
         assert_eq!(args["_adapterSettings"]["consoleMode"], "evaluate");
         let std_ok = launch_args(Path::new("/p/app"), &[], Path::new("/p"), true);
         assert!(std_ok["initCommands"].as_array().unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod adapter_tests {
+    use super::*;
+
+    #[test]
+    fn each_debugger_gets_its_own_launch() {
+        let python = DebugKind::Python {
+            python: PathBuf::from("/v/bin/python"),
+            env: vec![("VIRTUAL_ENV".to_owned(), "/v".to_owned())],
+        };
+        let args = python.launch_args(Path::new("/p/a.py"), &[], Path::new("/p"), false);
+        assert_eq!((args["type"].as_str(), args["python"].as_str()), (Some("python"), Some("/v/bin/python")));
+        assert_eq!(args["env"]["VIRTUAL_ENV"], "/v");
+        assert_eq!(args["justMyCode"], true);
+        let adapter = python.adapter().unwrap();
+        assert_eq!(adapter.args, ["-m", "debugpy.adapter"]);
+        let data = DebugKind::Data { command: "no-such-debugger --dap".to_owned(), debug_type: "x".to_owned() };
+        assert_eq!(data.launch_args(Path::new("a"), &[], Path::new("."), false)["type"], "x");
+        assert_eq!(data.adapter(), None, "not on PATH");
+        assert_eq!(data.name(), "no-such-debugger");
     }
 }

@@ -11,7 +11,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use egui::{Align, Color32, RichText, Sense};
 use rust_code_core::cargo::{self, FileTarget, TestItem};
-use rust_code_core::dap::{self, Adapter, DapClient, DapEvent};
+use rust_code_core::dap::{self, Adapter, DapClient, DapEvent, DebugKind};
+use rust_code_core::lsp::registry;
 use rust_code_core::run;
 use serde_json::{Value, json};
 
@@ -41,6 +42,7 @@ pub(super) struct Breakpoint {
 /// What to debug.
 #[derive(Clone, Debug)]
 struct Launch {
+    kind: DebugKind,
     name: String,
     program: PathBuf,
     args: Vec<String>,
@@ -113,6 +115,9 @@ struct Session {
 enum Msg {
     Targets(Result<Vec<run::CargoAction>, String>),
     Built(Result<Launch, String>),
+    /// A Python file's session, and whether debugpy is there.
+    PythonChecked(Launch, bool),
+    DebugpyInstalled(Launch, Result<(), String>),
 }
 
 pub(super) struct DebugState {
@@ -131,6 +136,9 @@ pub(super) struct DebugState {
     last_launch: Option<Launch>,
     /// A launch waiting for the adapter to be installed.
     queued: Option<Launch>,
+    /// A Python session waiting for the user's yes to installing debugpy.
+    debugpy_offer: Option<Launch>,
+    installing_debugpy: bool,
     /// Breakpoint being given a condition or log message: (path, line).
     editing: Option<(PathBuf, usize)>,
     tx: Sender<Msg>,
@@ -153,6 +161,8 @@ impl Default for DebugState {
             building: None,
             last_launch: None,
             queued: None,
+            debugpy_offer: None,
+            installing_debugpy: false,
             editing: None,
             tx,
             rx,
@@ -225,6 +235,19 @@ impl CodeApp {
                         self.palette.show_picker(PickerKind::DebugTarget, names, "", "Select a program to debug");
                     }
                 },
+                Msg::PythonChecked(launch, true) => self.start_session(ctx, launch),
+                Msg::PythonChecked(launch, false) => {
+                    self.debug.debugpy_offer = Some(launch);
+                    self.show_debug_view();
+                    self.status = Some("Debugging Python needs debugpy".to_owned());
+                }
+                Msg::DebugpyInstalled(launch, result) => {
+                    self.debug.installing_debugpy = false;
+                    match result {
+                        Ok(()) => self.start_session(ctx, launch),
+                        Err(e) => self.refuse_run(ctx, format!("Could not install debugpy: {e}")),
+                    }
+                }
                 Msg::Built(result) => {
                     self.debug.building = None;
                     match result {
@@ -305,7 +328,7 @@ impl CodeApp {
             Pending::Initialize => {
                 let Some(s) = &self.debug.session else { return };
                 let l = &s.launch;
-                let args = dap::launch_args(&l.program, &l.args, &l.cwd, self.settings.debug.step_into_std);
+                let args = l.kind.launch_args(&l.program, &l.args, &l.cwd, self.settings.debug.step_into_std);
                 self.request("launch", args, Pending::Launch);
             }
             Pending::SetBreakpoints(path) => {
@@ -588,7 +611,16 @@ impl CodeApp {
         if !self.allowed_to_run(&launch.cwd) {
             return;
         }
-        let Some(adapter) = self.adapter() else {
+        let adapter = match &launch.kind {
+            DebugKind::Lldb => self.adapter(),
+            other => other.adapter(),
+        };
+        let Some(adapter) = adapter else {
+            if launch.kind != DebugKind::Lldb {
+                let name = launch.kind.name();
+                self.refuse_run(ctx, format!("{name} isn't on PATH"));
+                return;
+            }
             // Ask to install CodeLLDB; start once it is there.
             self.debug.queued = Some(launch);
             self.debug.offer_dismissed = false;
@@ -599,6 +631,9 @@ impl CodeApp {
         self.debug.session = None;
         self.debug.console.clear();
         self.push_console(&format!("Debugging {} {}", launch.program.display(), launch.args.join(" ")));
+        if !self.allowed_to_run(&launch.cwd) {
+            return;
+        }
         match DapClient::start(&adapter.program, &adapter.args, &launch.cwd, repaint(ctx)) {
             Ok(client) => {
                 self.debug.last_launch = Some(launch.clone());
@@ -621,7 +656,7 @@ impl CodeApp {
                 self.panel_visible = true;
                 self.panel_tab = PanelTab::DebugConsole;
             }
-            Err(e) => self.status = Some(format!("Could not start CodeLLDB: {e}")),
+            Err(e) => self.status = Some(format!("Could not start the debugger: {e}")),
         }
     }
 
@@ -640,11 +675,12 @@ impl CodeApp {
         }
         // Source in another language can't be debugged, even in a Cargo folder.
         let active = self.docs.get(self.active).and_then(|d| d.path.clone());
-        let source_here =
-            active.as_deref().filter(|p| run::may_run(p) && p.file_name().is_some_and(|n| n != "Cargo.toml"));
+        let source_here = active.as_deref().filter(|p| {
+            (run::may_run(p) || self.debug_kind_for(p).is_some()) && p.file_name().is_some_and(|n| n != "Cargo.toml")
+        });
         if let Some(file) = source_here.filter(|p| p.extension().is_none_or(|e| e != "rs")) {
-            let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            self.refuse_run(ctx, format!("Debugging works for Rust so far: Shift+F10 runs {name}"));
+            let file = file.to_path_buf();
+            self.debug_source_file(ctx, &file);
             return;
         }
         // Run's rules decide what the file means; other files stand for the project.
@@ -657,6 +693,80 @@ impl CodeApp {
         let (tx, wake) = (self.debug.tx.clone(), repaint(ctx));
         std::thread::spawn(move || {
             let _ = tx.send(Msg::Targets(run::debug_actions(&file, root.as_deref())));
+            wake();
+        });
+    }
+
+    /// The debugger for a kind of file besides Rust.
+    fn debug_kind_for(&self, file: &Path) -> Option<DebugKind> {
+        let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if let Some(language) = registry::by_extension(&ext, true)
+            && let (Some(command), Some(debug_type)) = (language.debugger, language.debug_type)
+        {
+            return Some(DebugKind::Data { command: command.to_owned(), debug_type: debug_type.to_owned() });
+        }
+        if matches!(ext.as_str(), "py" | "pyw") {
+            let env = self.python_env()?;
+            return Some(DebugKind::Python { python: env.python.clone(), env: self.environment_variables() });
+        }
+        let language = registry::by_extension(&ext, false)?;
+        Some(DebugKind::Data { command: language.debugger?.to_owned(), debug_type: language.debug_type?.to_owned() })
+    }
+
+    /// Whether F5 means anything here: a Cargo project, or a file with a debugger.
+    pub(super) fn can_debug(&self) -> bool {
+        self.cargo_project
+            || self.debug.session.is_some()
+            || self
+                .docs
+                .get(self.active)
+                .and_then(|d| d.path.as_deref())
+                .is_some_and(|p| self.debug_kind_for(p).is_some())
+    }
+
+    /// F5 on a file that runs as it is.
+    fn debug_source_file(&mut self, ctx: &egui::Context, file: &Path) {
+        let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let Some(kind) = self.debug_kind_for(file) else {
+            self.refuse_run(
+                ctx,
+                format!("No debugger for {name}: Shift+F10 runs it. `debugger` in languages.toml adds one"),
+            );
+            return;
+        };
+        for i in 0..self.docs.len() {
+            if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {
+                let why = format!("Nothing was started: {} couldn't be saved", self.docs[i].title());
+                self.refuse_run(ctx, why);
+                return;
+            }
+        }
+        let cwd = rust_code_core::repl::start_folder(file, self.explorer.root.as_deref());
+        if !self.allowed_to_run(&cwd) {
+            return;
+        }
+        let launch = Launch { kind: kind.clone(), name, program: file.to_path_buf(), args: Vec::new(), cwd };
+        let DebugKind::Python { python, .. } = kind else {
+            self.start_session(ctx, launch);
+            return;
+        };
+        let (tx, wake) = (self.debug.tx.clone(), repaint(ctx));
+        std::thread::spawn(move || {
+            let found = dap::python_has_debugpy(&python);
+            let _ = tx.send(Msg::PythonChecked(launch, found));
+            wake();
+        });
+    }
+
+    /// The user agreed: installs debugpy, then starts the session it was for.
+    fn install_debugpy(&mut self, ctx: &egui::Context) {
+        let Some(launch) = self.debug.debugpy_offer.take() else { return };
+        let DebugKind::Python { python, .. } = &launch.kind else { return };
+        let python = python.clone();
+        self.debug.installing_debugpy = true;
+        let (tx, wake) = (self.debug.tx.clone(), repaint(ctx));
+        std::thread::spawn(move || {
+            let _ = tx.send(Msg::DebugpyInstalled(launch, dap::install_debugpy(&python)));
             wake();
         });
     }
@@ -681,7 +791,7 @@ impl CodeApp {
                 .into_iter()
                 .find(|a| a.kind == target.flag && same(&a.name) && a.test == (target.tool != "run"))
                 .ok_or_else(|| format!("cargo built no executable for {name}"))?;
-            Ok(Launch { name, program: exe.executable, args: Vec::new(), cwd: target.dir })
+            Ok(Launch { kind: DebugKind::Lldb, name, program: exe.executable, args: Vec::new(), cwd: target.dir })
         });
     }
 
@@ -700,7 +810,13 @@ impl CodeApp {
                 run_args.push("--exact".to_owned());
             }
             run_args.push("--nocapture".to_owned());
-            Ok(Launch { name: item.name.clone(), program: exe.executable, args: run_args, cwd: target.dir.clone() })
+            Ok(Launch {
+                kind: DebugKind::Lldb,
+                name: item.name.clone(),
+                program: exe.executable,
+                args: run_args,
+                cwd: target.dir.clone(),
+            })
         });
     }
 
@@ -883,9 +999,34 @@ impl CodeApp {
             ui.label(RichText::new("RUN AND DEBUG").small().strong());
         });
 
+        if self.debug.installing_debugpy {
+            ui.label(RichText::new("Installing debugpy…").color(pal.text_dim));
+        }
+        let offer = self.debug.debugpy_offer.as_ref().map(|launch| match &launch.kind {
+            DebugKind::Python { python, .. } => python.display().to_string(),
+            _ => String::new(),
+        });
+        if let Some(python) = offer {
+            egui::Frame::new().fill(pal.hover_bg).inner_margin(6.0).show(ui, |ui| {
+                ui.label(format!(
+                    "Debugging Python needs debugpy, which this Python doesn't have. Install it from PyPI with pip, \
+                     into {python}?"
+                ));
+                ui.horizontal(|ui| {
+                    if ui.button("Install").clicked() {
+                        self.install_debugpy(&ctx);
+                    }
+                    if ui.button("Not Now").clicked() {
+                        self.debug.debugpy_offer = None;
+                    }
+                });
+            });
+        }
         // Offer to install the debugger (nothing is downloaded without a yes).
-        let missing = matches!(self.debug.adapter, AdapterState::Missing)
-            || (matches!(self.debug.adapter, AdapterState::Unknown) && self.adapter().is_none());
+        let rust = self.docs.get(self.active).is_none_or(|d| d.extension() == "rs") && self.cargo_project;
+        let missing = rust
+            && (matches!(self.debug.adapter, AdapterState::Missing)
+                || (matches!(self.debug.adapter, AdapterState::Unknown) && self.adapter().is_none()));
         if matches!(self.debug.adapter, AdapterState::Installing(_)) {
             ui.label(RichText::new("Downloading and unpacking CodeLLDB…").color(pal.text_dim));
         } else if missing && !self.debug.offer_dismissed {

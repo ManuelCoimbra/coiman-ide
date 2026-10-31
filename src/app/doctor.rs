@@ -153,12 +153,14 @@ impl CodeApp {
         let runs = doc.path.as_deref().is_some_and(run::may_run);
         let shown = if runs { tip.replace('\n', ": ") } else { "Nothing to run for this file".to_owned() };
         rows.push(row("Run", shown, if runs { Health::Good } else { Health::Note }));
-        let debug = ext == "rs";
-        rows.push(row(
-            "Debug",
-            if debug { "CodeLLDB, in Cargo projects".to_owned() } else { "Rust only so far".to_owned() },
-            if debug { Health::Good } else { Health::Note },
-        ));
+        let can = self.can_debug() && (ext == "rs" || !self.cargo_project || ext == "py");
+        let text = match ext.as_str() {
+            "rs" => "CodeLLDB, in Cargo projects".to_owned(),
+            "py" | "pyw" => "debugpy, from this Python, offered on F5 if missing".to_owned(),
+            _ if can => "The adapter in its languages.toml entry".to_owned(),
+            _ => "None: `debugger` in languages.toml adds one".to_owned(),
+        };
+        rows.push(row("Debug", text, if can { Health::Good } else { Health::Note }));
         (name, rows)
     }
 

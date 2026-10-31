@@ -65,6 +65,20 @@ enum Msg {
 }
 
 /// Commands that only work in a Cargo project: hidden everywhere else.
+pub(super) const TESTING_ONLY: &[Command] = &[
+    Command::ShowDbgOutput,
+    Command::RemoveDbgFromFile,
+    Command::RemoveDbgFromWorkspace,
+    Command::DebugTestAtCursor,
+    Command::ShowTesting,
+    Command::TestAtCursor,
+    Command::TestCurrentFile,
+    Command::TestAll,
+    Command::CancelTests,
+    Command::CargoCheck,
+    Command::CargoClippy,
+];
+
 pub(super) const CARGO_ONLY: &[Command] = &[
     Command::StartDebugging,
     Command::StopDebugging,
@@ -398,9 +412,9 @@ impl CodeApp {
             self.cargo_project_for = (key, now + 3.0);
             self.cargo_project = self.cargo_root_dir().is_some();
         }
-        if !self.cargo_project && matches!(self.sidebar_view, SidebarView::Testing | SidebarView::Debug) {
+        let testing_gone = !self.cargo_project && self.sidebar_view == SidebarView::Testing;
+        if testing_gone || (self.sidebar_view == SidebarView::Debug && !self.can_debug()) {
             self.sidebar_view = SidebarView::Explorer;
-            self.status = Some("Testing and debugging work in Cargo projects".to_owned());
         }
     }
 

@@ -485,7 +485,7 @@ impl eframe::App for CodeApp {
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
                 }
-                if let Some(line) = out.breakpoint_click.filter(|_| self.cargo_project) {
+                if let Some(line) = out.breakpoint_click.filter(|_| self.can_debug()) {
                     self.toggle_breakpoint(line);
                 }
                 // Vim commands arrive as text too; only insert-mode typing drives completion.
@@ -512,7 +512,13 @@ impl eframe::App for CodeApp {
 
         if self.palette.open {
             self.palette.plugin_commands = self.plugin_commands();
-            self.palette.hidden_commands = if self.cargo_project { &[] } else { cargo::CARGO_ONLY };
+            self.palette.hidden_commands = if self.cargo_project {
+                &[]
+            } else if self.can_debug() {
+                cargo::TESTING_ONLY
+            } else {
+                cargo::CARGO_ONLY
+            };
         }
         self.pump_workspace_symbols();
         if std::mem::take(&mut self.refocus_after_palette)

@@ -421,6 +421,8 @@ impl CodeApp {
         if self.cargo_project {
             let testing = side == Some(SidebarView::Testing);
             icon(ui, Icon::Beaker, "Testing", testing, Command::ShowTesting);
+        }
+        if self.can_debug() {
             let debugging = side == Some(SidebarView::Debug);
             icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
         }
@@ -443,7 +445,12 @@ impl CodeApp {
                 (PanelTab::Prints, self.prints_tab_label()),
                 (PanelTab::Terminal, "TERMINAL".to_owned()),
             ];
-            tabs.retain(|t| !matches!(t.0, PanelTab::DebugConsole | PanelTab::Prints) || self.cargo_project);
+            let can_debug = self.can_debug();
+            tabs.retain(|t| match t.0 {
+                PanelTab::DebugConsole => can_debug,
+                PanelTab::Prints => self.cargo_project,
+                _ => true,
+            });
             if self.preview_running() {
                 tabs.push((PanelTab::PageConsole, "PAGE".to_owned()));
             }
