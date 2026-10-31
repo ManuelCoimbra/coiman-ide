@@ -360,6 +360,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Call and type hierarchy | **Show Incoming Calls** (`Shift+Alt+H`), **Outgoing Calls**, **Supertypes** and **Subtypes** list one level in the locations panel |
 | Pull diagnostics | Servers that report problems on request, like kotlin-lsp, show them with the rest |
 | Virtual documents | Go to definition reaches what only the server can read, like classes in a jar (`jdt://`, `workspace/textDocumentContent`), in a read-only tab kept under `<config>\virtual`; language features don't run inside those tabs yet |
+| Servers over TCP | `[lsp.paths] go = "tcp://127.0.0.1:7000"` connects to a server already running on this computer. `.gd` files use Godot's editor on port 6005; start it first, or run **Language Servers: Restart** after. Other addresses are refused |
 | Show document | A server can open a file or a page on this computer; other web addresses are not opened |
 | Semantic highlighting | Colors from the server over the syntax colors (`editor.semantic_highlighting`) |
 | Symbol highlight | Other uses of the symbol under the cursor are marked |

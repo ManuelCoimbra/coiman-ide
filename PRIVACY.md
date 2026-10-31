@@ -8,7 +8,9 @@ Rust Code is built to be trusted with your code. These are commitments, and
 - **No telemetry.** No usage statistics, crash reports or analytics are
   collected or sent, and there is no setting to turn them on.
 - **No network access.** The editor makes no network connections: no update
-  checks, no downloads, no "what's new" feeds. The build fails if a networking
+  checks, no downloads, no "what's new" feeds. The one socket it opens is to a
+  language server already running on this computer (`tcp://` in `[lsp.paths]`,
+  or Godot's editor for `.gd` files), and it refuses any other address. The build fails if a networking
   crate (HTTP clients, TLS, async network runtimes) enters the dependency tree.
 - **No account.** Nothing requires signing in.
 - **No AI by default.** There are no AI features today. If optional AI is added

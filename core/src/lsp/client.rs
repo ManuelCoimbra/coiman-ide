@@ -1,8 +1,10 @@
-//! One running language server: a child process spoken to over stdio, with
-//! background threads for reading and writing so the UI never blocks.
+//! One running language server: a child process spoken to over stdio, or a
+//! server already running on this computer spoken to over TCP, with background
+//! threads for reading and writing so the UI never blocks.
 
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -14,10 +16,12 @@ use serde_json::{Value, json};
 
 use super::convert::diff_change;
 use super::discovery::quiet_command;
-use super::servers::{Launch, ServerKind};
+use super::servers::{Launch, ServerKind, is_local_address};
 use super::status::ServerStatus;
 use super::transport::{encode, read_message};
 
+/// How long to wait for a server on this computer to answer the connection.
+const CONNECT_TIMEOUT: Duration = Duration::from_millis(500);
 /// Lines of the server's stderr kept to explain a crash.
 const STDERR_LINES: usize = 40;
 
@@ -49,10 +53,32 @@ struct OpenDoc {
     text: String,
 }
 
+enum Server {
+    Process(Child),
+    Socket(TcpStream),
+}
+
+/// Connects to a server that's already running. Only ever on this computer.
+fn connect(address: &str) -> std::io::Result<TcpStream> {
+    use std::io::{Error, ErrorKind};
+    if !is_local_address(address) {
+        return Err(Error::new(ErrorKind::PermissionDenied, format!("{address} isn't on this computer")));
+    }
+    let target = address
+        .to_socket_addrs()?
+        .next()
+        .ok_or_else(|| Error::new(ErrorKind::NotFound, format!("{address} doesn't resolve")))?;
+    let stream = TcpStream::connect_timeout(&target, CONNECT_TIMEOUT)
+        .map_err(|e| Error::new(e.kind(), format!("nothing on {address} ({})", e.kind())))?;
+    stream.set_nodelay(true)?;
+    Ok(stream)
+}
+
 pub struct Client {
     pub kind: ServerKind,
     pub root: PathBuf,
-    child: Child,
+    /// What's at the other end: a program we started, or one we only connected to.
+    server: Server,
     out: Sender<Vec<u8>>,
     events: Receiver<Event>,
     next_id: i64,
@@ -78,16 +104,23 @@ impl Client {
         options: Value,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> std::io::Result<Self> {
-        let mut child = quiet_command(&launch.program)
-            .args(&launch.args)
-            .current_dir(root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-        let mut stdin = child.stdin.take().expect("piped stdin");
-        let stdout = child.stdout.take().expect("piped stdout");
-        let stderr = child.stderr.take().expect("piped stderr");
+        let (server, mut stdin, stdout, stderr): (_, Box<dyn Write + Send>, Box<dyn Read + Send>, _) =
+            if let Some(address) = &launch.tcp {
+                let stream = connect(address)?;
+                (Server::Socket(stream.try_clone()?), Box::new(stream.try_clone()?), Box::new(stream), None)
+            } else {
+                let mut child = quiet_command(&launch.program)
+                    .args(&launch.args)
+                    .current_dir(root)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()?;
+                let stdin = child.stdin.take().expect("piped stdin");
+                let stdout = child.stdout.take().expect("piped stdout");
+                let stderr = child.stderr.take().expect("piped stderr");
+                (Server::Process(child), Box::new(stdin), Box::new(stdout), Some(stderr))
+            };
 
         let (out, out_rx) = mpsc::channel::<Vec<u8>>();
         std::thread::Builder::new().name("lsp-writer".into()).spawn(move || {
@@ -100,15 +133,17 @@ impl Client {
 
         let tail = Arc::new(Mutex::new(VecDeque::new()));
         let tail_w = Arc::clone(&tail);
-        std::thread::Builder::new().name("lsp-stderr".into()).spawn(move || {
-            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                let mut t = tail_w.lock().unwrap_or_else(|e| e.into_inner());
-                if t.len() == STDERR_LINES {
-                    t.pop_front();
+        if let Some(stderr) = stderr {
+            std::thread::Builder::new().name("lsp-stderr".into()).spawn(move || {
+                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    let mut t = tail_w.lock().unwrap_or_else(|e| e.into_inner());
+                    if t.len() == STDERR_LINES {
+                        t.pop_front();
+                    }
+                    t.push_back(line);
                 }
-                t.push_back(line);
-            }
-        })?;
+            })?;
+        }
 
         let (tx, events) = mpsc::channel();
         std::thread::Builder::new().name("lsp-reader".into()).spawn(move || {
@@ -139,7 +174,7 @@ impl Client {
         let mut client = Self {
             kind,
             root: root.to_path_buf(),
-            child,
+            server,
             out,
             events,
             next_id: 1,
@@ -179,8 +214,12 @@ impl Client {
         }
     }
 
-    pub fn pid(&self) -> u32 {
-        self.child.id()
+    /// The server's process, when we started it.
+    pub fn pid(&self) -> Option<u32> {
+        match &self.server {
+            Server::Process(child) => Some(child.id()),
+            Server::Socket(_) => None,
+        }
     }
 
     /// Whether the server has answered `initialize`.
@@ -307,19 +346,26 @@ impl Client {
 impl Drop for Client {
     /// Asks the server to exit, then makes sure the process is gone.
     fn drop(&mut self) {
+        // It isn't ours to stop: only hang up, which also ends the reader thread.
+        if let Server::Socket(stream) = &self.server {
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        }
+        let Server::Process(child) = &mut self.server else { return };
         if !self.exited {
-            self.write(&json!({ "jsonrpc": "2.0", "id": self.next_id, "method": "shutdown", "params": null }));
-            self.write(&json!({ "jsonrpc": "2.0", "method": "exit", "params": null }));
+            let _ = self
+                .out
+                .send(encode(&json!({ "jsonrpc": "2.0", "id": self.next_id, "method": "shutdown", "params": null })));
+            let _ = self.out.send(encode(&json!({ "jsonrpc": "2.0", "method": "exit", "params": null })));
             let deadline = Instant::now() + Duration::from_millis(500);
             while Instant::now() < deadline {
-                if matches!(self.child.try_wait(), Ok(Some(_))) {
+                if matches!(child.try_wait(), Ok(Some(_))) {
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
         }
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let _ = child.kill();
+        let _ = child.wait();
     }
 }
 
@@ -426,6 +472,7 @@ pub fn language_id(ext: &str) -> Option<&'static str> {
         "java" => "java",
         "cs" => "csharp",
         "go" => "go",
+        "gd" => "gdscript",
         _ => return None,
     })
 }

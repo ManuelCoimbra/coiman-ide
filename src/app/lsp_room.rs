@@ -97,7 +97,7 @@ impl CodeApp {
             return;
         }
         room.next_reading = now + MEMORY_EVERY;
-        let pids: Vec<u32> = self.lsp.clients.iter().map(Client::pid).collect();
+        let pids: Vec<u32> = self.lsp.clients.iter().filter_map(Client::pid).collect();
         let (tx, rx) = mpsc::channel();
         room.reading = Some(rx);
         std::thread::spawn(move || {
@@ -242,7 +242,12 @@ impl CodeApp {
                     ui.label(running);
                     ui.end_row();
                     ui.label(RichText::new("Memory").color(dim));
-                    ui.label(self.lsp.room.memory.get(&client.pid()).map_or("…".to_owned(), |b| format_bytes(*b)));
+                    ui.label(
+                        client
+                            .pid()
+                            .and_then(|pid| self.lsp.room.memory.get(&pid))
+                            .map_or("…".to_owned(), |b| format_bytes(*b)),
+                    );
                     ui.end_row();
                     if let Some((total, own)) = self.lsp.room.sizes.get(&client.root).filter(|s| s.0 > 0) {
                         ui.label(RichText::new("Build folder").color(dim));

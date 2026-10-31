@@ -18,10 +18,11 @@ pub enum ServerKind {
     Jdtls,
     CSharp,
     Gopls,
+    Godot,
 }
 
 impl ServerKind {
-    pub const ALL: [ServerKind; 7] = [
+    pub const ALL: [ServerKind; 8] = [
         ServerKind::RustAnalyzer,
         ServerKind::Python,
         ServerKind::TypeScript,
@@ -29,6 +30,7 @@ impl ServerKind {
         ServerKind::Jdtls,
         ServerKind::CSharp,
         ServerKind::Gopls,
+        ServerKind::Godot,
     ];
 
     /// The server for an LSP language id.
@@ -41,6 +43,7 @@ impl ServerKind {
             "java" => Self::Jdtls,
             "csharp" => Self::CSharp,
             "go" => Self::Gopls,
+            "gdscript" => Self::Godot,
             _ => return None,
         })
     }
@@ -55,6 +58,7 @@ impl ServerKind {
             Self::Jdtls => "java",
             Self::CSharp => "csharp",
             Self::Gopls => "go",
+            Self::Godot => "godot",
         }
     }
 
@@ -68,6 +72,7 @@ impl ServerKind {
             Self::Jdtls => "Eclipse JDT Language Server",
             Self::CSharp => "C# language server",
             Self::Gopls => "gopls",
+            Self::Godot => "Godot's language server",
         }
     }
 
@@ -81,6 +86,7 @@ impl ServerKind {
             Self::Jdtls => "Java",
             Self::CSharp => "C#",
             Self::Gopls => "Go",
+            Self::Godot => "GDScript",
         }
     }
 
@@ -94,6 +100,7 @@ impl ServerKind {
             Self::Jdtls => &["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", ".project"],
             Self::CSharp => &[".sln", ".csproj"],
             Self::Gopls => &["go.work", "go.mod"],
+            Self::Godot => &["project.godot"],
         }
     }
 }
@@ -103,12 +110,30 @@ impl ServerKind {
 pub struct Launch {
     pub program: PathBuf,
     pub args: Vec<String>,
+    /// Connect to a server already running on this computer, at this
+    /// `host:port`, instead of starting a program.
+    pub tcp: Option<String>,
 }
 
 impl Launch {
     fn new(program: impl Into<PathBuf>, args: &[&str]) -> Self {
-        Self { program: program.into(), args: args.iter().map(|s| (*s).to_owned()).collect() }
+        Self { program: program.into(), args: args.iter().map(|s| (*s).to_owned()).collect(), tcp: None }
     }
+
+    fn tcp(address: &str) -> Self {
+        Self { program: PathBuf::new(), args: Vec::new(), tcp: Some(address.to_owned()) }
+    }
+}
+
+/// Godot's editor serves GDScript on this port while it runs.
+const GODOT_ADDRESS: &str = "127.0.0.1:6005";
+/// How `[lsp.paths]` names a server to connect to.
+const TCP_SCHEME: &str = "tcp://";
+
+/// Whether `host:port` stays on this computer: the editor reaches nowhere else.
+pub fn is_local_address(address: &str) -> bool {
+    let Some((host, port)) = address.rsplit_once(':') else { return false };
+    matches!(host, "127.0.0.1" | "localhost" | "[::1]") && port.parse::<u16>().is_ok()
 }
 
 /// A way to install a missing server, run only after the user agreed.
@@ -296,12 +321,16 @@ fn temurin_runtime() -> Option<&'static str> {
 pub fn find(kind: ServerKind, configured: &str) -> Found {
     let configured = configured.trim();
     if !configured.is_empty() {
+        if let Some(address) = configured.strip_prefix(TCP_SCHEME) {
+            return Found::Server(Launch::tcp(address));
+        }
         let mut words = configured.split_whitespace();
         let program = PathBuf::from(words.next().unwrap_or_default());
         let program = if program.is_file() { program } else { which(&program.to_string_lossy()).unwrap_or(program) };
-        return Found::Server(Launch { program, args: words.map(str::to_owned).collect() });
+        return Found::Server(Launch { program, args: words.map(str::to_owned).collect(), tcp: None });
     }
     match kind {
+        ServerKind::Godot => Found::Server(Launch::tcp(GODOT_ADDRESS)),
         ServerKind::RustAnalyzer => match discovery::find_rust_analyzer("") {
             discovery::Found::Server(p) => Found::Server(Launch::new(p, &[])),
             discovery::Found::Missing { rustup } => Found::Missing {
@@ -457,7 +486,7 @@ fn jdtls_launch(java: &Path, dir: &Path) -> Option<Launch> {
         "-data".to_owned(),
         data.to_string_lossy().into_owned(),
     ];
-    Some(Launch { program: java.to_path_buf(), args })
+    Some(Launch { program: java.to_path_buf(), args, tcp: None })
 }
 
 fn run(program: &Path, args: &[&str]) -> Result<String, String> {
@@ -613,6 +642,17 @@ mod tests {
         // Marker files found by extension (C# projects).
         assert_eq!(root_for(ServerKind::CSharp, &tmp.join("cs/App/Program.cs"), Some(&tmp)), tmp.join("cs/App"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn tcp_servers_stay_on_this_computer() {
+        let found = find(ServerKind::Gopls, "tcp://127.0.0.1:7000");
+        assert_eq!(found, Found::Server(Launch::tcp("127.0.0.1:7000")));
+        assert_eq!(find(ServerKind::Godot, ""), Found::Server(Launch::tcp("127.0.0.1:6005")));
+        assert_eq!(ServerKind::for_language("gdscript"), Some(ServerKind::Godot));
+        assert!(is_local_address("127.0.0.1:6005") && is_local_address("localhost:1") && is_local_address("[::1]:9"));
+        assert!(!is_local_address("example.com:6005") && !is_local_address("192.168.1.2:6005"));
+        assert!(!is_local_address("127.0.0.1") && !is_local_address("127.0.0.1:port"));
     }
 
     #[test]
