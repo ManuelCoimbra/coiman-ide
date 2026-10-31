@@ -154,6 +154,9 @@ impl CodeApp {
     }
 
     pub(super) fn open_file(&mut self, path: &Path) {
+        if self.open_image_file(path) {
+            return;
+        }
         if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, path))) {
             self.active = i;
             return;

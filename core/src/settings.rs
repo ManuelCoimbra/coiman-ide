@@ -29,6 +29,15 @@ pub struct Settings {
     pub debug: DebugSettings,
     pub plugins: PluginSettings,
     pub python: PythonSettings,
+    pub web: WebSettings,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct WebSettings {
+    /// Which browsers a project promises: "widely", "newly" or a year such as "2023".
+    /// Empty: only say what's available, and don't flag anything.
+    pub baseline: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -62,6 +71,8 @@ pub struct EditorSettings {
     pub semantic_highlighting: bool,
     /// Show inferred types and parameter names in the text.
     pub inlay_hints: bool,
+    /// Tab grows Emmet abbreviations in HTML and CSS.
+    pub emmet: bool,
     /// Show what servers report about a line at its end, such as reference counts.
     pub code_lens: bool,
     /// Glide to the new position when keys move the view, instead of jumping.
@@ -260,6 +271,7 @@ impl Default for EditorSettings {
             auto_close_brackets: true,
             semantic_highlighting: true,
             inlay_hints: true,
+            emmet: true,
             code_lens: true,
             smooth_scrolling: true,
             unicode_warnings: true,

@@ -62,9 +62,17 @@ impl CodeApp {
                 }
             }
             Command::Save => {
+                // A project's own formatter owns its files: the server would fight it.
+                let owner = self.settings.editor.format_on_save.then(|| self.formatter_owner()).flatten();
                 // Format first if asked to; the save happens when formatting is done.
-                if !(self.settings.editor.format_on_save && self.request_format(ctx, self.active, true)) {
+                if !(self.settings.editor.format_on_save
+                    && owner.is_none()
+                    && self.request_format(ctx, self.active, true))
+                {
                     self.save_doc(self.active);
+                    if let Some(owner) = owner {
+                        self.status = Some(format!("Saved without formatting: this project formats with {owner}"));
+                    }
                 }
             }
             Command::SaveAs => {
@@ -375,6 +383,10 @@ impl CodeApp {
             Command::GitStash => self.git_stash(ctx),
             Command::GitShowHistory => self.git_show_history(),
             Command::MarkdownPreview => self.toggle_markdown_preview(),
+            Command::EmmetExpand => {
+                self.expand_emmet(false);
+            }
+            Command::PickColor => self.pick_color(),
             Command::ToggleBookmark => self.toggle_bookmark(),
             Command::NextBookmark => self.next_bookmark(true),
             Command::PreviousBookmark => self.next_bookmark(false),
@@ -585,6 +597,18 @@ impl CodeApp {
             && self.vim.is_none()
             && ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers.is_none())
             && self.expand_snippet_prefix()
+        {
+            ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+            return;
+        }
+        // Tab after an Emmet abbreviation grows it, unless a completion is on offer.
+        if editor_focused
+            && self.chord.is_none()
+            && self.vim.is_none()
+            && self.settings.editor.emmet
+            && !self.completion_open()
+            && ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers.is_none())
+            && self.expand_emmet(true)
         {
             ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
             return;

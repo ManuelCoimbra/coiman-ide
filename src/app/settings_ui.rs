@@ -97,6 +97,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "Mark bidi controls and invisible or private use characters.",
                 Kind::Toggle,
             ),
+            row("editor", "emmet", "Emmet", "Tab grows abbreviations in HTML and CSS.", Kind::Toggle),
             row(
                 "editor",
                 "format_on_save",
@@ -193,6 +194,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("lsp.paths", "java", "Java server", "Program and arguments. Empty finds it.", Kind::Text("")),
             row("lsp.paths", "csharp", "C# server", "Program and arguments. Empty finds it.", Kind::Text("")),
             row("lsp.paths", "go", "Go server", "Program and arguments. Empty finds it.", Kind::Text("")),
+            row(
+                "web",
+                "baseline",
+                "Baseline target",
+                "widely, newly or a year such as 2023. Flags web features below it. Empty flags nothing.",
+                Kind::Text(""),
+            ),
         ],
     ),
     (

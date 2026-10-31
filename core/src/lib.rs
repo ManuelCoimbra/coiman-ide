@@ -2,20 +2,24 @@
 //! settings, themes, sessions and workspace services. No UI dependencies, so
 //! everything here can be tested and benchmarked headlessly.
 
+pub mod baseline;
 pub mod bookmarks;
 pub mod buffer;
 pub mod cargo;
 pub mod commands;
+pub mod css;
 pub mod dap;
 pub mod dbgout;
 pub mod document;
 pub mod edit_ops;
 pub mod editorconfig;
+pub mod emmet;
 pub mod encoding;
 pub mod environment;
 pub mod find;
 pub mod finder;
 pub mod fonts;
+pub mod formatters;
 pub mod git;
 pub mod highlight;
 pub mod history;

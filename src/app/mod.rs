@@ -26,6 +26,7 @@ mod repl;
 mod settings_ui;
 mod snippets_ui;
 mod split;
+mod web;
 mod window;
 mod workbench;
 
@@ -147,6 +148,7 @@ pub struct CodeApp {
     environment: environment::Environment,
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
+    web: web::Web,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
     font_load: Option<std::sync::mpsc::Receiver<rust_code_core::fonts::Loaded>>,
@@ -258,6 +260,7 @@ impl CodeApp {
             environment: Default::default(),
             snippets_ui: Default::default(),
             md_preview: Default::default(),
+            web: Default::default(),
             auto_save: Default::default(),
             font_load: None,
             settings_ui: Default::default(),
@@ -332,6 +335,7 @@ impl eframe::App for CodeApp {
         self.pump_run_configs(&ctx);
         self.pump_run_problems(&ctx);
         self.pump_preview(&ctx);
+        self.check_baseline();
         self.pump_repl(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
@@ -445,6 +449,9 @@ impl eframe::App for CodeApp {
                 self.diff_view(ui);
                 return;
             }
+            if self.image_view(ui) {
+                return;
+            }
             self.markdown_preview(ui);
             let (active_rect, other_rect) = self.split_rects(ui);
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
@@ -506,6 +513,7 @@ impl eframe::App for CodeApp {
         self.settings_window(&ctx);
         self.keys_window(&ctx);
         self.snippets_window(&ctx);
+        self.web_windows(&ctx);
         self.prints_window(&ctx);
         self.git_popups(&ctx);
         self.terminal_window(&ctx);

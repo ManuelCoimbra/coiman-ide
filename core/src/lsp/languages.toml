@@ -2,6 +2,59 @@
 # installed from here; `hint` says how to get each one.
 
 [[language]]
+name = "HTML"
+extensions = ["html", "htm", "xhtml"]
+server = "vscode-html-language-server --stdio"
+root_markers = ["package.json"]
+hint = "npm install -g vscode-langservers-extracted"
+runs_project_code = false
+
+[[language]]
+name = "CSS"
+extensions = ["css"]
+comment = "/*"
+server = "vscode-css-language-server --stdio"
+root_markers = ["package.json"]
+hint = "npm install -g vscode-langservers-extracted"
+runs_project_code = false
+
+[[language]]
+name = "SCSS"
+extensions = ["scss"]
+comment = "//"
+server = "vscode-css-language-server --stdio"
+root_markers = ["package.json"]
+hint = "npm install -g vscode-langservers-extracted"
+runs_project_code = false
+
+[[language]]
+name = "Less"
+extensions = ["less"]
+comment = "//"
+server = "vscode-css-language-server --stdio"
+root_markers = ["package.json"]
+hint = "npm install -g vscode-langservers-extracted"
+runs_project_code = false
+
+[[language]]
+name = "JSON"
+extensions = ["json"]
+server = "vscode-json-language-server --stdio"
+root_markers = ["package.json"]
+hint = "npm install -g vscode-langservers-extracted"
+runs_project_code = false
+
+[[language]]
+name = "JSON with Comments"
+language_id = "jsonc"
+extensions = ["jsonc"]
+comment = "//"
+server = "vscode-json-language-server --stdio"
+root_markers = ["package.json"]
+hint = "npm install -g vscode-langservers-extracted"
+runs_project_code = false
+
+[[language]]
 name = "Ruby"
 repl = "irb"
 extensions = ["rb", "rake", "gemspec"]

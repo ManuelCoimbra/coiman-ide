@@ -716,6 +716,7 @@ impl CodeApp {
         all.extend(self.plugin_problems(&k));
         all.extend(self.run_problems(&k));
         all.extend(self.preview_problems(&k));
+        all.extend(self.baseline_problems(&k));
         for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
             let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
@@ -731,6 +732,7 @@ impl CodeApp {
         let mut plugin_paths = self.plugin_problem_paths();
         plugin_paths.extend(self.run_problem_paths());
         plugin_paths.extend(self.preview_problem_paths());
+        plugin_paths.extend(self.baseline_problem_paths());
         let mut keys: Vec<&PathBuf> = self
             .lsp
             .diagnostics
@@ -1125,6 +1127,15 @@ impl CodeApp {
         doc.reveal = true;
     }
 
+    /// Where the cursor was drawn last.
+    pub(super) fn cursor_on_screen(&self) -> Option<egui::Rect> {
+        self.lsp.cursor_rect
+    }
+
+    pub(super) fn completion_open(&self) -> bool {
+        self.lsp.completion.is_some()
+    }
+
     pub(super) fn close_completion(&mut self) {
         self.lsp.completion = None;
     }
@@ -1227,7 +1238,12 @@ impl CodeApp {
     }
 
     fn on_hover(&mut self, uid: u64, pos: usize, anchor: Option<Pos2>, value: Value) {
-        let markdown = hover_markdown(value);
+        let mut markdown = hover_markdown(value);
+        let ours = self.web_hover(uid, pos, &markdown);
+        if !ours.is_empty() {
+            let gap = if markdown.trim().is_empty() { "" } else { "\n\n---\n\n" };
+            markdown = format!("{markdown}{gap}{ours}");
+        }
         let problems = self.problems_at(uid, pos);
         if markdown.trim().is_empty() && problems.is_empty() {
             if anchor.is_none() {
@@ -1308,8 +1324,8 @@ impl CodeApp {
                     });
                 } else {
                     let problems = self.problems_at(uid, pos);
-                    if !problems.is_empty() {
-                        let markdown = String::new();
+                    let markdown = self.web_hover(uid, pos, "");
+                    if !problems.is_empty() || !markdown.is_empty() {
                         self.lsp.hover = Some(Hover {
                             uid,
                             version: version.unwrap_or(0),
@@ -1750,7 +1766,9 @@ impl CodeApp {
                 .show(ctx, |ui| {
                     egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(8.0).show(ui, |ui| {
                         ui.set_max_width(560.0);
-                        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
+                        // Its own scroll state: the last hover's size would clip this one.
+                        let salt = ("lsp_hover_scroll", h.uid, h.pos);
+                        egui::ScrollArea::vertical().id_salt(salt).max_height(320.0).show(ui, |ui| {
                             for (sev, msg) in &h.problems {
                                 ui.horizontal_wrapped(|ui| {
                                     lsp_ui::severity_icon(ui, *sev, severity_color(*sev));

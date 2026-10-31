@@ -124,7 +124,8 @@ pub fn markdown(ui: &mut egui::Ui, text: &str, code_size: f32) {
     }
 }
 
-/// Drops inline Markdown: `**bold**`, `_em_`, `` `code` `` and `[text](link)` → text.
+/// Drops inline Markdown: `**bold**`, `_em_`, `` `code` `` and `[text](link)` → text,
+/// and images altogether. Decodes the entities servers escape text with.
 fn strip_inline(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let chars: Vec<char> = s.chars().collect();
@@ -132,6 +133,20 @@ fn strip_inline(s: &str) -> String {
     while i < chars.len() {
         match chars[i] {
             '*' | '`' => {}
+            '!' if chars.get(i + 1) == Some(&'[') => {
+                let close = chars[i..].iter().position(|&c| c == ']').map(|p| p + i);
+                let end = close
+                    .filter(|c| chars.get(c + 1) == Some(&'('))
+                    .and_then(|c| chars[c..].iter().position(|&x| x == ')').map(|p| p + c));
+                match end {
+                    Some(end) => i = end,
+                    None => out.push('!'),
+                }
+            }
+            // Emphasis, but not the middle of snake_case.
+            '_' if !(i > 0
+                && chars[i - 1].is_alphanumeric()
+                && chars.get(i + 1).is_some_and(|c| c.is_alphanumeric())) => {}
             '\\' if i + 1 < chars.len() => {
                 out.push(chars[i + 1]);
                 i += 1;
@@ -153,7 +168,7 @@ fn strip_inline(s: &str) -> String {
         }
         i += 1;
     }
-    out
+    out.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&")
 }
 
 #[cfg(test)]
@@ -164,5 +179,8 @@ mod tests {
     fn strips_inline_markdown() {
         assert_eq!(strip_inline("**Note**: use `Vec::new` [docs](https://x/y)"), "Note: use Vec::new docs");
         assert_eq!(strip_inline("a \\* b [not a link"), "a * b [not a link");
+        assert_eq!(strip_inline("![icon](data:x) _Widely_ snake_case"), " Widely snake_case");
+        assert_eq!(strip_inline("&lt;color&gt; &amp;lt;"), "<color> &lt;");
+        assert_eq!(strip_inline("wow! [a](b)"), "wow! a");
     }
 }

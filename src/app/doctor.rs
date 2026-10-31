@@ -149,6 +149,9 @@ impl CodeApp {
             let health = if self.python_env().is_some() { Health::Good } else { Health::Bad };
             rows.push(row("Python", text, health));
         }
+        if let Some((text, fine)) = self.formatter_report() {
+            rows.push(row("Formatting", text, if fine { Health::Good } else { Health::Bad }));
+        }
         let tip = self.run_button_tip();
         let runs = doc.path.as_deref().is_some_and(run::may_run);
         let shown = if runs { tip.replace('\n', ": ") } else { "Nothing to run for this file".to_owned() };

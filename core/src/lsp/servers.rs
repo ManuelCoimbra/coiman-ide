@@ -249,6 +249,10 @@ pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
                 None => serde_json::Value::Null,
             }
         }
+        // These only offer formatting when asked to.
+        ServerKind::Custom(i) if registry::get(i).and_then(|l| l.server).is_some_and(|s| s.starts_with("vscode-")) => {
+            serde_json::json!({ "provideFormatter": true, "embeddedLanguages": { "css": true, "javascript": true } })
+        }
         _ => serde_json::Value::Null,
     }
 }
@@ -665,7 +669,8 @@ mod tests {
     fn languages_map_to_servers_and_roots_follow_markers() {
         assert_eq!(ServerKind::for_language("typescriptreact"), Some(ServerKind::TypeScript));
         assert_eq!(ServerKind::for_language("cpp"), Some(ServerKind::Clangd));
-        assert_eq!(ServerKind::for_language("html"), None);
+        assert_eq!(ServerKind::for_language("xml"), None);
+        assert!(ServerKind::for_language("html").is_some());
 
         let tmp = std::env::temp_dir().join(format!("rust-code-roots-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);

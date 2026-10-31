@@ -61,7 +61,7 @@ fn problem(list: &[Snippet]) -> Option<String> {
 
 impl CodeApp {
     /// Inserts a body at the selection of the active document, replacing `start..` it.
-    fn insert_snippet(&mut self, body: &str, start: Option<usize>) {
+    pub(super) fn insert_snippet(&mut self, body: &str, start: Option<usize>) {
         let Some(doc) = self.docs.get_mut(self.active) else { return };
         let primary = doc.buffer.primary();
         let start = start.unwrap_or(primary.start());
