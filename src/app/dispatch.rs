@@ -3,7 +3,7 @@
 use crate::commands::Command;
 use crate::document::Document;
 use crate::edit_ops::{self, CaseTransform, Edit, Sel};
-use crate::editor_view::editor_id;
+use crate::editor_view::{ZoomPart, editor_id};
 use crate::keymap::Keymap;
 use crate::palette::PickerKind;
 use crate::settings;
@@ -229,9 +229,15 @@ impl CodeApp {
                 self.find.focus_requested = true;
             }
             Command::GoToLine => self.palette.show_with(":"),
-            Command::ZoomIn => self.font_size = (self.font_size + 1.0).min(40.0),
-            Command::ZoomOut => self.font_size = (self.font_size - 1.0).max(8.0),
-            Command::ResetZoom => self.font_size = self.settings.editor.font_size,
+            Command::ZoomIn => self.change_zoom(ctx, self.zoom + super::window::ZOOM_STEP),
+            Command::ZoomOut => self.change_zoom(ctx, self.zoom - super::window::ZOOM_STEP),
+            Command::ResetZoom => self.change_zoom(ctx, rust_code_core::settings::DEFAULT_ZOOM),
+            Command::CodeZoomIn => self.change_font_zoom(ctx, ZoomPart::Code, self.font_size + 1.0),
+            Command::CodeZoomOut => self.change_font_zoom(ctx, ZoomPart::Code, self.font_size - 1.0),
+            Command::ResetCodeZoom => {
+                let size = rust_code_core::settings::EditorSettings::default().font_size;
+                self.change_font_zoom(ctx, ZoomPart::Code, size);
+            }
             Command::RefreshExplorer => {
                 self.explorer.refresh();
                 self.finder.mark_stale();

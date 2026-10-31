@@ -139,7 +139,11 @@ is read and written on your machine.
   files use `files.eol` (`"auto"`, `"lf"`, `"crlf"`) and `files.encoding`
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
   (backed up every second to `<config>\session.json`; no "save changes?" prompt on exit)
-- Zoom (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`), toggle side bar (`Ctrl+B`)
+- Zoom the whole window, text, icons and panels (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`, `Ctrl`+wheel,
+  pinch), saved as `workbench.zoom`, 50% to 300%, default 125%. `Ctrl`+wheel or pinch over the
+  code or terminal zooms only that part (`editor.font_size`, `terminal.font_size`), and
+  `Ctrl+Shift+=`, `Ctrl+Shift+-`, `Ctrl+Shift+0` zoom the code. The magnifying glass in the status bar has
+  buttons for each; toggle side bar (`Ctrl+B`)
 
 ### Source control (Git)
 
@@ -446,7 +450,7 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   (`<config>\settings.toml`) → workspace (`<folder>/.rust-code/settings.toml`).
   Files can `extends = "other.toml"` and have `[windows]` / `[macos]` / `[linux]` tables.
   Unknown keys and errors show in the status bar; saving a settings file applies it.
-  Separate `editor.font_size` and `workbench.ui_font_size`.
+  Separate `editor.font_size` and `workbench.ui_font_size`, on top of `workbench.zoom`.
 - **Keybindings** (`Ctrl+K Ctrl+S`): `<config>\keybindings.toml` with VS Code
   command IDs, two-key chords, `when = "editorTextFocus"`, and `-command` to remove a
   default. Menus and the palette show the active shortcuts.

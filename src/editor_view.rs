@@ -21,6 +21,29 @@ const BRACKET_SEARCH_LIMIT: usize = 20_000;
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
 const GUIDE_SEARCH_LINES: usize = 100;
 
+/// A part of the window that zooms on its own under Ctrl+wheel or pinch.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ZoomPart {
+    Code,
+    Terminal,
+}
+
+impl ZoomPart {
+    /// Notes the part under the pointer for the app, which reads it next frame.
+    pub fn mark_hovered(self, ctx: &egui::Context) {
+        ctx.data_mut(|d| d.insert_temp(egui::Id::unique("zoom_part"), self));
+    }
+
+    pub fn take_hovered(ctx: &egui::Context) -> Option<Self> {
+        let id = egui::Id::unique("zoom_part");
+        ctx.data_mut(|d| {
+            let part = d.get_temp(id);
+            d.remove::<Self>(id);
+            part
+        })
+    }
+}
+
 /// Display options from settings.
 #[derive(Clone, Copy)]
 pub struct Options {
@@ -642,6 +665,7 @@ fn handle_scrolling(
     response: &egui::Response,
 ) {
     if response.contains_pointer() {
+        ZoomPart::Code.mark_hovered(ui.ctx());
         let delta = ui.input(|i| i.smooth_scroll_delta);
         if delta != Vec2::ZERO {
             view.scroll -= delta;

@@ -274,6 +274,9 @@ impl CodeApp {
                 item(ui, "Zoom In", Command::ZoomIn);
                 item(ui, "Zoom Out", Command::ZoomOut);
                 item(ui, "Reset Zoom", Command::ResetZoom);
+                item(ui, "Zoom Code In", Command::CodeZoomIn);
+                item(ui, "Zoom Code Out", Command::CodeZoomOut);
+                item(ui, "Reset Code Zoom", Command::ResetCodeZoom);
             });
             ui.menu_button("Go", |ui| {
                 item(ui, "Go to File...", Command::QuickOpen);
@@ -440,7 +443,10 @@ impl CodeApp {
                     action = Some(TerminalAction::Attach);
                 }
             }
-            PanelTab::Terminal => self.terminal.body(ui, self.font_size),
+            PanelTab::Terminal => {
+                let font_size = self.terminal_font();
+                self.terminal.body(ui, font_size);
+            }
         }
         self.terminal_action(ui.ctx(), action);
     }
@@ -470,7 +476,7 @@ impl CodeApp {
             egui::ViewportBuilder::default().with_title("Terminal - Rust Code").with_inner_size([900.0, 520.0]);
         let mut action = None;
         let mut closed = false;
-        let font_size = self.font_size;
+        let font_size = self.terminal_font();
         let terminal = &mut self.terminal;
         ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("terminal_window"), builder, |ui, _class| {
             if ui.ctx().input(|i| i.viewport().close_requested()) {
@@ -1029,10 +1035,22 @@ impl CodeApp {
                     };
                     ui.label(white(format!("Ln {line}, Col {col}{sel}")));
                 }
-                if (self.font_size - self.settings.editor.font_size).abs() > f32::EPSILON {
-                    ui.label(white(format!("{}px", self.font_size)));
-                    icons::show(ui, Icon::ZoomIn, size, theme::colors().status_fg);
-                }
+                let zoom = ui
+                    .horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 4.0;
+                        ui.add(
+                            egui::Label::new(white(format!("{:.0}%", self.zoom * 100.0)))
+                                .sense(Sense::hover())
+                                .selectable(false),
+                        );
+                        icons::show(ui, Icon::ZoomIn, size, theme::colors().status_fg);
+                    })
+                    .response
+                    .interact(Sense::click())
+                    .on_hover_text("Zoom");
+                egui::Popup::menu(&zoom)
+                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                    .show(|ui| self.zoom_menu(ui));
                 self.plugin_status_items(ui, rust_code_core::plugin::manifest::Alignment::Right, size);
             });
         });

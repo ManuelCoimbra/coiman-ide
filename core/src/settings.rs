@@ -64,11 +64,16 @@ pub struct EditorSettings {
     pub keyboard_mode: String,
 }
 
+/// Window scale when none is set. At 100% the interface reads small on a 1080p screen.
+pub const DEFAULT_ZOOM: f32 = 1.25;
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(default)]
 pub struct WorkbenchSettings {
     /// Font size of menus, side bar, tabs and status bar (independent of the editor).
     pub ui_font_size: f32,
+    /// Scale of the whole window: text, icons, panels and spacing. 1.0 is 100%.
+    pub zoom: f32,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
 }
@@ -118,6 +123,8 @@ pub struct TerminalSettings {
     pub shell: String,
     /// Lines of scrollback kept per terminal.
     pub scrollback: usize,
+    /// Font size of the terminal; 0 follows `editor.font_size`.
+    pub font_size: f32,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -197,7 +204,7 @@ impl Default for GitSettings {
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        Self { shell: String::new(), scrollback: 10_000 }
+        Self { shell: String::new(), scrollback: 10_000, font_size: 0.0 }
     }
 }
 
@@ -252,7 +259,7 @@ impl Default for EditorSettings {
 
 impl Default for WorkbenchSettings {
     fn default() -> Self {
-        Self { ui_font_size: 13.0, color_theme: "Dark Modern".to_owned() }
+        Self { ui_font_size: 13.0, zoom: DEFAULT_ZOOM, color_theme: "Dark Modern".to_owned() }
     }
 }
 

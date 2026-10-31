@@ -646,6 +646,7 @@ fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, gri
     // Wheel: scroll back through history, or send arrow keys to full-screen
     // programs (less, vim) that use the alternate screen.
     if response.hovered() {
+        crate::editor_view::ZoomPart::Terminal.mark_hovered(ui.ctx());
         let dy = ui.input(|i| i.smooth_scroll_delta.y);
         if dy != 0.0 {
             ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);

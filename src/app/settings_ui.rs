@@ -116,13 +116,16 @@ const SECTIONS: &[(&str, &[Row])] = &[
     ),
     (
         "Appearance",
-        &[row(
-            "workbench",
-            "ui_font_size",
-            "Interface font size",
-            "Menus, side bar, tabs and status bar.",
-            Kind::Decimal(8.0, 32.0),
-        )],
+        &[
+            row("workbench", "zoom", "Zoom", "Scale of the whole window. 1.25 is 125%.", Kind::Decimal(0.5, 3.0)),
+            row(
+                "workbench",
+                "ui_font_size",
+                "Interface font size",
+                "Menus, side bar, tabs and status bar.",
+                Kind::Decimal(8.0, 32.0),
+            ),
+        ],
     ),
     (
         "Files",
@@ -163,6 +166,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 Kind::Text("pwsh -NoLogo"),
             ),
             row("terminal", "scrollback", "Scrollback", "Lines kept per terminal.", Kind::Whole(100, 1_000_000)),
+            row("terminal", "font_size", "Font size", "0 follows the code's size.", Kind::Decimal(0.0, 72.0)),
         ],
     ),
     (

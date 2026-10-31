@@ -120,6 +120,11 @@ pub struct CodeApp {
     panel_visible: bool,
     panel_tab: PanelTab,
     font_size: f32,
+    /// Scale of the whole window, ahead of the settings file while `zoom_save` is due.
+    zoom: f32,
+    /// Terminal font size; 0 follows `font_size`.
+    terminal_font_size: f32,
+    zoom_save: Option<std::time::Instant>,
     word_wrap: bool,
     zen_mode: bool,
     /// Paths of closed editors, most recent last, for Reopen Closed Editor.
@@ -225,6 +230,9 @@ impl CodeApp {
             panel_visible: false,
             panel_tab: PanelTab::Terminal,
             font_size: DEFAULT_FONT_SIZE,
+            zoom: rust_code_core::settings::DEFAULT_ZOOM,
+            terminal_font_size: 0.0,
+            zoom_save: None,
             word_wrap: false,
             zen_mode: false,
             closed_editors: Vec::new(),
@@ -302,6 +310,7 @@ impl eframe::App for CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.pump_zoom(&ctx);
         self.pump_bookmarks();
         self.pump_prints(&ctx);
         self.pump_auto_save(&ctx);

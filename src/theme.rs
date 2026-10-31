@@ -65,6 +65,6 @@ pub fn apply_style(ctx: &egui::Context, ui_font_size: f32) {
         ]
         .into();
     });
-    // Keep egui's own Ctrl+=/- window zoom off: those keys zoom the editor font.
+    // Keep egui's own Ctrl+=/- window zoom off: the app handles those keys and saves the result.
     ctx.options_mut(|o| o.zoom_with_keyboard = false);
 }

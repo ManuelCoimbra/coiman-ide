@@ -22,6 +22,9 @@ pub enum Command {
     ZoomIn,
     ZoomOut,
     ResetZoom,
+    CodeZoomIn,
+    CodeZoomOut,
+    ResetCodeZoom,
     RefreshExplorer,
     Quit,
     // Editor actions (editor.action.* in VS Code).
@@ -192,6 +195,9 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ZoomIn, "View: Zoom In"),
     (Command::ZoomOut, "View: Zoom Out"),
     (Command::ResetZoom, "View: Reset Zoom"),
+    (Command::CodeZoomIn, "View: Zoom Code In"),
+    (Command::CodeZoomOut, "View: Zoom Code Out"),
+    (Command::ResetCodeZoom, "View: Reset Code Zoom"),
     (Command::RefreshExplorer, "File: Refresh Explorer"),
     (Command::Quit, "File: Exit"),
     (Command::ToggleLineComment, "Toggle Line Comment"),
@@ -351,9 +357,12 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::Find, "actions.find"),
     (Command::Replace, "editor.action.startFindReplaceAction"),
     (Command::GoToLine, "workbench.action.gotoLine"),
-    (Command::ZoomIn, "editor.action.fontZoomIn"),
-    (Command::ZoomOut, "editor.action.fontZoomOut"),
-    (Command::ResetZoom, "editor.action.fontZoomReset"),
+    (Command::ZoomIn, "workbench.action.zoomIn"),
+    (Command::ZoomOut, "workbench.action.zoomOut"),
+    (Command::ResetZoom, "workbench.action.zoomReset"),
+    (Command::CodeZoomIn, "editor.action.fontZoomIn"),
+    (Command::CodeZoomOut, "editor.action.fontZoomOut"),
+    (Command::ResetCodeZoom, "editor.action.fontZoomReset"),
     (Command::RefreshExplorer, "workbench.files.action.refreshFilesExplorer"),
     (Command::Quit, "workbench.action.quit"),
     (Command::ToggleLineComment, "editor.action.commentLine"),
@@ -522,6 +531,9 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ZoomIn
             | ZoomOut
             | ResetZoom
+            | CodeZoomIn
+            | CodeZoomOut
+            | ResetCodeZoom
             | ToggleZenMode
             | NextProblem
             | PreviousProblem

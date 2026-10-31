@@ -180,6 +180,9 @@ impl CodeApp {
         if first || new.editor.font_size != old.editor.font_size {
             self.font_size = new.editor.font_size.clamp(6.0, 72.0);
         }
+        if first || new.terminal.font_size != old.terminal.font_size {
+            self.terminal_font_size = new.terminal.font_size.clamp(0.0, 72.0);
+        }
         if first || new.editor.word_wrap != old.editor.word_wrap {
             self.word_wrap = new.editor.word_wrap;
         }
@@ -193,6 +196,9 @@ impl CodeApp {
             problems.extend(err);
         }
         theme::apply_style(ctx, new.workbench.ui_font_size);
+        if first || new.workbench.zoom != old.workbench.zoom {
+            self.set_zoom(ctx, new.workbench.zoom);
+        }
         if first || new.editor.keyboard_mode != old.editor.keyboard_mode {
             use rust_code_core::vim::{Flavor, Vim};
             self.vim = match new.editor.keyboard_mode.as_str() {
