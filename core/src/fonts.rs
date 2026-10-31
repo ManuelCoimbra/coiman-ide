@@ -135,6 +135,26 @@ pub fn installed() -> Vec<Face> {
     faces
 }
 
+/// A font with the math and APL symbols the built-in one lacks, if this system
+/// has one where these usually are.
+pub fn load_symbol_font() -> Option<(Vec<u8>, u32)> {
+    let windows = std::env::var_os("WINDIR").map(PathBuf::from).map(|w| w.join("Fonts"));
+    let mut places = Vec::new();
+    if let Some(fonts) = windows {
+        places.push(fonts.join("seguisym.ttf"));
+    }
+    places.extend(
+        [
+            "/System/Library/Fonts/Apple Symbols.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+            "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+            "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
+        ]
+        .map(PathBuf::from),
+    );
+    places.into_iter().find_map(|p| std::fs::read(p).ok()).map(|bytes| (bytes, 0))
+}
+
 /// Sorted family names of the fixed-width fonts, the only ones code lines up in.
 pub fn monospace_families(faces: &[Face]) -> Vec<String> {
     // `@` names are for vertical text.

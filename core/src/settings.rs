@@ -31,6 +31,8 @@ pub struct Settings {
     pub python: PythonSettings,
     pub web: WebSettings,
     pub cpp: CppSettings,
+    /// More backslash names: `to = "⟶"`. Yours win over the shipped ones.
+    pub symbols: std::collections::HashMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -82,6 +84,12 @@ pub struct EditorSettings {
     pub semantic_highlighting: bool,
     /// Show inferred types and parameter names in the text.
     pub inlay_hints: bool,
+    /// Columns to draw a line after, in languages whose profile names none.
+    pub rulers: Vec<usize>,
+    /// Show a bar of glyphs for languages whose profile has them.
+    pub glyph_bar: bool,
+    /// More folders to look for included files in, from the project's folder.
+    pub include_paths: Vec<String>,
     /// Tab grows Emmet abbreviations in HTML and CSS.
     pub emmet: bool,
     /// Show what servers report about a line at its end, such as reference counts.
@@ -283,6 +291,9 @@ impl Default for EditorSettings {
             semantic_highlighting: true,
             inlay_hints: true,
             emmet: true,
+            rulers: Vec::new(),
+            glyph_bar: true,
+            include_paths: Vec::new(),
             code_lens: true,
             smooth_scrolling: true,
             unicode_warnings: true,

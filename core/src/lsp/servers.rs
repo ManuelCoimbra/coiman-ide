@@ -50,7 +50,11 @@ impl ServerKind {
             "csharp" => Self::CSharp,
             "go" => Self::Gopls,
             "gdscript" => Self::Godot,
-            _ => return registry::index_of(language_id, false).map(Self::Custom),
+            // An entry may only be there for its profile, with no server to look for.
+            _ => {
+                let index = registry::index_of(language_id, false)?;
+                return registry::get(index).and_then(|l| l.server).map(|_| Self::Custom(index));
+            }
         })
     }
 

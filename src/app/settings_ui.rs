@@ -97,6 +97,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "Mark bidi controls and invisible or private use characters.",
                 Kind::Toggle,
             ),
+            row("editor", "glyph_bar", "Glyph bar", "Characters to click, for languages with their own.", Kind::Toggle),
             row("editor", "emmet", "Emmet", "Tab grows abbreviations in HTML and CSS.", Kind::Toggle),
             row(
                 "editor",

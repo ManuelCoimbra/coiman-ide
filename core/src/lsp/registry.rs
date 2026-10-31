@@ -33,6 +33,20 @@ pub struct Language {
     pub hint: Option<&'static str>,
     /// Whether the server runs the project's own code, such as build scripts.
     pub runs_project_code: bool,
+    /// Columns to draw a line after.
+    pub rulers: Vec<usize>,
+    /// Columns that don't count, from 1 and inclusive. An end of 0 runs on.
+    pub dim_columns: Vec<(usize, usize)>,
+    /// Backslash names turn into symbols as they're typed.
+    pub abbreviations: bool,
+    /// Characters to offer in a bar above the text.
+    pub glyphs: Option<&'static str>,
+    /// A pattern finding what an include statement names, in its one capture.
+    pub include_pattern: Option<&'static str>,
+    /// Where includes are, from the project's folder.
+    pub include_paths: &'static [&'static str],
+    /// What to try on a name written without its extension.
+    pub include_extensions: &'static [&'static str],
     /// From the user's file, not shipped.
     pub from_user: bool,
 }
@@ -62,6 +76,25 @@ struct LanguageEntry {
     hint: Option<String>,
     #[serde(default = "assume_it_does")]
     runs_project_code: bool,
+    #[serde(default)]
+    rulers: Vec<usize>,
+    #[serde(default)]
+    dim_columns: Vec<(usize, usize)>,
+    #[serde(default)]
+    abbreviations: bool,
+    #[serde(default)]
+    glyphs: Option<String>,
+    #[serde(default)]
+    include_pattern: Option<String>,
+    #[serde(default)]
+    include_paths: Vec<String>,
+    #[serde(default)]
+    include_extensions: Vec<String>,
+}
+
+fn leak_list(list: Vec<String>) -> &'static [&'static str] {
+    let leaked: Vec<&'static str> = list.into_iter().map(leak).collect();
+    Box::leak(leaked.into_boxed_slice())
 }
 
 /// A server is asked to read a project; unless told otherwise, assume it may run it.
@@ -95,6 +128,13 @@ fn into_language(entry: LanguageEntry, from_user: bool) -> &'static Language {
         debug_type: entry.debug_type.map(leak),
         hint: entry.hint.map(leak),
         runs_project_code: entry.runs_project_code,
+        rulers: entry.rulers,
+        dim_columns: entry.dim_columns,
+        abbreviations: entry.abbreviations,
+        glyphs: entry.glyphs.map(leak),
+        include_pattern: entry.include_pattern.map(leak),
+        include_paths: leak_list(entry.include_paths),
+        include_extensions: leak_list(entry.include_extensions),
         from_user,
     }))
 }
@@ -152,7 +192,14 @@ pub fn user_file_template() -> String {
      # debugger = \"my-dap --stdio\"   # a debug adapter, for F5\n\
      # debug_type = \"my\"             # its `type` in the launch request\n\
      # hint = \"Install it from gleam.run\"   # what Language: Doctor suggests\n\
-     # runs_project_code = true      # shown by the doctor; assumed unless false\n"
+     # runs_project_code = true      # shown by the doctor; assumed unless false\n\
+     # rulers = [72, 80]             # lines after these columns\n\
+     # dim_columns = [[1, 6], [73, 0]] # columns that don't count; 0 runs on\n\
+     # abbreviations = true          # \\\\to becomes an arrow as you type\n\
+     # glyphs = \"∀∃λ→\"              # a bar of characters above the text\n\
+     # include_pattern = \"^\\\\s*include\\\\s+'([^']+)'\"  # Go to Include at Cursor\n\
+     # include_paths = [\"inc\"]       # where includes are\n\
+     # include_extensions = [\"inc\"]  # tried on a name without one\n"
         .to_owned()
 }
 
@@ -201,7 +248,6 @@ mod tests {
         assert!(all.len() >= 10);
         for language in &all {
             assert!(!language.extensions.is_empty(), "{}", language.name);
-            assert!(language.server.is_some(), "{} has no server", language.name);
             assert!(language.hint.is_some(), "{} has no hint", language.name);
         }
         let mut ids: Vec<&str> = all.iter().map(|l| l.language_id).collect();

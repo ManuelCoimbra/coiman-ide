@@ -23,6 +23,7 @@ mod outline;
 mod plugins;
 mod preview;
 mod prints;
+mod profile;
 mod repl;
 mod settings_ui;
 mod snippets_ui;
@@ -158,6 +159,11 @@ pub struct CodeApp {
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
     font_load: Option<std::sync::mpsc::Receiver<rust_code_core::fonts::Loaded>>,
+    /// The chosen font for code, behind which the built-in fonts stay.
+    editor_font: Option<std::sync::Arc<egui::FontData>>,
+    /// Behind them all, for symbols, once a file has called for it.
+    symbol_font: Option<std::sync::Arc<egui::FontData>>,
+    symbol_font_tried: bool,
     settings_ui: settings_ui::SettingsUi,
     keys_ui: keys_ui::KeysUi,
     window: Option<rust_code_core::session::WindowState>,
@@ -271,6 +277,9 @@ impl CodeApp {
             cpp: Default::default(),
             auto_save: Default::default(),
             font_load: None,
+            editor_font: None,
+            symbol_font: None,
+            symbol_font_tried: false,
             settings_ui: Default::default(),
             keys_ui: Default::default(),
             window: None,
@@ -352,6 +361,7 @@ impl eframe::App for CodeApp {
         self.pump_prints(&ctx);
         self.pump_auto_save(&ctx);
         self.pump_font_load(&ctx);
+        self.pump_symbol_font(&ctx);
         self.refresh_cargo_project(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
@@ -444,6 +454,7 @@ impl eframe::App for CodeApp {
             self.lock_bar(ui);
             self.lsp_offer_bar(ui);
             self.find_bar(ui);
+            self.glyph_bar(ui);
             let opts = editor_view::Options {
                 font_size: self.font_size,
                 word_wrap: self.word_wrap,
@@ -483,7 +494,9 @@ impl eframe::App for CodeApp {
                 }
                 let block_cursor = self.vim.as_ref().is_some_and(rust_code_core::vim::Vim::block_cursor);
                 let was_typing = self.vim.as_ref().is_none_or(|v| v.mode() == rust_code_core::vim::Mode::Insert);
-                let opts = editor_view::Options { word_wrap: opts.word_wrap && !doc.large, block_cursor, pane, ..opts };
+                // Columns mean nothing once lines wrap.
+                let wrap = opts.word_wrap && !doc.large && deco.dim_columns.is_empty();
+                let opts = editor_view::Options { word_wrap: wrap, block_cursor, pane, ..opts };
                 let mut out = editor_view::show(
                     &mut active_ui,
                     doc,

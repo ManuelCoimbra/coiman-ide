@@ -124,8 +124,9 @@ impl CodeApp {
     fn apply_font_family(&mut self, ctx: &egui::Context, first: bool, family: &str) {
         self.font_load = None;
         if family.trim().is_empty() {
+            self.editor_font = None;
             if !first {
-                ctx.set_fonts(egui::FontDefinitions::default());
+                self.install_fonts(ctx);
             }
             return;
         }
@@ -143,17 +144,31 @@ impl CodeApp {
         self.font_load = None;
         match result {
             Ok((bytes, index)) => {
-                const NAME: &str = "editor font";
                 let mut font = egui::FontData::from_owned(bytes);
                 font.index = index;
-                let mut fonts = egui::FontDefinitions::default();
-                fonts.font_data.insert(NAME.to_owned(), std::sync::Arc::new(font));
-                // The built-in fonts stay behind it for characters it lacks.
-                fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, NAME.to_owned());
-                ctx.set_fonts(fonts);
+                self.editor_font = Some(std::sync::Arc::new(font));
+                self.install_fonts(ctx);
             }
             Err(e) => self.status = Some(e),
         }
+    }
+
+    pub(super) fn install_fonts(&self, ctx: &egui::Context) {
+        const EDITOR: &str = "editor font";
+        const SYMBOLS: &str = "symbol font";
+        let mut fonts = egui::FontDefinitions::default();
+        if let Some(font) = &self.editor_font {
+            fonts.font_data.insert(EDITOR.to_owned(), font.clone());
+            // The built-in fonts stay behind it for characters it lacks.
+            fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, EDITOR.to_owned());
+        }
+        if let Some(font) = &self.symbol_font {
+            fonts.font_data.insert(SYMBOLS.to_owned(), font.clone());
+            for family in [egui::FontFamily::Monospace, egui::FontFamily::Proportional] {
+                fonts.families.entry(family).or_default().push(SYMBOLS.to_owned());
+            }
+        }
+        ctx.set_fonts(fonts);
     }
 
     /// Reloads settings, keybindings and the color theme, applying what changed.

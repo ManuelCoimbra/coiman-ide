@@ -157,6 +157,60 @@ comment = "!"
 server = "fortls"
 hint = "pip install fortls"
 runs_project_code = false
+include_pattern = '''^\s*include\s+['"]([^'"]+)['"]'''
+include_paths = ["include", "inc"]
+include_extensions = ["inc", "fi", "h"]
+
+[[language]]
+name = "Fortran (Fixed Form)"
+language_id = "FortranFixedForm"
+extensions = ["f", "for", "fpp", "ftn"]
+comment = "C"
+server = "fortls"
+hint = "pip install fortls"
+runs_project_code = false
+rulers = [5, 6, 72]
+dim_columns = [[73, 0]]
+include_pattern = '''^\s*include\s+['"]([^'"]+)['"]'''
+include_paths = ["include", "inc"]
+include_extensions = ["inc", "fi", "h"]
+
+[[language]]
+name = "COBOL"
+extensions = ["cbl", "cob", "cpy"]
+comment = "*>"
+hint = "Editing needs no server: rulers, dim columns and copybooks work without one"
+rulers = [6, 7, 11, 72]
+dim_columns = [[1, 6], [73, 0]]
+include_pattern = '''^.{0,7}\s*COPY\s+["']?([\w-]+)'''
+include_paths = ["copybook", "copybooks", "copy", "cpy"]
+include_extensions = ["cpy", "cbl", "cob"]
+
+[[language]]
+name = "Lean"
+extensions = ["lean"]
+comment = "--"
+server = "lake serve"
+root_markers = ["lakefile.lean", "lakefile.toml", "lean-toolchain"]
+hint = "Install Lean with elan, from lean-lang.org"
+abbreviations = true
+glyphs = "∀∃λ→←↔¬∧∨≤≥≠∈∉⊆∪∩×∘ℕℤℚℝ⟨⟩⊢₁₂"
+
+[[language]]
+name = "Agda"
+extensions = ["agda"]
+comment = "--"
+server = "als"
+hint = "Install agda-language-server from its GitHub releases"
+abbreviations = true
+glyphs = "∀∃λ→←↔¬∧∨≡≤≥∈⊤⊥×∘ℕΣΠ⟨⟩₁₂"
+
+[[language]]
+name = "APL"
+extensions = ["apl", "dyalog", "aplf", "apln"]
+comment = "⍝"
+hint = "Editing needs no server: the glyph bar works without one"
+glyphs = "←→↑↓⍺⍵⍳⍴⍒⍋⌈⌊×÷⌽⍉⊖∊≢≡≠≤≥∧∨⍲⍱⊂⊃⊆∪∩⍎⍕⎕⍞¨⍣⍤∘⍨⌿⍀⋄⍝⍬⌷"
 
 [[language]]
 name = "Kotlin"

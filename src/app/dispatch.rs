@@ -387,6 +387,8 @@ impl CodeApp {
                 self.expand_emmet(false);
             }
             Command::PickColor => self.pick_color(),
+            Command::InsertSymbol => self.pick_glyph(ctx),
+            Command::GoToInclude => self.open_include(),
             Command::AnalyzeStackTrace => self.analyze_stack_trace(),
             Command::ShowCompileInfo => self.show_compile_info(),
             Command::SwitchHeaderSource => self.switch_header_source(),
@@ -525,6 +527,7 @@ impl CodeApp {
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::RunMode => self.picked_run_mode(label),
             PickerKind::Python => self.picked_python(ctx, label),
+            PickerKind::Glyph => self.picked_glyph(label),
             PickerKind::Symbol => self.picked_symbol(label),
             PickerKind::History => self.picked_history(label),
             PickerKind::RunTarget => self.picked_run_target(ctx, label),
@@ -600,6 +603,17 @@ impl CodeApp {
             && self.vim.is_none()
             && ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers.is_none())
             && self.expand_snippet_prefix()
+        {
+            ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
+            return;
+        }
+        // Tab after a backslash name makes its symbol.
+        if editor_focused
+            && self.chord.is_none()
+            && self.vim.is_none()
+            && !self.completion_open()
+            && ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers.is_none())
+            && self.symbol_on_tab()
         {
             ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Tab));
             return;

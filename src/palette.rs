@@ -39,6 +39,7 @@ pub enum InputKind {
 /// What a picker list is choosing.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PickerKind {
+    Glyph,
     Theme,
     LineEnding,
     Bookmark,

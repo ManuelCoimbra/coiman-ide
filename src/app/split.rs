@@ -155,6 +155,7 @@ impl CodeApp {
         self.repl_decorate(i, &mut deco);
         // Over everything: these must stay visible.
         self.hidden_decorate(i, &mut deco);
+        self.profile_decorate(i, &mut deco);
         if let Some(doc) = self.docs.get_mut(i) {
             deco.folds = doc.structure().folds.clone();
         }

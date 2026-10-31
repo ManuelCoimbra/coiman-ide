@@ -40,6 +40,7 @@ pub mod settings;
 pub mod snippets;
 pub mod stacktrace;
 pub mod structure;
+pub mod symbols;
 pub mod syntax;
 pub mod termfind;
 pub mod theme;

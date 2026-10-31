@@ -400,6 +400,8 @@ fn built_in_language_name(ext: &str) -> &'static str {
         "xml" => "XML",
         "sql" => "SQL",
         "lua" => "Lua",
-        _ => crate::languages::name(ext).unwrap_or("Plain Text"),
+        _ => crate::languages::name(ext)
+            .or_else(|| crate::lsp::registry::by_extension(ext, false).map(|l| l.name))
+            .unwrap_or("Plain Text"),
     }
 }

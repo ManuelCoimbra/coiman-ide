@@ -127,6 +127,10 @@ pub struct Decorations {
     pub debug_line: Option<usize>,
     /// Bookmarked lines, sorted.
     pub bookmarks: Vec<usize>,
+    /// Columns to draw a line after.
+    pub rulers: Vec<usize>,
+    /// Columns to dim, from 1 and inclusive. An end of 0 runs on.
+    pub dim_columns: Vec<(usize, usize)>,
     /// Lines with a runnable test, and its last result (gutter run buttons).
     pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
 }
@@ -1169,6 +1173,11 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, pal.indent_guide));
         }
 
+        for ruler in &deco.rulers {
+            let x = (x0 + *ruler as f32 * m.char_w).round() + 0.5;
+            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, pal.indent_guide));
+        }
+
         // Current line highlight.
         if row_idx == primary_row {
             text_painter.rect_stroke(
@@ -1237,9 +1246,23 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
 
         // Text.
         let job = row_job(doc, view, &row, m, Some(&line_highlights).filter(|h| !h.is_empty()).map(|h| h.as_slice()));
-        let galley = ui.fonts_mut(|f| f.layout_job(job));
+        let galley = ui.fonts_mut(|f| {
+            let job = fit_to_cells(job, m.char_w, f);
+            f.layout_job(job)
+        });
         text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
         let buf = &doc.buffer;
+        // Columns that don't count: laid over the text, so its colors fade evenly.
+        if row.first {
+            for (from, to) in &deco.dim_columns {
+                let xa = x0 + (from.saturating_sub(1)) as f32 * m.char_w;
+                let xb = if *to == 0 { text_rect.right() } else { x0 + *to as f32 * m.char_w };
+                if xb > xa {
+                    let area = Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h));
+                    text_painter.rect_filled(area, 0.0, pal.editor_bg.gamma_multiply(0.65));
+                }
+            }
+        }
 
         // Diagnostics: squiggles under their text, and the most severe
         // error/warning message after the end of its line.
@@ -1485,6 +1508,51 @@ fn overlay_runs(runs: &[(usize, Color32, bool)], highlights: &[Highlight], len: 
         }
     }
     out
+}
+
+/// Characters from a fallback font aren't as wide as the code font's. Columns are,
+/// so each such character gets spacing that makes it take up its cells, or all
+/// the text after it would drift from the cursor.
+fn fit_to_cells(job: LayoutJob, char_w: f32, fonts: &mut egui::epaint::text::FontsView<'_>) -> LayoutJob {
+    if job.text.is_ascii() {
+        return job;
+    }
+    let mut sections = Vec::with_capacity(job.sections.len());
+    for section in &job.sections {
+        let (start, end) = (section.byte_range.start.0, section.byte_range.end.0);
+        let mut from = start;
+        let mut leading = section.leading_space;
+        let mut push = |range: std::ops::Range<usize>, format: TextFormat, leading: &mut f32| {
+            if !range.is_empty() {
+                sections.push(egui::text::LayoutSection {
+                    leading_space: std::mem::take(leading),
+                    byte_range: egui::epaint::text::ByteIndex(range.start)..egui::epaint::text::ByteIndex(range.end),
+                    format,
+                });
+            }
+        };
+        for (offset, c) in job.text[start..end].char_indices() {
+            if c.is_ascii() {
+                continue;
+            }
+            let cells = crate::buffer::char_width(c, 0);
+            if cells == 0 {
+                continue;
+            }
+            let advance = fonts.glyph_width(&section.format.font_id, c);
+            let gap = cells as f32 * char_w - advance;
+            if gap.abs() < 0.05 {
+                continue;
+            }
+            let at = start + offset;
+            push(from..at, section.format.clone(), &mut leading);
+            let format = TextFormat { extra_letter_spacing: gap, ..section.format.clone() };
+            push(at..at + c.len_utf8(), format, &mut leading);
+            from = at + c.len_utf8();
+        }
+        push(from..end, section.format.clone(), &mut leading);
+    }
+    LayoutJob { sections, ..job }
 }
 
 fn row_job(
