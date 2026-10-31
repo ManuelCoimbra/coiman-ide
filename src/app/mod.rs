@@ -290,6 +290,7 @@ impl CodeApp {
         // dropped; a path given on the command line then opens on top of it.
         if let Some(saved) = session::load() {
             app.window = saved.window;
+            app.cargo.run_pins = saved.run_pins.clone();
             app.restore_session(saved);
         }
         if let Some(path) = start_path {
@@ -313,6 +314,7 @@ impl eframe::App for CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.pump_run_configs(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
         self.pump_bookmarks();

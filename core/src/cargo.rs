@@ -47,6 +47,9 @@ pub fn load_configs(root: &Path) -> Result<Option<Vec<RunConfig>>, String> {
 
 /// Configurations Cargo implies: run each binary, test, check, clippy.
 pub fn default_configs(root: &Path) -> Vec<RunConfig> {
+    if !root.join("Cargo.toml").is_file() {
+        return Vec::new();
+    }
     let packages = packages(root).unwrap_or_default();
     let mut configs: Vec<RunConfig> = packages
         .iter()
@@ -72,7 +75,13 @@ pub fn default_configs(root: &Path) -> Vec<RunConfig> {
 
 /// Text for a new launch file listing `configs`.
 pub fn launch_file_contents(configs: &[RunConfig]) -> String {
-    let body = toml::to_string_pretty(&LaunchFile { configurations: configs.to_vec() }).unwrap_or_default();
+    // An empty list would be written as `configurations = []`, which clashes
+    // with the `[[configurations]]` the user adds below it.
+    let body = if configs.is_empty() {
+        String::new()
+    } else {
+        toml::to_string_pretty(&LaunchFile { configurations: configs.to_vec() }).unwrap_or_default()
+    };
     format!(
         "# Rust Code run configurations. Commit this file to share them.\n\
          # Each entry: name, command (run in a terminal tab), optional cwd and env.\n\
@@ -584,6 +593,19 @@ pub fn parse_message(line: &str, workspace: &Path) -> Option<CargoDiagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_cargo_folders_get_cargo_configurations() {
+        let dir = std::env::temp_dir().join(format!("rust-code-configs-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".rust-code")).unwrap();
+        assert!(default_configs(&dir).is_empty());
+        // The file offered to a folder with none must accept what's added to it.
+        let added = "\n[[configurations]]\nname = \"Serve\"\ncommand = \"npm start\"\n";
+        std::fs::write(launch_file(&dir), launch_file_contents(&[]) + added).unwrap();
+        let configs = load_configs(&dir).unwrap().unwrap();
+        assert_eq!(configs.iter().map(|c| c.name.as_str()).collect::<Vec<_>>(), ["Serve"]);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn discovers_tests_in_nested_modules() {

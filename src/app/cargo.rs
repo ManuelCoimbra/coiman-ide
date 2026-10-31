@@ -57,7 +57,7 @@ struct Job {
 
 enum Msg {
     /// Run configurations; `pick` opens the picker when they arrive.
-    Configs(Vec<RunConfig>, Option<String>, bool),
+    Configs(PathBuf, Vec<RunConfig>, Option<String>, bool),
     Scanned(PathBuf, Vec<(PathBuf, FileTarget, Vec<TestItem>)>),
     Nextest(bool),
 }
@@ -117,7 +117,12 @@ pub(super) struct CargoState {
     /// Diagnostics from the last `Cargo: Check`/`Clippy`, by file key.
     pub(super) diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
     configs: Vec<RunConfig>,
-    selected: Option<String>,
+    /// The configuration each folder's Run button is set to; none means the
+    /// current file. Kept in the session.
+    pub(super) run_pins: std::collections::BTreeMap<PathBuf, String>,
+    /// What `configs` were read for: the folder and its files' change times.
+    configs_for: Option<ConfigsKey>,
+    configs_checked: f64,
     nextest: Option<bool>,
     collapsed: HashSet<PathBuf>,
     tx: Sender<Msg>,
@@ -144,7 +149,9 @@ impl Default for CargoState {
             lock_wait: false,
             diagnostics: HashMap::new(),
             configs: Vec::new(),
-            selected: None,
+            run_pins: std::collections::BTreeMap::new(),
+            configs_for: None,
+            configs_checked: f64::NEG_INFINITY,
             nextest: None,
             collapsed: HashSet::new(),
             tx,
@@ -174,6 +181,19 @@ fn shell(command: &str) -> (String, Vec<String>) {
     } else {
         ("sh".into(), vec!["-c".into(), command.into()])
     }
+}
+
+/// The choice that makes Run follow the active file.
+const CURRENT_FILE: &str = "Current File";
+/// Seconds between looks at whether the configurations changed on disk.
+const CONFIGS_CHECK_SECONDS: f64 = 2.0;
+
+/// A folder, with the change times of the files its configurations come from.
+type ConfigsKey = (PathBuf, Option<std::time::SystemTime>, Option<std::time::SystemTime>);
+
+fn configs_key(root: &Path) -> ConfigsKey {
+    let changed = |path: PathBuf| std::fs::metadata(path).and_then(|m| m.modified()).ok();
+    (root.to_path_buf(), changed(cargo::launch_file(root)), changed(root.join("Cargo.toml")))
 }
 
 /// What Run would do for a tab: (doc uid, buffer version, answer).
@@ -222,11 +242,24 @@ impl CodeApp {
     pub(super) fn pump_cargo(&mut self, ctx: &egui::Context) {
         while let Ok(msg) = self.cargo.rx.try_recv() {
             match msg {
-                Msg::Configs(configs, error, pick) => {
+                Msg::Configs(root, configs, error, pick) => {
+                    // The folder changed while these were read.
+                    if self.run_scope().as_ref() != Some(&root) {
+                        continue;
+                    }
                     if let Some(e) = error {
                         self.status = Some(e);
                     }
                     self.cargo.configs = configs;
+                    // Unreadable is not the same as removed: keep the choice for the fix.
+                    let removed = self.cargo.run_pins.get(&root).filter(|name| {
+                        self.status.as_deref().is_none_or(|s| !s.contains("launch.toml"))
+                            && !self.cargo.configs.iter().any(|c| &c.name == *name)
+                    });
+                    if let Some(name) = removed.cloned() {
+                        self.cargo.run_pins.remove(&root);
+                        self.status = Some(format!("{name} no longer exists: Run follows the current file again"));
+                    }
                     if pick {
                         self.pick_run_config();
                     }
@@ -767,10 +800,11 @@ impl CodeApp {
     /// Loads run configurations in the background (the launch file, else
     /// what Cargo implies), then opens the picker if `pick`.
     fn load_run_configs(&mut self, ctx: &egui::Context, pick: bool) {
-        let Some(root) = self.cargo_root().or_else(|| self.explorer.root.clone()) else {
+        let Some(root) = self.run_scope() else {
             self.status = Some("Open a folder first".to_owned());
             return;
         };
+        self.cargo.configs_for = Some(configs_key(&root));
         let (tx, wake) = (self.cargo.tx.clone(), repaint(ctx));
         std::thread::spawn(move || {
             let (configs, error) = match cargo::load_configs(&root) {
@@ -778,9 +812,66 @@ impl CodeApp {
                 Ok(None) => (cargo::default_configs(&root), None),
                 Err(e) => (cargo::default_configs(&root), Some(e)),
             };
-            let _ = tx.send(Msg::Configs(configs, error, pick));
+            let _ = tx.send(Msg::Configs(root, configs, error, pick));
             wake();
         });
+    }
+
+    /// The folder whose configurations apply.
+    fn run_scope(&self) -> Option<PathBuf> {
+        self.cargo_root().or_else(|| self.explorer.root.clone())
+    }
+
+    /// Keeps the configurations current, so the title bar can offer them.
+    pub(super) fn pump_run_configs(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        if now - self.cargo.configs_checked < CONFIGS_CHECK_SECONDS {
+            return;
+        }
+        self.cargo.configs_checked = now;
+        let Some(root) = self.run_scope() else {
+            self.cargo.configs.clear();
+            self.cargo.configs_for = None;
+            return;
+        };
+        if self.cargo.configs_for.as_ref() != Some(&configs_key(&root)) {
+            self.load_run_configs(ctx, false);
+        }
+    }
+
+    /// The configuration Run is set to, if any.
+    fn pinned_config(&self) -> Option<&RunConfig> {
+        let name = self.cargo.run_pins.get(&self.run_scope()?)?;
+        self.cargo.configs.iter().find(|c| &c.name == name)
+    }
+
+    /// The title bar's label for what Run starts, when there's a choice to make.
+    pub(super) fn run_target_label(&self) -> Option<String> {
+        if self.cargo.configs.is_empty() {
+            return None;
+        }
+        Some(self.pinned_config().map_or_else(|| CURRENT_FILE.to_owned(), |c| c.name.clone()))
+    }
+
+    /// Lets the user set what Run starts, without starting it.
+    pub(super) fn choose_run_target(&mut self) {
+        if self.cargo.configs.is_empty() {
+            self.status = Some("No run configurations (Run: Open Configurations to add some)".to_owned());
+            return;
+        }
+        let mut names = vec![CURRENT_FILE.to_owned()];
+        names.extend(self.cargo.configs.iter().map(|c| c.name.clone()));
+        let current = self.run_target_label().unwrap_or_default();
+        self.palette.show_picker(PickerKind::RunMode, names, &current, "Choose what Run starts");
+    }
+
+    pub(super) fn picked_run_mode(&mut self, name: &str) {
+        let Some(root) = self.run_scope() else { return };
+        if name == CURRENT_FILE {
+            self.cargo.run_pins.remove(&root);
+        } else {
+            self.cargo.run_pins.insert(root, name.to_owned());
+        }
     }
 
     fn pick_run_config(&mut self) {
@@ -789,13 +880,16 @@ impl CodeApp {
             return;
         }
         let names = self.cargo.configs.iter().map(|c| c.name.clone()).collect();
-        let current = self.cargo.selected.clone().unwrap_or_default();
+        let current = self.pinned_config().map(|c| c.name.clone()).unwrap_or_default();
         self.palette.show_picker(PickerKind::RunConfig, names, &current, "Select a configuration to run");
     }
 
     /// Whether the title bar offers Run: for a file that could run, or with
     /// nothing open, for the folder's Cargo project.
     pub(super) fn run_button_visible(&self) -> bool {
+        if self.pinned_config().is_some() {
+            return true;
+        }
         let Some(doc) = self.docs.get(self.active) else { return self.cargo_root().is_some() };
         if !doc.path.as_deref().is_some_and(run::may_run) {
             return false;
@@ -808,6 +902,9 @@ impl CodeApp {
 
     /// What the Run button says it will do.
     pub(super) fn run_button_tip(&self) -> String {
+        if let Some(config) = self.pinned_config() {
+            return format!("Run {} (Shift+F10)\n{}", config.name, config.command);
+        }
         let known = self.docs.get(self.active).and_then(|doc| {
             self.cargo.run_preview.as_ref().filter(|(uid, _, _)| *uid == doc.uid).map(|(_, _, answer)| answer)
         });
@@ -917,6 +1014,10 @@ impl CodeApp {
                 return;
             }
         }
+        if let Some(config) = self.pinned_config().cloned() {
+            self.run_config(ctx, &config);
+            return;
+        }
         let root = self.explorer.root.clone();
         let active = self.docs.get(self.active);
         let outcome = match active.and_then(|d| d.path.clone().map(|p| (p, d.text()))) {
@@ -967,8 +1068,7 @@ impl CodeApp {
 
     /// Ctrl+F5: run the selected configuration (asks which the first time).
     pub(super) fn run_selected_config(&mut self, ctx: &egui::Context) {
-        let selected = self.cargo.selected.clone();
-        match selected.and_then(|s| self.cargo.configs.iter().find(|c| c.name == s).cloned()) {
+        match self.pinned_config().cloned() {
             Some(config) => self.run_config(ctx, &config),
             None => self.load_run_configs(ctx, true),
         }
@@ -980,12 +1080,14 @@ impl CodeApp {
 
     pub(super) fn picked_run_config(&mut self, ctx: &egui::Context, name: &str) {
         let Some(config) = self.cargo.configs.iter().find(|c| c.name == name).cloned() else { return };
-        self.cargo.selected = Some(config.name.clone());
+        if let Some(root) = self.run_scope() {
+            self.cargo.run_pins.insert(root, config.name.clone());
+        }
         self.run_config(ctx, &config);
     }
 
     fn run_config(&mut self, ctx: &egui::Context, config: &RunConfig) {
-        let Some(root) = self.cargo_root().or_else(|| self.explorer.root.clone()) else { return };
+        let Some(root) = self.run_scope() else { return };
         if !self.allowed_to_run(&root) {
             return;
         }
@@ -1006,7 +1108,7 @@ impl CodeApp {
 
     /// Run: Open Configurations — creates the launch file from the defaults if needed.
     pub(super) fn open_run_configs(&mut self) {
-        let Some(root) = self.cargo_root().or_else(|| self.explorer.root.clone()) else {
+        let Some(root) = self.run_scope() else {
             self.status = Some("Open a folder first".to_owned());
             return;
         };
@@ -1021,8 +1123,5 @@ impl CodeApp {
             }
         }
         self.open_file(&path);
-        // Saved edits take effect on the next run.
-        self.cargo.configs.clear();
-        self.cargo.selected = None;
     }
 }

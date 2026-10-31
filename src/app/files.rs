@@ -78,6 +78,7 @@ impl CodeApp {
         let mut session =
             Session::capture(self.explorer.root.as_deref(), &self.docs, self.active, self.settings.files.hot_exit);
         session.window = self.window;
+        session.run_pins = self.cargo.run_pins.clone();
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;

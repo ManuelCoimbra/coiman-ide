@@ -11,6 +11,10 @@ use rust_code_core::find;
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
+fn font_for_target(ui: &egui::Ui) -> egui::FontId {
+    egui::FontId::proportional(small_size(ui))
+}
+
 impl CodeApp {
     /// Bar above the editor when the file changed or vanished on disk.
     pub(super) fn disk_conflict_bar(&mut self, ui: &mut egui::Ui) {
@@ -90,7 +94,10 @@ impl CodeApp {
         // The UI font has no "●" (unsaved marker in the OS title); use a bullet.
         let title = self.last_title.replace('●', "•");
         let galley = ui.painter().layout_no_wrap(title, font, pal.text_dim);
-        let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - RUN_BUTTON - 16.0);
+        let target = self.run_target_label();
+        let target_galley = target.map(|t| ui.painter().layout_no_wrap(t, font_for_target(ui), pal.text_dim));
+        let target_width = target_galley.as_ref().map_or(0.0, |g| g.size().x.min(180.0) + 28.0);
+        let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - RUN_BUTTON - target_width - 16.0);
         if room.span() > 40.0 {
             let width = galley.size().x.min(room.span());
             let x = (bar.center().x - width / 2.0).clamp(room.min, room.max - width);
@@ -107,6 +114,29 @@ impl CodeApp {
             egui::pos2(bar.max.x - 3.0 * BUTTON - RUN_BUTTON, bar.min.y),
             egui::vec2(RUN_BUTTON, HEIGHT),
         );
+        // What Run starts, just left of it.
+        if let Some(galley) = target_galley {
+            let rect = egui::Rect::from_min_size(
+                egui::pos2(run_rect.min.x - target_width, bar.min.y),
+                egui::vec2(target_width, HEIGHT),
+            );
+            let choose = ui.interact(rect, egui::Id::unique("run_target"), Sense::click());
+            if choose.hovered() {
+                ui.painter().rect_filled(rect, 0.0, pal.hover_bg);
+            }
+            let text = egui::pos2(rect.min.x + 8.0, rect.center().y - galley.size().y / 2.0);
+            let clip = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x - 18.0, rect.max.y));
+            ui.painter().with_clip_rect(clip).galley(text, galley, pal.text_dim);
+            let (x, y) = (rect.max.x - 13.0, rect.center().y);
+            ui.painter().add(egui::Shape::convex_polygon(
+                vec![egui::pos2(x - 3.0, y - 2.0), egui::pos2(x + 3.0, y - 2.0), egui::pos2(x, y + 2.0)],
+                pal.text_dim,
+                Stroke::NONE,
+            ));
+            if choose.on_hover_text("Choose what Run starts").clicked() {
+                cmd = Some(Command::ChooseRunTarget);
+            }
+        }
         if self.run_button_visible() {
             let run = ui.interact(run_rect, egui::Id::unique("run_program"), Sense::click());
             if run.hovered() {
@@ -335,6 +365,7 @@ impl CodeApp {
                 }
                 item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
+                item(ui, "Choose What Run Starts...", Command::ChooseRunTarget);
                 item(ui, "Select and Run Configuration...", Command::SelectRunConfig);
                 item(ui, "Open Configurations", Command::OpenRunConfigs);
                 if cargo_project {

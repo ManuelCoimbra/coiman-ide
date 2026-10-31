@@ -21,6 +21,9 @@ pub struct Session {
     pub active: usize,
     pub docs: Vec<SessionDoc>,
     pub window: Option<WindowState>,
+    /// The run configuration each folder's Run button is set to.
+    #[serde(default)]
+    pub run_pins: std::collections::BTreeMap<PathBuf, String>,
 }
 
 /// The window's size, in points.
@@ -53,7 +56,14 @@ impl Session {
                     .then(|| d.text()),
             })
             .collect();
-        Self { version: VERSION, root: root.map(Path::to_path_buf), active, docs, window: None }
+        Self {
+            version: VERSION,
+            root: root.map(Path::to_path_buf),
+            active,
+            docs,
+            window: None,
+            run_pins: Default::default(),
+        }
     }
 
     /// Rebuilds documents. Files that no longer exist are dropped unless they have
@@ -157,6 +167,7 @@ mod tests {
             root: None,
             active: 0,
             window: None,
+            run_pins: Default::default(),
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

@@ -182,7 +182,8 @@ push). All git work runs in the background.
 - **Run configurations** live in `.rust-code/launch.toml` (commit it to share them):
   `name`, `command` (run through the shell, so pipes and `&&` work), optional `cwd` and
   `env`. Without the file, Rust Code offers what Cargo implies: run each binary, test,
-  check and clippy the workspace. `Ctrl+F5` runs the selected configuration (asks the first
+  check and clippy the workspace. The title bar's **Current File** selector sets what Run starts: the active file, or a
+  configuration, remembered per folder. `Ctrl+F5` runs the selected configuration (asks the first
   time), **Run: Select and Start Configuration...** picks another, **Run: Open
   Configurations** creates the file. Each run gets a terminal tab that stays open with its
   exit code.
