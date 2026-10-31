@@ -122,6 +122,8 @@ fn closer_of(c: char) -> Option<char> {
 }
 
 pub struct Buffer {
+    /// Refuse every edit, such as in a decompiled class from a language server.
+    pub read_only: bool,
     /// How Enter and Tab indent.
     pub indent: Indent,
     /// Type brackets and quotes in pairs.
@@ -156,6 +158,7 @@ impl Buffer {
         Self {
             indent: Indent::default(),
             auto_close: true,
+            read_only: false,
             pair_single_quote: true,
             rope: Rope::from_str(text),
             selections: vec![Selection::cursor(0)],
@@ -661,6 +664,9 @@ impl Buffer {
 
     /// Records an undo step unless this edit continues the previous one.
     fn begin_edit(&mut self, kind: EditKind) {
+        if self.read_only {
+            return;
+        }
         let continues = kind == self.last_edit && matches!(kind, EditKind::Typing | EditKind::Deleting);
         if !continues {
             self.undo.push(self.snapshot());
@@ -673,6 +679,9 @@ impl Buffer {
     }
 
     fn finish_edit(&mut self, first_line: usize) {
+        if self.read_only {
+            return;
+        }
         self.version = self.next_version;
         self.next_version += 1;
         self.edited_from_line = Some(self.edited_from_line.map_or(first_line, |l| l.min(first_line)));
@@ -692,7 +701,7 @@ impl Buffer {
     }
 
     fn apply_changes_as(&mut self, mut changes: Vec<Change>, kind: EditKind) {
-        if changes.is_empty() {
+        if changes.is_empty() || self.read_only {
             return;
         }
         // A word typed after whitespace starts a new undo step, like VS Code.
@@ -730,6 +739,9 @@ impl Buffer {
     /// Replaces `[start, end)` with `text`, recording the edit for the syntax
     /// parser. Returns the number of chars inserted.
     fn splice(&mut self, start: usize, end: usize, text: &str) -> usize {
+        if self.read_only {
+            return 0;
+        }
         let before = self.syntax_edits.is_some().then(|| {
             let (sb, eb) = (self.rope.char_to_byte(start), self.rope.char_to_byte(end));
             (sb, eb, self.point_at_byte(sb), self.point_at_byte(eb))
@@ -762,6 +774,9 @@ impl Buffer {
     /// (e.g. from a language server) as one undo step. Selections move with
     /// the text around them; one inside a replaced span ends up after it.
     pub fn apply_edits(&mut self, mut edits: Vec<(usize, usize, String)>) {
+        if self.read_only {
+            return;
+        }
         let len = self.len_chars();
         for e in &mut edits {
             e.1 = e.1.min(len);
@@ -1165,6 +1180,20 @@ mod tests {
         assert_eq!(b.text(), "");
         b.redo();
         assert_eq!(b.text(), "hello ");
+    }
+
+    #[test]
+    fn read_only_refuses_every_kind_of_edit() {
+        let mut b = Buffer::new("x\ny\n");
+        b.read_only = true;
+        let version = b.version();
+        b.insert("z");
+        b.insert_newline();
+        b.delete_backward(false);
+        b.apply_edits(vec![(0, 1, "q".to_owned())]);
+        b.replace_all("other", b.primary());
+        assert!(!b.undo());
+        assert_eq!((b.text().as_str(), b.version()), ("x\ny\n", version));
     }
 
     #[test]

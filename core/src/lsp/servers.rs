@@ -189,6 +189,10 @@ pub fn rust_analyzer_options(check: &str, memory: &str, separate_target: bool) -
 /// the editor builds from its settings).
 pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
     match kind {
+        // Lets go to definition reach classes inside jars.
+        ServerKind::Jdtls => {
+            serde_json::json!({ "extendedClientCapabilities": { "classFileContentsSupport": true } })
+        }
         // A global typescript-language-server needs to be told where the
         // global TypeScript is; a project's own TypeScript still wins.
         ServerKind::TypeScript => {

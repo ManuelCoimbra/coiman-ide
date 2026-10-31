@@ -404,6 +404,7 @@ fn client_capabilities() -> Value {
             "inlayHint": { "refreshSupport": true },
             "diagnostics": { "refreshSupport": true },
             "codeLens": { "refreshSupport": true },
+            "textDocumentContent": {},
         },
         "window": { "workDoneProgress": true, "showMessage": {}, "showDocument": { "support": true } },
         "experimental": { "serverStatusNotification": true },

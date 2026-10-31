@@ -40,7 +40,8 @@ impl CodeApp {
     /// The folder in Restricted Mode for what's on screen: the open folder,
     /// else the active file's folder.
     pub(super) fn restricted_folder(&self) -> Option<PathBuf> {
-        let active = self.docs.get(self.active).and_then(|d| d.path.as_deref());
+        // A server's read-only document is no one's folder to trust.
+        let active = self.docs.get(self.active).filter(|d| !d.buffer.read_only).and_then(|d| d.path.as_deref());
         let folder = self.explorer.root.clone().or_else(|| active.and_then(Path::parent).map(Path::to_path_buf))?;
         (!trust::is_trusted(&folder)).then_some(folder)
     }

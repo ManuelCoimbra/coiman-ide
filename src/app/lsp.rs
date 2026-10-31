@@ -94,6 +94,10 @@ pub(super) enum Pending {
     CodeLens {
         uid: u64,
     },
+    VirtualDocument {
+        uri: lt::Url,
+        range: lt::Range,
+    },
     CodeLensResolve {
         uid: u64,
         index: usize,
@@ -190,7 +194,7 @@ pub(super) struct LspState {
 pub(super) fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, ServerKind)> {
     let lang = language_id(&doc.extension())?;
     let kind = ServerKind::for_language(lang)?;
-    Some((doc.path.clone().filter(|_| !doc.large)?, lang, kind))
+    Some((doc.path.clone().filter(|_| !doc.large && !doc.buffer.read_only)?, lang, kind))
 }
 
 /// Whether `client` is the server for a file of `kind` at `path`.
@@ -630,6 +634,7 @@ impl CodeApp {
             Pending::Signature { uid } => self.on_signature(uid, value),
             Pending::WorkspaceSymbols => self.on_workspace_symbols(value),
             Pending::PullDiagnostics { path } => self.on_pulled_diagnostics(path, value),
+            Pending::VirtualDocument { uri, range } => self.on_virtual_document(&uri, range, &value),
             Pending::CodeLens { uid } => self.on_code_lens(uid, value),
             Pending::CodeLensResolve { uid, index } => self.on_code_lens_resolved(uid, index, value),
             Pending::HierarchyPrepare { hierarchy, word } => self.on_hierarchy_prepared(hierarchy, word, value),
@@ -1331,19 +1336,26 @@ impl CodeApp {
     }
 
     pub(super) fn on_locations(&mut self, title: &'static str, word: &str, value: Value) {
-        let found: Vec<(PathBuf, lt::Range)> =
-            match serde_json::from_value::<Option<lt::GotoDefinitionResponse>>(value) {
-                Ok(Some(lt::GotoDefinitionResponse::Scalar(l))) => vec![l],
-                Ok(Some(lt::GotoDefinitionResponse::Array(v))) => v,
-                Ok(Some(lt::GotoDefinitionResponse::Link(links))) => links
-                    .into_iter()
-                    .map(|l| lt::Location { uri: l.target_uri, range: l.target_selection_range })
-                    .collect(),
-                _ => Vec::new(),
+        let locations = match serde_json::from_value::<Option<lt::GotoDefinitionResponse>>(value) {
+            Ok(Some(lt::GotoDefinitionResponse::Scalar(l))) => vec![l],
+            Ok(Some(lt::GotoDefinitionResponse::Array(v))) => v,
+            Ok(Some(lt::GotoDefinitionResponse::Link(links))) => {
+                links.into_iter().map(|l| lt::Location { uri: l.target_uri, range: l.target_selection_range }).collect()
             }
-            .into_iter()
+            _ => Vec::new(),
+        };
+        let found: Vec<(PathBuf, lt::Range)> = locations
+            .iter()
+            .filter(|l| l.uri.scheme() == "file")
             .filter_map(|l| Some((convert::path_from_uri(&l.uri)?, l.range)))
             .collect();
+        // Only inside something the server holds, like a jar.
+        if found.is_empty()
+            && let Some(l) = locations.first()
+        {
+            self.request_virtual_document(l.uri.clone(), l.range);
+            return;
+        }
         if found.is_empty() {
             self.status = Some(format!("No {} found for '{word}'", title.to_lowercase()));
             return;

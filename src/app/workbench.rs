@@ -1006,6 +1006,10 @@ impl CodeApp {
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 if let Some(doc) = self.docs.get(self.active) {
                     ui.label(white(doc.language_name().to_owned()));
+                    if doc.buffer.read_only {
+                        ui.label(white("Read-only".to_owned()))
+                            .on_hover_text("Supplied by the language server; changes aren't possible");
+                    }
                     if doc.large {
                         ui.label(white("Large file mode".to_owned()))
                             .on_hover_text("Syntax highlighting and word wrap are off for very large files");

@@ -129,6 +129,7 @@ impl CodeApp {
 
     pub(super) fn add_doc(&mut self, mut doc: Document) {
         self.apply_file_rules(&mut doc);
+        doc.buffer.read_only = doc.path.as_deref().is_some_and(rust_code_core::lsp::convert::is_virtual_path);
         // Focus the editor when the tab is first shown, so typing goes straight into it.
         doc.request_focus = true;
         doc.uid = self.next_uid;
@@ -414,6 +415,10 @@ impl CodeApp {
         }
         if closed_active {
             self.close_split_if_doubled();
+            // Keep typing in the tab that took its place.
+            if let Some(doc) = self.docs.get_mut(self.active) {
+                doc.request_focus = true;
+            }
         }
     }
 

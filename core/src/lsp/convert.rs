@@ -67,6 +67,37 @@ pub fn hierarchy_locations(value: &serde_json::Value, field: Option<&str>) -> Ve
         .collect()
 }
 
+/// Folder of the documents language servers supply, like decompiled classes.
+fn virtual_dir() -> Option<PathBuf> {
+    crate::settings::config_dir().map(|d| d.join("virtual"))
+}
+
+/// Whether a file is a server-supplied document, which stays read-only.
+pub fn is_virtual_path(path: &Path) -> bool {
+    virtual_dir().is_some_and(|dir| path.starts_with(dir))
+}
+
+/// A safe file name for a document only a server can read: its last segment,
+/// with a class named as the source the server gives for it.
+fn virtual_file_name(uri: &Url) -> String {
+    let last = uri.path().rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or_default();
+    let name: String = last.chars().filter(|c| c.is_ascii_alphanumeric() || "._-".contains(*c)).collect();
+    let name = name.trim_matches('.');
+    match name.strip_suffix(".class") {
+        Some(class) if !class.is_empty() => format!("{class}.java"),
+        _ if name.is_empty() => "document.txt".to_owned(),
+        _ => name.to_owned(),
+    }
+}
+
+/// Where the text of the server-only document `uri` is kept.
+pub fn virtual_path(uri: &Url) -> Option<PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    uri.as_str().hash(&mut hasher);
+    Some(virtual_dir()?.join(format!("{:016x}", hasher.finish())).join(virtual_file_name(uri)))
+}
+
 /// Whether a web address stays on this computer.
 pub fn is_loopback_url(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https") && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
@@ -198,6 +229,16 @@ fn matching_brace(chars: &[char], open: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn virtual_file_names_are_safe() {
+        let name = |s: &str| super::virtual_file_name(&lsp_types::Url::parse(s).unwrap());
+        assert_eq!(name("jdt://contents/rt.jar/java.util/ArrayList.class?=x%2Fy"), "ArrayList.java");
+        assert_eq!(name("custom://host/dir/lib.rs"), "lib.rs");
+        assert_eq!(name("custom://host/..%2f..%2fevil.txt"), "2f..2fevil.txt");
+        assert_eq!(name("custom://host/"), "document.txt");
+        assert_eq!(name("custom://host/.class"), "class");
+    }
+
     #[test]
     fn hierarchy_answers_become_locations() {
         let item = serde_json::json!({

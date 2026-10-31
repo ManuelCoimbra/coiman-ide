@@ -446,8 +446,34 @@ impl CodeApp {
             self.lsp.open_url = Some(url.to_string());
             return true;
         }
+        if !matches!(url.scheme(), "http" | "https" | "file") {
+            let range = serde_json::from_value::<lt::Range>(params["selection"].clone()).unwrap_or_default();
+            self.request_virtual_document(url, range);
+            return true;
+        }
         self.status = Some(format!("{} asked to open {url}; not opened", kind.name()));
         false
+    }
+
+    /// Asks the server for a document only it can read.
+    pub(super) fn request_virtual_document(&mut self, uri: lt::Url, range: lt::Range) {
+        let method = if uri.scheme() == "jdt" { "java/classFileContents" } else { "workspace/textDocumentContent" };
+        let params = json!({ "uri": uri });
+        self.request_for(self.active, method, Pending::VirtualDocument { uri, range }, |_, _| params);
+    }
+
+    /// Keeps the text in a file of its own and shows it, read-only.
+    pub(super) fn on_virtual_document(&mut self, uri: &lt::Url, range: lt::Range, value: &Value) {
+        let Some(text) = value.as_str().or_else(|| value["text"].as_str()) else {
+            self.status = Some(format!("The language server has no text for {uri}"));
+            return;
+        };
+        let Some(path) = convert::virtual_path(uri) else { return };
+        let written = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, text));
+        match written {
+            Ok(()) => self.jump_to(&path, range, false),
+            Err(e) => self.status = Some(format!("Could not keep {uri}: {e}")),
+        }
     }
 
     /// The server's data changed (it finished indexing, say): ask again.
