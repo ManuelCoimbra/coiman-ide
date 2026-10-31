@@ -111,6 +111,7 @@ impl Client {
             } else {
                 let mut child = quiet_command(&launch.program)
                     .args(&launch.args)
+                    .envs(launch.env.iter().map(|(k, v)| (k, v)))
                     .current_dir(root)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())

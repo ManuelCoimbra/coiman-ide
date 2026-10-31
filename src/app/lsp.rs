@@ -405,6 +405,10 @@ impl CodeApp {
                 if !trust::is_trusted(&root) {
                     continue;
                 }
+                let mut launch = launch;
+                if kind == ServerKind::Python {
+                    launch.env = self.environment_variables();
+                }
                 match Client::start(kind, &launch, &root, options, repaint(ctx)) {
                     Ok(client) => self.lsp.clients.push(client),
                     Err(e) => {
@@ -504,10 +508,16 @@ impl CodeApp {
                     // Defaults, except what rust-analyzer's settings here cover.
                     "workspace/configuration" => {
                         let check = self.rust_analyzer_settings();
+                        let python = self.python_env().map(|env| env.python.to_string_lossy().into_owned());
                         let items = params["items"].as_array().cloned().unwrap_or_default();
                         let answers = items
                             .iter()
-                            .map(|i| if i["section"] == "rust-analyzer" { check.clone() } else { Value::Null })
+                            .map(|i| match i["section"].as_str() {
+                                Some("rust-analyzer") => check.clone(),
+                                // Pyright asks here which Python to read imports from.
+                                Some("python") if python.is_some() => json!({ "pythonPath": python }),
+                                _ => Value::Null,
+                            })
                             .collect();
                         Ok(Value::Array(answers))
                     }

@@ -897,22 +897,15 @@ fn project_file(file: &Path, root: Option<&Path>) -> Option<Result<Outcome, Stri
 
 // ----- interpreted languages -----------------------------------------------------------
 
-/// The project's virtual environment, else the system's Python.
+/// The project's Python, by the answer every tool shares.
 fn python_program(file: &Path, root: Option<&Path>) -> Result<String, String> {
-    let relative = if cfg!(windows) { "Scripts/python.exe" } else { "bin/python" };
-    for dir in upward(file, root) {
-        for venv in [".venv", "venv", "env"] {
-            let python = dir.join(venv).join(relative);
-            if python.is_file() {
-                return Ok(call(&python));
-            }
-        }
+    let start = file.parent().unwrap_or(file);
+    let env = crate::environment::resolve(start, root).ok_or_else(|| "Python isn't on PATH".to_owned())?;
+    // A name found on PATH reads better, and behaves the same.
+    if env.prefix.is_none() && env.reason.contains("PATH") {
+        return Ok(stem_of(&env.python));
     }
-    ["python", "python3", "py"]
-        .iter()
-        .find(|p| which(p).is_some())
-        .map(|p| (*p).to_owned())
-        .ok_or_else(|| "Python isn't on PATH".to_owned())
+    Ok(call(&env.python))
 }
 
 /// A project's own TypeScript runner, else Node (which runs TypeScript since 22.18).

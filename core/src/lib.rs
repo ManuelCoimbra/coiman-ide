@@ -12,6 +12,7 @@ pub mod document;
 pub mod edit_ops;
 pub mod editorconfig;
 pub mod encoding;
+pub mod environment;
 pub mod find;
 pub mod finder;
 pub mod fonts;

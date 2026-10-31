@@ -151,13 +151,14 @@ impl Session {
     pub fn spawn(
         command: &str,
         cwd: &Path,
+        env: &[(String, String)],
         size: Size,
         scrollback: usize,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, String> {
         let words = split_command(command);
         let (program, args) = words.split_first().ok_or("no shell configured")?;
-        Self::spawn_args(program, args, cwd, &[], size, scrollback, wake)
+        Self::spawn_args(program, args, cwd, env, size, scrollback, wake)
     }
 
     /// Like [`Session::spawn`] with the program and arguments given
@@ -309,7 +310,7 @@ mod tests {
         let command =
             if cfg!(windows) { "cmd.exe /c echo rust-code-pty-test" } else { "sh -c \"echo rust-code-pty-test\"" };
         let size = Size { columns: 80, lines: 10 };
-        let mut session = Session::spawn(command, &std::env::temp_dir(), size, 100, || {}).expect("spawn");
+        let mut session = Session::spawn(command, &std::env::temp_dir(), &[], size, 100, || {}).expect("spawn");
         let deadline = Instant::now() + Duration::from_secs(20);
         let mut exited = false;
         while Instant::now() < deadline && !(exited && session.screen_text().contains("rust-code-pty-test")) {

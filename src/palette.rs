@@ -52,6 +52,7 @@ pub enum PickerKind {
     CodeAction,
     CodeLens,
     RunMode,
+    Python,
     Branch,
     RunConfig,
     Symbol,
@@ -134,7 +135,11 @@ impl Palette {
         let mut empty_text = "No matching results";
         if let Some(picker) = &self.picker {
             let q = self.query.trim();
-            for t in picker.items.iter().filter(|t| fuzzy_match(t, q)) {
+            let mut matching: Vec<&String> = picker.items.iter().filter(|t| fuzzy_match(t, q)).collect();
+            // Long labels match nearly anything fuzzily: the text itself comes first.
+            let lower = q.to_lowercase();
+            matching.sort_by_key(|t| t.to_lowercase().find(&lower).unwrap_or(usize::MAX));
+            for t in matching {
                 items.push((t.clone(), String::new(), PaletteResult::Picked(picker.kind, t.clone()), Vec::new()));
             }
         } else if let Some(q) = self.query.strip_prefix('>') {

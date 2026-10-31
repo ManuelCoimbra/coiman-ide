@@ -28,6 +28,14 @@ pub struct Settings {
     pub history: HistorySettings,
     pub debug: DebugSettings,
     pub plugins: PluginSettings,
+    pub python: PythonSettings,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct PythonSettings {
+    /// An environment's folder or a Python, relative to the folder; empty works it out.
+    pub interpreter: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

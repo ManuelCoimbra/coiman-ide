@@ -186,6 +186,7 @@ impl CodeApp {
             Command::ChooseRunTarget => self.choose_run_target(),
             Command::OpenLivePreview => self.open_live_preview(ctx),
             Command::ShowLanguageDoctor => self.show_doctor(ctx),
+            Command::ChoosePython => self.choose_python(),
             Command::OpenLanguagesFile => self.open_languages_file(),
             Command::StopLivePreview => self.stop_live_preview(),
             Command::OpenRunConfigs => self.open_run_configs(),
@@ -458,7 +459,8 @@ impl CodeApp {
     /// Starts a terminal with the configured shell and shows it.
     pub(super) fn new_terminal(&mut self, ctx: &egui::Context) {
         let (shell, scrollback) = (self.settings.terminal.shell.clone(), self.settings.terminal.scrollback);
-        match self.terminal.new_tab(ctx, &shell, scrollback) {
+        let env = self.environment_variables();
+        match self.terminal.new_tab(ctx, &shell, &env, scrollback) {
             Ok(()) => {
                 if !self.terminal.detached {
                     self.panel_visible = true;
@@ -506,6 +508,7 @@ impl CodeApp {
             PickerKind::Branch => self.pick_branch(ctx, label),
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::RunMode => self.picked_run_mode(label),
+            PickerKind::Python => self.picked_python(ctx, label),
             PickerKind::Symbol => self.picked_symbol(label),
             PickerKind::History => self.picked_history(label),
             PickerKind::RunTarget => self.picked_run_target(ctx, label),

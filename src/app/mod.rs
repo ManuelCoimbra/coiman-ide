@@ -8,6 +8,7 @@ mod config;
 mod debug;
 mod dispatch;
 mod doctor;
+mod environment;
 mod files;
 mod git;
 mod hidden;
@@ -141,6 +142,7 @@ pub struct CodeApp {
     prints: prints::Prints,
     preview: preview::Preview,
     doctor: doctor::Doctor,
+    environment: environment::Environment,
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     auto_save: autosave::AutoSave,
@@ -250,6 +252,7 @@ impl CodeApp {
             prints: Default::default(),
             preview: Default::default(),
             doctor: Default::default(),
+            environment: Default::default(),
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             auto_save: Default::default(),
@@ -322,6 +325,7 @@ impl eframe::App for CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.pump_environment(&ctx);
         self.pump_run_configs(&ctx);
         self.pump_run_problems(&ctx);
         self.pump_preview(&ctx);

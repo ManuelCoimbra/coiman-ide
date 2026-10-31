@@ -175,6 +175,7 @@ impl CodeApp {
         {
             self.restart_rust_analyzer();
         }
+        rust_code_core::environment::set_chosen(&new.python.interpreter);
         // Servers come from these.
         if !first && languages_changed {
             self.restart_lsp();

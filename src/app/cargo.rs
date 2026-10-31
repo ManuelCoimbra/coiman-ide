@@ -1188,7 +1188,8 @@ impl CodeApp {
         self.terminal.close_finished("Run: ");
         let title = format!("Run: {}", plan.title);
         // A redrawn progress bar would leave its pieces in the output we read.
-        let env = [("CARGO_TERM_PROGRESS_WHEN".to_owned(), "never".to_owned())];
+        let mut env = vec![("CARGO_TERM_PROGRESS_WHEN".to_owned(), "never".to_owned())];
+        env.extend(self.environment_variables());
         let task = Task { title: &title, program: &program, args: &args, env: &env, cwd: &plan.cwd, scan: Some(None) };
         match self.terminal.run_task(ctx, task, scrollback) {
             Ok(()) => {
@@ -1227,7 +1228,9 @@ impl CodeApp {
         }
         let cwd = config.cwd.as_ref().map_or(root.clone(), |c| root.join(c));
         let (program, args) = shell(&config.command);
-        let env: Vec<(String, String)> = config.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        // The configuration's own variables come last, so they win.
+        let mut env = self.environment_variables();
+        env.extend(config.env.iter().map(|(k, v)| (k.clone(), v.clone())));
         let scrollback = self.settings.terminal.scrollback;
         let matcher = match config.matcher.as_deref().map(matchers::compile_custom).transpose() {
             Ok(matcher) => matcher,

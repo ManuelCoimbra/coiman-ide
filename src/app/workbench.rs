@@ -1100,6 +1100,14 @@ impl CodeApp {
                 egui::Popup::menu(&zoom)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| self.zoom_menu(ui));
+                if let Some((label, tip)) = self.python_label()
+                    && ui
+                        .add(egui::Label::new(white(label)).sense(Sense::click()).selectable(false))
+                        .on_hover_text(tip)
+                        .clicked()
+                {
+                    status_cmd = Some(Command::ChoosePython);
+                }
                 if self.preview_running()
                     && ui
                         .add(egui::Label::new(white("Live Preview".to_owned())).sense(Sense::click()).selectable(false))

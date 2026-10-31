@@ -141,6 +141,14 @@ impl CodeApp {
             }
         }
 
+        if matches!(ext.as_str(), "py" | "pyw" | "pyi") {
+            let text = self.python_env().map_or_else(
+                || "No Python on PATH or in this project".to_owned(),
+                |env| format!("{}: {}. {}", env.label(), env.python.display(), env.reason),
+            );
+            let health = if self.python_env().is_some() { Health::Good } else { Health::Bad };
+            rows.push(row("Python", text, health));
+        }
         let tip = self.run_button_tip();
         let runs = doc.path.as_deref().is_some_and(run::may_run);
         let shown = if runs { tip.replace('\n', ": ") } else { "Nothing to run for this file".to_owned() };

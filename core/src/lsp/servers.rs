@@ -128,15 +128,22 @@ pub struct Launch {
     /// Connect to a server already running on this computer, at this
     /// `host:port`, instead of starting a program.
     pub tcp: Option<String>,
+    /// Set for the server: the project's environment, say.
+    pub env: Vec<(String, String)>,
 }
 
 impl Launch {
     fn new(program: impl Into<PathBuf>, args: &[&str]) -> Self {
-        Self { program: program.into(), args: args.iter().map(|s| (*s).to_owned()).collect(), tcp: None }
+        Self {
+            program: program.into(),
+            args: args.iter().map(|s| (*s).to_owned()).collect(),
+            tcp: None,
+            env: Vec::new(),
+        }
     }
 
     fn tcp(address: &str) -> Self {
-        Self { program: PathBuf::new(), args: Vec::new(), tcp: Some(address.to_owned()) }
+        Self { program: PathBuf::new(), args: Vec::new(), tcp: Some(address.to_owned()), env: Vec::new() }
     }
 }
 
@@ -339,7 +346,7 @@ fn find_configured(configured: &str) -> Found {
     let mut words = configured.split_whitespace();
     let program = PathBuf::from(words.next().unwrap_or_default());
     let program = if program.is_file() { program } else { which(&program.to_string_lossy()).unwrap_or(program) };
-    Found::Server(Launch { program, args: words.map(str::to_owned).collect(), tcp: None })
+    Found::Server(Launch { program, args: words.map(str::to_owned).collect(), tcp: None, env: Vec::new() })
 }
 
 /// Looks for a server: the configured command (`[lsp.paths]`, a program
@@ -517,7 +524,7 @@ fn jdtls_launch(java: &Path, dir: &Path) -> Option<Launch> {
         "-data".to_owned(),
         data.to_string_lossy().into_owned(),
     ];
-    Some(Launch { program: java.to_path_buf(), args, tcp: None })
+    Some(Launch { program: java.to_path_buf(), args, tcp: None, env: Vec::new() })
 }
 
 fn run(program: &Path, args: &[&str]) -> Result<String, String> {

@@ -166,11 +166,17 @@ impl Terminals {
     }
 
     /// Starts a new shell (`shell` empty: the platform default) and shows it.
-    pub fn new_tab(&mut self, ctx: &egui::Context, shell: &str, scrollback: usize) -> Result<(), String> {
+    pub fn new_tab(
+        &mut self,
+        ctx: &egui::Context,
+        shell: &str,
+        env: &[(String, String)],
+        scrollback: usize,
+    ) -> Result<(), String> {
         let shell = if shell.trim().is_empty() { default_shell() } else { shell.to_owned() };
         let ctx = ctx.clone();
         let size = Size { columns: 80, lines: 24 };
-        let session = Session::spawn(&shell, &self.cwd, size, scrollback, move || ctx.request_repaint())?;
+        let session = Session::spawn(&shell, &self.cwd, env, size, scrollback, move || ctx.request_repaint())?;
         self.push(session, None, false);
         Ok(())
     }
