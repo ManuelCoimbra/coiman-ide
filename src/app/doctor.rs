@@ -149,6 +149,9 @@ impl CodeApp {
             let health = if self.python_env().is_some() { Health::Good } else { Health::Bad };
             rows.push(row("Python", text, health));
         }
+        if let Some((text, fine)) = self.cpp_doctor_row() {
+            rows.push(row("Compile flags", text, if fine { Health::Good } else { Health::Bad }));
+        }
         if let Some((text, fine)) = self.formatter_report() {
             rows.push(row("Formatting", text, if fine { Health::Good } else { Health::Bad }));
         }

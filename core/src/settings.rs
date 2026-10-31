@@ -30,6 +30,17 @@ pub struct Settings {
     pub plugins: PluginSettings,
     pub python: PythonSettings,
     pub web: WebSettings,
+    pub cpp: CppSettings,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct CppSettings {
+    /// The folder of the `compile_commands.json` clangd reads, relative to the
+    /// project. Empty leaves it to clangd.
+    pub compile_commands_dir: String,
+    /// In a database of several configurations, the one to read.
+    pub config: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]

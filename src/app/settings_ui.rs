@@ -195,6 +195,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("lsp.paths", "csharp", "C# server", "Program and arguments. Empty finds it.", Kind::Text("")),
             row("lsp.paths", "go", "Go server", "Program and arguments. Empty finds it.", Kind::Text("")),
             row(
+                "cpp",
+                "compile_commands_dir",
+                "C and C++ database folder",
+                "Where compile_commands.json is, from the project. Empty leaves it to clangd.",
+                Kind::Text(""),
+            ),
+            row(
+                "cpp",
+                "config",
+                "C and C++ configuration",
+                "In a database of several, such as Ninja Multi-Config's: Debug, Release...",
+                Kind::Text(""),
+            ),
+            row(
                 "web",
                 "baseline",
                 "Baseline target",

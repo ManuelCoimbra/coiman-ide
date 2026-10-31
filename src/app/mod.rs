@@ -5,6 +5,7 @@ mod autosave;
 mod bookmarks;
 mod cargo;
 mod config;
+mod cpp;
 mod debug;
 mod dispatch;
 mod doctor;
@@ -149,6 +150,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
     font_load: Option<std::sync::mpsc::Receiver<rust_code_core::fonts::Loaded>>,
@@ -261,6 +263,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            cpp: Default::default(),
             auto_save: Default::default(),
             font_load: None,
             settings_ui: Default::default(),
@@ -336,6 +339,7 @@ impl eframe::App for CodeApp {
         self.pump_run_problems(&ctx);
         self.pump_preview(&ctx);
         self.check_baseline();
+        self.pump_cpp(&ctx);
         self.pump_repl(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
@@ -514,6 +518,7 @@ impl eframe::App for CodeApp {
         self.keys_window(&ctx);
         self.snippets_window(&ctx);
         self.web_windows(&ctx);
+        self.cpp_window(&ctx);
         self.prints_window(&ctx);
         self.git_popups(&ctx);
         self.terminal_window(&ctx);

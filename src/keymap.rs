@@ -33,6 +33,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+alt+l", Command::NextBookmark, true),
     ("ctrl+alt+j", Command::PreviousBookmark, true),
     ("ctrl+k v", Command::MarkdownPreview, false),
+    ("alt+o", Command::SwitchHeaderSource, true),
     ("ctrl+s", Command::Save, false),
     ("ctrl+shift+s", Command::SaveAs, false),
     ("ctrl+k s", Command::SaveAll, false),

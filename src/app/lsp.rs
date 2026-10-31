@@ -81,6 +81,9 @@ pub(super) enum Pending {
     Rename {
         name: String,
     },
+    SwitchHeader {
+        path: PathBuf,
+    },
     CodeActions,
     Format {
         uid: u64,
@@ -414,6 +417,10 @@ impl CodeApp {
                 if kind == ServerKind::Python {
                     launch.env = self.environment_variables();
                 }
+                if kind == ServerKind::Clangd {
+                    let extra = self.clangd_arguments(&root);
+                    launch.args.extend(extra);
+                }
                 match Client::start(kind, &launch, &root, options, repaint(ctx)) {
                     Ok(client) => self.lsp.clients.push(client),
                     Err(e) => {
@@ -496,6 +503,7 @@ impl CodeApp {
                     }
                 }
                 "$/progress" => self.on_progress(&params),
+                "textDocument/clangd.fileStatus" => self.on_clangd_file_status(&params),
                 "experimental/serverStatus" => {
                     if let Some(client) = self.lsp.clients.iter_mut().find(|c| c.kind == kind && c.root == root) {
                         client.status = Some(ServerStatus::parse(&params));
@@ -619,6 +627,7 @@ impl CodeApp {
                     | Pending::CodeLensResolve { .. }
                     | Pending::WorkspaceSymbols => {}
                     Pending::Format { uid, save: true, .. } => self.finish_format_save(uid, None),
+                    Pending::SwitchHeader { path } => self.switch_by_name(&path),
                     _ => self.status = Some(format!("{}: {e}", kind.name())),
                 }
                 return;
@@ -635,6 +644,7 @@ impl CodeApp {
                 },
                 _ => self.status = Some("Nothing to rename here".to_owned()),
             },
+            Pending::SwitchHeader { path } => self.on_switch_header(&path, &value),
             Pending::CodeActions => self.on_code_actions(value),
             Pending::Format { uid, version, save } => {
                 let edits = serde_json::from_value::<Option<Vec<lt::TextEdit>>>(value).ok().flatten();
@@ -663,6 +673,12 @@ impl CodeApp {
                 self.on_locations(hierarchy.title(), &word, json!(found));
             }
         }
+    }
+
+    /// Whether a running server handles document `i`.
+    pub(super) fn server_ready_for(&self, i: usize) -> bool {
+        let target = self.docs.get(i).and_then(lsp_target);
+        target.is_some_and(|(p, _, k)| self.lsp.clients.iter().any(|c| serves(c, k, &p) && c.is_ready()))
     }
 
     /// Sends a request about document `i`. `params` gets the document and its

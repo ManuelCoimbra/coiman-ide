@@ -249,6 +249,8 @@ pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
                 None => serde_json::Value::Null,
             }
         }
+        // Says what it's doing with each file, for the C/C++ window.
+        ServerKind::Clangd => serde_json::json!({ "clangdFileStatus": true }),
         // These only offer formatting when asked to.
         ServerKind::Custom(i) if registry::get(i).and_then(|l| l.server).is_some_and(|s| s.starts_with("vscode-")) => {
             serde_json::json!({ "provideFormatter": true, "embeddedLanguages": { "css": true, "javascript": true } })

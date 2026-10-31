@@ -7,6 +7,7 @@ pub mod bookmarks;
 pub mod buffer;
 pub mod cargo;
 pub mod commands;
+pub mod compile_db;
 pub mod css;
 pub mod dap;
 pub mod dbgout;

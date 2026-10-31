@@ -387,6 +387,8 @@ impl CodeApp {
                 self.expand_emmet(false);
             }
             Command::PickColor => self.pick_color(),
+            Command::ShowCompileInfo => self.show_compile_info(),
+            Command::SwitchHeaderSource => self.switch_header_source(),
             Command::ToggleBookmark => self.toggle_bookmark(),
             Command::NextBookmark => self.next_bookmark(true),
             Command::PreviousBookmark => self.next_bookmark(false),
