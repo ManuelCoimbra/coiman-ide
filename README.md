@@ -139,7 +139,8 @@ is read and written on your machine.
   files use `files.eol` (`"auto"`, `"lf"`, `"crlf"`) and `files.encoding`
 - Hot exit: open folder, tabs and unsaved text are restored on next launch, even after a crash
   (backed up every second to `<config>\session.json`; no "save changes?" prompt on exit)
-- **Run** (`Shift+F10`): the title bar button shows only for files that could run. In a Cargo
+- **Run** (`Shift+F10`): the title bar button shows only for files that can run, and its tooltip names the
+  program and command before you click (`(project)` when the file stands for its package). In a Cargo
   project, what runs comes from `cargo metadata`: a file that starts a target runs that target
   (tests and benches through `cargo test` and `cargo bench`), and modules, the library and
   `Cargo.toml` run the package's program. Anything else says why it can't, beside the button

@@ -92,6 +92,14 @@ pub(super) const CARGO_ONLY: &[Command] = &[
 pub(super) struct CargoState {
     /// Programs offered by Run Program when several fit.
     run_targets: Vec<run::RunPlan>,
+    /// What Run would do for a tab: (doc uid, buffer version, answer), worked
+    /// out away from the UI because it can ask Cargo or walk a project.
+    run_preview: Option<RunPreview>,
+    /// When `run_preview` was last worked out.
+    run_preview_at: f64,
+    run_preview_job: Option<std::sync::mpsc::Receiver<RunPreview>>,
+    /// The (doc uid, buffer version) on screen, and since when.
+    run_preview_seen: Option<(u64, u64, f64)>,
     /// Why Run did nothing, when it was refused, and for which tab.
     run_refusal: Option<(String, f64, Option<u64>)>,
     /// Tests by file key.
@@ -121,6 +129,10 @@ impl Default for CargoState {
         let (tx, rx) = mpsc::channel();
         Self {
             run_targets: Vec::new(),
+            run_preview: None,
+            run_preview_at: 0.0,
+            run_preview_job: None,
+            run_preview_seen: None,
             run_refusal: None,
             tests: HashMap::new(),
             scanned_for: None,
@@ -164,6 +176,13 @@ fn shell(command: &str) -> (String, Vec<String>) {
     }
 }
 
+/// What Run would do for a tab: (doc uid, buffer version, answer).
+type RunPreview = (u64, u64, Result<run::Outcome, String>);
+
+/// Seconds before asking Cargo again about a file that hasn't changed.
+const RUN_PREVIEW_CARGO_AGE: f64 = 5.0;
+/// Seconds typing must pause before asking again what Run would do.
+const RUN_PREVIEW_SETTLE: f64 = 1.0;
 /// Seconds a refusal stays beside the Run button.
 const RUN_REFUSAL_SECONDS: f64 = 10.0;
 
@@ -777,10 +796,80 @@ impl CodeApp {
     /// Whether the title bar offers Run: for a file that could run, or with
     /// nothing open, for the folder's Cargo project.
     pub(super) fn run_button_visible(&self) -> bool {
-        match self.docs.get(self.active) {
-            Some(doc) => doc.path.as_deref().is_some_and(run::may_run),
-            None => self.cargo_root().is_some(),
+        let Some(doc) = self.docs.get(self.active) else { return self.cargo_root().is_some() };
+        if !doc.path.as_deref().is_some_and(run::may_run) {
+            return false;
         }
+        match &self.cargo.run_preview {
+            Some((uid, _, Err(why))) if *uid == doc.uid => !run::refusal_is_final(why),
+            _ => true,
+        }
+    }
+
+    /// What the Run button says it will do.
+    pub(super) fn run_button_tip(&self) -> String {
+        let known = self.docs.get(self.active).and_then(|doc| {
+            self.cargo.run_preview.as_ref().filter(|(uid, _, _)| *uid == doc.uid).map(|(_, _, answer)| answer)
+        });
+        match known {
+            Some(Ok(run::Outcome::Run(plan))) => format!("Run {} (Shift+F10)\n{}", plan.title, plan.command),
+            Some(Ok(run::Outcome::Choose(plans))) => format!("Run: choose from {} programs (Shift+F10)", plans.len()),
+            Some(Err(why)) => format!("Run Program (Shift+F10)\n{why}"),
+            None => "Run Program (Shift+F10)".to_owned(),
+        }
+    }
+
+    /// Keeps the answer for the active tab current, once its text has settled.
+    pub(super) fn pump_run_preview(&mut self, ctx: &egui::Context) {
+        if let Some(job) = &self.cargo.run_preview_job {
+            match job.try_recv() {
+                Ok(answer) => {
+                    self.cargo.run_preview = Some(answer);
+                    self.cargo.run_preview_at = ctx.input(|i| i.time);
+                    self.cargo.run_preview_job = None;
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => return,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.cargo.run_preview_job = None,
+            }
+        }
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let Some(file) = doc.path.clone().filter(|p| run::may_run(p)) else { return };
+        let (uid, version) = (doc.uid, doc.buffer.version());
+        let now = ctx.input(|i| i.time);
+        if self.cargo.run_preview.as_ref().is_some_and(|(u, v, _)| (*u, *v) == (uid, version)) {
+            // A Cargo project can change on disk with no edit here.
+            let cargo = matches!(doc.extension().as_str(), "rs" | "toml");
+            let left = RUN_PREVIEW_CARGO_AGE - (now - self.cargo.run_preview_at);
+            if !cargo {
+                return;
+            }
+            if left > 0.0 {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+                return;
+            }
+        }
+        let since = match self.cargo.run_preview_seen {
+            Some((u, v, since)) if (u, v) == (uid, version) => since,
+            _ => {
+                self.cargo.run_preview_seen = Some((uid, version, now));
+                now
+            }
+        };
+        // A newly shown tab is answered at once; typing waits for a pause.
+        let waits = self.cargo.run_preview.as_ref().is_some_and(|(u, v, _)| *u == uid && *v != version);
+        if waits && now - since < RUN_PREVIEW_SETTLE {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(RUN_PREVIEW_SETTLE));
+            return;
+        }
+        let source = doc.text();
+        let root = self.explorer.root.clone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let wake = super::repaint(ctx);
+        std::thread::spawn(move || {
+            let _ = tx.send((uid, version, run::plan(&file, &source, root.as_deref())));
+            wake();
+        });
+        self.cargo.run_preview_job = Some(rx);
     }
 
     /// Says why Run did nothing, beside the button: the status bar may be hidden.

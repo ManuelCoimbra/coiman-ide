@@ -313,6 +313,7 @@ impl eframe::App for CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
         self.pump_bookmarks();
         self.pump_prints(&ctx);

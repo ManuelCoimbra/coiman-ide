@@ -114,7 +114,7 @@ impl CodeApp {
             }
             let icon = egui::Rect::from_center_size(run_rect.center(), egui::vec2(16.0, 16.0));
             icons::paint(ui.painter(), icon, Icon::Play, Color32::from_rgb(0x89, 0xD1, 0x85));
-            if run.on_hover_text("Run Program (Shift+F10)").clicked() {
+            if run.on_hover_text(self.run_button_tip()).clicked() {
                 cmd = Some(Command::RunProgram);
             }
         }

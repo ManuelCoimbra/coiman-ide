@@ -386,11 +386,16 @@ fn rust_target(file: &Path, packages: &[CargoPackage]) -> Result<Outcome, String
             return Err(format!("{name} runs by itself whenever Cargo builds {}", package.name));
         }
     }
+    // Not a program itself: its package's stands in, and the title says so.
     let default = package.default_run.as_deref();
     if let Some(bin) = package.binaries().find(|t| Some(t.name.as_str()) == default) {
-        return Ok(Outcome::Run(cargo_run(package, "bin", &bin.name, bin.name.clone())));
+        return Ok(Outcome::Run(cargo_run(package, "bin", &bin.name, format!("{} (project)", bin.name))));
     }
-    let found = package.binaries().map(|t| cargo_run(package, "bin", &t.name, t.name.clone())).collect();
+    let mut found: Vec<RunPlan> =
+        package.binaries().map(|t| cargo_run(package, "bin", &t.name, t.name.clone())).collect();
+    if let [only] = found.as_mut_slice() {
+        only.title = format!("{} (project)", only.title);
+    }
     one_or_choose(found).ok_or_else(|| {
         format!(
             "{} is a library, so it has no program to run. Add src/main.rs to give it one, or run its tests",
@@ -485,6 +490,12 @@ fn typescript_program(file: &Path, root: Option<&Path>) -> Result<String, String
     }
     need("node", "TypeScript")?;
     Ok("node".to_owned())
+}
+
+/// Whether a refusal from [`plan`] is about the file itself. A missing tool or
+/// a build system to set up can be fixed, so Run stays on offer to explain how.
+pub fn refusal_is_final(why: &str) -> bool {
+    !why.contains("on PATH") && !why.contains("Ctrl+F5")
 }
 
 /// File types `plan` has a way to run.
@@ -650,6 +661,24 @@ mod tests {
         assert!(plan(&tmp.join("lib.c"), "int f(void){return 0;}", Some(&tmp)).unwrap_err().contains("no main"));
         assert!(plan(&tmp.join("make/m.c"), "int main(void){return 0;}", Some(&tmp)).unwrap_err().contains("Make"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn only_refusals_about_the_file_are_final() {
+        assert!(refusal_is_final("x is a library, so it has no program to run"));
+        assert!(!refusal_is_final(&need("no-such-tool-here", "Go").unwrap_err()));
+        assert!(!refusal_is_final(&plan(Path::new("a.xyz"), "", None).unwrap_err()));
+    }
+
+    #[test]
+    fn a_stand_in_program_is_labelled() {
+        let title = |file: &str| match rust_target(Path::new(file), &fixture()) {
+            Ok(Outcome::Run(plan)) => plan.title,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(title("/w/app/src/main.rs"), "app");
+        assert_eq!(title("/w/app/src/util.rs"), "app (project)");
+        assert_eq!(title("/w/picked/other.rs"), "b (project)");
     }
 
     #[test]
