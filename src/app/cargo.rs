@@ -995,6 +995,9 @@ impl CodeApp {
         if let Some(config) = self.pinned_config() {
             return format!("Run {} (Shift+F10)\n{}", config.name, config.command);
         }
+        if self.active_is_page() {
+            return "Open Live Preview (Shift+F10)".to_owned();
+        }
         let known = self.docs.get(self.active).and_then(|doc| {
             self.cargo.run_preview.as_ref().filter(|(uid, _, _)| *uid == doc.uid).map(|(_, _, answer)| answer)
         });
@@ -1141,6 +1144,10 @@ impl CodeApp {
         }
         if let Some(config) = self.pinned_config().cloned() {
             self.run_config(ctx, &config);
+            return;
+        }
+        if self.active_is_page() {
+            self.open_live_preview(ctx);
             return;
         }
         let root = self.explorer.root.clone();

@@ -184,6 +184,8 @@ impl CodeApp {
             Command::RunProgram => self.run_program(ctx),
             Command::SelectRunConfig => self.select_run_config(ctx),
             Command::ChooseRunTarget => self.choose_run_target(),
+            Command::OpenLivePreview => self.open_live_preview(ctx),
+            Command::StopLivePreview => self.stop_live_preview(),
             Command::OpenRunConfigs => self.open_run_configs(),
             Command::ShowTesting => self.show_testing(ctx),
             Command::TestAtCursor => self.test_at_cursor(ctx),

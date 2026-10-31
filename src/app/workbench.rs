@@ -366,6 +366,10 @@ impl CodeApp {
                 item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Choose What Run Starts...", Command::ChooseRunTarget);
+                item(ui, "Open Live Preview", Command::OpenLivePreview);
+                if self.preview_running() {
+                    item(ui, "Stop Live Preview", Command::StopLivePreview);
+                }
                 item(ui, "Select and Run Configuration...", Command::SelectRunConfig);
                 item(ui, "Open Configurations", Command::OpenRunConfigs);
                 if cargo_project {
@@ -439,6 +443,9 @@ impl CodeApp {
                 (PanelTab::Terminal, "TERMINAL".to_owned()),
             ];
             tabs.retain(|t| !matches!(t.0, PanelTab::DebugConsole | PanelTab::Prints) || self.cargo_project);
+            if self.preview_running() {
+                tabs.push((PanelTab::PageConsole, "PAGE".to_owned()));
+            }
             for (i, p) in self.plugins.panels.iter().enumerate() {
                 tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
             }
@@ -480,6 +487,7 @@ impl CodeApp {
                     action = Some(TerminalAction::Attach);
                 }
             }
+            PanelTab::PageConsole => self.page_console(ui),
             PanelTab::Terminal => {
                 let font_size = self.terminal_font();
                 self.terminal.body(ui, font_size);
@@ -1092,6 +1100,15 @@ impl CodeApp {
                 egui::Popup::menu(&zoom)
                     .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
                     .show(|ui| self.zoom_menu(ui));
+                if self.preview_running()
+                    && ui
+                        .add(egui::Label::new(white("Live Preview".to_owned())).sense(Sense::click()).selectable(false))
+                        .on_hover_text("Open the page's console")
+                        .clicked()
+                {
+                    self.panel_visible = true;
+                    self.panel_tab = PanelTab::PageConsole;
+                }
                 self.plugin_status_items(ui, rust_code_core::plugin::manifest::Alignment::Right, size);
             });
         });

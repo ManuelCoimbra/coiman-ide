@@ -23,6 +23,7 @@ pub mod lsp;
 pub mod markdown;
 pub mod matchers;
 pub mod plugin;
+pub mod preview;
 pub mod pty;
 pub mod recent;
 pub mod run;

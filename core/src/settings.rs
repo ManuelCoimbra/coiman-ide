@@ -76,6 +76,8 @@ pub struct WorkbenchSettings {
     pub ui_font_size: f32,
     /// Scale of the whole window: text, icons, panels and spacing. 1.0 is 100%.
     pub zoom: f32,
+    /// Port of the live preview on this computer; 0 picks a free one.
+    pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
 }
@@ -262,7 +264,7 @@ impl Default for EditorSettings {
 
 impl Default for WorkbenchSettings {
     fn default() -> Self {
-        Self { ui_font_size: 13.0, zoom: DEFAULT_ZOOM, color_theme: "Dark Modern".to_owned() }
+        Self { ui_font_size: 13.0, zoom: DEFAULT_ZOOM, preview_port: 0, color_theme: "Dark Modern".to_owned() }
     }
 }
 

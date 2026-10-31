@@ -133,6 +133,8 @@ pub enum Command {
     RunProgram,
     SelectRunConfig,
     ChooseRunTarget,
+    OpenLivePreview,
+    StopLivePreview,
     OpenRunConfigs,
     ShowTesting,
     TestAtCursor,
@@ -305,6 +307,8 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::RunProgram, "Run: Run Program"),
     (Command::SelectRunConfig, "Run: Select and Start Configuration..."),
     (Command::ChooseRunTarget, "Run: Choose What Run Starts..."),
+    (Command::OpenLivePreview, "Preview: Open Live Preview"),
+    (Command::StopLivePreview, "Preview: Stop Live Preview"),
     (Command::OpenRunConfigs, "Run: Open Configurations"),
     (Command::ShowTesting, "View: Show Testing"),
     (Command::TestAtCursor, "Test: Run Test at Cursor"),
@@ -476,6 +480,8 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::RunProgram, "rustcode.runProgram"),
     (Command::SelectRunConfig, "workbench.action.debug.selectandstart"),
     (Command::ChooseRunTarget, "rustcode.chooseRunTarget"),
+    (Command::OpenLivePreview, "rustcode.openLivePreview"),
+    (Command::StopLivePreview, "rustcode.stopLivePreview"),
     (Command::OpenRunConfigs, "workbench.action.debug.configure"),
     (Command::ShowTesting, "workbench.view.testing"),
     (Command::TestAtCursor, "testing.runAtCursor"),
@@ -541,6 +547,8 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | RunWithoutDebugging
             | RunProgram
             | ChooseRunTarget
+            | OpenLivePreview
+            | StopLivePreview
             | StartDebugging
             | StopDebugging
             | ShowDebug
