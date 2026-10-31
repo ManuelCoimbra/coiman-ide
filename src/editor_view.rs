@@ -92,6 +92,8 @@ pub struct Decorations {
     pub hidden: Option<std::sync::Arc<std::collections::HashMap<usize, Vec<usize>>>>,
     /// Sorted by line.
     pub changes: Vec<ChangeMark>,
+    /// Values printed by `dbg!`, shown after the end of their lines. Sorted by line.
+    pub values: Vec<(usize, String)>,
     /// Blame text shown after the end of this line.
     pub blame: Option<(usize, String)>,
     /// Foldable regions (from the syntax tree or indentation).
@@ -1233,7 +1235,14 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             let xb = if b > a { x0 + col_x(buf, row.start, b, m) } else { xa + m.char_w };
             squiggle(&text_painter, xa, xb, y + m.row_h - 2.0, severity_color(mark.severity));
         }
+        let printed = deco.values.binary_search_by_key(&row.line, |v| v.0).ok().map(|at| &deco.values[at].1);
         if inline.is_none()
+            && row.end == buf.line_end(row.line)
+            && let Some(value) = printed
+        {
+            let x = x0 + col_x(buf, row.start, row.end, m) + 3.0 * m.char_w;
+            text_painter.text(Pos2::new(x, y), egui::Align2::LEFT_TOP, value, m.font_id.clone(), pal.accent);
+        } else if inline.is_none()
             && row.end == buf.line_end(row.line)
             && let Some((_, blame)) = deco.blame.as_ref().filter(|(line, _)| *line == row.line)
         {

@@ -439,7 +439,7 @@ impl CodeApp {
         self.docs.iter().position(|d| d.uid == uid)
     }
 
-    fn doc_index_by_path(&self, path: &Path) -> Option<usize> {
+    pub(super) fn doc_index_by_path(&self, path: &Path) -> Option<usize> {
         self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, path)))
     }
 

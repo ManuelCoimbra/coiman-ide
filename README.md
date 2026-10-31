@@ -228,6 +228,13 @@ downloaded unless you click **Download**.
   several). The bug button next to Run in the Testing view, or `Ctrl+; Ctrl+C`, debugs
   the test at the cursor. The program runs in a **Debug:** terminal tab, so it can read
   input too.
+- **Print debugging**: values printed by `dbg!` in any terminal or in test output collect in
+  the **DBG** panel, where a filter narrows them and clicking a location goes to the call. The
+  latest value, and how many were printed, show beside each call while the line still holds
+  it. **Rust: Remove dbg! from This File** and **from Workspace** take the calls out and keep
+  what they evaluate: `dbg!(f(x))` becomes `f(x)`, and `dbg!(x);` goes entirely. Workspace
+  removal asks first and leaves files open and unsaved to review or undo. Calls holding comments
+  stay. Not done yet: comparing with logpoints, and reading `dbg!` in the Debug Console
 - **Breakpoints**: `F9` or a click left of a line number. **Debug: Add Conditional
   Breakpoint...** pauses only when an expression is true. **Debug: Add Logpoint...**
   prints a message to the Debug Console without pausing. The BREAKPOINTS list enables,

@@ -74,6 +74,9 @@ pub(super) const CARGO_ONLY: &[Command] = &[
     Command::ToggleBreakpoint,
     Command::ConditionalBreakpoint,
     Command::AddLogpoint,
+    Command::ShowDbgOutput,
+    Command::RemoveDbgFromFile,
+    Command::RemoveDbgFromWorkspace,
     Command::ShowDebug,
     Command::ShowDebugConsole,
     Command::DebugTestAtCursor,
@@ -683,6 +686,11 @@ impl CodeApp {
                 doc.goto_line(line + 1);
             }
         }
+    }
+
+    /// What the last cargo run printed.
+    pub(super) fn job_output(&self) -> &[String] {
+        &self.cargo.output
     }
 
     /// The Output panel: what the last cargo run printed.

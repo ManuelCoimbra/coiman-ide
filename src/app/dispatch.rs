@@ -360,6 +360,9 @@ impl CodeApp {
             Command::NextBookmark => self.next_bookmark(true),
             Command::PreviousBookmark => self.next_bookmark(false),
             Command::ListBookmarks => self.list_bookmarks(),
+            Command::ShowDbgOutput => self.toggle_panel(PanelTab::Prints),
+            Command::RemoveDbgFromFile => self.remove_dbg_here(),
+            Command::RemoveDbgFromWorkspace => self.plan_remove_dbg(),
             Command::InsertSnippet => self.pick_snippet(),
             Command::ManageSnippets => self.snippets_ui.show(),
             Command::TerminalFind => {

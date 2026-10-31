@@ -5,6 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use egui::{Color32, Event, EventFilter, FontId, Key, Modifiers, Pos2, Rect, Sense, Stroke, Vec2};
+use rust_code_core::dbgout::{Entry, Parser};
 use rust_code_core::pty::alacritty_terminal::grid::{Dimensions, Scroll};
 use rust_code_core::pty::alacritty_terminal::index::{Column, Line, Point, Side};
 use rust_code_core::pty::alacritty_terminal::selection::{Selection, SelectionType};
@@ -199,6 +200,46 @@ impl Terminals {
     /// Whether the active terminal has keyboard focus.
     pub fn has_focus(&self, ctx: &egui::Context) -> bool {
         self.tabs.get(self.active).is_some_and(|t| ctx.memory(|m| m.has_focus(t.focus_id())))
+    }
+
+    /// What `dbg!` printed in every tab, scrollback included. Only rows that can
+    /// start an entry are read in full, so this stays cheap with long histories.
+    pub fn dbg_entries(&self) -> Vec<Entry> {
+        let mut found = Vec::new();
+        for tab in &self.tabs {
+            let term = tab.session.term();
+            let grid = term.grid();
+            let columns = grid.columns();
+            let wraps = |line: i32| grid[Line(line)][Column(columns - 1)].flags.contains(Flags::WRAPLINE);
+            let end = grid.screen_lines() as i32;
+            let mut parser = Parser::default();
+            let mut line = -(grid.history_size() as i32);
+            while line < end {
+                if !parser.in_value() && grid[Line(line)][Column(0)].c != '[' {
+                    while wraps(line) && line + 1 < end {
+                        line += 1;
+                    }
+                    line += 1;
+                    continue;
+                }
+                let mut text = String::new();
+                loop {
+                    let row = &grid[Line(line)];
+                    let cells = (0..columns).map(|c| &row[Column(c)]);
+                    let shown = cells
+                        .filter(|c| !c.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER));
+                    text.extend(shown.map(|c| if c.c == '\0' { ' ' } else { c.c }));
+                    if !wraps(line) || line + 1 >= end {
+                        break;
+                    }
+                    line += 1;
+                }
+                parser.feed(text.trim_end());
+                line += 1;
+            }
+            found.extend(parser.finish());
+        }
+        found
     }
 
     /// Handles what the sessions reported. Returns true if the last terminal

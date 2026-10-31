@@ -7,6 +7,7 @@ pub mod buffer;
 pub mod cargo;
 pub mod commands;
 pub mod dap;
+pub mod dbgout;
 pub mod document;
 pub mod edit_ops;
 pub mod editorconfig;

@@ -319,6 +319,10 @@ impl CodeApp {
                     item(ui, "Conditional Breakpoint...", Command::ConditionalBreakpoint);
                     item(ui, "Logpoint...", Command::AddLogpoint);
                     ui.separator();
+                    item(ui, "dbg! Output", Command::ShowDbgOutput);
+                    item(ui, "Remove dbg! from This File", Command::RemoveDbgFromFile);
+                    item(ui, "Remove dbg! from Workspace...", Command::RemoveDbgFromWorkspace);
+                    ui.separator();
                 }
                 item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
@@ -391,9 +395,10 @@ impl CodeApp {
                 (PanelTab::References, "REFERENCES".to_owned()),
                 (PanelTab::Output, "OUTPUT".to_owned()),
                 (PanelTab::DebugConsole, "DEBUG CONSOLE".to_owned()),
+                (PanelTab::Prints, self.prints_tab_label()),
                 (PanelTab::Terminal, "TERMINAL".to_owned()),
             ];
-            tabs.retain(|t| t.0 != PanelTab::DebugConsole || self.cargo_project);
+            tabs.retain(|t| !matches!(t.0, PanelTab::DebugConsole | PanelTab::Prints) || self.cargo_project);
             for (i, p) in self.plugins.panels.iter().enumerate() {
                 tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
             }
@@ -427,6 +432,7 @@ impl CodeApp {
             PanelTab::References => self.references_panel(ui),
             PanelTab::Output => self.output_panel(ui),
             PanelTab::DebugConsole => self.debug_console(ui),
+            PanelTab::Prints => self.prints_panel(ui),
             PanelTab::Plugin(i) => self.plugin_panel(ui, i),
             PanelTab::Terminal if self.terminal.detached => {
                 ui.label(RichText::new("The terminal is in its own window.").color(theme::colors().text_dim));
