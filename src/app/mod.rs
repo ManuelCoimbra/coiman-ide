@@ -202,6 +202,8 @@ pub struct CodeApp {
     plugins: plugins::PluginState,
     /// "Stay Restricted" was chosen: no bar until something needs trust again.
     trust_prompt_hidden: bool,
+    /// The palette just closed: give the editor focus unless something else took it.
+    refocus_after_palette: bool,
     /// Where the Explorer's next new file, folder or rename applies.
     path_target: Option<PathBuf>,
     /// Asking before moving this to the Recycle Bin.
@@ -280,6 +282,7 @@ impl CodeApp {
             debug: debug::DebugState::default(),
             plugins: plugins::PluginState::default(),
             trust_prompt_hidden: false,
+            refocus_after_palette: false,
             path_target: None,
             delete_pending: None,
         };
@@ -490,6 +493,14 @@ impl eframe::App for CodeApp {
             self.palette.hidden_commands = if self.cargo_project { &[] } else { cargo::CARGO_ONLY };
         }
         self.pump_workspace_symbols();
+        if std::mem::take(&mut self.refocus_after_palette)
+            && ctx.memory(|m| m.focused().is_none())
+            && let Some(doc) = self.docs.get_mut(self.active)
+        {
+            doc.request_focus = true;
+            ctx.request_repaint();
+        }
+        let palette_was_open = self.palette.open;
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
@@ -517,6 +528,12 @@ impl eframe::App for CodeApp {
 
         if let Some(c) = cmd {
             self.run_command(&ctx, c);
+        }
+        // After the command, which may have opened the palette again as a picker.
+        if palette_was_open && !self.palette.open {
+            ctx.memory_mut(|m| m.stop_text_input());
+            self.refocus_after_palette = true;
+            ctx.request_repaint();
         }
         self.update_title(&ctx);
         if let Some((started, window_ready, file)) = self.startup_probe.take() {

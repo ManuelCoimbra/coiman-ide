@@ -398,6 +398,8 @@ fn unknown_keys(value: &Value, known: &Value, prefix: &str, out: &mut Vec<String
     for (key, v) in t {
         let path = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
         match k.get(key) {
+            // Named by the user: one entry per language server.
+            Some(_) if path == "lsp.paths" => {}
             Some(kv) => unknown_keys(v, kv, &path, out),
             None => out.push(format!("Unknown setting `{path}`")),
         }
@@ -528,6 +530,9 @@ mod tests {
     fn unknown_keys_and_type_errors_are_reported() {
         let (s, problems) = from_table(table("[editor]\nfont_sise = 3"));
         assert_eq!(problems, vec!["Unknown setting `editor.font_sise`".to_owned()]);
+        let (with_paths, problems) = from_table(table("[lsp.paths]\ngo = \"my-gopls\""));
+        assert!(problems.is_empty(), "server names aren't settings: {problems:?}");
+        assert_eq!(with_paths.lsp.paths["go"], "my-gopls");
         assert_eq!(s, Settings::default());
         let (_, problems) = from_table(table("[editor]\nfont_size = \"big\""));
         assert_eq!(problems.len(), 1);
