@@ -23,6 +23,10 @@ pub struct RunConfig {
     pub cwd: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
+    /// A pattern for this command's errors, with groups named `file`, `line`,
+    /// `message`, and optionally `col` and `severity`. Replaces the built-in ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub matcher: Option<String>,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -59,6 +63,7 @@ pub fn default_configs(root: &Path) -> Vec<RunConfig> {
             command: format!("cargo run -p {} --bin {}", package.name, bin.name),
             cwd: None,
             env: BTreeMap::new(),
+            matcher: None,
         })
         .collect();
     let plain = |name: &str, command: &str| RunConfig {
@@ -66,6 +71,7 @@ pub fn default_configs(root: &Path) -> Vec<RunConfig> {
         command: command.into(),
         cwd: None,
         env: BTreeMap::new(),
+        matcher: None,
     };
     configs.push(plain("Test workspace", "cargo test --workspace"));
     configs.push(plain("Check workspace", "cargo check --workspace --all-targets"));

@@ -56,6 +56,24 @@ struct Tab {
     task: bool,
     /// Set when the program ended (with its exit code, if known).
     exited: Option<Option<u32>>,
+    /// Read this tab's output for problems.
+    scan: Option<Scan>,
+}
+
+/// How to look for problems in a tab's output.
+struct Scan {
+    cwd: PathBuf,
+    matcher: Option<rust_code_core::matchers::Regex>,
+    /// The program ended and its output has been read for the last time.
+    done: bool,
+}
+
+/// One tab's output, ready to look through.
+pub struct ScanOutput<'a> {
+    pub id: u64,
+    pub cwd: &'a Path,
+    pub matcher: Option<&'a rust_code_core::matchers::Regex>,
+    pub lines: Vec<String>,
 }
 
 impl Tab {
@@ -90,6 +108,8 @@ pub struct Task<'a> {
     pub args: &'a [String],
     pub env: &'a [(String, String)],
     pub cwd: &'a Path,
+    /// Read its output for problems: `Some(None)` by the built-in patterns.
+    pub scan: Option<Option<rust_code_core::matchers::Regex>>,
 }
 
 /// What the terminal header asks the app to do.
@@ -163,7 +183,11 @@ impl Terminals {
         let session = Session::spawn_args(task.program, task.args, task.cwd, task.env, size, scrollback, move || {
             ctx.request_repaint()
         })?;
+        let scan = task.scan.map(|matcher| Scan { cwd: task.cwd.to_path_buf(), matcher, done: false });
         self.push(session, Some(task.title.to_owned()), true);
+        if let Some(tab) = self.tabs.last_mut() {
+            tab.scan = scan;
+        }
         Ok(())
     }
 
@@ -175,7 +199,7 @@ impl Terminals {
     }
 
     fn push(&mut self, session: Session, title: Option<String>, task: bool) {
-        self.tabs.push(Tab { id: self.next_id, session, title, scroll_rest: 0.0, task, exited: None });
+        self.tabs.push(Tab { id: self.next_id, session, title, scroll_rest: 0.0, task, exited: None, scan: None });
         self.next_id += 1;
         self.active = self.tabs.len() - 1;
         self.focus_requested = true;
@@ -240,6 +264,22 @@ impl Terminals {
             found.extend(parser.finish());
         }
         found
+    }
+
+    /// Tabs whose output may have changed since the last call, and which tabs
+    /// have output to look through at all.
+    pub fn scan_outputs(&mut self) -> (Vec<ScanOutput<'_>>, Vec<u64>) {
+        let live = self.tabs.iter().filter(|t| t.scan.is_some()).map(|t| t.id).collect();
+        let mut outputs = Vec::new();
+        for tab in &mut self.tabs {
+            let ended = tab.exited.is_some();
+            let Some(scan) = tab.scan.as_mut().filter(|s| !s.done) else { continue };
+            scan.done = ended;
+            let lines = output_lines(&tab.session);
+            let Some(scan) = tab.scan.as_ref() else { continue };
+            outputs.push(ScanOutput { id: tab.id, cwd: &scan.cwd, matcher: scan.matcher.as_ref(), lines });
+        }
+        (outputs, live)
     }
 
     /// Handles what the sessions reported. Returns true if the last terminal
@@ -369,6 +409,54 @@ impl Grid {
         let side = if x.fract() < 0.5 { Side::Left } else { Side::Right };
         (Point::new(Line(row as i32 - display_offset as i32), Column(col)), side)
     }
+}
+
+/// Rows of a tab's output looked through for problems, newest kept.
+const SCANNED_ROWS: i32 = 5000;
+
+/// The text of the logical line that row `line` belongs to, joining wrapped
+/// rows, with the first row it starts on.
+fn logical_line(session: &Session, line: i32) -> (i32, String) {
+    let term = session.term();
+    let grid = term.grid();
+    let columns = grid.columns();
+    let top = -(grid.history_size() as i32);
+    let end = grid.screen_lines() as i32;
+    let wraps = |row: i32| grid[Line(row)][Column(columns - 1)].flags.contains(Flags::WRAPLINE);
+    let mut start = line;
+    while start > top && wraps(start - 1) {
+        start -= 1;
+    }
+    let mut text = String::new();
+    let mut row = start;
+    loop {
+        let cells = (0..columns).map(|c| &grid[Line(row)][Column(c)]);
+        let shown = cells.filter(|c| !c.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER));
+        text.extend(shown.map(|c| if c.c == '\0' { ' ' } else { c.c }));
+        if !wraps(row) || row + 1 >= end {
+            break;
+        }
+        row += 1;
+    }
+    (start, text)
+}
+
+/// A tab's text as the program printed it, one string per line.
+fn output_lines(session: &Session) -> Vec<String> {
+    let (top, end, columns) = {
+        let term = session.term();
+        let grid = term.grid();
+        (-(grid.history_size() as i32), grid.screen_lines() as i32, grid.columns())
+    };
+    let mut lines = Vec::new();
+    let mut row = top.max(end - SCANNED_ROWS);
+    while row < end {
+        let (_, text) = logical_line(session, row);
+        // Each row of a wrapped line holds `columns` characters or fewer.
+        row += (text.chars().count().saturating_sub(1) / columns.max(1)) as i32 + 1;
+        lines.push(text.trim_end().to_owned());
+    }
+    lines
 }
 
 /// All the terminal's text, scrollback included, as searchable rows.
@@ -670,6 +758,15 @@ fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, gri
     let Some(p) = ui.input(|i| i.pointer.interact_pos()) else { return };
     let offset = tab.session.term().grid().display_offset();
     let (point, side) = grid.point_at(p, offset, size);
+    // Ctrl+click opens the web address under the pointer.
+    if response.clicked() && ui.input(|i| i.modifiers.command) {
+        let (start, text) = logical_line(&tab.session, point.line.0);
+        let col = (point.line.0 - start) as usize * size.columns + point.column.0;
+        if let Some(url) = rust_code_core::matchers::url_at(&text, col) {
+            ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+            return;
+        }
+    }
     if response.secondary_clicked() {
         // Right-click copies the selection, like Windows Terminal.
         let text = tab.session.term().selection_to_string().filter(|s| !s.is_empty());

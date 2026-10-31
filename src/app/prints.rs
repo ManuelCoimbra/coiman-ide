@@ -49,7 +49,7 @@ pub(super) struct Prints {
 
 /// A printed file name is relative to the workspace, which may be above the
 /// package: tries each folder upward from the package.
-fn resolve(file: &str, bases: &[PathBuf]) -> Option<PathBuf> {
+pub(super) fn resolve(file: &str, bases: &[PathBuf]) -> Option<PathBuf> {
     let path = Path::new(file);
     if path.is_absolute() {
         return path.exists().then(|| path.to_path_buf());

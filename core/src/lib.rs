@@ -21,6 +21,7 @@ pub mod history;
 pub mod languages;
 pub mod lsp;
 pub mod markdown;
+pub mod matchers;
 pub mod plugin;
 pub mod pty;
 pub mod recent;

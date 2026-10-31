@@ -694,6 +694,7 @@ impl CodeApp {
         let mut all = self.lsp.diagnostics.get(&k).map(|(_, d)| d.clone()).unwrap_or_default();
         all.extend(self.lsp.pulled_diagnostics.get(&k).into_iter().flat_map(|(_, d)| d.iter().cloned()));
         all.extend(self.plugin_problems(&k));
+        all.extend(self.run_problems(&k));
         for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
             let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
@@ -706,7 +707,8 @@ impl CodeApp {
 
     /// Every file with diagnostics, from both sources.
     fn all_diagnostics(&self) -> Vec<(PathBuf, Vec<lt::Diagnostic>)> {
-        let plugin_paths = self.plugin_problem_paths();
+        let mut plugin_paths = self.plugin_problem_paths();
+        plugin_paths.extend(self.run_problem_paths());
         let mut keys: Vec<&PathBuf> = self
             .lsp
             .diagnostics

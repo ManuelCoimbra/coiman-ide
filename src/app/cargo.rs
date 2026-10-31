@@ -17,6 +17,7 @@ use rust_code_core::cargo::{
 use rust_code_core::lsp::discovery::quiet_command;
 use rust_code_core::lsp::status::waits_for_build_lock;
 use rust_code_core::lsp::types as lt;
+use rust_code_core::matchers;
 use rust_code_core::run;
 
 use crate::icons::{self, Icon};
@@ -105,6 +106,9 @@ pub(super) struct CargoState {
     run_preview_job: Option<std::sync::mpsc::Receiver<RunPreview>>,
     /// The (doc uid, buffer version) on screen, and since when.
     run_preview_seen: Option<(u64, u64, f64)>,
+    /// What the programs run from here reported, by terminal tab.
+    tab_problems: HashMap<u64, Vec<(PathBuf, lt::Diagnostic)>>,
+    next_problem_scan: f64,
     /// Why Run did nothing, when it was refused, and for which tab.
     run_refusal: Option<(String, f64, Option<u64>)>,
     /// Tests by file key.
@@ -145,6 +149,8 @@ impl Default for CargoState {
             run_preview_at: 0.0,
             run_preview_job: None,
             run_preview_seen: None,
+            tab_problems: HashMap::new(),
+            next_problem_scan: 0.0,
             run_refusal: None,
             tests: HashMap::new(),
             scanned_for: None,
@@ -205,6 +211,25 @@ fn configs_key(root: &Path) -> ConfigsKey {
 
 /// Tests of a file in another language: (doc uid, buffer version, line and id).
 type OtherTests = (u64, u64, Vec<(usize, String)>);
+
+/// Seconds between looks at what running programs printed.
+const PROBLEM_SCAN_SECONDS: f64 = 0.5;
+
+fn problem_diagnostic(problem: matchers::Problem) -> lt::Diagnostic {
+    let line = problem.line.saturating_sub(1);
+    let start = problem.col.saturating_sub(1);
+    lt::Diagnostic {
+        range: lt::Range::new(lt::Position::new(line, start), lt::Position::new(line, start + 1)),
+        severity: Some(match problem.severity {
+            matchers::Severity::Error => lt::DiagnosticSeverity::ERROR,
+            matchers::Severity::Warning => lt::DiagnosticSeverity::WARNING,
+            matchers::Severity::Info => lt::DiagnosticSeverity::INFORMATION,
+        }),
+        source: Some("run".to_owned()),
+        message: problem.message,
+        ..Default::default()
+    }
+}
 
 /// What Run would do for a tab: (doc uid, buffer version, answer).
 type RunPreview = (u64, u64, Result<run::Outcome, String>);
@@ -1034,6 +1059,41 @@ impl CodeApp {
         self.cargo.run_preview_job = Some(rx);
     }
 
+    /// Looks through what running programs printed, for the Problems panel.
+    pub(super) fn pump_run_problems(&mut self, ctx: &egui::Context) {
+        let now = ctx.input(|i| i.time);
+        if now < self.cargo.next_problem_scan {
+            return;
+        }
+        self.cargo.next_problem_scan = now + PROBLEM_SCAN_SECONDS;
+        let (outputs, live) = self.terminal.scan_outputs();
+        for output in outputs {
+            let found = match output.matcher {
+                Some(pattern) => matchers::scan_custom(pattern, &output.lines),
+                None => matchers::scan(&output.lines),
+            };
+            let bases = [output.cwd.to_path_buf()];
+            let placed = found
+                .into_iter()
+                .filter_map(|p| Some((super::prints::resolve(&p.file, &bases)?, problem_diagnostic(p))))
+                .collect();
+            self.cargo.tab_problems.insert(output.id, placed);
+        }
+        self.cargo.tab_problems.retain(|id, _| live.contains(id));
+    }
+
+    /// What running programs reported about `file` (by [`key`]).
+    pub(super) fn run_problems(&self, file: &Path) -> Vec<lt::Diagnostic> {
+        let found = self.cargo.tab_problems.values().flatten();
+        found.filter(|(path, _)| key(path) == file).map(|(_, d)| d.clone()).collect()
+    }
+
+    /// Files running programs reported about: (key, path).
+    pub(super) fn run_problem_paths(&self) -> Vec<(PathBuf, PathBuf)> {
+        let found = self.cargo.tab_problems.values().flatten();
+        found.map(|(path, _)| (key(path), path.clone())).collect()
+    }
+
     /// Says why Run did nothing, beside the button: the status bar may be hidden.
     pub(super) fn refuse_run(&mut self, ctx: &egui::Context, why: String) {
         self.status = Some(why.clone());
@@ -1120,7 +1180,9 @@ impl CodeApp {
         // Each run replaces the last one's finished tab.
         self.terminal.close_finished("Run: ");
         let title = format!("Run: {}", plan.title);
-        let task = Task { title: &title, program: &program, args: &args, env: &[], cwd: &plan.cwd };
+        // A redrawn progress bar would leave its pieces in the output we read.
+        let env = [("CARGO_TERM_PROGRESS_WHEN".to_owned(), "never".to_owned())];
+        let task = Task { title: &title, program: &program, args: &args, env: &env, cwd: &plan.cwd, scan: Some(None) };
         match self.terminal.run_task(ctx, task, scrollback) {
             Ok(()) => {
                 self.panel_visible = true;
@@ -1160,7 +1222,17 @@ impl CodeApp {
         let (program, args) = shell(&config.command);
         let env: Vec<(String, String)> = config.env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
         let scrollback = self.settings.terminal.scrollback;
-        let task = Task { title: &config.name, program: &program, args: &args, env: &env, cwd: &cwd };
+        let matcher = match config.matcher.as_deref().map(matchers::compile_custom).transpose() {
+            Ok(matcher) => matcher,
+            Err(why) => {
+                self.refuse_run(ctx, format!("{}: {why}", config.name));
+                return;
+            }
+        };
+        // Each run replaces the last one's finished tab, and its problems.
+        self.terminal.close_finished(&config.name);
+        let task =
+            Task { title: &config.name, program: &program, args: &args, env: &env, cwd: &cwd, scan: Some(matcher) };
         match self.terminal.run_task(ctx, task, scrollback) {
             Ok(()) => {
                 self.panel_visible = true;

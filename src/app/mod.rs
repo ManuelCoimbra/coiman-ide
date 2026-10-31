@@ -315,6 +315,7 @@ impl eframe::App for CodeApp {
         }
         self.track_window(&ctx);
         self.pump_run_configs(&ctx);
+        self.pump_run_problems(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
         self.pump_bookmarks();

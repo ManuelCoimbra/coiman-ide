@@ -500,7 +500,7 @@ impl CodeApp {
             .collect();
         let title = format!("Debug: {}", s.launch.name);
         let scrollback = self.settings.terminal.scrollback;
-        let task = Task { title: &title, program: &program, args: &args, env: &env, cwd: &cwd };
+        let task = Task { title: &title, program: &program, args: &args, env: &env, cwd: &cwd, scan: None };
         match self.terminal.run_task(ctx, task, scrollback) {
             Ok(()) => {
                 // Keep the keyboard where it was; the Debug view drives the session.
