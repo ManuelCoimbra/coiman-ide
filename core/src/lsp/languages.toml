@@ -1,0 +1,117 @@
+# Languages that need no code in the editor. Servers are found on PATH and never
+# installed from here; `hint` says how to get each one.
+
+[[language]]
+name = "Ruby"
+extensions = ["rb", "rake", "gemspec"]
+comment = "#"
+server = "ruby-lsp"
+root_markers = ["Gemfile"]
+run = "ruby {file}"
+hint = "gem install ruby-lsp"
+
+[[language]]
+name = "PHP"
+extensions = ["php"]
+comment = "//"
+server = "intelephense --stdio"
+root_markers = ["composer.json"]
+run = "php {file}"
+hint = "npm install -g intelephense"
+runs_project_code = false
+
+[[language]]
+name = "Lua"
+extensions = ["lua"]
+comment = "--"
+server = "lua-language-server"
+root_markers = [".luarc.json", "init.lua"]
+run = "lua {file}"
+hint = "Get lua-language-server from github.com/LuaLS/lua-language-server"
+runs_project_code = false
+
+[[language]]
+name = "Shell"
+language_id = "shellscript"
+extensions = ["sh", "bash", "zsh"]
+comment = "#"
+server = "bash-language-server start"
+hint = "npm install -g bash-language-server"
+runs_project_code = false
+
+[[language]]
+name = "Zig"
+extensions = ["zig"]
+comment = "//"
+server = "zls"
+root_markers = ["build.zig"]
+run = "zig run {file}"
+hint = "Get zls from github.com/zigtools/zls, matching your Zig version"
+
+[[language]]
+name = "Gleam"
+extensions = ["gleam"]
+comment = "//"
+server = "gleam lsp"
+root_markers = ["gleam.toml"]
+run = "gleam run"
+hint = "Comes with Gleam, from gleam.run"
+
+[[language]]
+name = "Elixir"
+extensions = ["ex", "exs"]
+comment = "#"
+server = "elixir-ls"
+root_markers = ["mix.exs"]
+run = "elixir {file}"
+hint = "Get ElixirLS from github.com/elixir-lsp/elixir-ls, and put elixir-ls on PATH"
+
+[[language]]
+name = "Haskell"
+extensions = ["hs"]
+comment = "--"
+server = "haskell-language-server-wrapper --lsp"
+root_markers = ["stack.yaml", "cabal.project", "hie.yaml"]
+run = "runghc {file}"
+hint = "Install it with GHCup: ghcup install hls"
+
+[[language]]
+name = "OCaml"
+extensions = ["ml", "mli"]
+comment = "(*"
+server = "ocamllsp"
+root_markers = ["dune-project"]
+run = "ocaml {file}"
+hint = "opam install ocaml-lsp-server"
+
+[[language]]
+name = "Nix"
+extensions = ["nix"]
+comment = "#"
+server = "nil"
+root_markers = ["flake.nix"]
+hint = "nix profile install nixpkgs#nil"
+
+[[language]]
+name = "Fortran"
+extensions = ["f90", "f95", "f03", "f08"]
+comment = "!"
+server = "fortls"
+hint = "pip install fortls"
+runs_project_code = false
+
+[[language]]
+name = "Kotlin"
+extensions = ["kt", "kts"]
+comment = "//"
+server = "kotlin-lsp"
+root_markers = ["build.gradle.kts", "build.gradle", "settings.gradle.kts"]
+hint = "Get kotlin-lsp from github.com/Kotlin/kotlin-lsp; it's in early development"
+
+[[language]]
+name = "YAML"
+extensions = ["yaml", "yml"]
+comment = "#"
+server = "yaml-language-server --stdio"
+hint = "npm install -g yaml-language-server"
+runs_project_code = false

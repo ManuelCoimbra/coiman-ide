@@ -355,6 +355,20 @@ fn extension_of(path: Option<&Path>) -> String {
 }
 
 pub fn language_name(ext: &str) -> &'static str {
+    use crate::lsp::registry::by_extension;
+    if let Some(language) = by_extension(ext, true) {
+        return language.name;
+    }
+    let name = built_in_language_name(ext);
+    if name == "Plain Text"
+        && let Some(language) = by_extension(ext, false)
+    {
+        return language.name;
+    }
+    name
+}
+
+fn built_in_language_name(ext: &str) -> &'static str {
     match ext {
         "rs" => "Rust",
         "toml" => "TOML",

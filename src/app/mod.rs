@@ -7,6 +7,7 @@ mod cargo;
 mod config;
 mod debug;
 mod dispatch;
+mod doctor;
 mod files;
 mod git;
 mod hidden;
@@ -139,6 +140,7 @@ pub struct CodeApp {
     bookmarks: bookmarks::BookmarkState,
     prints: prints::Prints,
     preview: preview::Preview,
+    doctor: doctor::Doctor,
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     auto_save: autosave::AutoSave,
@@ -247,6 +249,7 @@ impl CodeApp {
             bookmarks: Default::default(),
             prints: Default::default(),
             preview: Default::default(),
+            doctor: Default::default(),
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             auto_save: Default::default(),
@@ -491,6 +494,7 @@ impl eframe::App for CodeApp {
         });
         self.lsp_popups(&ctx);
         self.lsp_room(&ctx);
+        self.doctor_window(&ctx);
         self.settings_window(&ctx);
         self.keys_window(&ctx);
         self.snippets_window(&ctx);

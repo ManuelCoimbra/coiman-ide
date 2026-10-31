@@ -4,6 +4,7 @@ use crate::document::Document;
 use crate::keymap::Keymap;
 use crate::settings;
 use crate::theme;
+use rust_code_core::lsp::registry;
 use rust_code_core::trust;
 use std::path::{Path, PathBuf};
 
@@ -30,7 +31,10 @@ impl CodeApp {
 
     pub(super) fn is_config_file(&self, path: &Path) -> bool {
         let mut files: Vec<PathBuf> =
-            [settings::user_settings_path(), settings::user_keybindings_path()].into_iter().flatten().collect();
+            [settings::user_settings_path(), settings::user_keybindings_path(), registry::user_file()]
+                .into_iter()
+                .flatten()
+                .collect();
         if let Some(root) = &self.explorer.root {
             files.push(settings::workspace_settings_path(root));
         }
@@ -158,6 +162,8 @@ impl CodeApp {
         let (keymap, key_problems) = Keymap::load(settings::user_keybindings_path().as_deref());
         let mut problems = loaded.problems;
         problems.extend(key_problems);
+        let (language_problem, languages_changed) = registry::reload();
+        problems.extend(language_problem);
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
         let new = self.settings.clone();
@@ -168,6 +174,10 @@ impl CodeApp {
                 || old.lsp.rust_analyzer_separate_target != new.lsp.rust_analyzer_separate_target)
         {
             self.restart_rust_analyzer();
+        }
+        // Servers come from these.
+        if !first && languages_changed {
+            self.restart_lsp();
         }
         // Indentation and save rules may have changed.
         let mut docs = std::mem::take(&mut self.docs);

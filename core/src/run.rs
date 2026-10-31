@@ -947,7 +947,9 @@ const PROJECT_FILES: &[&str] =
 pub fn may_run(file: &Path) -> bool {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     let name = name_of(file);
-    PROJECT_FILES.contains(&name.as_str())
+    let data_run = crate::lsp::registry::by_extension(&ext, false).is_some_and(|l| l.run.is_some());
+    data_run
+        || PROJECT_FILES.contains(&name.as_str())
         || COMPOSE_FILES.contains(&name.as_str())
         || (RUNNABLE_TYPES.contains(&ext.as_str()) && never_runs(file, &ext).is_none())
 }
@@ -975,11 +977,27 @@ fn never_runs(file: &Path, ext: &str) -> Option<String> {
     })
 }
 
+/// A run command from a language's entry, with `{file}` for the file's path.
+fn data_run(template: &str, file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
+    let program = template.split_whitespace().next().unwrap_or_default();
+    need(program, "This file")?;
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let cwd = root.filter(|r| file.starts_with(r)).map_or(dir, Path::to_path_buf);
+    let command = template.replace("{file}", &q(file));
+    Ok(Outcome::Run(RunPlan { title: name_of(file), command, cwd }))
+}
+
 /// Works out how to run `file`, whose current text is `source`. `root` is the open folder.
 pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, String> {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if let Some(outcome) = project_file(file, root) {
         return outcome;
+    }
+    // The user's entry wins over everything below; a shipped one fills gaps.
+    if let Some(language) = crate::lsp::registry::by_extension(&ext, true)
+        && let Some(template) = language.run
+    {
+        return data_run(template, file, root);
     }
     if let Some(why) = never_runs(file, &ext) {
         return Err(why);
@@ -1030,6 +1048,10 @@ pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, S
                 _ => "xdg-open",
             };
             simple(opener.to_owned())
+        }
+        _ if crate::lsp::registry::by_extension(&ext, false).is_some_and(|l| l.run.is_some()) => {
+            let template = crate::lsp::registry::by_extension(&ext, false).and_then(|l| l.run).unwrap_or_default();
+            data_run(template, file, root)
         }
         _ => Err(format!(
             "Rust Code doesn't know how to run {}. A run configuration can: add it in Run: Open Configurations, then press Ctrl+F5",

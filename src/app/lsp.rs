@@ -335,7 +335,7 @@ impl CodeApp {
 
     /// The command configured for a server (`[lsp.paths]`, or
     /// `lsp.rust_analyzer_path` for Rust).
-    fn configured_server(&self, kind: ServerKind) -> String {
+    pub(super) fn configured_server(&self, kind: ServerKind) -> String {
         let path = self.settings.lsp.paths.get(kind.id()).cloned().unwrap_or_default();
         if path.trim().is_empty() && kind == ServerKind::RustAnalyzer {
             self.settings.lsp.rust_analyzer_path.clone()

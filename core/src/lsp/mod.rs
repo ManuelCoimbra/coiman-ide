@@ -5,6 +5,7 @@
 mod client;
 pub mod convert;
 pub mod discovery;
+pub mod registry;
 pub mod servers;
 pub mod status;
 pub mod transport;

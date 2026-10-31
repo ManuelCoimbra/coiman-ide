@@ -86,6 +86,9 @@ impl CodeApp {
         self.preview.server = None;
         self.preview.problems.clear();
         self.preview.sent.clear();
+        if self.status.as_deref().is_some_and(|s| s.starts_with("Live preview:")) {
+            self.status = None;
+        }
         if self.panel_tab == PanelTab::PageConsole {
             self.panel_tab = PanelTab::Terminal;
         }

@@ -459,6 +459,14 @@ fn client_capabilities() -> Value {
 
 /// The LSP language id for a file extension, if a server is known for it.
 pub fn language_id(ext: &str) -> Option<&'static str> {
+    use super::registry::by_extension;
+    if let Some(language) = by_extension(ext, true) {
+        return Some(language.language_id);
+    }
+    built_in_language_id(ext).or_else(|| by_extension(ext, false).map(|l| l.language_id))
+}
+
+fn built_in_language_id(ext: &str) -> Option<&'static str> {
     Some(match ext {
         "rs" => "rust",
         "py" | "pyw" | "pyi" => "python",

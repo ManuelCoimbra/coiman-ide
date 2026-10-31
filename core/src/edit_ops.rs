@@ -153,6 +153,14 @@ pub fn indent_lines(text: &str, sel: Sel, outdent: bool, tab: &str) -> Edit {
 
 /// Line comment token for a file extension, if the language has one.
 pub fn comment_token(ext: &str) -> Option<&'static str> {
+    use crate::lsp::registry::by_extension;
+    if let Some(token) = by_extension(ext, true).and_then(|l| l.comment) {
+        return Some(token);
+    }
+    built_in_comment_token(ext).or_else(|| by_extension(ext, false).and_then(|l| l.comment))
+}
+
+fn built_in_comment_token(ext: &str) -> Option<&'static str> {
     Some(match ext {
         "rs" | "c" | "h" | "cpp" | "cc" | "hpp" | "hh" | "hxx" | "cxx" | "c++" | "inl" | "cs" | "java" | "js"
         | "mjs" | "cjs" | "ts" | "mts" | "cts" | "tsx" | "jsx" | "go" | "swift" | "kt" | "kts" | "dart" | "scala"

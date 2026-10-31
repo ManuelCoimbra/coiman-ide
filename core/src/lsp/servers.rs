@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use super::discovery::{self, quiet_command};
+use super::registry;
 
 /// A language server.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -19,6 +20,8 @@ pub enum ServerKind {
     CSharp,
     Gopls,
     Godot,
+    /// A language described as data ([`registry`]), by its place in the list.
+    Custom(u16),
 }
 
 impl ServerKind {
@@ -35,6 +38,9 @@ impl ServerKind {
 
     /// The server for an LSP language id.
     pub fn for_language(language_id: &str) -> Option<Self> {
+        if let Some(index) = registry::index_of(language_id, true) {
+            return Some(Self::Custom(index));
+        }
         Some(match language_id {
             "rust" => Self::RustAnalyzer,
             "python" => Self::Python,
@@ -44,7 +50,7 @@ impl ServerKind {
             "csharp" => Self::CSharp,
             "go" => Self::Gopls,
             "gdscript" => Self::Godot,
-            _ => return None,
+            _ => return registry::index_of(language_id, false).map(Self::Custom),
         })
     }
 
@@ -59,6 +65,7 @@ impl ServerKind {
             Self::CSharp => "csharp",
             Self::Gopls => "go",
             Self::Godot => "godot",
+            Self::Custom(i) => registry::get(i).map_or("", |l| l.language_id),
         }
     }
 
@@ -73,6 +80,7 @@ impl ServerKind {
             Self::CSharp => "C# language server",
             Self::Gopls => "gopls",
             Self::Godot => "Godot's language server",
+            Self::Custom(i) => registry::get(i).and_then(|l| l.server).map_or("language server", server_name),
         }
     }
 
@@ -87,6 +95,7 @@ impl ServerKind {
             Self::CSharp => "C#",
             Self::Gopls => "Go",
             Self::Godot => "GDScript",
+            Self::Custom(i) => registry::get(i).map_or("", |l| l.name),
         }
     }
 
@@ -101,8 +110,14 @@ impl ServerKind {
             Self::CSharp => &[".sln", ".csproj"],
             Self::Gopls => &["go.work", "go.mod"],
             Self::Godot => &["project.godot"],
+            Self::Custom(i) => registry::get(i).map_or(&[], |l| l.root_markers),
         }
     }
+}
+
+/// The program a command line starts, for messages.
+fn server_name(command: &'static str) -> &'static str {
+    command.split_whitespace().next().unwrap_or(command)
 }
 
 /// How to start a server.
@@ -316,21 +331,37 @@ fn temurin_runtime() -> Option<&'static str> {
     })
 }
 
+/// A server named by a command line, or by an address.
+fn find_configured(configured: &str) -> Found {
+    if let Some(address) = configured.strip_prefix(TCP_SCHEME) {
+        return Found::Server(Launch::tcp(address));
+    }
+    let mut words = configured.split_whitespace();
+    let program = PathBuf::from(words.next().unwrap_or_default());
+    let program = if program.is_file() { program } else { which(&program.to_string_lossy()).unwrap_or(program) };
+    Found::Server(Launch { program, args: words.map(str::to_owned).collect(), tcp: None })
+}
+
 /// Looks for a server: the configured command (`[lsp.paths]`, a program
 /// optionally followed by arguments), then the usual places.
 pub fn find(kind: ServerKind, configured: &str) -> Found {
     let configured = configured.trim();
     if !configured.is_empty() {
-        if let Some(address) = configured.strip_prefix(TCP_SCHEME) {
-            return Found::Server(Launch::tcp(address));
-        }
-        let mut words = configured.split_whitespace();
-        let program = PathBuf::from(words.next().unwrap_or_default());
-        let program = if program.is_file() { program } else { which(&program.to_string_lossy()).unwrap_or(program) };
-        return Found::Server(Launch { program, args: words.map(str::to_owned).collect(), tcp: None });
+        return find_configured(configured);
     }
     match kind {
         ServerKind::Godot => Found::Server(Launch::tcp(GODOT_ADDRESS)),
+        ServerKind::Custom(i) => {
+            let language = registry::get(i);
+            let note = language.and_then(|l| l.hint).unwrap_or("Its entry names no way to get it.").to_owned();
+            match language.and_then(|l| l.server) {
+                Some(command) if command.starts_with(TCP_SCHEME) => find_configured(command),
+                Some(command) if which(server_name(command)).is_some() || Path::new(server_name(command)).is_file() => {
+                    find_configured(command)
+                }
+                _ => Found::Missing { installer: None, note },
+            }
+        }
         ServerKind::RustAnalyzer => match discovery::find_rust_analyzer("") {
             discovery::Found::Server(p) => Found::Server(Launch::new(p, &[])),
             discovery::Found::Missing { rustup } => Found::Missing {
@@ -642,6 +673,26 @@ mod tests {
         // Marker files found by extension (C# projects).
         assert_eq!(root_for(ServerKind::CSharp, &tmp.join("cs/App/Program.cs"), Some(&tmp)), tmp.join("cs/App"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn data_languages_get_servers() {
+        use crate::lsp::language_id;
+        assert_eq!(language_id("gleam"), Some("gleam"));
+        let kind = ServerKind::for_language("gleam").unwrap();
+        assert!(matches!(kind, ServerKind::Custom(_)));
+        assert_eq!(kind.id(), "gleam");
+        assert_eq!(kind.name(), "gleam");
+        assert_eq!(kind.languages(), "Gleam");
+        // Built-in languages stay built in when nothing overrides them.
+        assert_eq!(ServerKind::for_language("rust"), Some(ServerKind::RustAnalyzer));
+        assert_eq!(language_id("kt"), Some("kotlin"));
+        // A server that isn't installed says how to get it.
+        if which("gleam").is_none() {
+            let Found::Missing { note, installer } = find(kind, "") else { panic!() };
+            assert!(note.contains("gleam.run") && installer.is_none());
+        }
+        assert_eq!(find(kind, "tcp://127.0.0.1:9"), Found::Server(Launch::tcp("127.0.0.1:9")), "the user's path wins");
     }
 
     #[test]
