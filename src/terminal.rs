@@ -197,6 +197,51 @@ impl Terminals {
         Ok(())
     }
 
+    /// The running tab with this title.
+    pub fn running_tab(&self, title: &str) -> Option<u64> {
+        self.tabs.iter().find(|t| t.exited.is_none() && t.title.as_deref() == Some(title)).map(|t| t.id)
+    }
+
+    /// Types into a tab as if at the keyboard.
+    pub fn type_into(&self, id: u64, text: &str) {
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == id) {
+            tab.session.write(text.as_bytes());
+        }
+    }
+
+    pub fn show_tab(&mut self, id: u64) {
+        if let Some(i) = self.tabs.iter().position(|t| t.id == id) {
+            self.active = i;
+        }
+    }
+
+    /// Where a tab's output has got to, for [`Self::output_since`].
+    pub fn output_mark(&self, id: u64) -> i64 {
+        let Some(tab) = self.tabs.iter().find(|t| t.id == id) else { return 0 };
+        let term = tab.session.term();
+        let grid = term.grid();
+        grid.history_size() as i64 + i64::from(grid.cursor.point.line.0)
+    }
+
+    /// The lines a tab has printed since `mark`, or `None` if it's gone.
+    pub fn output_since(&self, id: u64, mark: i64) -> Option<Vec<String>> {
+        let tab = self.tabs.iter().find(|t| t.id == id)?;
+        let (history, cursor) = {
+            let term = tab.session.term();
+            let grid = term.grid();
+            (grid.history_size() as i64, i64::from(grid.cursor.point.line.0))
+        };
+        let mut lines = Vec::new();
+        let mut row = (mark - history) as i32;
+        while i64::from(row) <= cursor {
+            let (_, text) = logical_line(&tab.session, row);
+            let columns = tab.session.term().grid().columns().max(1);
+            row += (text.chars().count().saturating_sub(1) / columns) as i32 + 1;
+            lines.push(text.trim_end().to_owned());
+        }
+        Some(lines)
+    }
+
     /// Closes finished tabs whose title starts with `prefix`.
     pub fn close_finished(&mut self, prefix: &str) {
         let keep = |t: &Tab| !(t.exited.is_some() && t.title.as_deref().is_some_and(|n| n.starts_with(prefix)));

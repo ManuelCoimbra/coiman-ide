@@ -3,6 +3,7 @@
 
 [[language]]
 name = "Ruby"
+repl = "irb"
 extensions = ["rb", "rake", "gemspec"]
 comment = "#"
 server = "ruby-lsp"
@@ -22,6 +23,7 @@ runs_project_code = false
 
 [[language]]
 name = "Lua"
+repl = "lua -i"
 extensions = ["lua"]
 comment = "--"
 server = "lua-language-server"
@@ -59,6 +61,7 @@ hint = "Comes with Gleam, from gleam.run"
 
 [[language]]
 name = "Elixir"
+repl = "iex"
 extensions = ["ex", "exs"]
 comment = "#"
 server = "elixir-ls"
@@ -68,6 +71,7 @@ hint = "Get ElixirLS from github.com/elixir-lsp/elixir-ls, and put elixir-ls on 
 
 [[language]]
 name = "Haskell"
+repl = "ghci"
 extensions = ["hs"]
 comment = "--"
 server = "haskell-language-server-wrapper --lsp"
@@ -77,6 +81,7 @@ hint = "Install it with GHCup: ghcup install hls"
 
 [[language]]
 name = "OCaml"
+repl = "ocaml"
 extensions = ["ml", "mli"]
 comment = "(*"
 server = "ocamllsp"

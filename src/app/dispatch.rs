@@ -186,6 +186,7 @@ impl CodeApp {
             Command::ChooseRunTarget => self.choose_run_target(),
             Command::OpenLivePreview => self.open_live_preview(ctx),
             Command::ShowLanguageDoctor => self.show_doctor(ctx),
+            Command::SendToRepl => self.send_to_repl(ctx),
             Command::ChoosePython => self.choose_python(),
             Command::OpenLanguagesFile => self.open_languages_file(),
             Command::StopLivePreview => self.stop_live_preview(),

@@ -366,6 +366,7 @@ impl CodeApp {
                 item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Choose What Run Starts...", Command::ChooseRunTarget);
+                item(ui, "Send Line, Selection or Cell to REPL", Command::SendToRepl);
                 item(ui, "Open Live Preview", Command::OpenLivePreview);
                 if self.preview_running() {
                     item(ui, "Stop Live Preview", Command::StopLivePreview);

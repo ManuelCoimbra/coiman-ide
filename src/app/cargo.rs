@@ -188,7 +188,7 @@ fn outcome_icon(outcome: Option<Outcome>) -> (Icon, Color32) {
 }
 
 /// A shell running `command`, so run configurations can use pipes and `&&`.
-fn shell(command: &str) -> (String, Vec<String>) {
+pub(super) fn shell(command: &str) -> (String, Vec<String>) {
     if cfg!(windows) {
         ("powershell.exe".into(), vec!["-NoLogo".into(), "-NoProfile".into(), "-Command".into(), command.into()])
     } else {
@@ -667,6 +667,9 @@ impl CodeApp {
 
     /// A gutter run button was clicked.
     pub(super) fn run_test_at_line(&mut self, ctx: &egui::Context, line: usize) {
+        if self.run_cell_at_line(ctx, line) {
+            return;
+        }
         if let Some(id) = self.other_test_at(line) {
             for i in 0..self.docs.len() {
                 if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {

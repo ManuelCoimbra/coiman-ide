@@ -135,6 +135,7 @@ pub enum Command {
     ChooseRunTarget,
     OpenLivePreview,
     ShowLanguageDoctor,
+    SendToRepl,
     ChoosePython,
     OpenLanguagesFile,
     StopLivePreview,
@@ -312,6 +313,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ChooseRunTarget, "Run: Choose What Run Starts..."),
     (Command::OpenLivePreview, "Preview: Open Live Preview"),
     (Command::ShowLanguageDoctor, "Language: Doctor"),
+    (Command::SendToRepl, "REPL: Send Line, Selection or Cell"),
     (Command::ChoosePython, "Python: Select Interpreter"),
     (Command::OpenLanguagesFile, "Language: Open languages.toml"),
     (Command::StopLivePreview, "Preview: Stop Live Preview"),
@@ -488,6 +490,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ChooseRunTarget, "rustcode.chooseRunTarget"),
     (Command::OpenLivePreview, "rustcode.openLivePreview"),
     (Command::ShowLanguageDoctor, "rustcode.languageDoctor"),
+    (Command::SendToRepl, "rustcode.sendToRepl"),
     (Command::ChoosePython, "python.setInterpreter"),
     (Command::OpenLanguagesFile, "rustcode.openLanguagesFile"),
     (Command::StopLivePreview, "rustcode.stopLivePreview"),
@@ -558,6 +561,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ChooseRunTarget
             | OpenLivePreview
             | ShowLanguageDoctor
+            | SendToRepl
             | ChoosePython
             | OpenLanguagesFile
             | StopLivePreview

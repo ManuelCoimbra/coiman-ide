@@ -24,6 +24,8 @@ pub struct Language {
     pub root_markers: &'static [&'static str],
     /// How to run a file, with `{file}` for its path.
     pub run: Option<&'static str>,
+    /// An interactive session to send code to.
+    pub repl: Option<&'static str>,
     /// What to do first, or how to install the server, for the doctor.
     pub hint: Option<&'static str>,
     /// Whether the server runs the project's own code, such as build scripts.
@@ -47,6 +49,8 @@ struct LanguageEntry {
     root_markers: Vec<String>,
     #[serde(default)]
     run: Option<String>,
+    #[serde(default)]
+    repl: Option<String>,
     #[serde(default)]
     hint: Option<String>,
     #[serde(default = "assume_it_does")]
@@ -79,6 +83,7 @@ fn into_language(entry: LanguageEntry, from_user: bool) -> &'static Language {
         server: entry.server.filter(|s| !s.trim().is_empty()).map(leak),
         root_markers: Box::leak(markers.into_boxed_slice()),
         run: entry.run.map(leak),
+        repl: entry.repl.map(leak),
         hint: entry.hint.map(leak),
         runs_project_code: entry.runs_project_code,
         from_user,
@@ -134,6 +139,7 @@ pub fn user_file_template() -> String {
      # server = \"gleam lsp\"          # or \"tcp://127.0.0.1:5757\" for one already running\n\
      # root_markers = [\"gleam.toml\"] # files that mark a project\n\
      # run = \"gleam run\"             # what Run does; {file} is the file's path\n\
+     # repl = \"gleam shell\"          # what Ctrl+Enter sends code to\n\
      # hint = \"Install it from gleam.run\"   # what Language: Doctor suggests\n\
      # runs_project_code = true      # shown by the doctor; assumed unless false\n"
         .to_owned()

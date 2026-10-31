@@ -22,6 +22,7 @@ mod outline;
 mod plugins;
 mod preview;
 mod prints;
+mod repl;
 mod settings_ui;
 mod snippets_ui;
 mod split;
@@ -142,6 +143,7 @@ pub struct CodeApp {
     prints: prints::Prints,
     preview: preview::Preview,
     doctor: doctor::Doctor,
+    repls: repl::Repls,
     environment: environment::Environment,
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
@@ -252,6 +254,7 @@ impl CodeApp {
             prints: Default::default(),
             preview: Default::default(),
             doctor: Default::default(),
+            repls: Default::default(),
             environment: Default::default(),
             snippets_ui: Default::default(),
             md_preview: Default::default(),
@@ -329,6 +332,7 @@ impl eframe::App for CodeApp {
         self.pump_run_configs(&ctx);
         self.pump_run_problems(&ctx);
         self.pump_preview(&ctx);
+        self.pump_repl(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
         self.pump_bookmarks();

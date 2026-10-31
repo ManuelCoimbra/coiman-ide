@@ -27,6 +27,7 @@ pub mod plugin;
 pub mod preview;
 pub mod pty;
 pub mod recent;
+pub mod repl;
 pub mod run;
 pub mod search;
 pub mod session;
