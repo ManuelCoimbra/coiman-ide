@@ -387,6 +387,7 @@ impl CodeApp {
                 self.expand_emmet(false);
             }
             Command::PickColor => self.pick_color(),
+            Command::AnalyzeStackTrace => self.analyze_stack_trace(),
             Command::ShowCompileInfo => self.show_compile_info(),
             Command::SwitchHeaderSource => self.switch_header_source(),
             Command::ToggleBookmark => self.toggle_bookmark(),

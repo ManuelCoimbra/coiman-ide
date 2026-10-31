@@ -27,6 +27,7 @@ mod repl;
 mod settings_ui;
 mod snippets_ui;
 mod split;
+mod traces;
 mod web;
 mod window;
 mod workbench;
@@ -74,6 +75,8 @@ enum PanelTab {
     Terminal,
     /// What the live preview's page printed.
     PageConsole,
+    /// Stack Trace: Analyze.
+    StackTrace,
     /// A panel contributed by a plugin (index into its panels).
     Plugin(usize),
 }
@@ -150,6 +153,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    traces: traces::Traces,
     cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
@@ -263,6 +267,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            traces: Default::default(),
             cpp: Default::default(),
             auto_save: Default::default(),
             font_load: None,

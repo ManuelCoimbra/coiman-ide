@@ -454,6 +454,9 @@ impl CodeApp {
             if self.preview_running() {
                 tabs.push((PanelTab::PageConsole, "PAGE".to_owned()));
             }
+            if self.traces.used {
+                tabs.push((PanelTab::StackTrace, "STACK TRACE".to_owned()));
+            }
             for (i, p) in self.plugins.panels.iter().enumerate() {
                 tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
             }
@@ -496,6 +499,7 @@ impl CodeApp {
                 }
             }
             PanelTab::PageConsole => self.page_console(ui),
+            PanelTab::StackTrace => self.stack_trace_panel(ui),
             PanelTab::Terminal => {
                 let font_size = self.terminal_font();
                 self.terminal.body(ui, font_size);

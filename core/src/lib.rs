@@ -38,6 +38,7 @@ pub mod search;
 pub mod session;
 pub mod settings;
 pub mod snippets;
+pub mod stacktrace;
 pub mod structure;
 pub mod syntax;
 pub mod termfind;
