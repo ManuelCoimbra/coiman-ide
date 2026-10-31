@@ -347,6 +347,10 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Workspace symbols | `Ctrl+T`, or type `#` in the palette |
 | Signature help | Shows after `(` and `,`; `Ctrl+Shift+Space` at the cursor |
 | Inlay hints | Inferred types and parameter names inside the line (`editor.inlay_hints`) |
+| Code lens | Reference counts and the like at the end of the line (`editor.code_lens`); **Show Code Lens on This Line** runs commands the server itself handles |
+| Call and type hierarchy | **Show Incoming Calls** (`Shift+Alt+H`), **Outgoing Calls**, **Supertypes** and **Subtypes** list one level in the locations panel |
+| Pull diagnostics | Servers that report problems on request, like kotlin-lsp, show them with the rest |
+| Show document | A server can open a file or a page on this computer; other web addresses are not opened |
 | Semantic highlighting | Colors from the server over the syntax colors (`editor.semantic_highlighting`) |
 | Symbol highlight | Other uses of the symbol under the cursor are marked |
 | Find References | `Shift+F12`, results in the References panel |

@@ -50,6 +50,7 @@ pub enum PickerKind {
     ReopenWithEncoding,
     SaveWithEncoding,
     CodeAction,
+    CodeLens,
     Branch,
     RunConfig,
     Symbol,

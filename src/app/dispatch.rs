@@ -11,6 +11,7 @@ use crate::theme;
 use egui::{Key, Modifiers};
 use rust_code_core::encoding;
 
+use super::lsp_extra::Hierarchy;
 use super::outline::FoldAction;
 use super::{CodeApp, PanelTab, SidebarView};
 use rust_code_core::structure::TextObject;
@@ -115,6 +116,11 @@ impl CodeApp {
                 self.request_locations("textDocument/implementation", "Implementations", None);
             }
             Command::FindReferences => self.request_locations("textDocument/references", "References", None),
+            Command::ShowIncomingCalls => self.request_hierarchy(Hierarchy::IncomingCalls),
+            Command::ShowOutgoingCalls => self.request_hierarchy(Hierarchy::OutgoingCalls),
+            Command::ShowSupertypes => self.request_hierarchy(Hierarchy::Supertypes),
+            Command::ShowSubtypes => self.request_hierarchy(Hierarchy::Subtypes),
+            Command::ShowCodeLens => self.show_code_lens(),
             Command::RenameSymbol => self.start_rename(),
             Command::QuickFix => self.request_code_actions(),
             Command::FormatDocument => {
@@ -491,6 +497,7 @@ impl CodeApp {
         match kind {
             PickerKind::Theme => self.set_color_theme(ctx, label),
             PickerKind::CodeAction => self.pick_code_action(label),
+            PickerKind::CodeLens => self.pick_code_lens(label),
             PickerKind::Branch => self.pick_branch(ctx, label),
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::Symbol => self.picked_symbol(label),

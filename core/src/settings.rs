@@ -54,6 +54,8 @@ pub struct EditorSettings {
     pub semantic_highlighting: bool,
     /// Show inferred types and parameter names in the text.
     pub inlay_hints: bool,
+    /// Show what servers report about a line at its end, such as reference counts.
+    pub code_lens: bool,
     /// Glide to the new position when keys move the view, instead of jumping.
     pub smooth_scrolling: bool,
     /// Mark bidi controls and invisible or private use characters, and warn about them.
@@ -248,6 +250,7 @@ impl Default for EditorSettings {
             auto_close_brackets: true,
             semantic_highlighting: true,
             inlay_hints: true,
+            code_lens: true,
             smooth_scrolling: true,
             unicode_warnings: true,
             trim_trailing_whitespace: false,

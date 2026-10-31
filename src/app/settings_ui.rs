@@ -88,6 +88,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "Show inferred types and parameter names in the text.",
                 Kind::Toggle,
             ),
+            row("editor", "code_lens", "Code lens", "Show what servers report about a line at its end.", Kind::Toggle),
             row("editor", "smooth_scrolling", "Smooth scrolling", "Glide when keys move the view.", Kind::Toggle),
             row(
                 "editor",

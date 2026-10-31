@@ -7,13 +7,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::{Color32, RichText};
+use rust_code_core::lsp::servers::ServerKind;
 use rust_code_core::lsp::types as lt;
 use rust_code_core::lsp::{Client, convert};
 use serde_json::{Value, json};
 
 use super::CodeApp;
-use super::lsp::{Pending, lsp_target};
+use super::lsp::{Pending, lsp_target, path_key};
 use crate::editor_view::{Decorations, Highlight, Inlays};
+use crate::palette::PickerKind;
 use crate::theme;
 
 /// Seconds after the last change before asking again.
@@ -38,8 +40,61 @@ pub(super) struct Signature {
     documentation: String,
 }
 
+/// Which relation of the symbol under the cursor to list.
+#[derive(Clone, Copy)]
+pub(super) enum Hierarchy {
+    IncomingCalls,
+    OutgoingCalls,
+    Supertypes,
+    Subtypes,
+}
+
+impl Hierarchy {
+    fn prepare(self) -> &'static str {
+        match self {
+            Self::IncomingCalls | Self::OutgoingCalls => "textDocument/prepareCallHierarchy",
+            Self::Supertypes | Self::Subtypes => "textDocument/prepareTypeHierarchy",
+        }
+    }
+
+    fn method(self) -> &'static str {
+        match self {
+            Self::IncomingCalls => "callHierarchy/incomingCalls",
+            Self::OutgoingCalls => "callHierarchy/outgoingCalls",
+            Self::Supertypes => "typeHierarchy/supertypes",
+            Self::Subtypes => "typeHierarchy/subtypes",
+        }
+    }
+
+    pub(super) fn title(self) -> &'static str {
+        match self {
+            Self::IncomingCalls => "Incoming Calls",
+            Self::OutgoingCalls => "Outgoing Calls",
+            Self::Supertypes => "Supertypes",
+            Self::Subtypes => "Subtypes",
+        }
+    }
+
+    /// Where an answer's entries keep their item.
+    pub(super) fn field(self) -> Option<&'static str> {
+        match self {
+            Self::IncomingCalls => Some("from"),
+            Self::OutgoingCalls => Some("to"),
+            Self::Supertypes | Self::Subtypes => None,
+        }
+    }
+}
+
+/// Lenses resolved per answer: each one is a request, and a large file has many.
+const MAX_LENS_RESOLVES: usize = 100;
+
 #[derive(Default)]
 pub(super) struct LspExtra {
+    /// Code lenses per document: (line count they were made for, lenses).
+    lenses: HashMap<u64, (usize, Vec<lt::CodeLens>)>,
+    /// Inlay hints and lens titles together, as drawn.
+    shown_inlays: HashMap<u64, (usize, Inlays)>,
+    picked_lenses: Vec<lt::Command>,
     /// Semantic colors per document: (line count they were made for, by line).
     tokens: HashMap<u64, (usize, LineHighlights)>,
     inlays: HashMap<u64, (usize, Inlays)>,
@@ -201,6 +256,20 @@ impl CodeApp {
         if !has_inlays {
             self.lsp.extra.inlays.remove(&uid);
         }
+        let has_lens = self.settings.editor.code_lens && caps.is_some_and(|c| c.code_lens_provider.is_some());
+        if !has_lens {
+            self.lsp.extra.lenses.remove(&uid);
+        }
+        if caps.is_some_and(|c| c.diagnostic_provider.is_some())
+            && let Some(path) = doc.path.clone()
+        {
+            self.request_for(
+                i,
+                "textDocument/diagnostic",
+                Pending::PullDiagnostics { path },
+                |_, td| json!({ "textDocument": td }),
+            );
+        }
         if has_tokens {
             self.request_for(
                 i,
@@ -215,6 +284,170 @@ impl CodeApp {
                 json!({ "textDocument": td, "range": { "start": { "line": 0, "character": 0 }, "end": end } })
             });
         }
+        if has_lens {
+            self.request_for(
+                i,
+                "textDocument/codeLens",
+                Pending::CodeLens { uid },
+                |_, td| json!({ "textDocument": td }),
+            );
+        }
+        self.rebuild_inlays(uid);
+    }
+
+    pub(super) fn on_code_lens(&mut self, uid: u64, value: Value) {
+        let Ok(Some(lenses)) = serde_json::from_value::<Option<Vec<lt::CodeLens>>>(value) else { return };
+        let Some(i) = self.doc_index(uid) else { return };
+        let resolves = self
+            .active_client()
+            .and_then(|ci| self.lsp.clients[ci].capabilities()?.code_lens_provider.as_ref()?.resolve_provider);
+        if resolves == Some(true) {
+            for (index, lens) in lenses.iter().enumerate().filter(|(_, l)| l.command.is_none()).take(MAX_LENS_RESOLVES)
+            {
+                self.request_for(i, "codeLens/resolve", Pending::CodeLensResolve { uid, index }, |_, _| json!(lens));
+            }
+        }
+        let lines = self.docs[i].buffer.len_lines();
+        self.lsp.extra.lenses.insert(uid, (lines, lenses));
+        self.rebuild_inlays(uid);
+    }
+
+    pub(super) fn on_code_lens_resolved(&mut self, uid: u64, index: usize, value: Value) {
+        let Ok(resolved) = serde_json::from_value::<lt::CodeLens>(value) else { return };
+        let Some((_, lenses)) = self.lsp.extra.lenses.get_mut(&uid) else { return };
+        // The list may have been replaced since this was asked.
+        match lenses.get_mut(index) {
+            Some(lens) if lens.range == resolved.range => *lens = resolved,
+            _ => return,
+        }
+        self.rebuild_inlays(uid);
+    }
+
+    /// Merges inlay hints and lens titles, the titles at the end of their line.
+    fn rebuild_inlays(&mut self, uid: u64) {
+        let Some(i) = self.doc_index(uid) else { return };
+        let rope = self.docs[i].buffer.rope();
+        let lines = self.docs[i].buffer.len_lines();
+        let extra = &mut self.lsp.extra;
+        let mut map = extra
+            .inlays
+            .get(&uid)
+            .filter(|(n, _)| *n == lines)
+            .map_or_else(HashMap::new, |(_, hints)| (**hints).clone());
+        let mut titles: HashMap<usize, Vec<&str>> = HashMap::new();
+        for lens in extra.lenses.get(&uid).filter(|(n, _)| *n == lines).into_iter().flat_map(|(_, l)| l) {
+            if let Some(command) = &lens.command {
+                titles.entry(lens.range.start.line as usize).or_default().push(&command.title);
+            }
+        }
+        for (line, titles) in titles {
+            if line < rope.len_lines() {
+                let text = rope.line(line).to_string();
+                let end = text.chars().rev().skip_while(|c| matches!(c, '\n' | '\r')).count();
+                map.entry(line).or_default().push((end, format!("  {}", titles.join(" | "))));
+            }
+        }
+        extra.shown_inlays.insert(uid, (lines, Arc::new(map)));
+    }
+
+    pub(super) fn show_code_lens(&mut self) {
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let line = doc.buffer.rope().char_to_line(doc.buffer.primary().head);
+        let commands: Vec<lt::Command> = self
+            .lsp
+            .extra
+            .lenses
+            .get(&doc.uid)
+            .into_iter()
+            .flat_map(|(_, lenses)| lenses)
+            .filter(|l| l.range.start.line as usize == line)
+            .filter_map(|l| l.command.clone())
+            .collect();
+        if commands.is_empty() {
+            self.status = Some("No code lens on this line".to_owned());
+            return;
+        }
+        let titles = commands.iter().map(|c| c.title.clone()).collect();
+        self.lsp.extra.picked_lenses = commands;
+        self.palette.show_picker(PickerKind::CodeLens, titles, "", "Select a code lens");
+    }
+
+    pub(super) fn pick_code_lens(&mut self, title: &str) {
+        let commands = std::mem::take(&mut self.lsp.extra.picked_lenses);
+        let Some(command) = commands.into_iter().find(|c| c.title == title) else { return };
+        // Others belong to the server's VS Code extension, which isn't here.
+        let runs_on_server = self.active_client().is_some_and(|ci| {
+            self.lsp.clients[ci]
+                .capabilities()
+                .and_then(|c| c.execute_command_provider.as_ref())
+                .is_some_and(|p| p.commands.contains(&command.command))
+        });
+        if !runs_on_server {
+            self.status = Some(format!("'{title}' needs the server's VS Code extension ({})", command.command));
+            return;
+        }
+        let args = command.arguments.unwrap_or_default();
+        self.request_for(
+            self.active,
+            "workspace/executeCommand",
+            Pending::Execute,
+            |_, _| json!({ "command": command.command, "arguments": args }),
+        );
+    }
+
+    pub(super) fn request_hierarchy(&mut self, hierarchy: Hierarchy) {
+        let i = self.active;
+        let Some(doc) = self.docs.get(i) else { return };
+        let pos = doc.buffer.primary().head;
+        let word = doc.buffer.word_at(pos).map(|(a, b)| doc.buffer.slice_string(a, b)).unwrap_or_default();
+        self.request_for(i, hierarchy.prepare(), Pending::HierarchyPrepare { hierarchy, word }, |doc, td| {
+            Self::position_params(doc, td, pos)
+        });
+    }
+
+    pub(super) fn on_hierarchy_prepared(&mut self, hierarchy: Hierarchy, word: String, value: Value) {
+        let Some(item) = value.as_array().and_then(|items| items.first()) else {
+            self.status = Some(format!("No {} found for '{word}'", hierarchy.title().to_lowercase()));
+            return;
+        };
+        let params = json!({ "item": item });
+        self.request_for(self.active, hierarchy.method(), Pending::HierarchyItems { hierarchy, word }, |_, _| params);
+    }
+
+    pub(super) fn on_pulled_diagnostics(&mut self, path: PathBuf, value: Value) {
+        // "unchanged" only answers a request naming an earlier result, which we don't send.
+        if value["kind"] != "full" {
+            return;
+        }
+        let items = serde_json::from_value::<Vec<lt::Diagnostic>>(value["items"].clone()).unwrap_or_default();
+        if items.is_empty() {
+            self.lsp.pulled_diagnostics.remove(&path_key(&path));
+        } else {
+            self.lsp.pulled_diagnostics.insert(path_key(&path), (path, items));
+        }
+    }
+
+    /// A server asked to show a file or page. Files open; of web addresses only
+    /// local ones do, so a server can't send the browser anywhere on its own.
+    pub(super) fn on_show_document(&mut self, kind: ServerKind, params: &Value) -> bool {
+        let Ok(url) = serde_json::from_value::<lt::Url>(params["uri"].clone()) else { return false };
+        if let Some(path) = convert::path_from_uri(&url).filter(|_| url.scheme() == "file") {
+            let range = serde_json::from_value::<lt::Range>(params["selection"].clone());
+            match range {
+                Ok(range) => self.jump_to(&path, range, true),
+                Err(_) => match self.doc_index_by_path(&path) {
+                    Some(i) => self.active = i,
+                    None => self.open_file(&path),
+                },
+            }
+            return true;
+        }
+        if convert::is_loopback_url(&url) {
+            self.lsp.open_url = Some(url.to_string());
+            return true;
+        }
+        self.status = Some(format!("{} asked to open {url}; not opened", kind.name()));
+        false
     }
 
     /// The server's data changed (it finished indexing, say): ask again.
@@ -249,6 +482,7 @@ impl CodeApp {
             list.sort_by_key(|h| h.0);
         }
         self.lsp.extra.inlays.insert(uid, (lines, Arc::new(map)));
+        self.rebuild_inlays(uid);
     }
 
     pub(super) fn on_symbol_highlights(&mut self, uid: u64, version: u64, value: Value) {
@@ -286,7 +520,7 @@ impl CodeApp {
         {
             deco.highlights.push(map.clone());
         }
-        if let Some((_, map)) = extra.inlays.get(&doc.uid).filter(|(n, _)| *n == lines) {
+        if let Some((_, map)) = extra.shown_inlays.get(&doc.uid).filter(|(n, _)| *n == lines) {
             deco.inlays = Some(map.clone());
         }
     }

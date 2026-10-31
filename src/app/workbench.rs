@@ -291,6 +291,10 @@ impl CodeApp {
                 item(ui, "Go to Type Definition", Command::GoToTypeDefinition);
                 item(ui, "Go to Symbol in Workspace...", Command::GoToWorkspaceSymbol);
                 item(ui, "Go to References", Command::FindReferences);
+                item(ui, "Show Incoming Calls", Command::ShowIncomingCalls);
+                item(ui, "Show Outgoing Calls", Command::ShowOutgoingCalls);
+                item(ui, "Show Supertypes", Command::ShowSupertypes);
+                item(ui, "Show Subtypes", Command::ShowSubtypes);
                 ui.separator();
                 item(ui, "Toggle Bookmark", Command::ToggleBookmark);
                 item(ui, "Next Bookmark", Command::NextBookmark);

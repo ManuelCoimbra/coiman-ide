@@ -88,6 +88,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+t", Command::GoToWorkspaceSymbol, false),
     ("ctrl+shift+space", Command::TriggerSignatureHelp, true),
     ("shift+f12", Command::FindReferences, true),
+    ("shift+alt+h", Command::ShowIncomingCalls, true),
     ("f2", Command::RenameSymbol, true),
     ("ctrl+.", Command::QuickFix, true),
     ("shift+alt+f", Command::FormatDocument, true),

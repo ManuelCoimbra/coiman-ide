@@ -381,6 +381,10 @@ fn client_capabilities() -> Value {
                 },
             },
             "inlayHint": {},
+            "diagnostic": {},
+            "codeLens": {},
+            "callHierarchy": {},
+            "typeHierarchy": {},
             "semanticTokens": {
                 "requests": { "full": true },
                 "tokenTypes": ["namespace", "type", "class", "enum", "interface", "struct", "typeParameter",
@@ -398,8 +402,10 @@ fn client_capabilities() -> Value {
             "symbol": {},
             "semanticTokens": { "refreshSupport": true },
             "inlayHint": { "refreshSupport": true },
+            "diagnostics": { "refreshSupport": true },
+            "codeLens": { "refreshSupport": true },
         },
-        "window": { "workDoneProgress": true, "showMessage": {} },
+        "window": { "workDoneProgress": true, "showMessage": {}, "showDocument": { "support": true } },
         "experimental": { "serverStatusNotification": true },
     })
 }

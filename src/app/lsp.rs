@@ -88,6 +88,24 @@ pub(super) enum Pending {
         save: bool,
     },
     Execute,
+    PullDiagnostics {
+        path: PathBuf,
+    },
+    CodeLens {
+        uid: u64,
+    },
+    CodeLensResolve {
+        uid: u64,
+        index: usize,
+    },
+    HierarchyPrepare {
+        hierarchy: super::lsp_extra::Hierarchy,
+        word: String,
+    },
+    HierarchyItems {
+        hierarchy: super::lsp_extra::Hierarchy,
+        word: String,
+    },
 }
 
 pub(super) struct CompletionEntry {
@@ -143,6 +161,11 @@ pub(super) struct LspState {
     pub(super) room: super::lsp_room::Room,
     /// Diagnostics by file (key: [`path_key`]), with the path as reported.
     diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
+    /// The same, from `textDocument/diagnostic`. Kept apart because a server can
+    /// use both for different checks, and each answer replaces only its own kind.
+    pub(super) pulled_diagnostics: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
+    /// A local page a server asked to show, opened when a context is at hand.
+    pub(super) open_url: Option<String>,
     /// Buffer version last sent to the server, per document uid.
     pub(super) synced: HashMap<u64, u64>,
     /// Work-done progress by token: (title, latest message, started).
@@ -288,6 +311,9 @@ impl CodeApp {
             self.handle_event(kind, &root, ev);
         }
         self.lsp.clients.retain(|c| !c.has_exited());
+        if let Some(url) = self.lsp.open_url.take() {
+            ctx.open_url(egui::OpenUrl::new_tab(url));
+        }
         self.refresh_lsp_views(ctx);
 
         let now = ctx.input(|i| i.time);
@@ -430,6 +456,7 @@ impl CodeApp {
         self.lsp.synced.clear();
         self.lsp.progress.clear();
         self.lsp.diagnostics.clear();
+        self.lsp.pulled_diagnostics.clear();
         self.lsp.completion = None;
         self.lsp.hover = None;
         self.lsp.setups.clear();
@@ -485,6 +512,7 @@ impl CodeApp {
                         let applied = edit.is_ok_and(|e| self.apply_workspace_edit(&e).is_ok());
                         Ok(json!({ "applied": applied }))
                     }
+                    "window/showDocument" => Ok(json!({ "success": self.on_show_document(kind, &params) })),
                     "window/workDoneProgress/create"
                     | "client/registerCapability"
                     | "client/unregisterCapability"
@@ -563,6 +591,9 @@ impl CodeApp {
                     | Pending::InlayHints { .. }
                     | Pending::SymbolHighlights { .. }
                     | Pending::Signature { .. }
+                    | Pending::PullDiagnostics { .. }
+                    | Pending::CodeLens { .. }
+                    | Pending::CodeLensResolve { .. }
                     | Pending::WorkspaceSymbols => {}
                     Pending::Format { uid, save: true, .. } => self.finish_format_save(uid, None),
                     _ => self.status = Some(format!("{}: {e}", kind.name())),
@@ -598,6 +629,14 @@ impl CodeApp {
             Pending::SymbolHighlights { uid, version } => self.on_symbol_highlights(uid, version, value),
             Pending::Signature { uid } => self.on_signature(uid, value),
             Pending::WorkspaceSymbols => self.on_workspace_symbols(value),
+            Pending::PullDiagnostics { path } => self.on_pulled_diagnostics(path, value),
+            Pending::CodeLens { uid } => self.on_code_lens(uid, value),
+            Pending::CodeLensResolve { uid, index } => self.on_code_lens_resolved(uid, index, value),
+            Pending::HierarchyPrepare { hierarchy, word } => self.on_hierarchy_prepared(hierarchy, word, value),
+            Pending::HierarchyItems { hierarchy, word } => {
+                let found = convert::hierarchy_locations(&value, hierarchy.field());
+                self.on_locations(hierarchy.title(), &word, json!(found));
+            }
         }
     }
 
@@ -648,6 +687,7 @@ impl CodeApp {
     fn diagnostics_for(&self, path: &Path) -> Vec<lt::Diagnostic> {
         let k = path_key(path);
         let mut all = self.lsp.diagnostics.get(&k).map(|(_, d)| d.clone()).unwrap_or_default();
+        all.extend(self.lsp.pulled_diagnostics.get(&k).into_iter().flat_map(|(_, d)| d.iter().cloned()));
         all.extend(self.plugin_problems(&k));
         for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
@@ -666,6 +706,7 @@ impl CodeApp {
             .lsp
             .diagnostics
             .keys()
+            .chain(self.lsp.pulled_diagnostics.keys())
             .chain(self.cargo.diagnostics.keys())
             .chain(plugin_paths.iter().map(|(k, _)| k))
             .collect();
@@ -677,6 +718,7 @@ impl CodeApp {
                     .lsp
                     .diagnostics
                     .get(k)
+                    .or_else(|| self.lsp.pulled_diagnostics.get(k))
                     .or_else(|| self.cargo.diagnostics.get(k))
                     .map(|(p, _)| p)
                     .or_else(|| plugin_paths.iter().find(|(key, _)| key == k).map(|(_, p)| p))?
@@ -1288,7 +1330,7 @@ impl CodeApp {
         });
     }
 
-    fn on_locations(&mut self, title: &'static str, word: &str, value: Value) {
+    pub(super) fn on_locations(&mut self, title: &'static str, word: &str, value: Value) {
         let found: Vec<(PathBuf, lt::Range)> =
             match serde_json::from_value::<Option<lt::GotoDefinitionResponse>>(value) {
                 Ok(Some(lt::GotoDefinitionResponse::Scalar(l))) => vec![l],

@@ -51,6 +51,27 @@ pub fn path_from_uri(uri: &Url) -> Option<PathBuf> {
     uri.to_file_path().ok()
 }
 
+/// The places named by a call or type hierarchy answer: `field` picks the item
+/// out of each entry ("from", "to"), or `None` when the entries are items.
+pub fn hierarchy_locations(value: &serde_json::Value, field: Option<&str>) -> Vec<lsp_types::Location> {
+    let entries = value.as_array().map_or(&[][..], Vec::as_slice);
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let item = field.map_or(entry, |f| &entry[f]);
+            Some(lsp_types::Location {
+                uri: serde_json::from_value(item["uri"].clone()).ok()?,
+                range: serde_json::from_value(item["selectionRange"].clone()).ok()?,
+            })
+        })
+        .collect()
+}
+
+/// Whether a web address stays on this computer.
+pub fn is_loopback_url(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https") && matches!(url.host_str(), Some("localhost" | "127.0.0.1" | "[::1]"))
+}
+
 /// LSP position at byte offset `byte` of `text`.
 fn position_in_str(text: &str, byte: usize) -> Position {
     let before = &text[..byte];
@@ -177,6 +198,28 @@ fn matching_brace(chars: &[char], open: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn hierarchy_answers_become_locations() {
+        let item = serde_json::json!({
+            "uri": "file:///a.rs",
+            "selectionRange": { "start": { "line": 2, "character": 0 }, "end": { "line": 2, "character": 1 } },
+        });
+        let calls = serde_json::json!([{ "from": item, "fromRanges": [] }, { "from": {} }]);
+        let found = super::hierarchy_locations(&calls, Some("from"));
+        assert_eq!(found.len(), 1, "an entry without a place is skipped");
+        assert_eq!(found[0].range.start.line, 2);
+        assert_eq!(super::hierarchy_locations(&serde_json::json!([item]), None).len(), 1);
+        assert!(super::hierarchy_locations(&serde_json::Value::Null, None).is_empty());
+    }
+
+    #[test]
+    fn only_local_web_addresses_are_loopback() {
+        let local = |s: &str| super::is_loopback_url(&lsp_types::Url::parse(s).unwrap());
+        assert!(local("http://localhost:8080/x") && local("http://127.0.0.1/") && local("https://[::1]:1/"));
+        assert!(!local("https://example.com/") && !local("http://localhost.example.com/"));
+        assert!(!local("file:///localhost"));
+    }
+
     use super::*;
 
     #[test]
