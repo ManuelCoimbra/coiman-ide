@@ -525,6 +525,7 @@ impl eframe::App for CodeApp {
         }
 
         self.close_dialog(&ctx);
+        self.run_refusal_ui(&ctx);
 
         if let Some(c) = cmd {
             self.run_command(&ctx, c);

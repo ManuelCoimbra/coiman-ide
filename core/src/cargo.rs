@@ -47,11 +47,13 @@ pub fn load_configs(root: &Path) -> Result<Option<Vec<RunConfig>>, String> {
 
 /// Configurations Cargo implies: run each binary, test, check, clippy.
 pub fn default_configs(root: &Path) -> Vec<RunConfig> {
-    let mut configs: Vec<RunConfig> = binaries(root)
-        .into_iter()
-        .map(|bin| RunConfig {
-            name: format!("Run {bin}"),
-            command: format!("cargo run --bin {bin}"),
+    let packages = packages(root).unwrap_or_default();
+    let mut configs: Vec<RunConfig> = packages
+        .iter()
+        .flat_map(|p| p.binaries().map(move |t| (p, t)))
+        .map(|(package, bin)| RunConfig {
+            name: format!("Run {}", bin.name),
+            command: format!("cargo run -p {} --bin {}", package.name, bin.name),
             cwd: None,
             env: BTreeMap::new(),
         })
@@ -82,28 +84,88 @@ pub fn launch_file_contents(configs: &[RunConfig]) -> String {
     )
 }
 
-/// Binary targets of the workspace members (`cargo metadata --no-deps`).
-pub fn binaries(root: &Path) -> Vec<String> {
+/// One thing Cargo can build from a package.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CargoTarget {
+    pub name: String,
+    /// "bin", "lib", "example", "test", "bench", "custom-build"...
+    pub kinds: Vec<String>,
+    pub crate_types: Vec<String>,
+    /// The file the target starts from.
+    pub src_path: PathBuf,
+}
+
+impl CargoTarget {
+    pub fn is(&self, kind: &str) -> bool {
+        self.kinds.iter().any(|k| k == kind)
+    }
+}
+
+/// A workspace member, as `cargo metadata` describes it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CargoPackage {
+    pub name: String,
+    pub dir: PathBuf,
+    pub default_run: Option<String>,
+    pub targets: Vec<CargoTarget>,
+}
+
+impl CargoPackage {
+    pub fn binaries(&self) -> impl Iterator<Item = &CargoTarget> {
+        self.targets.iter().filter(|t| t.is("bin"))
+    }
+}
+
+/// Reads the output of `cargo metadata`.
+pub fn parse_packages(meta: &serde_json::Value) -> Vec<CargoPackage> {
+    let strings = |value: &serde_json::Value| -> Vec<String> {
+        value.as_array().into_iter().flatten().filter_map(|s| s.as_str().map(str::to_owned)).collect()
+    };
+    let path = |value: &serde_json::Value| value.as_str().map(PathBuf::from);
+    meta["packages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|package| {
+            let targets = package["targets"].as_array().into_iter().flatten();
+            Some(CargoPackage {
+                name: package["name"].as_str()?.to_owned(),
+                dir: path(&package["manifest_path"])?.parent()?.to_path_buf(),
+                default_run: package["default_run"].as_str().map(str::to_owned),
+                targets: targets
+                    .filter_map(|target| {
+                        Some(CargoTarget {
+                            name: target["name"].as_str()?.to_owned(),
+                            kinds: strings(&target["kind"]),
+                            crate_types: strings(&target["crate_types"]),
+                            src_path: path(&target["src_path"])?,
+                        })
+                    })
+                    .collect(),
+            })
+        })
+        .collect()
+}
+
+/// The workspace members (`cargo metadata --no-deps`). `None` when Cargo can't say.
+pub fn packages(root: &Path) -> Option<Vec<CargoPackage>> {
     if !crate::trust::is_trusted(root) {
-        return Vec::new();
+        return None;
     }
     let out = quiet_command(Path::new("cargo"))
         .args(["metadata", "--no-deps", "--format-version", "1"])
         .current_dir(root)
         .stdin(Stdio::null())
         .stderr(Stdio::null())
-        .output();
-    let Ok(out) = out else { return Vec::new() };
-    let Ok(meta) = serde_json::from_slice::<serde_json::Value>(&out.stdout) else { return Vec::new() };
-    let mut bins = Vec::new();
-    for package in meta["packages"].as_array().into_iter().flatten() {
-        for target in package["targets"].as_array().into_iter().flatten() {
-            if target["kind"].as_array().is_some_and(|k| k.iter().any(|k| k == "bin")) {
-                bins.extend(target["name"].as_str().map(str::to_owned));
-            }
-        }
-    }
-    bins
+        .output()
+        .ok()?;
+    serde_json::from_slice(&out.stdout).ok().map(|meta| parse_packages(&meta))
+}
+
+/// Binary targets of the workspace members.
+pub fn binaries(root: &Path) -> Vec<String> {
+    let packages = packages(root).unwrap_or_default();
+    packages.iter().flat_map(CargoPackage::binaries).map(|t| t.name.clone()).collect()
 }
 
 // ----- building for the debugger -----------------------------------------------------

@@ -92,6 +92,8 @@ pub(super) const CARGO_ONLY: &[Command] = &[
 pub(super) struct CargoState {
     /// Programs offered by Run Program when several fit.
     run_targets: Vec<run::RunPlan>,
+    /// Why Run did nothing, and when it was refused.
+    run_refusal: Option<(String, f64)>,
     /// Tests by file key.
     tests: HashMap<PathBuf, FileTests>,
     scanned_for: Option<PathBuf>,
@@ -119,6 +121,7 @@ impl Default for CargoState {
         let (tx, rx) = mpsc::channel();
         Self {
             run_targets: Vec::new(),
+            run_refusal: None,
             tests: HashMap::new(),
             scanned_for: None,
             parsed: None,
@@ -160,6 +163,9 @@ fn shell(command: &str) -> (String, Vec<String>) {
         ("sh".into(), vec!["-c".into(), command.into()])
     }
 }
+
+/// Seconds a refusal stays beside the Run button.
+const RUN_REFUSAL_SECONDS: f64 = 10.0;
 
 impl CodeApp {
     /// The Cargo project for run/test/check: the open folder if it has a
@@ -768,13 +774,44 @@ impl CodeApp {
         self.palette.show_picker(PickerKind::RunConfig, names, &current, "Select a configuration to run");
     }
 
+    /// Says why Run did nothing, beside the button: the status bar may be hidden.
+    fn refuse_run(&mut self, ctx: &egui::Context, why: String) {
+        self.status = Some(why.clone());
+        self.cargo.run_refusal = Some((why, ctx.input(|i| i.time)));
+    }
+
+    pub(super) fn run_refusal_ui(&mut self, ctx: &egui::Context) {
+        let Some((why, since)) = &self.cargo.run_refusal else { return };
+        let left = RUN_REFUSAL_SECONDS - (ctx.input(|i| i.time) - since);
+        if left <= 0.0 {
+            self.cargo.run_refusal = None;
+            return;
+        }
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+        let shown = egui::Area::new(egui::Id::unique("run_refusal"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-8.0, 40.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(420.0);
+                    ui.add(egui::Label::new(why.as_str()).wrap().selectable(false));
+                });
+            });
+        if shown.response.interact(egui::Sense::click()).clicked() {
+            self.cargo.run_refusal = None;
+        }
+    }
+
     /// Run Program: runs the active file the way its language runs. With no
     /// file open, the folder's Cargo project.
     pub(super) fn run_program(&mut self, ctx: &egui::Context) {
+        self.cargo.run_refusal = None;
         // What runs is what's on screen.
         for i in 0..self.docs.len() {
-            if self.docs[i].is_dirty() && self.docs[i].path.is_some() {
-                self.save_doc(i);
+            if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {
+                let why = format!("Nothing was run: {} couldn't be saved", self.docs[i].title());
+                self.refuse_run(ctx, why);
+                return;
             }
         }
         let root = self.explorer.root.clone();
@@ -783,11 +820,7 @@ impl CodeApp {
             Some((file, source)) => run::plan(&file, &source, root.as_deref()),
             None if active.is_some() => Err("Save this file first".to_owned()),
             None => match self.cargo_root() {
-                Some(dir) => Ok(run::Outcome::Run(run::RunPlan {
-                    title: "cargo run".to_owned(),
-                    command: "cargo run".to_owned(),
-                    cwd: dir,
-                })),
+                Some(dir) => run::plan(&dir.join("Cargo.toml"), "", root.as_deref()),
                 None => Err("Open a file to run".to_owned()),
             },
         };
@@ -798,7 +831,7 @@ impl CodeApp {
                 self.cargo.run_targets = plans;
                 self.palette.show_picker(PickerKind::RunTarget, names, "", "Select the program to run");
             }
-            Err(e) => self.status = Some(e),
+            Err(e) => self.refuse_run(ctx, e),
         }
     }
 

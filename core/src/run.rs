@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use tree_sitter::{Node, Parser};
 
+use crate::cargo::CargoPackage;
 use crate::lsp::servers::which;
 use crate::syntax::Lang;
 
@@ -292,7 +293,7 @@ fn c_family(file: &Path, source: &str, root: Option<&Path>, cpp: bool) -> Result
     for (marker, tool) in [("CMakeLists.txt", "CMake"), ("Makefile", "Make"), ("meson.build", "Meson")] {
         if find_up(file, root, marker).is_some() {
             return Err(format!(
-                "This project builds with {tool}, which decides the program's name: add it to Run: Open Configurations"
+                "This project builds with {tool}, which decides the program's name: add it in Run: Open Configurations, then press Ctrl+F5"
             ));
         }
     }
@@ -314,6 +315,90 @@ fn c_family(file: &Path, source: &str, root: Option<&Path>, cpp: bool) -> Result
 
 // ----- Rust and Go ---------------------------------------------------------------------
 
+/// A path in the form paths are compared in: resolved, no `\\\\?\\`, any case on Windows.
+fn comparable(path: &Path) -> PathBuf {
+    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let text = path.to_string_lossy();
+    let text = text.strip_prefix(r"\\?\").unwrap_or(&text);
+    PathBuf::from(if cfg!(windows) { text.to_lowercase() } else { text.to_owned() })
+}
+
+fn cargo_run(package: &CargoPackage, flag: &str, name: &str, title: String) -> RunPlan {
+    let command = format!("cargo run -p {} --{flag} {}", quote(&package.name), quote(name));
+    RunPlan { title, command, cwd: package.dir.clone() }
+}
+
+/// Runs one of `found`, asking when there are several.
+fn one_or_choose(mut found: Vec<RunPlan>) -> Option<Outcome> {
+    match found.len() {
+        0 => None,
+        1 => Some(Outcome::Run(found.remove(0))),
+        _ => Some(Outcome::Choose(found)),
+    }
+}
+
+/// What running `file` means given what Cargo says the workspace holds: the
+/// file's own target when it starts one, else the program of its package.
+fn rust_target(file: &Path, packages: &[CargoPackage]) -> Result<Outcome, String> {
+    let name = name_of(file);
+    let at = comparable(file);
+    let owner = packages
+        .iter()
+        .map(|p| (p, comparable(&p.dir)))
+        .filter(|(_, dir)| at.starts_with(dir))
+        .max_by_key(|(_, dir)| dir.components().count())
+        .map(|(p, _)| p);
+    let Some(package) = owner else {
+        // A workspace's own manifest belongs to no member.
+        let found = packages
+            .iter()
+            .flat_map(|p| p.binaries().map(move |t| (p, t)))
+            .map(|(p, t)| cargo_run(p, "bin", &t.name, format!("{} ({})", t.name, p.name)))
+            .collect();
+        return one_or_choose(found).ok_or_else(|| "This Cargo workspace has no program to run".to_owned());
+    };
+    let own = package.targets.iter().find(|t| comparable(&t.src_path) == at);
+    if let Some(target) = own {
+        let quoted = (quote(&package.name), quote(&target.name));
+        let tests = |tool: &str, flag: &str| {
+            Outcome::Run(RunPlan {
+                title: target.name.clone(),
+                command: format!("cargo {tool} -p {} --{flag} {}", quoted.0, quoted.1),
+                cwd: package.dir.clone(),
+            })
+        };
+        if target.is("bin") {
+            return Ok(Outcome::Run(cargo_run(package, "bin", &target.name, target.name.clone())));
+        }
+        if target.is("example") {
+            if target.crate_types.iter().any(|c| c == "bin") {
+                return Ok(Outcome::Run(cargo_run(package, "example", &target.name, target.name.clone())));
+            }
+            return Err(format!("The example {} is a library, so it can't run", target.name));
+        }
+        if target.is("test") {
+            return Ok(tests("test", "test"));
+        }
+        if target.is("bench") {
+            return Ok(tests("bench", "bench"));
+        }
+        if target.is("custom-build") {
+            return Err(format!("{name} runs by itself whenever Cargo builds {}", package.name));
+        }
+    }
+    let default = package.default_run.as_deref();
+    if let Some(bin) = package.binaries().find(|t| Some(t.name.as_str()) == default) {
+        return Ok(Outcome::Run(cargo_run(package, "bin", &bin.name, bin.name.clone())));
+    }
+    let found = package.binaries().map(|t| cargo_run(package, "bin", &t.name, t.name.clone())).collect();
+    one_or_choose(found).ok_or_else(|| {
+        format!(
+            "{} is a library, so it has no program to run. Add src/main.rs to give it one, or run its tests",
+            package.name
+        )
+    })
+}
+
 fn rust(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
     let stem = stem_of(file);
     let Some(package) = find_up(file, root, "Cargo.toml") else {
@@ -328,25 +413,15 @@ fn rust(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
         };
         return Ok(Outcome::Run(RunPlan { title: stem, command: then(&compile, &call(&exe)), cwd: dir }));
     };
+    if let Some(packages) = crate::cargo::packages(&package) {
+        return rust_target(file, &packages);
+    }
+    // Cargo can't read the manifest: go by the file's place, and let it report why.
     let parent = file.parent().map(name_of).unwrap_or_default();
     let command = match parent.as_str() {
         "bin" => format!("cargo run --bin {}", quote(&stem)),
         "examples" => format!("cargo run --example {}", quote(&stem)),
-        _ => {
-            let bins = crate::cargo::binaries(&package);
-            if bins.len() > 1 {
-                let plans = bins
-                    .into_iter()
-                    .map(|b| RunPlan {
-                        command: format!("cargo run --bin {}", quote(&b)),
-                        title: b,
-                        cwd: package.clone(),
-                    })
-                    .collect();
-                return Ok(Outcome::Choose(plans));
-            }
-            "cargo run".to_owned()
-        }
+        _ => "cargo run".to_owned(),
     };
     let title = if command == "cargo run" {
         package.file_name().map_or(stem, |n| n.to_string_lossy().into_owned())
@@ -358,6 +433,14 @@ fn rust(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
 
 fn go(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, String> {
     need("go", "Go")?;
+    if name_of(file).ends_with("_test.go") {
+        let dir = file.parent().unwrap_or(file).to_path_buf();
+        return Ok(Outcome::Run(RunPlan {
+            title: format!("{} tests", stem_of(file)),
+            command: "go test .".into(),
+            cwd: dir,
+        }));
+    }
     let package = source
         .lines()
         .map(str::trim)
@@ -404,9 +487,38 @@ fn typescript_program(file: &Path, root: Option<&Path>) -> Result<String, String
     Ok("node".to_owned())
 }
 
+/// Why a kind of file never runs, when it's certain.
+fn never_runs(file: &Path, ext: &str) -> Option<String> {
+    let name = name_of(file);
+    let lower = name.to_lowercase();
+    if lower.ends_with(".d.ts") || lower.ends_with(".d.mts") || lower.ends_with(".d.cts") || ext == "pyi" {
+        return Some(format!("{name} only declares types: it has no code to run"));
+    }
+    Some(match ext {
+        "h" | "hpp" | "hh" | "hxx" | "inl" => {
+            format!("{name} is a header: it runs as part of the files that include it")
+        }
+        "css" | "scss" | "sass" | "less" => {
+            format!("{name} is a stylesheet: it applies through the page that loads it")
+        }
+        "json" | "jsonc" | "toml" | "yaml" | "yml" | "xml" | "lock" | "ini" | "cfg" | "conf" | "csv" | "env" => {
+            format!("{name} holds data or settings: it isn't a program")
+        }
+        "md" | "markdown" | "txt" | "rst" | "log" => format!("{name} is a document: it isn't a program"),
+        _ => return None,
+    })
+}
+
 /// Works out how to run `file`, whose current text is `source`. `root` is the open folder.
 pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, String> {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    // Cargo's manifest stands for its package's program.
+    if name_of(file) == "Cargo.toml" {
+        return rust(file, root);
+    }
+    if let Some(why) = never_runs(file, &ext) {
+        return Err(why);
+    }
     let dir = file.parent().unwrap_or(file).to_path_buf();
     let simple = |program: String| {
         Ok(Outcome::Run(RunPlan {
@@ -466,7 +578,7 @@ pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, S
             simple(opener.to_owned())
         }
         _ => Err(format!(
-            "Rust Code doesn't know how to run {} files (add one in Run: Open Configurations)",
+            "Rust Code doesn't know how to run {}. A run configuration can: add it in Run: Open Configurations, then press Ctrl+F5",
             name_of(file)
         )),
     }
@@ -524,5 +636,102 @@ mod tests {
         assert!(plan(&tmp.join("lib.c"), "int f(void){return 0;}", Some(&tmp)).unwrap_err().contains("no main"));
         assert!(plan(&tmp.join("make/m.c"), "int main(void){return 0;}", Some(&tmp)).unwrap_err().contains("Make"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn files_that_never_run_say_why() {
+        let why = |name: &str| plan(Path::new(name), "", None).unwrap_err();
+        assert!(why("types.d.ts").contains("declares types"));
+        assert!(why("stub.pyi").contains("declares types"));
+        assert!(why("a.h").contains("header") && why("a.hpp").contains("header"));
+        assert!(why("a.css").contains("stylesheet"));
+        assert!(why("a.json").contains("data") && why("a.yaml").contains("data"));
+        assert!(why("README.md").contains("document"));
+        assert!(!why("a.xyz").contains("isn't a program"));
+    }
+
+    fn fixture() -> Vec<CargoPackage> {
+        let target = |name: &str, kind: &str, crate_type: &str, src: &str| crate::cargo::CargoTarget {
+            name: name.into(),
+            kinds: vec![kind.into()],
+            crate_types: vec![crate_type.into()],
+            src_path: PathBuf::from(src),
+        };
+        let package = |name: &str, dir: &str, default_run: Option<&str>, targets| CargoPackage {
+            name: name.into(),
+            dir: PathBuf::from(dir),
+            default_run: default_run.map(str::to_owned),
+            targets,
+        };
+        vec![
+            package("libonly", "/w/libonly", None, vec![target("libonly", "lib", "lib", "/w/libonly/src/lib.rs")]),
+            package(
+                "app",
+                "/w/app",
+                None,
+                vec![
+                    target("app", "lib", "lib", "/w/app/src/lib.rs"),
+                    target("app", "bin", "bin", "/w/app/src/main.rs"),
+                    target("demo", "example", "bin", "/w/app/examples/demo.rs"),
+                    target("plug", "example", "cdylib", "/w/app/examples/plug.rs"),
+                    target("smoke", "test", "bin", "/w/app/tests/smoke.rs"),
+                    target("speed", "bench", "bin", "/w/app/benches/speed.rs"),
+                    target("build-script-build", "custom-build", "bin", "/w/app/build.rs"),
+                ],
+            ),
+            package(
+                "tools",
+                "/w/tools",
+                None,
+                vec![
+                    target("one", "bin", "bin", "/w/tools/src/bin/one/main.rs"),
+                    target("two", "bin", "bin", "/w/tools/src/bin/two.rs"),
+                ],
+            ),
+            package(
+                "picked",
+                "/w/picked",
+                Some("b"),
+                vec![target("a", "bin", "bin", "/w/picked/a.rs"), target("b", "bin", "bin", "/w/picked/b.rs")],
+            ),
+        ]
+    }
+
+    /// What `rust_target` answers for a file: its command, or the titles to pick from.
+    fn answer(file: &str) -> Result<String, String> {
+        rust_target(Path::new(file), &fixture()).map(|outcome| match outcome {
+            Outcome::Run(plan) => plan.command,
+            Outcome::Choose(plans) => plans.into_iter().map(|p| p.title).collect::<Vec<_>>().join(","),
+        })
+    }
+
+    #[test]
+    fn rust_runs_what_cargo_says_the_file_is() {
+        let cargo = |rest: &str, package: &str, flag: &str, name: &str| {
+            format!("cargo {rest} -p {} --{flag} {}", quote(package), quote(name))
+        };
+        // Each file that starts a target runs that target.
+        assert_eq!(answer("/w/app/src/main.rs"), Ok(cargo("run", "app", "bin", "app")));
+        assert_eq!(answer("/w/app/examples/demo.rs"), Ok(cargo("run", "app", "example", "demo")));
+        assert_eq!(answer("/w/app/tests/smoke.rs"), Ok(cargo("test", "app", "test", "smoke")));
+        assert_eq!(answer("/w/app/benches/speed.rs"), Ok(cargo("bench", "app", "bench", "speed")));
+        assert_eq!(answer("/w/tools/src/bin/one/main.rs"), Ok(cargo("run", "tools", "bin", "one")));
+        // Modules, the library and the manifest stand for the package's program.
+        assert_eq!(answer("/w/app/src/util.rs"), Ok(cargo("run", "app", "bin", "app")));
+        assert_eq!(answer("/w/app/src/lib.rs"), Ok(cargo("run", "app", "bin", "app")));
+        assert_eq!(answer("/w/app/Cargo.toml"), Ok(cargo("run", "app", "bin", "app")));
+        // Several programs: its own package's only, unless one is the default.
+        assert_eq!(answer("/w/tools/src/util.rs"), Ok("one,two".to_owned()));
+        assert_eq!(answer("/w/picked/other.rs"), Ok(cargo("run", "picked", "bin", "b")));
+        // A workspace's own manifest offers every member's.
+        assert_eq!(answer("/w/Cargo.toml"), Ok("app (app),one (tools),two (tools),a (picked),b (picked)".to_owned()));
+    }
+
+    #[test]
+    fn rust_refuses_what_cannot_run() {
+        assert!(answer("/w/libonly/src/lib.rs").unwrap_err().contains("is a library"));
+        assert!(answer("/w/app/build.rs").unwrap_err().contains("whenever Cargo builds"));
+        assert!(answer("/w/app/examples/plug.rs").unwrap_err().contains("is a library"));
+        assert!(rust_target(Path::new("/w/Cargo.toml"), &[]).unwrap_err().contains("no program"));
     }
 }
