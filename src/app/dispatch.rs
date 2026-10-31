@@ -387,6 +387,9 @@ impl CodeApp {
                 self.expand_emmet(false);
             }
             Command::PickColor => self.pick_color(),
+            Command::OpenHexView => self.hex_command(),
+            Command::ShowMemory => self.show_memory(None),
+            Command::ShowDisassembly => self.show_disassembly(),
             Command::OpenLogView => self.log_view_command(ctx),
             Command::ShowLogView => self.show_log_view(),
             Command::ToggleTableView => self.toggle_table_view(),

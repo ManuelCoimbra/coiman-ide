@@ -157,6 +157,12 @@ impl CodeApp {
         if self.open_image_file(path) {
             return;
         }
+        // Text only in name: it would come out garbled, and could be saved that way.
+        if !self.docs.iter().any(|d| d.path.as_deref().is_some_and(|p| same_path(p, path)))
+            && self.open_binary_file(path)
+        {
+            return;
+        }
         // Too large for the editor to hold; reading it takes the view's own thread.
         if rust_code_core::logfile::belongs_in_log_view(path) {
             self.log_to_open = Some(path.to_path_buf());

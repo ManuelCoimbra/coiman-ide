@@ -156,6 +156,7 @@ pub fn initialize_args() -> Value {
         "columnsStartAt1": true,
         "pathFormat": "path",
         "supportsVariableType": true,
+        "supportsMemoryReferences": true,
         // The program runs in one of the editor's terminals: CodeLLDB asks for
         // its launcher there, so the program's output and input stay off the
         // adapter's stdio (on Windows the program would otherwise inherit it).

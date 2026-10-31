@@ -14,6 +14,10 @@ pub trait GridSource {
     fn row(&self, row: usize) -> Vec<String>;
     /// What the row's number in the margin says.
     fn row_label(&self, row: usize) -> String;
+    /// A cell's own text color, when it has something to say.
+    fn cell_color(&self, _row: usize, _column: usize) -> Option<Color32> {
+        None
+    }
 }
 
 #[derive(Default)]
@@ -22,6 +26,8 @@ pub struct GridState {
     pub widths: Vec<f32>,
     /// Selected (row, column).
     pub selected: Option<(usize, usize)>,
+    /// A row to bring into view next frame.
+    pub reveal: Option<usize>,
     /// A place to scroll to, from the keyboard.
     scroll_to: Option<Vec2>,
     resizing: Option<usize>,
@@ -92,6 +98,10 @@ pub fn show(
     }
 
     let mut area = egui::ScrollArea::both().id_salt(id).auto_shrink([false, false]);
+    if let Some(row) = state.reveal.take() {
+        let y = (row as f32 * row_h - ui.available_height() / 2.0).max(0.0);
+        state.scroll_to = Some(Vec2::new(0.0, y));
+    }
     if let Some(to) = state.scroll_to.take() {
         area = area.scroll_offset(to);
     }
@@ -126,7 +136,8 @@ pub fn show(
                 }
                 if let Some(text) = cells.get(column).filter(|t| !t.is_empty()) {
                     let inner = painter.with_clip_rect(screen.with_min_x(screen.left() + margin));
-                    paint_cell(&inner, cell, text, &font, pal.editor_fg, is_number(text));
+                    let color = source.cell_color(row, column).unwrap_or(pal.editor_fg);
+                    paint_cell(&inner, cell, text, &font, color, is_number(text));
                 }
             }
         }

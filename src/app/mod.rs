@@ -3,6 +3,7 @@
 
 mod autosave;
 mod bookmarks;
+mod bytes_view;
 mod cargo;
 mod config;
 mod cpp;
@@ -157,6 +158,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    bytes: bytes_view::BytesState,
     logs: logs::Logs,
     /// A file that asked for the log view, on its way there.
     log_to_open: Option<std::path::PathBuf>,
@@ -281,6 +283,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            bytes: Default::default(),
             logs: Default::default(),
             log_to_open: None,
             tests: Default::default(),
@@ -455,7 +458,7 @@ impl eframe::App for CodeApp {
                 if let Some(path) = self.log_to_open.take() {
                     self.open_log_view(ui.ctx(), &path);
                 }
-                if self.log_view(ui) || self.image_view(ui) {
+                if self.log_view(ui) || self.bytes_view(ui) || self.image_view(ui) {
                     return;
                 }
                 cmd = cmd.or(self.welcome(ui));
@@ -491,7 +494,7 @@ impl eframe::App for CodeApp {
             if let Some(path) = self.log_to_open.take() {
                 self.open_log_view(ui.ctx(), &path);
             }
-            if self.log_view(ui) || self.image_view(ui) || self.table_view(ui) {
+            if self.log_view(ui) || self.bytes_view(ui) || self.image_view(ui) || self.table_view(ui) {
                 return;
             }
             self.markdown_preview(ui);

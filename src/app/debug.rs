@@ -12,6 +12,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use egui::{Align, Color32, RichText, Sense};
 use rust_code_core::cargo::{self, FileTarget, TestItem};
 use rust_code_core::dap::{self, Adapter, DapClient, DapEvent, DebugKind};
+use rust_code_core::hexdata;
 use rust_code_core::lsp::registry;
 use rust_code_core::run;
 use serde_json::{Value, json};
@@ -67,6 +68,10 @@ enum Pending {
     Variables(i64),
     Watch(usize, u64),
     Repl,
+    /// A page of memory, for this stop.
+    Memory(u64),
+    MemoryAddress,
+    Disassembly,
     Other,
 }
 
@@ -76,6 +81,8 @@ struct Frame {
     path: Option<PathBuf>,
     /// 1-based, as the adapter reports it.
     line: usize,
+    /// Where the frame is executing, for disassembly.
+    pointer: Option<String>,
 }
 
 struct Var {
@@ -83,6 +90,8 @@ struct Var {
     value: String,
     ty: String,
     reference: i64,
+    /// Where it is, if the adapter says.
+    memory: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -109,6 +118,7 @@ struct Session {
     pending: HashMap<i64, Pending>,
     /// Bumped on every stop, so late answers from an earlier stop are ignored.
     stop_gen: u64,
+    capabilities: hexdata::Capabilities,
 }
 
 /// Results of background work (finding binaries, building, installing).
@@ -297,6 +307,9 @@ impl CodeApp {
                                 *v = Some(format!("<{msg}>"));
                             }
                         }
+                        // Memory that can't be read is an answer, not an error.
+                        Pending::Memory(start) => self.on_memory_page(start, None),
+                        Pending::MemoryAddress => self.on_memory_address(None, Some(msg)),
                         Pending::Launch | Pending::Initialize => {
                             self.push_console(&format!("Could not start debugging: {msg}"));
                             self.end_session();
@@ -325,7 +338,20 @@ impl CodeApp {
 
     fn on_dap_response(&mut self, ctx: &egui::Context, pending: Pending, body: Value) {
         match pending {
+            Pending::Memory(start) => self.on_memory_page(start, hexdata::parse_read_memory(&body)),
+            Pending::MemoryAddress => {
+                let found = body["memoryReference"].as_str().map(str::to_owned);
+                let found = found.or_else(|| {
+                    let result = body["result"].as_str()?;
+                    result.split_whitespace().find(|w| w.starts_with("0x")).map(str::to_owned)
+                });
+                self.on_memory_address(found, None);
+            }
+            Pending::Disassembly => self.on_disassembly(hexdata::parse_disassembly(&body)),
             Pending::Initialize => {
+                if let Some(s) = &mut self.debug.session {
+                    s.capabilities = hexdata::Capabilities::parse(&body);
+                }
                 let Some(s) = &self.debug.session else { return };
                 let l = &s.launch;
                 let args = l.kind.launch_args(&l.program, &l.args, &l.cwd, self.settings.debug.step_into_std);
@@ -372,6 +398,7 @@ impl CodeApp {
                                     name: f["name"].as_str().unwrap_or("").to_owned(),
                                     path: f["source"]["path"].as_str().map(PathBuf::from),
                                     line: f["line"].as_u64().unwrap_or(0) as usize,
+                                    pointer: f["instructionPointerReference"].as_str().map(str::to_owned),
                                 })
                             })
                             .collect()
@@ -423,6 +450,7 @@ impl CodeApp {
                                 value: v["value"].as_str().unwrap_or("").to_owned(),
                                 ty: v["type"].as_str().unwrap_or("").to_owned(),
                                 reference: v["variablesReference"].as_i64().unwrap_or(0),
+                                memory: v["memoryReference"].as_str().map(str::to_owned),
                             })
                             .collect()
                     })
@@ -650,6 +678,7 @@ impl CodeApp {
                     watch_values: Vec::new(),
                     pending: HashMap::new(),
                     stop_gen: 0,
+                    capabilities: Default::default(),
                 });
                 self.request("initialize", dap::initialize_args(), Pending::Initialize);
                 self.show_debug_view();
@@ -856,6 +885,64 @@ impl CodeApp {
     }
 
     /// "next", "stepIn" or "stepOut" on the paused thread.
+    pub(super) fn debug_is_paused(&self) -> bool {
+        self.stopped_thread().is_some()
+    }
+
+    pub(super) fn debug_capabilities(&self) -> hexdata::Capabilities {
+        self.debug.session.as_ref().map(|s| s.capabilities).unwrap_or_default()
+    }
+
+    /// Changes when what a paused program shows does: a new stop, or another frame.
+    pub(super) fn debug_stop_key(&self) -> (u64, usize) {
+        self.debug.session.as_ref().map_or((0, 0), |s| (s.stop_gen, s.selected))
+    }
+
+    /// Whether this stop's call stack has arrived.
+    pub(super) fn debug_frames_ready(&self) -> bool {
+        self.debug.session.as_ref().is_some_and(|s| !s.frames.is_empty())
+    }
+
+    pub(super) fn debug_pointer(&self) -> Option<u64> {
+        let s = self.debug.session.as_ref()?;
+        s.frames.get(s.selected)?.pointer.as_deref().and_then(hexdata::parse_address)
+    }
+
+    pub(super) fn debug_request_memory(&mut self, start: u64) {
+        if self.debug_is_paused() {
+            let args = json!({ "memoryReference": format!("0x{start:x}"), "offset": 0, "count": hexdata::PAGE });
+            self.request("readMemory", args, Pending::Memory(start));
+        }
+    }
+
+    pub(super) fn debug_evaluate_address(&mut self, expression: &str) {
+        let frame = self.debug.session.as_ref().and_then(|s| s.frames.get(s.selected)).map(|f| f.id);
+        let args = json!({ "expression": expression, "frameId": frame, "context": "watch" });
+        self.request("evaluate", args, Pending::MemoryAddress);
+    }
+
+    pub(super) fn debug_request_disassembly(&mut self) {
+        let pointer = self.debug.session.as_ref().and_then(|s| s.frames.get(s.selected)?.pointer.clone());
+        let Some(pointer) = pointer else {
+            self.status = Some("This frame doesn't say where it's executing".to_owned());
+            return;
+        };
+        let args = json!({
+            "memoryReference": pointer,
+            "offset": 0,
+            "instructionOffset": -24,
+            "instructionCount": 64,
+            "resolveSymbols": true,
+        });
+        self.request("disassemble", args, Pending::Disassembly);
+    }
+
+    pub(super) fn debug_step_instruction(&mut self, command: &str) {
+        if let Some(thread) = self.stopped_thread() {
+            self.request(command, json!({ "threadId": thread, "granularity": "instruction" }), Pending::Other);
+        }
+    }
+
     pub(super) fn debug_step(&mut self, command: &str) {
         if let Some(thread) = self.stopped_thread() {
             self.request(command, json!({ "threadId": thread }), Pending::Other);
@@ -1100,6 +1187,18 @@ impl CodeApp {
         let mut goto_bp: Option<(PathBuf, usize)> = None;
         let mut remove_bp: Option<(PathBuf, usize)> = None;
         let mut resend = false;
+        let mut memory_at = None;
+        let mut low_level = None;
+        if let Some(s) = self.debug.session.as_ref().filter(|s| matches!(s.state, RunState::Stopped { .. })) {
+            ui.horizontal(|ui| {
+                if s.capabilities.read_memory && ui.button("Memory").clicked() {
+                    low_level = Some(true);
+                }
+                if s.capabilities.disassemble && ui.button("Disassembly").clicked() {
+                    low_level = Some(false);
+                }
+            });
+        }
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             let mono = egui::TextStyle::Monospace.resolve(ui.style());
@@ -1110,7 +1209,7 @@ impl CodeApp {
                     Some(s) if !s.scopes.is_empty() => {
                         for (name, reference) in &s.scopes {
                             ui.label(RichText::new(name).color(pal.text_dim));
-                            var_rows(ui, s, *reference, name, 1, &mono, &mut toggle, &mut expand);
+                            var_rows(ui, s, *reference, name, 1, &mono, &mut toggle, &mut expand, &mut memory_at);
                         }
                     }
                     _ => {
@@ -1206,6 +1305,14 @@ impl CodeApp {
             );
         });
 
+        match low_level {
+            Some(true) => self.show_memory(None),
+            Some(false) => self.show_disassembly(),
+            None => {}
+        }
+        if memory_at.is_some() {
+            self.show_memory(memory_at);
+        }
         if let Some(i) = remove_watch {
             self.debug.watches.remove(i);
             select = self.debug.session.as_ref().map(|s| s.selected);
@@ -1308,6 +1415,7 @@ fn var_rows(
     mono: &egui::FontId,
     toggle: &mut Option<String>,
     expand: &mut Vec<i64>,
+    memory_at: &mut Option<String>,
 ) {
     let pal = theme::colors();
     let Some(vars) = s.vars.get(&reference) else {
@@ -1333,7 +1441,13 @@ fn var_rows(
                 }
                 ui.label(RichText::new(&v.name).font(mono.clone()).color(Color32::from_rgb(0x9C, 0xDC, 0xFE)));
                 ui.label(RichText::new("=").font(mono.clone()).color(pal.text_dim));
-                ui.label(RichText::new(&v.value).font(mono.clone()))
+                let value = ui.label(RichText::new(&v.value).font(mono.clone()));
+                if let Some(address) = v.memory.as_ref().filter(|_| s.capabilities.read_memory)
+                    && ui.small_button("mem").on_hover_text(format!("Memory at {address}")).clicked()
+                {
+                    *memory_at = Some(address.clone());
+                }
+                value
             })
             .response
             .interact(Sense::click())
@@ -1342,7 +1456,7 @@ fn var_rows(
             *toggle = Some(child.clone());
         }
         if open {
-            var_rows(ui, s, v.reference, &child, depth + 1, mono, toggle, expand);
+            var_rows(ui, s, v.reference, &child, depth + 1, mono, toggle, expand, memory_at);
         }
     }
 }
