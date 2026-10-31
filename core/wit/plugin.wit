@@ -1,4 +1,4 @@
-package rust-code:plugin@0.3.0;
+package rust-code:plugin@0.4.0;
 
 /// Data shared by the editor and plugins.
 interface types {
@@ -70,6 +70,15 @@ interface types {
     }
 
     /// An entry in the Problems panel, underlined in the editor.
+    /// How often a line ran, for the coverage marks.
+    record line-coverage {
+        /// 1-based line.
+        line: u32,
+        hits: u64,
+        /// It ran, but not every branch on it did.
+        partial: bool,
+    }
+
     record problem {
         /// 1-based line.
         line: u32,
@@ -131,7 +140,7 @@ interface types {
 /// editor need a permission the user granted at install; without it they
 /// return `permission denied: <permission>`.
 interface host {
-    use types.{tree-item, block, document, decoration, problem};
+    use types.{line-coverage, tree-item, block, document, decoration, problem};
 
     /// A line in the plugin's log (Output panel).
     log: func(message: string);
@@ -150,6 +159,9 @@ interface host {
     /// Replaces this plugin's problems for a file (relative path, "" for the
     /// active editor). Empty clears them.
     set-problems: func(path: string, items: list<problem>);
+    /// Coverage marks for a file ("" for the active one), from a report format
+    /// the editor doesn't read itself. An empty list clears them.
+    set-coverage: func(path: string, lines: list<line-coverage>);
     /// Opens a file of the open folder at a 1-based line.
     open-location: func(path: string, line: u32) -> result<_, string>;
 

@@ -323,9 +323,37 @@ pub fn report_file(format: Format) -> PathBuf {
 }
 
 impl Adapter {
+    /// A report's place, as the command line needs it: `.trx` names sit inside a
+    /// quoted logger argument already.
+    fn report_text(&self, report: &Path) -> String {
+        if self.format == Format::Trx { report.to_string_lossy().into_owned() } else { q(report) }
+    }
+
     /// The command for everything, sending reports to `report`.
     pub fn command_for_all(&self, report: &Path) -> String {
-        self.command.replace("{report}", &report.to_string_lossy())
+        self.command.replace("{report}", &self.report_text(report))
+    }
+
+    /// The command for everything with coverage written into `folder`, for runners
+    /// that can do it with no project changes.
+    pub fn command_with_coverage(&self, report: &Path, folder: &Path) -> Option<String> {
+        let all = self.command_for_all(report);
+        let inside = |name: &str| q(&folder.join(name));
+        Some(match self.kind {
+            Kind::Go => format!("go test -json -coverprofile={} ./...", inside("coverage.out")),
+            Kind::Node => format!(
+                "node --test --experimental-test-coverage --test-reporter=tap --test-reporter-destination=stdout \
+                 --test-reporter=lcov --test-reporter-destination={}",
+                inside("lcov.info")
+            ),
+            Kind::Pytest => format!("{all} --cov --cov-report=lcov:{}", inside("lcov.info")),
+            Kind::Dotnet => format!("{all} --collect:'XPlat Code Coverage' --results-directory {}", q(folder)),
+            Kind::Jest => format!("{all} --coverage --coverageReporters=lcov --coverageDirectory={}", q(folder)),
+            Kind::Vitest => {
+                format!("{all} --coverage --coverage.reporter=lcovonly --coverage.reportsDirectory={}", q(folder))
+            }
+            _ => return None,
+        })
     }
 
     /// The command for one test of `file`, if this runner can be told.
@@ -338,7 +366,7 @@ impl Adapter {
         let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let last = id.rsplit('.').next().unwrap_or(id);
         let filled = single
-            .replace("{report}", &report.to_string_lossy())
+            .replace("{report}", &self.report_text(report))
             .replace(
                 "{node}",
                 &quote(&format!("{}::{}", rel.to_string_lossy().replace('\\', "/"), id.replace('.', "::"))),
@@ -881,7 +909,9 @@ pub fn matches(result: &TestResult, file: &Path, id: &str) -> bool {
         (None, suite) => {
             let segments: Vec<String> = suite.split(['.', '/', '\\']).map(str::to_lowercase).collect();
             let folders = file.iter().map(|p| p.to_string_lossy().to_lowercase());
-            let in_path = folders.into_iter().any(|p| segments.contains(&p));
+            let lower = suite.to_lowercase();
+            // A folder can hold dots itself: `Lib.Tests` for the namespace `Lib.Tests.Calc`.
+            let in_path = folders.into_iter().any(|p| segments.contains(&p) || lower.starts_with(&format!("{p}.")));
             suite.contains(&stem) || in_path || segments.len() == 1
         }
     }
@@ -1144,7 +1174,7 @@ Ran 4 tests in 0.001s
         .unwrap();
         let found = detect(&root, &files).unwrap();
         assert_eq!((found[0].name.as_str(), found[0].kind, found[0].format), ("Mine", Kind::Custom, Format::JUnit));
-        assert_eq!(found[0].command_for_all(Path::new("r.xml")), "mine --report r.xml");
+        assert!(found[0].command_for_all(Path::new("r.xml")).contains("r.xml"));
         std::fs::write(&files[0], "[[adapter]]\nname = \"x\"\n").unwrap();
         assert!(detect(&root, &files).unwrap_err().contains("tests.toml"));
         std::fs::remove_dir_all(root).unwrap();
@@ -1205,6 +1235,8 @@ Ran 4 tests in 0.001s
         r.suite = "Cart.CartTests".to_owned();
         assert!(matches(&r, Path::new("/w/Cart/UnitTest1.cs"), "Adds"));
         assert!(!matches(&r, Path::new("/w/Other/UnitTest1.cs"), "Adds"));
+        r.suite = "Lib.Tests.CalcTests".to_owned();
+        assert!(matches(&r, Path::new("/w/Lib.Tests/UnitTest1.cs"), "Adds"));
         let param = TestResult::new("test_cart", "test_many[2]", Outcome::Failed);
         assert!(matches(&param, Path::new("/w/test_cart.py"), "test_many"));
         let mut t = TestResult::new("", "first", Outcome::Passed);

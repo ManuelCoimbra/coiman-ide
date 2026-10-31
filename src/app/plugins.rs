@@ -510,6 +510,11 @@ impl CodeApp {
                     }
                 }
             }
+            Update::Coverage { plugin, path, lines } => {
+                if let Some(file) = self.plugin_path(&path) {
+                    self.set_plugin_coverage(&plugin, &file, lines);
+                }
+            }
             Update::Stopped { plugin, error } => {
                 let name = self.plugin_name(&plugin);
                 self.status = Some(format!("{name} stopped: {error}"));

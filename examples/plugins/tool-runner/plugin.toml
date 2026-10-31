@@ -41,6 +41,10 @@ title = "Tool Runner: Ask the Language Server"
 id = "custom"
 title = "Tool Runner: Custom Server Method"
 
+[[commands]]
+id = "coverage"
+title = "Tool Runner: Mark Coverage"
+
 [[panels]]
 id = "out"
 title = "Tool Runner"

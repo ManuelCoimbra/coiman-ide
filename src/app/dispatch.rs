@@ -387,6 +387,9 @@ impl CodeApp {
                 self.expand_emmet(false);
             }
             Command::PickColor => self.pick_color(),
+            Command::ToggleCoverage => self.toggle_coverage(),
+            Command::ShowCoverage => self.show_coverage_panel(),
+            Command::LoadCoverage => self.pick_coverage_report(ctx),
             Command::OpenHexView => self.hex_command(),
             Command::ShowMemory => self.show_memory(None),
             Command::ShowDisassembly => self.show_disassembly(),

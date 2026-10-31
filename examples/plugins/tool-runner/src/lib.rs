@@ -9,7 +9,7 @@ wit_bindgen::generate!({
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rust_code::plugin::host;
-use rust_code::plugin::types::{Block, JobResult, ServerResponse, Span, Table};
+use rust_code::plugin::types::{Block, JobResult, LineCoverage, ServerResponse, Span, Table};
 
 /// The job the Cancel command stops.
 static LAST_JOB: AtomicU64 = AtomicU64::new(0);
@@ -76,6 +76,10 @@ impl Guest for Plugin {
             "stdin" => start("python", &["-c", "import sys; print(sys.stdin.read().upper())"], "piped text"),
             "whoami" => start("whoami", &[], ""),
             "unlisted" => start("cmd", &["/c", "echo not allowed"], ""),
+            "coverage" => {
+                let mark = |line, hits, partial| LineCoverage { line, hits, partial };
+                host::set_coverage("", &[mark(1, 5, false), mark(2, 2, true), mark(3, 0, false)]);
+            }
             "server" => ask("textDocument/codeLens", "{}"),
             "custom" => ask("fake/customMethod", "{\"question\": 6}"),
             _ => {}

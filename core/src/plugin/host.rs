@@ -100,6 +100,11 @@ pub enum Update {
         path: String,
         items: Vec<Problem>,
     },
+    Coverage {
+        plugin: String,
+        path: String,
+        lines: Vec<crate::coverage::LineCoverage>,
+    },
     /// A request for the active file's language server.
     ServerRequest {
         plugin: String,
@@ -508,6 +513,14 @@ impl rust_code::plugin::host::Host for State {
 
     fn set_problems(&mut self, path: String, items: Vec<Problem>) {
         self.send(Update::Problems { plugin: self.plugin.clone(), path, items });
+    }
+
+    fn set_coverage(&mut self, path: String, lines: Vec<rust_code::plugin::types::LineCoverage>) {
+        let lines = lines
+            .into_iter()
+            .map(|l| crate::coverage::LineCoverage { line: l.line, hits: l.hits, partial: l.partial })
+            .collect();
+        self.send(Update::Coverage { plugin: self.plugin.clone(), path, lines });
     }
 
     fn open_location(&mut self, path: String, line: u32) -> Result<(), String> {

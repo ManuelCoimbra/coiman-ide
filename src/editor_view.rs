@@ -127,6 +127,8 @@ pub struct Decorations {
     pub debug_line: Option<usize>,
     /// Bookmarked lines, sorted.
     pub bookmarks: Vec<usize>,
+    /// Coverage marks, by line from 0.
+    pub coverage: Vec<(usize, Color32)>,
     /// Columns to draw a line after.
     pub rulers: Vec<usize>,
     /// Columns to dim, from 1 and inclusive. An end of 0 runs on.
@@ -1308,6 +1310,14 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 m.font_id.clone(),
                 severity_color(mark.severity).gamma_multiply(0.8),
             );
+        }
+
+        // Coverage: a bar beside where Git's goes.
+        if row.first
+            && let Some((_, color)) = deco.coverage.iter().find(|(line, _)| *line == row.line)
+        {
+            let x = text_rect.left() - CHANGE_ZONE + 6.0;
+            painter.rect_filled(Rect::from_min_size(Pos2::new(x, y), Vec2::new(3.0, m.row_h)), 0.0, *color);
         }
 
         // Git change marker: a bar beside the line numbers, or a wedge where lines were deleted.

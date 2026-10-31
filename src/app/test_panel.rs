@@ -45,6 +45,8 @@ struct Run {
     format: Format,
     report_dir: Option<PathBuf>,
     started: SystemTime,
+    /// Where it was told to write coverage.
+    coverage: Option<PathBuf>,
 }
 
 enum Row {
@@ -255,6 +257,10 @@ impl CodeApp {
 
     /// Runs a project's tests in full, or one of them.
     fn start_test_run(&mut self, ctx: &egui::Context, adapter: usize, one: Option<OneTest>) {
+        self.start_tests(ctx, adapter, one, false);
+    }
+
+    fn start_tests(&mut self, ctx: &egui::Context, adapter: usize, one: Option<OneTest>, with_coverage: bool) {
         self.cancel_test_run();
         let Some(spec) = self.tests.adapters.get(adapter).cloned() else { return };
         if !self.allowed_to_run(&spec.cwd) {
@@ -278,6 +284,11 @@ impl CodeApp {
                 command
             }
             None => spec.command_for_all(&report),
+        };
+        let folder = with_coverage.then(CodeApp::coverage_folder);
+        let command = match &folder {
+            Some(folder) => spec.command_with_coverage(&report, folder).unwrap_or(command),
+            None => command,
         };
         let (program, args) = shell(&command);
         let spawned = quiet_command(Path::new(&program))
@@ -327,10 +338,11 @@ impl CodeApp {
             format: spec.format,
             report_dir: spec.report_dir.as_ref().map(|d| spec.cwd.join(d)),
             started: SystemTime::now(),
+            coverage: folder,
         });
     }
 
-    fn pump_test_run(&mut self, _ctx: &egui::Context) {
+    fn pump_test_run(&mut self, ctx: &egui::Context) {
         let Some(run) = &mut self.tests.run else { return };
         let mut got = Vec::new();
         let ended = loop {
@@ -385,6 +397,9 @@ impl CodeApp {
             } else {
                 *slot = found;
             }
+        }
+        if let Some(folder) = &run.coverage {
+            self.take_run_coverage(ctx, folder, &name);
         }
         self.tests.selected = None;
         self.tests.rebuild();
@@ -458,6 +473,7 @@ impl CodeApp {
         let mut open: Option<(PathBuf, usize)> = None;
         let mut select = None;
         let mut rescan = false;
+        let mut cover = None;
         let mut cancel = false;
         ui.horizontal(|ui| {
             ui.label(RichText::new("TESTING").small().strong());
@@ -504,6 +520,14 @@ impl CodeApp {
                                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                                     if icons::button(ui, Icon::Play, "Run All").clicked() {
                                         start = Some((*adapter, None));
+                                    }
+                                    let can = self.tests.adapters.get(*adapter).is_some_and(|a| {
+                                        a.command_with_coverage(Path::new("r"), Path::new("c")).is_some()
+                                    });
+                                    if can
+                                        && ui.small_button("Coverage").on_hover_text("Run all, with coverage").clicked()
+                                    {
+                                        cover = Some(*adapter);
                                     }
                                 });
                             });
@@ -596,6 +620,9 @@ impl CodeApp {
         }
         if let Some((adapter, one)) = start {
             self.start_test_run(&ctx, adapter, one);
+        }
+        if let Some(adapter) = cover {
+            self.start_tests(&ctx, adapter, None, true);
         }
         if let Some((path, line)) = jump {
             let at = lt::Position::new(line.saturating_sub(1), 0);

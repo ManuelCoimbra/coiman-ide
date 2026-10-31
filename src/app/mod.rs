@@ -6,6 +6,7 @@ mod bookmarks;
 mod bytes_view;
 mod cargo;
 mod config;
+mod coverage;
 mod cpp;
 mod debug;
 mod dispatch;
@@ -80,6 +81,8 @@ enum PanelTab {
     Terminal,
     /// What the live preview's page printed.
     PageConsole,
+    /// Files by how much of them ran.
+    Coverage,
     /// Stack Trace: Analyze.
     StackTrace,
     /// A panel contributed by a plugin (index into its panels).
@@ -158,6 +161,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    coverage: coverage::Coverage,
     bytes: bytes_view::BytesState,
     logs: logs::Logs,
     /// A file that asked for the log view, on its way there.
@@ -283,6 +287,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            coverage: Default::default(),
             bytes: Default::default(),
             logs: Default::default(),
             log_to_open: None,
@@ -379,6 +384,7 @@ impl eframe::App for CodeApp {
         self.pump_symbol_font(&ctx);
         self.refresh_cargo_project(&ctx);
         self.pump_tests(&ctx);
+        self.pump_coverage(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
         self.pump_watcher(&ctx);
