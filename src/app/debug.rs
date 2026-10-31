@@ -1429,29 +1429,21 @@ fn var_rows(
     for v in vars {
         let child = format!("{path}/{}", v.name);
         let open = v.reference > 0 && s.expanded.contains(&child);
-        let resp = ui
-            .horizontal(|ui| {
-                ui.add_space(depth as f32 * 12.0);
-                let size = ui.text_style_height(&egui::TextStyle::Body);
-                if v.reference > 0 {
-                    let chevron = if open { Icon::ChevronDown } else { Icon::ChevronRight };
-                    icons::show(ui, chevron, size, pal.text_dim);
-                } else {
-                    ui.add_space(size);
-                }
-                ui.label(RichText::new(&v.name).font(mono.clone()).color(Color32::from_rgb(0x9C, 0xDC, 0xFE)));
-                ui.label(RichText::new("=").font(mono.clone()).color(pal.text_dim));
-                let value = ui.label(RichText::new(&v.value).font(mono.clone()));
-                if let Some(address) = v.memory.as_ref().filter(|_| s.capabilities.read_memory)
-                    && ui.small_button("mem").on_hover_text(format!("Memory at {address}")).clicked()
-                {
-                    *memory_at = Some(address.clone());
-                }
-                value
-            })
-            .response
-            .interact(Sense::click())
-            .on_hover_text(&v.ty);
+        let row = crate::inspector::Row {
+            name: &v.name,
+            value: &v.value,
+            type_name: &v.ty,
+            depth,
+            expandable: v.reference > 0,
+            open,
+        };
+        let resp = crate::inspector::row(ui, &row, mono, |ui| {
+            if let Some(address) = v.memory.as_ref().filter(|_| s.capabilities.read_memory)
+                && ui.small_button("mem").on_hover_text(format!("Memory at {address}")).clicked()
+            {
+                *memory_at = Some(address.clone());
+            }
+        });
         if resp.clicked() && v.reference > 0 {
             *toggle = Some(child.clone());
         }

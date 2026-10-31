@@ -454,6 +454,9 @@ impl CodeApp {
             if self.preview_running() {
                 tabs.push((PanelTab::PageConsole, "PAGE".to_owned()));
             }
+            if self.live_tab_shown() {
+                tabs.push((PanelTab::Live, "LIVE".to_owned()));
+            }
             if self.has_coverage() {
                 tabs.push((PanelTab::Coverage, "COVERAGE".to_owned()));
             }
@@ -502,6 +505,7 @@ impl CodeApp {
                 }
             }
             PanelTab::PageConsole => self.page_console(ui),
+            PanelTab::Live => self.live_panel(ui),
             PanelTab::Coverage => self.coverage_panel(ui),
             PanelTab::StackTrace => self.stack_trace_panel(ui),
             PanelTab::Terminal => {
@@ -1041,6 +1045,13 @@ impl CodeApp {
             self.plugin_status_items(ui, rust_code_core::plugin::manifest::Alignment::Left, size);
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
+            }
+            if let Some((text, tip)) = self.live_label() {
+                let resp =
+                    ui.add(egui::Label::new(white(text)).sense(Sense::click()).selectable(false)).on_hover_text(tip);
+                if resp.clicked() {
+                    status_cmd = Some(Command::ShowLive);
+                }
             }
             if let Some((text, tip)) = self.coverage_label() {
                 let resp =

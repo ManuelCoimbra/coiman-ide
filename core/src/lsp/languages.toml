@@ -55,6 +55,14 @@ hint = "npm install -g vscode-langservers-extracted"
 runs_project_code = false
 
 [[language]]
+name = "Clojure"
+extensions = ["clj", "cljs", "cljc", "edn", "bb"]
+comment = ";;"
+server = "clojure-lsp"
+root_markers = ["deps.edn", "project.clj", "bb.edn", "shadow-cljs.edn"]
+hint = "Install clojure-lsp from clojure-lsp.io"
+
+[[language]]
 name = "Ruby"
 repl = "irb"
 extensions = ["rb", "rake", "gemspec"]

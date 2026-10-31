@@ -17,6 +17,7 @@ mod git;
 mod hidden;
 mod history;
 mod keys_ui;
+mod live;
 mod logs;
 mod lsp;
 mod lsp_extra;
@@ -81,6 +82,8 @@ enum PanelTab {
     Terminal,
     /// What the live preview's page printed.
     PageConsole,
+    /// A running system.
+    Live,
     /// Files by how much of them ran.
     Coverage,
     /// Stack Trace: Analyze.
@@ -161,6 +164,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    live: live::Live,
     coverage: coverage::Coverage,
     bytes: bytes_view::BytesState,
     logs: logs::Logs,
@@ -287,6 +291,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            live: Default::default(),
             coverage: Default::default(),
             bytes: Default::default(),
             logs: Default::default(),
@@ -384,6 +389,7 @@ impl eframe::App for CodeApp {
         self.pump_symbol_font(&ctx);
         self.refresh_cargo_project(&ctx);
         self.pump_tests(&ctx);
+        self.pump_live();
         self.pump_coverage(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);

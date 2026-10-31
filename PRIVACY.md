@@ -8,7 +8,7 @@ Rust Code is built to be trusted with your code. These are commitments, and
 - **No telemetry.** No usage statistics, crash reports or analytics are
   collected or sent, and there is no setting to turn them on.
 - **No network access.** The editor makes no network connections: no update
-  checks, no downloads, no "what's new" feeds. The one socket it opens is to a
+  checks, no downloads, no "what's new" feeds. The live session panel connects only when you press Connect, to an address on this computer. The one other socket it opens is to a
   language server already running on this computer (`tcp://` in `[lsp.paths]`,
   or Godot's editor for `.gd` files), and it refuses any other address. The live
   preview listens on `127.0.0.1` only, while it runs, and answers only requests

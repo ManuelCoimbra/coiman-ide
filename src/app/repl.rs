@@ -38,9 +38,25 @@ pub(super) struct Repls {
     cells: Option<(u64, u64, Vec<usize>)>,
 }
 
+impl Repls {
+    pub(super) fn clear_answers(&mut self, uid: u64) {
+        self.results.remove(&uid);
+    }
+
+    /// An answer to show beside a line, replacing what was there.
+    pub(super) fn set_answer(&mut self, uid: u64, line: usize, line_text: String, answer: String) {
+        let results = self.results.entry(uid).or_default();
+        results.retain(|(l, _, _)| *l != line);
+        results.push((line, line_text, answer));
+    }
+}
+
 impl CodeApp {
     /// Ctrl+Enter: sends the selection, else the cell or line, then moves on.
     pub(super) fn send_to_repl(&mut self, ctx: &egui::Context) {
+        if self.send_to_live() {
+            return;
+        }
         let Some(doc) = self.docs.get(self.active) else { return };
         let Some(file) = doc.path.clone() else {
             self.refuse_run(ctx, "Save this file first, so its language is known".to_owned());

@@ -7,6 +7,7 @@ mod editor_view;
 mod explorer;
 mod grid_view;
 mod icons;
+mod inspector;
 mod keymap;
 mod lsp_ui;
 mod palette;

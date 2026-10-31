@@ -27,6 +27,7 @@ pub mod hexdata;
 pub mod highlight;
 pub mod history;
 pub mod languages;
+pub mod live;
 pub mod logfile;
 pub mod lsp;
 pub mod markdown;
