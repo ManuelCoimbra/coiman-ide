@@ -25,6 +25,7 @@ pub mod git;
 pub mod highlight;
 pub mod history;
 pub mod languages;
+pub mod logfile;
 pub mod lsp;
 pub mod markdown;
 pub mod matchers;

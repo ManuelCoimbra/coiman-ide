@@ -157,6 +157,11 @@ impl CodeApp {
         if self.open_image_file(path) {
             return;
         }
+        // Too large for the editor to hold; reading it takes the view's own thread.
+        if rust_code_core::logfile::belongs_in_log_view(path) {
+            self.log_to_open = Some(path.to_path_buf());
+            return;
+        }
         if let Some(i) = self.docs.iter().position(|d| d.path.as_deref().is_some_and(|p| same_path(p, path))) {
             self.active = i;
             return;

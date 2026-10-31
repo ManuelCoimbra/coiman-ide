@@ -52,6 +52,14 @@ impl CodeApp {
         self.panel_visible = true;
     }
 
+    /// Opens the panel on this text.
+    pub(super) fn analyze_stack_trace_text(&mut self, text: String) {
+        self.traces.text = text;
+        self.traces.used = true;
+        self.panel_tab = PanelTab::StackTrace;
+        self.panel_visible = true;
+    }
+
     fn pump_traces(&mut self, ctx: &egui::Context) {
         if let Some(rx) = &self.traces.working
             && let Ok(done) = rx.try_recv()

@@ -15,6 +15,7 @@ mod git;
 mod hidden;
 mod history;
 mod keys_ui;
+mod logs;
 mod lsp;
 mod lsp_extra;
 mod lsp_room;
@@ -156,6 +157,9 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    logs: logs::Logs,
+    /// A file that asked for the log view, on its way there.
+    log_to_open: Option<std::path::PathBuf>,
     tests: test_panel::Tests,
     tables: tables::Tables,
     traces: traces::Traces,
@@ -277,6 +281,8 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            logs: Default::default(),
+            log_to_open: None,
             tests: Default::default(),
             tables: Default::default(),
             traces: Default::default(),
@@ -446,6 +452,12 @@ impl eframe::App for CodeApp {
                     self.diff_view(ui);
                     return;
                 }
+                if let Some(path) = self.log_to_open.take() {
+                    self.open_log_view(ui.ctx(), &path);
+                }
+                if self.log_view(ui) || self.image_view(ui) {
+                    return;
+                }
                 cmd = cmd.or(self.welcome(ui));
                 return;
             }
@@ -476,7 +488,10 @@ impl eframe::App for CodeApp {
                 self.diff_view(ui);
                 return;
             }
-            if self.image_view(ui) || self.table_view(ui) {
+            if let Some(path) = self.log_to_open.take() {
+                self.open_log_view(ui.ctx(), &path);
+            }
+            if self.log_view(ui) || self.image_view(ui) || self.table_view(ui) {
                 return;
             }
             self.markdown_preview(ui);
