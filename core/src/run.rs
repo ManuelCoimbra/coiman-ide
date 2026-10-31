@@ -123,10 +123,22 @@ enum JavaMain {
     Compact,
 }
 
+/// `void main()` or `void main(String[] args)`, the two forms Java starts.
+/// `static` and `public` aren't required since Java 25.
+fn is_main_method(m: Node, source: &str) -> bool {
+    let named_main = m.child_by_field_name("name").is_some_and(|n| text(n, source) == "main");
+    let void = m.child_by_field_name("type").is_some_and(|t| t.kind() == "void_type");
+    let takes = m.child_by_field_name("parameters").map(children).unwrap_or_default();
+    let params_fit = match takes.as_slice() {
+        [] => true,
+        [only] => text(*only, source).trim_start_matches("final ").starts_with("String"),
+        _ => false,
+    };
+    m.kind() == "method_declaration" && named_main && void && params_fit
+}
+
 fn has_main_method(body: Node, source: &str) -> bool {
-    children(body).into_iter().any(|m| {
-        m.kind() == "method_declaration" && m.child_by_field_name("name").is_some_and(|n| text(n, source) == "main")
-    })
+    children(body).into_iter().any(|m| is_main_method(m, source))
 }
 
 fn java_main(source: &str) -> Option<JavaMain> {
@@ -150,9 +162,7 @@ fn java_main(source: &str) -> Option<JavaMain> {
                     return Some(JavaMain::Class { package, class: text(name, source).to_owned() });
                 }
             }
-            "method_declaration" if node.child_by_field_name("name").is_some_and(|n| text(n, source) == "main") => {
-                return Some(JavaMain::Compact);
-            }
+            "method_declaration" if is_main_method(node, source) => return Some(JavaMain::Compact),
             _ => {}
         }
     }
@@ -252,11 +262,15 @@ fn java(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, Strin
         }
     }
     plans.sort_by(|a, b| a.title.cmp(&b.title));
-    match plans.len() {
-        0 => Err("No class with a main method was found".to_owned()),
-        1 => Ok(Outcome::Run(plans.remove(0))),
-        _ => Ok(Outcome::Choose(plans)),
+    // A build tool that picks the class itself leaves only one thing to run.
+    if plans.windows(2).all(|p| p[0].command == p[1].command) {
+        plans.truncate(1);
     }
+    // This file isn't a program: another stands in, and the title says so.
+    if let [only] = plans.as_mut_slice() {
+        only.title = format!("{} (project)", only.title);
+    }
+    one_or_choose(plans).ok_or_else(|| "No class with a main method was found".to_owned())
 }
 
 fn java_package(source: &str) -> String {
@@ -273,24 +287,132 @@ fn java_package(source: &str) -> String {
 /// Whether a C or C++ file defines `main`.
 fn c_has_main(lang: Lang, source: &str) -> bool {
     let Some(tree) = parse(lang, source) else { return false };
-    children(tree.root_node()).into_iter().filter(|n| n.kind() == "function_definition").any(|f| {
-        let mut declarator = f.child_by_field_name("declarator");
-        while let Some(d) = declarator {
-            if d.kind() == "identifier" {
-                return text(d, source) == "main";
+    c_defines_main(tree.root_node(), source)
+}
+
+/// Looks through conditional compilation and `extern "C"`, but not namespaces:
+/// a `main` in one isn't where a program starts.
+fn c_defines_main(node: Node, source: &str) -> bool {
+    children(node).into_iter().any(|n| match n.kind() {
+        "function_definition" => {
+            let mut declarator = n.child_by_field_name("declarator");
+            while let Some(d) = declarator {
+                if d.kind() == "identifier" {
+                    return text(d, source) == "main";
+                }
+                declarator = d.child_by_field_name("declarator");
             }
-            declarator = d.child_by_field_name("declarator");
+            false
         }
-        false
+        "preproc_ifdef"
+        | "preproc_if"
+        | "preproc_else"
+        | "preproc_elif"
+        | "linkage_specification"
+        | "declaration_list" => c_defines_main(n, source),
+        _ => false,
     })
+}
+
+/// The programs a `CMakeLists.txt` declares, by a plain reading of its text.
+fn cmake_executables(text: &str) -> Vec<String> {
+    let lines: Vec<&str> = text.lines().map(|l| l.split('#').next().unwrap_or("")).collect();
+    let code = lines.join("\n");
+    let args_of = |call: &str| -> Vec<String> {
+        let lower = code.to_lowercase();
+        let mut found = Vec::new();
+        let mut from = 0;
+        while let Some(at) = lower[from..].find(call) {
+            let start = from + at + call.len();
+            let end = lower[start..].find(')').map_or(lower.len(), |e| start + e);
+            let before = lower[..from + at].chars().next_back();
+            if lower[start..].starts_with('(') && !before.is_some_and(|c| c.is_alphanumeric() || c == '_') {
+                found.push(code[start + 1..end].to_owned());
+            }
+            from = start;
+        }
+        found
+    };
+    let project = args_of("project").first().and_then(|a| a.split_whitespace().next().map(str::to_owned));
+    args_of("add_executable")
+        .iter()
+        .filter_map(|args| {
+            let mut words = args.split_whitespace();
+            let name = words.next()?;
+            if matches!(words.next(), Some("ALIAS" | "IMPORTED")) {
+                return None;
+            }
+            match (name, &project) {
+                ("${PROJECT_NAME}", Some(project)) => Some(project.clone()),
+                (name, _) if name.contains('$') => None,
+                (name, _) => Some(name.to_owned()),
+            }
+        })
+        .collect()
+}
+
+/// The targets a Makefile can be asked for, by a plain reading of its text.
+fn make_targets(text: &str) -> Vec<String> {
+    let mut found: Vec<String> = text
+        .lines()
+        .filter(|l| !l.starts_with([' ', '\t', '#', '.']))
+        .filter_map(|l| l.split_once(':').filter(|(_, rest)| !rest.starts_with('=')))
+        .map(|(name, _)| name.trim())
+        .filter(|name| !name.is_empty() && !name.contains(['$', '%', '=', ' ']))
+        .map(str::to_owned)
+        .collect();
+    found.dedup();
+    found
+}
+
+fn cmake_plans(dir: &Path, title_suffix: &str) -> Result<Outcome, String> {
+    let text = std::fs::read_to_string(dir.join("CMakeLists.txt")).unwrap_or_default();
+    let plans = cmake_executables(&text)
+        .into_iter()
+        .map(|name| {
+            let configure = "cmake -S . -B build";
+            let build = format!("cmake --build build --target {}", quote(&name));
+            let exe = dir.join("build").join(exe_name(&name));
+            let command = then(&then(configure, &build), &call(&exe));
+            RunPlan { title: format!("{name}{title_suffix}"), command, cwd: dir.to_path_buf() }
+        })
+        .collect();
+    let outcome = one_or_choose(plans).ok_or_else(|| "This CMake project declares no program to run".to_owned())?;
+    need("cmake", "This CMake project")?;
+    Ok(outcome)
+}
+
+fn make_plans(file: &Path) -> Result<Outcome, String> {
+    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let plans = make_targets(&text)
+        .into_iter()
+        .map(|t| RunPlan { title: format!("make {t}"), command: format!("make {}", quote(&t)), cwd: dir.clone() })
+        .collect();
+    let outcome = one_or_choose(plans).ok_or_else(|| format!("{} has no targets", name_of(file)))?;
+    need("make", "This Makefile")?;
+    Ok(outcome)
 }
 
 fn c_family(file: &Path, source: &str, root: Option<&Path>, cpp: bool) -> Result<Outcome, String> {
     let lang = if cpp { Lang::Cpp } else { Lang::C };
-    if !c_has_main(lang, source) {
+    let has_main = c_has_main(lang, source);
+    // The build system's program; this file is part of it, or stands in for it.
+    if let Some(dir) = find_up(file, root, "CMakeLists.txt") {
+        return cmake_plans(&dir, if has_main { "" } else { " (project)" });
+    }
+    if let Some(dir) = find_up(file, root, "Makefile") {
+        let text = std::fs::read_to_string(dir.join("Makefile")).unwrap_or_default();
+        if make_targets(&text).iter().any(|t| t == "run") {
+            need("make", "This Makefile")?;
+            let title = if has_main { "make run" } else { "make run (project)" }.to_owned();
+            return Ok(Outcome::Run(RunPlan { title, command: "make run".to_owned(), cwd: dir }));
+        }
+    }
+    if !has_main {
         return Err(format!("{} has no main function", name_of(file)));
     }
-    for (marker, tool) in [("CMakeLists.txt", "CMake"), ("Makefile", "Make"), ("meson.build", "Meson")] {
+    for (marker, tool) in [("Makefile", "Make"), ("meson.build", "Meson")] {
         if find_up(file, root, marker).is_some() {
             return Err(format!(
                 "This project builds with {tool}, which decides the program's name: add it in Run: Open Configurations, then press Ctrl+F5"
@@ -437,8 +559,8 @@ fn rust(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
 }
 
 fn go(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, String> {
-    need("go", "Go")?;
     if name_of(file).ends_with("_test.go") {
+        need("go", "Go")?;
         let dir = file.parent().unwrap_or(file).to_path_buf();
         return Ok(Outcome::Run(RunPlan {
             title: format!("{} tests", stem_of(file)),
@@ -457,9 +579,152 @@ fn go(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, String>
     }
     let dir = file.parent().unwrap_or(file).to_path_buf();
     // In a module, the whole package; otherwise this file alone.
-    let command =
-        if find_up(file, root, "go.mod").is_some() { "go run .".to_owned() } else { format!("go run {}", q(file)) };
+    let in_module = find_up(file, root, "go.mod").is_some();
+    if !in_module && !source.lines().any(|l| l.trim_start().starts_with("func main(")) {
+        return Err(format!("{} has no func main", name_of(file)));
+    }
+    need("go", "Go")?;
+    let command = if in_module { "go run .".to_owned() } else { format!("go run {}", q(file)) };
     Ok(Outcome::Run(RunPlan { title: stem_of(file), command, cwd: dir }))
+}
+
+// ----- C# and F# -----------------------------------------------------------------------
+
+/// Whether a project builds a program, from its text and that of its
+/// `Directory.Build.props`. Without `OutputType`, the SDK decides: a library,
+/// except for web and worker projects.
+fn dotnet_is_program(project: &str) -> bool {
+    let lower = project.to_lowercase();
+    let value = lower.split_once("<outputtype>").and_then(|(_, rest)| rest.split_once('<')).map(|(v, _)| v.trim());
+    match value {
+        Some(value) => matches!(value, "exe" | "winexe") || value.contains("$("),
+        None => lower.contains("microsoft.net.sdk.web") || lower.contains("microsoft.net.sdk.worker"),
+    }
+}
+
+fn project_is_program(project: &Path) -> bool {
+    let Ok(mut text) = std::fs::read_to_string(project) else { return true };
+    let props = project.ancestors().skip(1).find_map(|d| std::fs::read_to_string(d.join("Directory.Build.props")).ok());
+    text.push_str(&props.unwrap_or_default());
+    dotnet_is_program(&text)
+}
+
+/// The project files a `.sln` or `.slnx` lists, relative to it.
+fn solution_projects(text: &str) -> Vec<PathBuf> {
+    text.lines()
+        .filter(|l| l.trim_start().starts_with("Project(") || l.trim_start().starts_with("<Project"))
+        .flat_map(|l| l.split('"'))
+        .filter(|part| part.ends_with(".csproj") || part.ends_with(".fsproj"))
+        .map(|part| PathBuf::from(part.replace('\\', "/")))
+        .collect()
+}
+
+fn dotnet_plan(project: &Path, title: String) -> RunPlan {
+    RunPlan {
+        title,
+        command: format!("dotnet run --project {}", q(project)),
+        cwd: project.parent().unwrap_or(project).to_path_buf(),
+    }
+}
+
+fn solution_plans(solution: &Path) -> Result<Outcome, String> {
+    let text = std::fs::read_to_string(solution).unwrap_or_default();
+    let dir = solution.parent().unwrap_or(solution);
+    let plans = solution_projects(&text)
+        .into_iter()
+        .map(|p| dir.join(p))
+        .filter(|p| project_is_program(p))
+        .map(|p| dotnet_plan(&p, stem_of(&p)))
+        .collect();
+    let outcome = one_or_choose(plans)
+        .ok_or_else(|| format!("{} has no program to run: all class libraries", name_of(solution)))?;
+    need("dotnet", "C#")?;
+    Ok(outcome)
+}
+
+fn dotnet(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
+    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    if matches!(ext.as_str(), "sln" | "slnx") {
+        return solution_plans(file);
+    }
+    let library = |project: &Path| format!("{} is a class library: it has no program to run", stem_of(project));
+    if matches!(ext.as_str(), "csproj" | "fsproj") {
+        if !project_is_program(file) {
+            return Err(library(file));
+        }
+        need("dotnet", "C#")?;
+        return Ok(Outcome::Run(dotnet_plan(file, stem_of(file))));
+    }
+    let project = find_ext_up(file, root, "csproj");
+    if let Some(project) = project.as_ref().filter(|p| project_is_program(p)) {
+        need("dotnet", "C#")?;
+        return Ok(Outcome::Run(dotnet_plan(project, format!("{} (project)", stem_of(project)))));
+    }
+    // A library, or no project: its solution may hold a program.
+    let solution = find_ext_up(file, root, "sln").or_else(|| find_ext_up(file, root, "slnx"));
+    if let Some(solution) = solution {
+        return solution_plans(&solution).map(|outcome| match outcome {
+            Outcome::Run(plan) => Outcome::Run(RunPlan { title: format!("{} (project)", plan.title), ..plan }),
+            several => several,
+        });
+    }
+    if let Some(project) = &project {
+        return Err(library(project));
+    }
+    // .NET 10 runs a single file.
+    need("dotnet", "C#")?;
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    Ok(Outcome::Run(RunPlan { title: name_of(file), command: format!("dotnet run {}", q(file)), cwd: dir }))
+}
+
+// ----- files that describe a project -----------------------------------------------------
+
+/// The scripts of a `package.json`, for the package manager its lockfile names.
+fn package_scripts(file: &Path) -> Result<Outcome, String> {
+    let text = std::fs::read_to_string(file).unwrap_or_default();
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    let tool = [("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"), ("bun.lock", "bun")]
+        .iter()
+        .find(|(lock, _)| dir.join(lock).exists())
+        .map_or("npm", |(_, tool)| *tool);
+    let plans = json["scripts"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(name, _)| RunPlan {
+            title: format!("{tool} run {name}"),
+            command: format!("{tool} run {}", quote(name)),
+            cwd: dir.clone(),
+        })
+        .collect();
+    let outcome = one_or_choose(plans).ok_or_else(|| "package.json has no scripts to run".to_owned())?;
+    need(tool, "This package")?;
+    Ok(outcome)
+}
+
+fn docker(file: &Path, args: &str) -> Result<Outcome, String> {
+    need("docker", "This file")?;
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let command = format!("docker {args}");
+    Ok(Outcome::Run(RunPlan { title: command.clone(), command, cwd: dir }))
+}
+
+/// Compose's file names.
+const COMPOSE_FILES: &[&str] = &["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
+
+/// A file that means "this project", by name; each says what running it does.
+fn project_file(file: &Path, root: Option<&Path>) -> Option<Result<Outcome, String>> {
+    let name = name_of(file);
+    Some(match name.as_str() {
+        "Cargo.toml" => rust(file, root),
+        "package.json" => package_scripts(file),
+        "CMakeLists.txt" => cmake_plans(file.parent().unwrap_or(file), ""),
+        "Makefile" | "makefile" | "GNUmakefile" => make_plans(file),
+        "Dockerfile" => docker(file, "build ."),
+        name if COMPOSE_FILES.contains(&name) => docker(file, "compose up"),
+        _ => return None,
+    })
 }
 
 // ----- interpreted languages -----------------------------------------------------------
@@ -502,14 +767,21 @@ pub fn refusal_is_final(why: &str) -> bool {
 const RUNNABLE_TYPES: &[&str] = &[
     "py", "pyw", "js", "mjs", "cjs", "ts", "mts", "cts", "java", "c", "cpp", "cc", "cxx", "c++", "rs", "go", "cs",
     "sh", "bash", "zsh", "ps1", "bat", "cmd", "rb", "php", "lua", "pl", "r", "dart", "swift", "kts", "kt", "html",
-    "htm",
+    "htm", "csproj", "fsproj", "sln", "slnx",
 ];
+
+/// File names that stand for a project, whatever their type.
+const PROJECT_FILES: &[&str] =
+    &["Cargo.toml", "package.json", "CMakeLists.txt", "Makefile", "makefile", "GNUmakefile", "Dockerfile"];
 
 /// Whether a file could run, judged from its name alone: cheap enough for every
 /// frame. Whether it really does takes `plan`.
 pub fn may_run(file: &Path) -> bool {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    name_of(file) == "Cargo.toml" || (RUNNABLE_TYPES.contains(&ext.as_str()) && never_runs(file, &ext).is_none())
+    let name = name_of(file);
+    PROJECT_FILES.contains(&name.as_str())
+        || COMPOSE_FILES.contains(&name.as_str())
+        || (RUNNABLE_TYPES.contains(&ext.as_str()) && never_runs(file, &ext).is_none())
 }
 
 /// Why a kind of file never runs, when it's certain.
@@ -523,6 +795,7 @@ fn never_runs(file: &Path, ext: &str) -> Option<String> {
         "h" | "hpp" | "hh" | "hxx" | "inl" => {
             format!("{name} is a header: it runs as part of the files that include it")
         }
+        "tsx" | "jsx" => format!("{name} needs a build step: run it through a package.json script"),
         "css" | "scss" | "sass" | "less" => {
             format!("{name} is a stylesheet: it applies through the page that loads it")
         }
@@ -537,9 +810,8 @@ fn never_runs(file: &Path, ext: &str) -> Option<String> {
 /// Works out how to run `file`, whose current text is `source`. `root` is the open folder.
 pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, String> {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-    // Cargo's manifest stands for its package's program.
-    if name_of(file) == "Cargo.toml" {
-        return rust(file, root);
+    if let Some(outcome) = project_file(file, root) {
+        return outcome;
     }
     if let Some(why) = never_runs(file, &ext) {
         return Err(why);
@@ -562,18 +834,7 @@ pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, S
         "cpp" | "cc" | "cxx" | "c++" => c_family(file, source, root, true),
         "rs" => rust(file, root),
         "go" => go(file, source, root),
-        "cs" => {
-            need("dotnet", "C#")?;
-            // A project if there is one; otherwise .NET 10 runs a single file.
-            match find_ext_up(file, root, "csproj") {
-                Some(project) => Ok(Outcome::Run(RunPlan {
-                    title: stem_of(&project),
-                    command: format!("dotnet run --project {}", q(&project)),
-                    cwd: project.parent().unwrap_or(&dir).to_path_buf(),
-                })),
-                None => simple("dotnet run".to_owned()),
-            }
-        }
+        "cs" | "csproj" | "fsproj" | "sln" | "slnx" => dotnet(file, root),
         "sh" | "bash" => simple(tool("bash", "This script")?),
         "zsh" => simple(tool("zsh", "This script")?),
         "ps1" => simple("powershell -NoProfile -ExecutionPolicy Bypass -File".to_owned()),
@@ -664,6 +925,69 @@ mod tests {
     }
 
     #[test]
+    fn java_main_needs_the_right_shape() {
+        assert!(java_main("class A { void main() {} }").is_some());
+        assert!(java_main("class A { public static void main(String[] a) {} }").is_some());
+        assert!(java_main("class A { static void main(String... a) {} }").is_some());
+        assert!(java_main("class A { int main() { return 0; } }").is_none());
+        assert!(java_main("class A { void main(int a) {} }").is_none());
+        assert!(java_main("class A { void main(String a, String b) {} }").is_none());
+    }
+
+    #[test]
+    fn c_main_is_found_where_it_really_is() {
+        assert!(c_has_main(Lang::C, "#ifdef X\nint main(void) { return 0; }\n#endif\n"));
+        assert!(c_has_main(Lang::Cpp, "#if 1\n#else\nint main() { return 0; }\n#endif\n"));
+        assert!(c_has_main(Lang::Cpp, "extern \"C\" { int main() { return 0; } }\n"));
+        assert!(!c_has_main(Lang::Cpp, "namespace n { int main() { return 0; } }\n"));
+    }
+
+    #[test]
+    fn dotnet_rules() {
+        assert!(dotnet_is_program("<OutputType>Exe</OutputType>"));
+        assert!(dotnet_is_program("<OutputType> WinExe </OutputType>"));
+        assert!(dotnet_is_program("<Project Sdk=\"Microsoft.NET.Sdk.Web\"></Project>"));
+        assert!(!dotnet_is_program("<OutputType>Library</OutputType>"));
+        assert!(!dotnet_is_program("<Project Sdk=\"Microsoft.NET.Sdk\"></Project>"));
+        let sln = "Project(\"{FAE}\") = \"App\", \"src\\App\\App.csproj\", \"{1}\"\nGlobal\nEndGlobal\n";
+        assert_eq!(solution_projects(sln), [PathBuf::from("src/App/App.csproj")]);
+        let slnx = "<Solution>\n  <Project Path=\"lib/Lib.csproj\" />\n</Solution>\n";
+        assert_eq!(solution_projects(slnx), [PathBuf::from("lib/Lib.csproj")]);
+    }
+
+    #[test]
+    fn build_files_are_read() {
+        let cmake = "# add_executable(commented x.c)\nproject(demo C)\nadd_library(core a.c)\nadd_executable(tool t.c)\n\
+                     ADD_EXECUTABLE(${PROJECT_NAME} m.c)\nadd_executable(old ALIAS tool)\nadd_executable(${OTHER} o.c)\n";
+        assert_eq!(cmake_executables(cmake), ["tool", "demo"]);
+        assert!(cmake_executables("add_library(core a.c)\n").is_empty());
+        let make = "CC := gcc\nall: app\n\tgcc\n.PHONY: all\nrun: all\n\t./app\n%.o: %.c\n\t$(CC)\n# note: x\n";
+        assert_eq!(make_targets(make), ["all", "run"]);
+    }
+
+    #[test]
+    fn project_files_answer_for_their_project() {
+        let tmp = std::env::temp_dir().join(format!("rust-code-run-files-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("lib")).unwrap();
+        let write = |rel: &str, text: &str| std::fs::write(tmp.join(rel), text).unwrap();
+        write("lib/Lib.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\"></Project>");
+        write("lib/Thing.cs", "class Thing {}");
+        assert!(plan(&tmp.join("lib/Lib.csproj"), "", None).unwrap_err().contains("class library"));
+        assert!(plan(&tmp.join("lib/Thing.cs"), "", None).unwrap_err().contains("class library"));
+        write("package.json", "{ \"name\": \"x\" }");
+        assert!(plan(&tmp.join("package.json"), "", None).unwrap_err().contains("no scripts"));
+        write("CMakeLists.txt", "add_library(core a.c)\n");
+        assert!(plan(&tmp.join("CMakeLists.txt"), "", None).unwrap_err().contains("no program"));
+        assert!(plan(&tmp.join("a.c"), "int f(void){return 0;}", None).unwrap_err().contains("no program"));
+        assert!(plan(&tmp.join("App.tsx"), "", None).unwrap_err().contains("build step"));
+        // A package without a go.mod needs its own main.
+        assert!(plan(Path::new("/no/such/a.go"), "package main\n", None).unwrap_err().contains("func main"));
+        assert!(plan(Path::new("/no/such/a.go"), "package util\n", None).unwrap_err().contains("package main"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn only_refusals_about_the_file_are_final() {
         assert!(refusal_is_final("x is a library, so it has no program to run"));
         assert!(!refusal_is_final(&need("no-such-tool-here", "Go").unwrap_err()));
@@ -690,7 +1014,12 @@ mod tests {
             assert!(known, "plan has no way to run .{ext}");
         }
         assert!(may_run(Path::new("/p/Cargo.toml")));
-        for name in ["a.json", "a.css", "README.md", "a.h", "a.d.ts", "a.pyi", "a.xyz", "Makefile", "other.toml"] {
+        for name in ["package.json", "Makefile", "CMakeLists.txt", "Dockerfile", "compose.yaml", "a.sln", "a.csproj"] {
+            assert!(may_run(Path::new(name)), "{name}");
+        }
+        for name in
+            ["a.json", "a.css", "README.md", "a.h", "a.d.ts", "a.pyi", "a.xyz", "other.toml", "a.tsx", "notes.txt"]
+        {
             assert!(!may_run(Path::new(name)), "{name}");
         }
     }

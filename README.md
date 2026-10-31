@@ -143,7 +143,9 @@ is read and written on your machine.
   program and command before you click (`(project)` when the file stands for its package). In a Cargo
   project, what runs comes from `cargo metadata`: a file that starts a target runs that target
   (tests and benches through `cargo test` and `cargo bench`), and modules, the library and
-  `Cargo.toml` run the package's program. Anything else says why it can't, beside the button
+  `Cargo.toml` run the package's program. C# reads `OutputType` and solutions, C and C++ use
+  `add_executable` and `make run`, and `package.json`, `Makefile`, `Dockerfile` and Compose files
+  offer what they define. Anything else says why it can't, beside the button
 - Zoom the whole window, text, icons and panels (`Ctrl+=`, `Ctrl+-`, `Ctrl+0`, `Ctrl`+wheel,
   pinch), saved as `workbench.zoom`, 50% to 300%, default 125%. `Ctrl`+wheel or pinch over the
   code or terminal zooms only that part (`editor.font_size`, `terminal.font_size`), and
