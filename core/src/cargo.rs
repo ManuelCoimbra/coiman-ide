@@ -308,6 +308,31 @@ pub fn file_target(path: &Path) -> Option<FileTarget> {
     Some(FileTarget { package, dir, target, modules })
 }
 
+/// [`file_target`], going by what Cargo says when the file starts a target:
+/// a `[[bin]]` or `[[test]]` can live anywhere.
+pub fn file_target_in(path: &Path, packages: &[CargoPackage]) -> Option<FileTarget> {
+    let same = |a: &Path, b: &Path| a.canonicalize().ok().zip(b.canonicalize().ok()).is_some_and(|(a, b)| a == b);
+    let own = packages.iter().find_map(|p| Some((p, p.targets.iter().find(|t| same(&t.src_path, path))?)));
+    if let Some((package, target)) = own {
+        let kind = if target.is("bin") {
+            Target::Bin(target.name.clone())
+        } else if target.is("test") {
+            Target::Test(target.name.clone())
+        } else if target.is("lib") {
+            Target::Lib
+        } else {
+            return None;
+        };
+        return Some(FileTarget {
+            package: package.name.clone(),
+            dir: package.dir.clone(),
+            target: kind,
+            modules: Vec::new(),
+        });
+    }
+    file_target(path)
+}
+
 /// A test function or a module containing tests, found in source.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TestItem {

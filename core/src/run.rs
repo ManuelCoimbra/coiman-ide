@@ -445,11 +445,6 @@ fn comparable(path: &Path) -> PathBuf {
     PathBuf::from(if cfg!(windows) { text.to_lowercase() } else { text.to_owned() })
 }
 
-fn cargo_run(package: &CargoPackage, flag: &str, name: &str, title: String) -> RunPlan {
-    let command = format!("cargo run -p {} --{flag} {}", quote(&package.name), quote(name));
-    RunPlan { title, command, cwd: package.dir.clone() }
-}
-
 /// Runs one of `found`, asking when there are several.
 fn one_or_choose(mut found: Vec<RunPlan>) -> Option<Outcome> {
     match found.len() {
@@ -459,9 +454,34 @@ fn one_or_choose(mut found: Vec<RunPlan>) -> Option<Outcome> {
     }
 }
 
-/// What running `file` means given what Cargo says the workspace holds: the
+/// One thing Cargo can start for a file.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CargoAction {
+    pub package: String,
+    pub dir: PathBuf,
+    /// `run`, `test` or `bench`.
+    pub tool: &'static str,
+    /// `bin`, `example`, `test` or `bench`.
+    pub flag: &'static str,
+    pub name: String,
+    pub title: String,
+}
+
+impl CargoAction {
+    fn new(package: &CargoPackage, tool: &'static str, flag: &'static str, name: &str, title: String) -> Self {
+        Self { package: package.name.clone(), dir: package.dir.clone(), tool, flag, name: name.to_owned(), title }
+    }
+
+    fn plan(self) -> RunPlan {
+        let command = format!("cargo {} -p {} --{} {}", self.tool, quote(&self.package), self.flag, quote(&self.name));
+        RunPlan { title: self.title, command, cwd: self.dir }
+    }
+}
+
+/// What starting `file` means given what Cargo says the workspace holds: the
 /// file's own target when it starts one, else the program of its package.
-fn rust_target(file: &Path, packages: &[CargoPackage]) -> Result<Outcome, String> {
+/// Run and Debug both ask here.
+fn rust_actions(file: &Path, packages: &[CargoPackage]) -> Result<Vec<CargoAction>, String> {
     let name = name_of(file);
     let at = comparable(file);
     let owner = packages
@@ -472,58 +492,206 @@ fn rust_target(file: &Path, packages: &[CargoPackage]) -> Result<Outcome, String
         .map(|(p, _)| p);
     let Some(package) = owner else {
         // A workspace's own manifest belongs to no member.
-        let found = packages
+        let found: Vec<CargoAction> = packages
             .iter()
             .flat_map(|p| p.binaries().map(move |t| (p, t)))
-            .map(|(p, t)| cargo_run(p, "bin", &t.name, format!("{} ({})", t.name, p.name)))
+            .map(|(p, t)| CargoAction::new(p, "run", "bin", &t.name, format!("{} ({})", t.name, p.name)))
             .collect();
-        return one_or_choose(found).ok_or_else(|| "This Cargo workspace has no program to run".to_owned());
+        return if found.is_empty() { Err("This Cargo workspace has no program to run".to_owned()) } else { Ok(found) };
     };
     let own = package.targets.iter().find(|t| comparable(&t.src_path) == at);
     if let Some(target) = own {
-        let quoted = (quote(&package.name), quote(&target.name));
-        let tests = |tool: &str, flag: &str| {
-            Outcome::Run(RunPlan {
-                title: target.name.clone(),
-                command: format!("cargo {tool} -p {} --{flag} {}", quoted.0, quoted.1),
-                cwd: package.dir.clone(),
-            })
-        };
+        let action = |tool, flag| Ok(vec![CargoAction::new(package, tool, flag, &target.name, target.name.clone())]);
         if target.is("bin") {
-            return Ok(Outcome::Run(cargo_run(package, "bin", &target.name, target.name.clone())));
+            return action("run", "bin");
         }
         if target.is("example") {
             if target.crate_types.iter().any(|c| c == "bin") {
-                return Ok(Outcome::Run(cargo_run(package, "example", &target.name, target.name.clone())));
+                return action("run", "example");
             }
             return Err(format!("The example {} is a library, so it can't run", target.name));
         }
         if target.is("test") {
-            return Ok(tests("test", "test"));
+            return action("test", "test");
         }
         if target.is("bench") {
-            return Ok(tests("bench", "bench"));
+            return action("bench", "bench");
         }
         if target.is("custom-build") {
             return Err(format!("{name} runs by itself whenever Cargo builds {}", package.name));
         }
     }
     // Not a program itself: its package's stands in, and the title says so.
+    let stand_in = |bin: &str| CargoAction::new(package, "run", "bin", bin, format!("{bin} (project)"));
     let default = package.default_run.as_deref();
     if let Some(bin) = package.binaries().find(|t| Some(t.name.as_str()) == default) {
-        return Ok(Outcome::Run(cargo_run(package, "bin", &bin.name, format!("{} (project)", bin.name))));
+        return Ok(vec![stand_in(&bin.name)]);
     }
-    let mut found: Vec<RunPlan> =
-        package.binaries().map(|t| cargo_run(package, "bin", &t.name, t.name.clone())).collect();
-    if let [only] = found.as_mut_slice() {
-        only.title = format!("{} (project)", only.title);
-    }
-    one_or_choose(found).ok_or_else(|| {
-        format!(
+    let bins: Vec<&str> = package.binaries().map(|t| t.name.as_str()).collect();
+    match bins.as_slice() {
+        [] => Err(format!(
             "{} is a library, so it has no program to run. Add src/main.rs to give it one, or run its tests",
             package.name
+        )),
+        [only] => Ok(vec![stand_in(only)]),
+        _ => Ok(bins.iter().map(|b| CargoAction::new(package, "run", "bin", b, (*b).to_owned())).collect()),
+    }
+}
+
+fn rust_target(file: &Path, packages: &[CargoPackage]) -> Result<Outcome, String> {
+    let plans = rust_actions(file, packages)?.into_iter().map(CargoAction::plan).collect();
+    Ok(one_or_choose(plans).expect("rust_actions refuses when it finds nothing"))
+}
+
+/// What Debug should start for `file`, by the same rules as Run.
+pub fn debug_actions(file: &Path, root: Option<&Path>) -> Result<Vec<CargoAction>, String> {
+    let Some(project) = find_up(file, root, "Cargo.toml") else {
+        return Err("Debugging works for Cargo projects so far: Shift+F10 runs this file".to_owned());
+    };
+    if !crate::trust::is_trusted(&project) {
+        return Err("Restricted Mode: trust this folder to debug in it".to_owned());
+    }
+    let Some(packages) = crate::cargo::packages(&project) else {
+        return Err("Cargo couldn't read this project: see Cargo.toml".to_owned());
+    };
+    rust_actions(file, &packages)
+}
+
+// ----- tests in other languages ---------------------------------------------------------
+
+/// The identifier a line starts with.
+fn ident_at(text: &str) -> &str {
+    let end = text.find(|c: char| !c.is_alphanumeric() && c != '_').unwrap_or(text.len());
+    &text[..end]
+}
+
+fn go_tests(source: &str) -> Vec<(usize, String)> {
+    let is_test = |name: &str| {
+        ["Test", "Benchmark", "Fuzz"]
+            .iter()
+            .any(|p| name.strip_prefix(p).is_some_and(|rest| !rest.chars().next().is_some_and(char::is_lowercase)))
+    };
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(i, l)| {
+            let name = ident_at(l.strip_prefix("func ")?);
+            is_test(name).then(|| (i, name.to_owned()))
+        })
+        .collect()
+}
+
+/// `test_` functions, and those in a class as `Class.test_`.
+fn python_tests(source: &str) -> Vec<(usize, String)> {
+    let mut class: Option<(&str, Option<usize>)> = None;
+    let mut found = Vec::new();
+    for (i, line) in source.lines().enumerate() {
+        let body = line.trim_start();
+        if body.is_empty() || body.starts_with('#') {
+            continue;
+        }
+        let indent = line.len() - body.len();
+        if indent == 0 {
+            class = body.strip_prefix("class ").map(|rest| (ident_at(rest), None));
+        }
+        let def = body.strip_prefix("async def ").or_else(|| body.strip_prefix("def "));
+        if let Some((_, members)) = &mut class
+            && indent > 0
+        {
+            members.get_or_insert(indent);
+        }
+        let Some(name) = def.map(ident_at).filter(|n| n.starts_with("test")) else { continue };
+        match class {
+            None if indent == 0 => found.push((i, name.to_owned())),
+            Some((owner, Some(members))) if indent == members => found.push((i, format!("{owner}.{name}"))),
+            _ => {}
+        }
+    }
+    found
+}
+
+/// `test("name"` and `it("name"`, nested or not.
+fn js_tests(source: &str) -> Vec<(usize, String)> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let body = line.trim_start();
+            let args = body.strip_prefix("test(").or_else(|| body.strip_prefix("it("))?;
+            let quote = args.chars().next().filter(|c| matches!(c, '"' | '\'' | '`'))?;
+            let (name, _) = args[1..].split_once(quote)?;
+            Some((i, name.to_owned()))
+        })
+        .collect()
+}
+
+/// The tests a file defines, as (0-based line, id). Reads only the text, so
+/// it's cheap to redo as the file is edited.
+pub fn test_lines(file: &Path, source: &str) -> Vec<(usize, String)> {
+    let name = name_of(file);
+    if name.ends_with("_test.go") {
+        go_tests(source)
+    } else if name.ends_with(".py") && (name.starts_with("test_") || name.ends_with("_test.py")) {
+        python_tests(source)
+    } else if [".test.", ".spec."].iter().any(|m| name.contains(m))
+        && matches!(
+            file.extension().and_then(|e| e.to_str()),
+            Some("js" | "mjs" | "cjs" | "ts" | "mts" | "cts" | "jsx" | "tsx")
         )
-    })
+    {
+        js_tests(source)
+    } else {
+        Vec::new()
+    }
+}
+
+/// `text` matching only itself as a regular expression.
+fn regex_escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        if r"\^$.|?*+()[]{}".contains(c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// How to run the test `id` from [`test_lines`].
+pub fn test_plan(file: &Path, source: &str, id: &str, root: Option<&Path>) -> Result<RunPlan, String> {
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let title = format!("Test {id}");
+    let command = match file.extension().and_then(|e| e.to_str()).unwrap_or_default() {
+        "go" => {
+            need("go", "Go")?;
+            format!("go test -run {} .", quote(&format!("^{id}$")))
+        }
+        "py" => {
+            let python = python_program(file, root)?;
+            match id.contains('.') && source.contains("unittest") {
+                true => format!("{python} -m unittest {}", quote(&format!("{}.{id}", stem_of(file)))),
+                false => {
+                    let node = format!("{}::{}", file.to_string_lossy(), id.replace('.', "::"));
+                    format!("{python} -m pytest {}", quote(&node))
+                }
+            }
+        }
+        _ => {
+            let manifest = find_up(file, root, "package.json")
+                .and_then(|d| std::fs::read_to_string(d.join("package.json")).ok())
+                .unwrap_or_default();
+            if manifest.contains("\"vitest\"") {
+                format!("npx vitest run {} -t {}", q(file), quote(id))
+            } else if manifest.contains("\"jest\"") {
+                format!("npx jest {} -t {}", q(file), quote(id))
+            } else {
+                need("node", "JavaScript")?;
+                let pattern = format!("^{}$", regex_escape(id));
+                format!("node --test {} {}", quote(&format!("--test-name-pattern={pattern}")), q(file))
+            }
+        }
+    };
+    Ok(RunPlan { title, command, cwd: dir })
 }
 
 fn rust(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
@@ -922,6 +1090,45 @@ mod tests {
         assert!(plan(&tmp.join("lib.c"), "int f(void){return 0;}", Some(&tmp)).unwrap_err().contains("no main"));
         assert!(plan(&tmp.join("make/m.c"), "int main(void){return 0;}", Some(&tmp)).unwrap_err().contains("Make"));
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn tests_are_found_in_other_languages() {
+        let lines = |name: &str, source: &str| test_lines(Path::new(name), source);
+        let ids = |found: Vec<(usize, String)>| found.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
+        let go = "package a\nfunc TestOne(t *testing.T) {}\nfunc Testing() {}\nfunc BenchmarkB(b *testing.B) {}\nfunc (s S) TestM() {}\nfunc helper() {}\n";
+        assert_eq!(lines("a_test.go", go)[0], (1, "TestOne".to_owned()));
+        assert_eq!(ids(lines("a_test.go", go)), ["TestOne", "BenchmarkB"]);
+        assert!(lines("a.go", go).is_empty());
+        let py = "import unittest\ndef test_a():\n    def test_inner(): pass\nclass T(unittest.TestCase):\n    def test_b(self):\n        pass\n    def other(self): pass\n    async def test_c(self): pass\ndef helper(): pass\n";
+        assert_eq!(ids(lines("test_x.py", py)), ["test_a", "T.test_b", "T.test_c"]);
+        assert_eq!(ids(lines("x_test.py", "def test_a(): pass\n")), ["test_a"]);
+        assert!(lines("x.py", py).is_empty());
+        let js = "describe('d', () => {\n  it('adds up', () => {});\n});\ntest(\"two\", () => {});\nconst test2 = 1;\ntest(name, () => {});\n";
+        assert_eq!(ids(lines("a.test.js", js)), ["adds up", "two"]);
+        assert_eq!(ids(lines("a.spec.ts", js)), ["adds up", "two"]);
+        assert!(lines("a.js", js).is_empty());
+    }
+
+    #[test]
+    fn test_commands_name_one_test() {
+        let plan = |name: &str, source: &str, id: &str| test_plan(Path::new(name), source, id, None).map(|p| p.command);
+        if which("python").is_some() {
+            let unit = plan("/p/test_x.py", "import unittest", "T.test_b").unwrap();
+            assert!(unit.contains("-m unittest") && unit.contains("test_x.T.test_b"), "{unit}");
+            assert!(plan("/p/test_x.py", "", "test_a").unwrap().contains("-m pytest"));
+        }
+        if which("node").is_some() {
+            let js = plan("/p/a.test.js", "", "adds (up)").unwrap();
+            assert!(js.contains(&quote(r"--test-name-pattern=^adds \(up\)$")), "{js}");
+        }
+    }
+
+    #[test]
+    fn debug_needs_a_cargo_project() {
+        assert!(debug_actions(Path::new("/no/such/place/a.rs"), None).unwrap_err().contains("Cargo projects"));
+        let found = rust_actions(Path::new("/w/app/tests/smoke.rs"), &fixture()).unwrap();
+        assert_eq!((found[0].flag, found[0].name.as_str()), ("test", "smoke"));
     }
 
     #[test]

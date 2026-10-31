@@ -12,6 +12,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use egui::{Align, Color32, RichText, Sense};
 use rust_code_core::cargo::{self, FileTarget, TestItem};
 use rust_code_core::dap::{self, Adapter, DapClient, DapEvent};
+use rust_code_core::run;
 use serde_json::{Value, json};
 
 use crate::editor_view::Decorations;
@@ -110,11 +111,13 @@ struct Session {
 
 /// Results of background work (finding binaries, building, installing).
 enum Msg {
-    Binaries(Vec<String>),
+    Targets(Result<Vec<run::CargoAction>, String>),
     Built(Result<Launch, String>),
 }
 
 pub(super) struct DebugState {
+    /// What the Debug picker is choosing from.
+    targets: Vec<run::CargoAction>,
     adapter: AdapterState,
     offer_dismissed: bool,
     /// Breakpoints by file key: (path, breakpoints).
@@ -146,6 +149,7 @@ impl Default for DebugState {
             console_input: String::new(),
             watches: Vec::new(),
             watch_input: String::new(),
+            targets: Vec::new(),
             building: None,
             last_launch: None,
             queued: None,
@@ -209,13 +213,17 @@ impl CodeApp {
         }
         while let Ok(msg) = self.debug.rx.try_recv() {
             match msg {
-                Msg::Binaries(bins) => match bins.as_slice() {
-                    [] => self.status = Some("No binary to debug in this project".to_owned()),
-                    [one] => {
-                        let one = one.clone();
-                        self.debug_binary(ctx, one);
+                Msg::Targets(found) => match found {
+                    Err(why) => self.refuse_run(ctx, why),
+                    Ok(mut targets) if targets.len() == 1 => {
+                        let target = targets.remove(0);
+                        self.debug_target(ctx, target);
                     }
-                    _ => self.palette.show_picker(PickerKind::DebugTarget, bins, "", "Select a binary to debug"),
+                    Ok(targets) => {
+                        let names = targets.iter().map(|t| t.title.clone()).collect();
+                        self.debug.targets = targets;
+                        self.palette.show_picker(PickerKind::DebugTarget, names, "", "Select a program to debug");
+                    }
                 },
                 Msg::Built(result) => {
                     self.debug.building = None;
@@ -630,31 +638,50 @@ impl CodeApp {
             }
             return;
         }
-        let Some(root) = self.cargo_root_dir() else {
-            self.status = Some("Open a Cargo project to debug".to_owned());
+        // Source in another language can't be debugged, even in a Cargo folder.
+        let active = self.docs.get(self.active).and_then(|d| d.path.clone());
+        let source_here =
+            active.as_deref().filter(|p| run::may_run(p) && p.file_name().is_some_and(|n| n != "Cargo.toml"));
+        if let Some(file) = source_here.filter(|p| p.extension().is_none_or(|e| e != "rs")) {
+            let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            self.refuse_run(ctx, format!("Debugging works for Rust so far: Shift+F10 runs {name}"));
+            return;
+        }
+        // Run's rules decide what the file means; other files stand for the project.
+        let file = source_here.map(Path::to_path_buf).or_else(|| self.cargo_root_dir().map(|d| d.join("Cargo.toml")));
+        let Some(file) = file else {
+            self.refuse_run(ctx, "Debugging works for Cargo projects so far: open one to debug".to_owned());
             return;
         };
+        let root = self.explorer.root.clone();
         let (tx, wake) = (self.debug.tx.clone(), repaint(ctx));
         std::thread::spawn(move || {
-            let _ = tx.send(Msg::Binaries(cargo::binaries(&root)));
+            let _ = tx.send(Msg::Targets(run::debug_actions(&file, root.as_deref())));
             wake();
         });
     }
 
     pub(super) fn picked_debug_target(&mut self, ctx: &egui::Context, name: &str) {
-        self.debug_binary(ctx, name.to_owned());
+        if let Some(target) = self.debug.targets.iter().find(|t| t.title == name).cloned() {
+            self.debug_target(ctx, target);
+        }
     }
 
-    fn debug_binary(&mut self, ctx: &egui::Context, name: String) {
-        let Some(root) = self.cargo_root_dir() else { return };
+    /// Builds what Run would start for a file and debugs it.
+    fn debug_target(&mut self, ctx: &egui::Context, target: run::CargoAction) {
+        let name = target.name.clone();
         self.build_then_debug(ctx, format!("Building {name} for debugging…"), move || {
-            let args = ["build", "--bin", &name].map(str::to_owned).to_vec();
-            let artifacts = cargo::build_executables(&root, &args)?;
+            let (flag, package) = (format!("--{}", target.flag), target.package.clone());
+            let command = if target.tool == "run" { vec!["build"] } else { vec!["test", "--no-run"] };
+            let mut args: Vec<String> = command.into_iter().map(str::to_owned).collect();
+            args.extend(["-p".to_owned(), package, flag, name.clone()]);
+            let artifacts = cargo::build_executables(&target.dir, &args)?;
+            let same = |a: &str| a.replace('-', "_") == name.replace('-', "_");
             let exe = artifacts
                 .into_iter()
-                .find(|a| a.kind == "bin" && a.name == name && !a.test)
+                .find(|a| a.kind == target.flag && same(&a.name) && a.test == (target.tool != "run"))
                 .ok_or_else(|| format!("cargo built no executable for {name}"))?;
-            Ok(Launch { name, program: exe.executable, args: Vec::new(), cwd: root })
+            Ok(Launch { name, program: exe.executable, args: Vec::new(), cwd: target.dir })
         });
     }
 

@@ -58,6 +58,7 @@ struct Job {
 enum Msg {
     /// Run configurations; `pick` opens the picker when they arrive.
     Configs(PathBuf, Vec<RunConfig>, Option<String>, bool),
+    Packages(PathBuf, Vec<cargo::CargoPackage>),
     Scanned(PathBuf, Vec<(PathBuf, FileTarget, Vec<TestItem>)>),
     Nextest(bool),
 }
@@ -92,6 +93,10 @@ pub(super) const CARGO_ONLY: &[Command] = &[
 pub(super) struct CargoState {
     /// Programs offered by Run Program when several fit.
     run_targets: Vec<run::RunPlan>,
+    /// Cargo's account of the project, for telling which target a file starts.
+    packages: Vec<cargo::CargoPackage>,
+    /// The tests of the active file, when not Rust: (doc uid, version, line and id).
+    other_tests: Option<OtherTests>,
     /// What Run would do for a tab: (doc uid, buffer version, answer), worked
     /// out away from the UI because it can ask Cargo or walk a project.
     run_preview: Option<RunPreview>,
@@ -134,6 +139,8 @@ impl Default for CargoState {
         let (tx, rx) = mpsc::channel();
         Self {
             run_targets: Vec::new(),
+            packages: Vec::new(),
+            other_tests: None,
             run_preview: None,
             run_preview_at: 0.0,
             run_preview_job: None,
@@ -195,6 +202,9 @@ fn configs_key(root: &Path) -> ConfigsKey {
     let changed = |path: PathBuf| std::fs::metadata(path).and_then(|m| m.modified()).ok();
     (root.to_path_buf(), changed(cargo::launch_file(root)), changed(root.join("Cargo.toml")))
 }
+
+/// Tests of a file in another language: (doc uid, buffer version, line and id).
+type OtherTests = (u64, u64, Vec<(usize, String)>);
 
 /// What Run would do for a tab: (doc uid, buffer version, answer).
 type RunPreview = (u64, u64, Result<run::Outcome, String>);
@@ -264,6 +274,13 @@ impl CodeApp {
                         self.pick_run_config();
                     }
                 }
+                Msg::Packages(root, packages) => {
+                    if self.run_scope().as_ref() == Some(&root) {
+                        self.cargo.packages = packages;
+                        // Files may start different targets now.
+                        self.cargo.parsed = None;
+                    }
+                }
                 Msg::Scanned(root, found) => {
                     if self.cargo.scanned_for.as_ref() == Some(&root) {
                         self.cargo.tests = found
@@ -290,7 +307,7 @@ impl CodeApp {
             if stale {
                 self.cargo.parsed = Some((uid, version, now));
                 let k = key(&path);
-                let target = self.cargo.tests.get(&k).map(|f| f.target.clone()).or_else(|| cargo::file_target(&path));
+                let target = cargo::file_target_in(&path, &self.cargo.packages);
                 if let Some(target) = target {
                     let items = cargo::discover_tests(&doc.text(), &target.modules);
                     if items.is_empty() {
@@ -303,6 +320,29 @@ impl CodeApp {
                 ctx.request_repaint_after(std::time::Duration::from_secs_f64(PARSE_INTERVAL));
             }
         }
+        self.refresh_other_tests();
+    }
+
+    /// Keeps the gutter's tests current for a file in another language.
+    fn refresh_other_tests(&mut self) {
+        let Some(doc) = self.docs.get(self.active) else {
+            self.cargo.other_tests = None;
+            return;
+        };
+        let (uid, version) = (doc.uid, doc.buffer.version());
+        if self.cargo.other_tests.as_ref().is_some_and(|(u, v, _)| (*u, *v) == (uid, version)) {
+            return;
+        }
+        let found = doc.path.as_deref().map_or_else(Vec::new, |p| run::test_lines(p, &doc.text()));
+        self.cargo.other_tests = Some((uid, version, found));
+    }
+
+    /// The test on `line` of the active file, when it isn't a Rust one.
+    fn other_test_at(&self, line: usize) -> Option<String> {
+        let (uid, _, found) = self.cargo.other_tests.as_ref()?;
+        let doc = self.docs.get(self.active).filter(|d| d.uid == *uid)?;
+        doc.path.as_ref()?;
+        found.iter().find(|(l, _)| *l == line).map(|(_, id)| id.clone())
     }
 
     /// Re-reads every test in the project (Testing view, refresh).
@@ -602,6 +642,22 @@ impl CodeApp {
 
     /// A gutter run button was clicked.
     pub(super) fn run_test_at_line(&mut self, ctx: &egui::Context, line: usize) {
+        if let Some(id) = self.other_test_at(line) {
+            for i in 0..self.docs.len() {
+                if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {
+                    let why = format!("Nothing was run: {} couldn't be saved", self.docs[i].title());
+                    self.refuse_run(ctx, why);
+                    return;
+                }
+            }
+            let doc = &self.docs[self.active];
+            let Some(file) = doc.path.clone() else { return };
+            match run::test_plan(&file, &doc.text(), &id, self.explorer.root.as_deref()) {
+                Ok(plan) => self.start_run(ctx, &plan),
+                Err(why) => self.refuse_run(ctx, why),
+            }
+            return;
+        }
         let found = self
             .active_tests()
             .and_then(|f| Some((f.target.clone(), f.items.iter().find(|i| i.line == line)?.clone())));
@@ -613,6 +669,14 @@ impl CodeApp {
     /// Gutter run buttons for document `i`.
     pub(super) fn cargo_decorate(&self, i: usize, deco: &mut crate::editor_view::Decorations) {
         if i != self.active {
+            return;
+        }
+        if let Some((uid, _, found)) = &self.cargo.other_tests
+            && self.docs.get(i).is_some_and(|d| d.uid == *uid)
+            && !found.is_empty()
+        {
+            let color = Color32::from_rgb(0x89, 0xD1, 0x85);
+            deco.runnables = found.iter().map(|(line, _)| (*line, None, color)).collect();
             return;
         }
         let Some(f) = self.active_tests() else { return };
@@ -812,6 +876,7 @@ impl CodeApp {
                 Ok(None) => (cargo::default_configs(&root), None),
                 Err(e) => (cargo::default_configs(&root), Some(e)),
             };
+            let _ = tx.send(Msg::Packages(root.clone(), cargo::packages(&root).unwrap_or_default()));
             let _ = tx.send(Msg::Configs(root, configs, error, pick));
             wake();
         });
@@ -970,7 +1035,7 @@ impl CodeApp {
     }
 
     /// Says why Run did nothing, beside the button: the status bar may be hidden.
-    fn refuse_run(&mut self, ctx: &egui::Context, why: String) {
+    pub(super) fn refuse_run(&mut self, ctx: &egui::Context, why: String) {
         self.status = Some(why.clone());
         let tab = self.docs.get(self.active).map(|d| d.uid);
         self.cargo.run_refusal = Some((why, ctx.input(|i| i.time), tab));
