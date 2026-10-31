@@ -1,0 +1,46 @@
+id = "example.tool-runner"
+name = "Tool Runner"
+version = "1.0.0"
+description = "Starts approved programs and asks the language server for things, as an example of plugin API 0.3."
+permissions = ["language-server"]
+programs = ["python", "whoami"]
+
+[[commands]]
+id = "version"
+title = "Tool Runner: Python Version"
+
+[[commands]]
+id = "slow"
+title = "Tool Runner: Slow Job (5 s)"
+
+[[commands]]
+id = "long"
+title = "Tool Runner: Long Job (60 s)"
+
+[[commands]]
+id = "cancel"
+title = "Tool Runner: Cancel the Last Job"
+
+[[commands]]
+id = "stdin"
+title = "Tool Runner: Pipe Through Python"
+
+[[commands]]
+id = "whoami"
+title = "Tool Runner: Run whoami"
+
+[[commands]]
+id = "unlisted"
+title = "Tool Runner: Try a Program It Didn't Declare"
+
+[[commands]]
+id = "server"
+title = "Tool Runner: Ask the Language Server"
+
+[[commands]]
+id = "custom"
+title = "Tool Runner: Custom Server Method"
+
+[[panels]]
+id = "out"
+title = "Tool Runner"

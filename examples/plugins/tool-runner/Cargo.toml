@@ -1,0 +1,20 @@
+[package]
+name = "tool-runner"
+version = "1.0.0"
+edition = "2024"
+publish = false
+
+# Example Rust Code plugin. Build with scripts/build-plugins.ps1.
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = "0.63"
+
+[profile.release]
+opt-level = "s"
+strip = true
+
+# Built on its own for wasm32, not part of the editor workspace.
+[workspace]

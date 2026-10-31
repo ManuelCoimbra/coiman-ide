@@ -40,6 +40,9 @@ pub struct Locked {
     /// What the user granted (a subset of what the plugin asks for).
     #[serde(default)]
     pub granted: BTreeSet<Permission>,
+    /// Programs the user approved it to start (a subset of what it declares).
+    #[serde(default)]
+    pub granted_programs: BTreeSet<String>,
     #[serde(default = "yes")]
     pub enabled: bool,
 }
@@ -105,6 +108,7 @@ pub fn install(
     source: &str,
     publisher_key: &str,
     granted: BTreeSet<Permission>,
+    programs: BTreeSet<String>,
 ) -> Result<(), String> {
     let id = &pkg.manifest.id;
     let target = plugin_dir(dir, id);
@@ -121,6 +125,7 @@ pub fn install(
         manifest_sha256: registry::sha256_hex(&pkg.manifest_bytes),
         wasm_sha256: registry::sha256_hex(&pkg.wasm),
         granted: granted.intersection(&pkg.manifest.permissions).copied().collect(),
+        granted_programs: programs.intersection(&pkg.manifest.programs).cloned().collect(),
         enabled,
     });
     lock.plugins.sort_by(|a, b| a.id.cmp(&b.id));
@@ -197,7 +202,7 @@ mod tests {
             Package { manifest: manifest::parse(toml).unwrap(), manifest_bytes: toml.into(), wasm: b"wasm".to_vec() };
         let mut lock = Lockfile::default();
         let granted = BTreeSet::from([Permission::EditorRead, Permission::WorkspaceWrite]);
-        install(&dir, &mut lock, &pkg, "C:/reg", "KEY", granted).unwrap();
+        install(&dir, &mut lock, &pkg, "C:/reg", "KEY", granted, BTreeSet::new()).unwrap();
         // Only what the plugin asks for is recorded.
         assert_eq!(lock.plugins[0].granted, BTreeSet::from([Permission::EditorRead]));
         lock.save(&dir).unwrap();

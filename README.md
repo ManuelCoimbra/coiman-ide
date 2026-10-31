@@ -272,13 +272,18 @@ Plugins are WebAssembly components written against `core/wit/plugin.wit` and run
   file system, network, clock or environment of its own. File access stays inside the open
   folder. Each call has a 2-second time limit and each plugin a 64 MB memory limit. A plugin
   that crashes or runs too long is stopped, and the Extensions view shows why.
+- **Programs**: `programs = ["git"]` in `plugin.toml` asks to start programs by name. They
+  run outside the sandbox with your rights, so each starts unapproved until you tick it, only
+  in trusted folders, and each start is logged. `start-job` has no time limit and reports back
+  with a `job-finished` event, with stdin, stdout, stderr and the exit code.
 - **Permissions**: `plugin.toml` lists what a plugin needs: `workspace-read`,
-  `workspace-write`, `editor-read`, `editor-write`. You approve them before it is
+  `workspace-write`, `editor-read`, `editor-write`, `language-server` (standard or custom
+  requests to the active file's server). You approve them before it is
   installed and can uncheck any of them, then or later. A call without its permission fails
   with `permission denied`.
 - **Contribution points** are declared in `plugin.toml` and drawn by the editor:
   - status bar items;
-  - bottom panel tabs (headings, text, code, lists, buttons);
+  - bottom panel tabs (headings, text, code, lists, buttons, colored text, tables, diffs);
   - tree views in the Explorer;
   - Command Palette commands.
 

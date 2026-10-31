@@ -1,4 +1,4 @@
-package rust-code:plugin@0.2.0;
+package rust-code:plugin@0.3.0;
 
 /// Data shared by the editor and plugins.
 interface types {
@@ -21,6 +21,19 @@ interface types {
         argument: string,
     }
 
+    /// A run of text in a `spans` block. Colors are 0xRRGGBB.
+    record span {
+        text: string,
+        color: option<u32>,
+        bold: bool,
+        monospace: bool,
+    }
+
+    record table {
+        headers: list<string>,
+        rows: list<list<string>>,
+    }
+
     /// A piece of a panel declared in `plugin.toml`. Panels are declarative:
     /// the editor draws them with its own widgets.
     variant block {
@@ -30,6 +43,11 @@ interface types {
         bullets(list<string>),
         separator,
         button(button),
+        /// Text with its own colors, on one line.
+        spans(list<span>),
+        table(table),
+        /// Unified diff text, with added and removed lines colored.
+        diff(string),
     }
 
     /// Colors part of a line. Colors are 0xRRGGBB.
@@ -74,6 +92,23 @@ interface types {
         dirty: bool,
     }
 
+    /// How a program started with `start-job` ended.
+    record job-result {
+        id: u64,
+        /// None if it was stopped before exiting by itself.
+        exit-code: option<s32>,
+        stdout: string,
+        stderr: string,
+    }
+
+    /// The answer to `language-server-request`.
+    record server-response {
+        id: u64,
+        /// JSON; empty if it failed.
+        answer: string,
+        error: option<string>,
+    }
+
     /// Something that happened in the editor. A plugin receives the kinds
     /// listed under `events` in its `plugin.toml`.
     variant event {
@@ -85,6 +120,10 @@ interface types {
         active-changed(string),
         /// The active editor's text changed (relative path); sent once typing pauses.
         edited(string),
+        /// A job this plugin started has ended. Always delivered.
+        job-finished(job-result),
+        /// A language server answered this plugin. Always delivered.
+        server-answered(server-response),
     }
 }
 
@@ -126,6 +165,18 @@ interface host {
     active-document: func() -> result<option<document>, string>;
     /// Needs `editor-write`: types `text` at the cursor of the active editor.
     insert-text: func(text: string) -> result<_, string>;
+
+    /// Starts a program listed under `programs` in `plugin.toml`, which the user
+    /// approved, in the open folder. It runs outside the sandbox, with the user's
+    /// rights; the folder must be trusted. There's no time limit: it ends with a
+    /// `job-finished` event. Every start is written to the plugin's log.
+    start-job: func(program: string, args: list<string>, stdin: string) -> result<u64, string>;
+    /// Stops a job. It still ends with a `job-finished` event.
+    cancel-job: func(id: u64);
+    /// Needs `language-server`: sends a request to the active file's language
+    /// server, standard or custom. `params` is JSON; `textDocument` is added when
+    /// missing. The answer comes as a `server-answered` event.
+    language-server-request: func(method: string, params: string) -> result<u64, string>;
 }
 
 world plugin {

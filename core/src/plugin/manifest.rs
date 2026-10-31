@@ -15,11 +15,17 @@ pub enum Permission {
     WorkspaceWrite,
     EditorRead,
     EditorWrite,
+    LanguageServer,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 4] =
-        [Permission::WorkspaceRead, Permission::WorkspaceWrite, Permission::EditorRead, Permission::EditorWrite];
+    pub const ALL: [Permission; 5] = [
+        Permission::WorkspaceRead,
+        Permission::WorkspaceWrite,
+        Permission::EditorRead,
+        Permission::EditorWrite,
+        Permission::LanguageServer,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -27,6 +33,7 @@ impl Permission {
             Permission::WorkspaceWrite => "workspace-write",
             Permission::EditorRead => "editor-read",
             Permission::EditorWrite => "editor-write",
+            Permission::LanguageServer => "language-server",
         }
     }
 
@@ -37,6 +44,7 @@ impl Permission {
             Permission::WorkspaceWrite => "Create and change files in the open folder",
             Permission::EditorRead => "Read the text of the active editor, including unsaved changes",
             Permission::EditorWrite => "Type text into the active editor",
+            Permission::LanguageServer => "Send requests to the language server of the active file",
         }
     }
 }
@@ -94,6 +102,10 @@ pub struct Manifest {
     pub description: String,
     #[serde(default)]
     pub permissions: BTreeSet<Permission>,
+    /// Programs it wants to start, by name, each approved by the user. They run
+    /// outside the sandbox.
+    #[serde(default)]
+    pub programs: BTreeSet<String>,
     #[serde(default)]
     pub events: BTreeSet<EventKind>,
     #[serde(default)]
@@ -148,6 +160,13 @@ impl Manifest {
         if parse_version(&self.version).is_none() {
             return Err(format!("version \"{}\" must look like 1.2.3", self.version));
         }
+        // A bare name, found on PATH: approving `git` can't mean some other file.
+        for program in &self.programs {
+            let plain = !program.is_empty() && program.chars().all(|c| c.is_alphanumeric() || "-_.".contains(c));
+            if !plain || program.starts_with('.') {
+                return Err(format!("program \"{program}\" must be a bare name, not a path or a command line"));
+            }
+        }
         let groups: [(&str, Vec<&str>); 4] = [
             ("command", self.commands.iter().map(|c| c.id.as_str()).collect()),
             ("status item", self.status_items.iter().map(|c| c.id.as_str()).collect()),
@@ -196,6 +215,7 @@ pub fn is_newer(candidate: &str, current: &str) -> bool {
 pub struct ManifestDiff {
     pub added_permissions: Vec<Permission>,
     pub removed_permissions: Vec<Permission>,
+    pub added_programs: Vec<String>,
     pub added_events: Vec<EventKind>,
     /// Contributions as "Command: Title", "Panel: Title"…
     pub added: Vec<String>,
@@ -223,6 +243,7 @@ pub fn diff(old: &Manifest, new: &Manifest) -> ManifestDiff {
     ManifestDiff {
         added_permissions: new.permissions.difference(&old.permissions).copied().collect(),
         removed_permissions: old.permissions.difference(&new.permissions).copied().collect(),
+        added_programs: new.programs.difference(&old.programs).cloned().collect(),
         added_events: new.events.difference(&old.events).copied().collect(),
         added: b.difference(&a).cloned().collect(),
         removed: a.difference(&b).cloned().collect(),
@@ -253,6 +274,17 @@ command = "report"
 id = "report"
 title = "Words"
 "#;
+
+    #[test]
+    fn programs_must_be_bare_names() {
+        let with = |program: &str| {
+            parse(&format!("id = \"a.b\"\nname = \"x\"\nversion = \"1.0.0\"\nprograms = [\"{program}\"]\n"))
+        };
+        assert!(with("git").is_ok() && with("rust-analyzer").is_ok() && with("python3.12").is_ok());
+        for bad in ["/bin/sh", "C:/x.exe", "..", ".hidden", "git status", "a/b", ""] {
+            assert!(with(bad).is_err(), "{bad}");
+        }
+    }
 
     #[test]
     fn parses_validates_and_diffs() {

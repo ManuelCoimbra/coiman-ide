@@ -55,6 +55,12 @@ from where:
 - **Plugins themselves** have no network access. They run sandboxed with only
   the editor's plugin API, and they reach your files and editor only through
   the permissions you granted.
+- **Programs started by plugins are not sandboxed.** A plugin's `plugin.toml` can
+  name programs it wants to start, such as `dotnet`. Each one starts unapproved
+  and runs only if you tick it, by that exact name found on PATH, in a folder you
+  trust. A program you approve runs with all your rights: it can read and change
+  your files and use the network, so this promise stops at that program. Every
+  start is written to the plugin's log, and you can withdraw approval at any time.
 
 ## What Rust Code reads and writes on your machine
 

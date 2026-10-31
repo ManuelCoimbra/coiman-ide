@@ -9,23 +9,30 @@
 //! memory limit. A plugin that traps or runs out of time is stopped.
 
 use std::collections::{BTreeSet, HashMap};
+use std::io::{Read, Write};
 use std::path::{Component as PathPart, Path, PathBuf};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::Duration;
 
 use wasmtime::component::{Component, HasSelf, Linker};
 use wasmtime::{Config, Engine, Store, StoreLimits, StoreLimitsBuilder};
 
 use super::manifest::{EventKind, Manifest, Permission};
+use crate::lsp::discovery::quiet_command;
+use crate::lsp::servers::which;
 
 wasmtime::component::bindgen!({
     path: "wit/plugin.wit",
     world: "plugin",
 });
 
-pub use rust_code::plugin::types::{Block, Button, Decoration, Document, Problem, Severity, TreeItem};
+pub use rust_code::plugin::types::{
+    Block, Button, Decoration, Document, JobResult, Problem, ServerResponse, Severity, Span, Table, TreeItem,
+};
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
 const TICK: Duration = Duration::from_millis(10);
@@ -34,6 +41,10 @@ const CALL_TICKS: u64 = 200;
 const MEMORY_LIMIT: usize = 64 << 20;
 const MAX_READ_BYTES: u64 = 8 << 20;
 const MAX_LIST: u32 = 10_000;
+/// Jobs one plugin may have running, and output kept from each stream.
+const MAX_JOBS: usize = 8;
+const MAX_JOB_OUTPUT: u64 = 16 << 20;
+const JOB_POLL: Duration = Duration::from_millis(20);
 
 /// What plugins ask the editor to show or do.
 #[derive(Clone, Debug)]
@@ -89,6 +100,13 @@ pub enum Update {
         path: String,
         items: Vec<Problem>,
     },
+    /// A request for the active file's language server.
+    ServerRequest {
+        plugin: String,
+        id: u64,
+        method: String,
+        params: String,
+    },
 }
 
 /// Editor state plugins may read, kept current by the editor.
@@ -99,10 +117,31 @@ pub struct Context {
 }
 
 enum Msg {
-    Load { manifest: Box<Manifest>, wasm: Vec<u8>, granted: BTreeSet<Permission> },
-    Grant { plugin: String, granted: BTreeSet<Permission> },
+    Load {
+        manifest: Box<Manifest>,
+        wasm: Vec<u8>,
+        granted: BTreeSet<Permission>,
+        programs: BTreeSet<String>,
+    },
+    Grant {
+        plugin: String,
+        granted: BTreeSet<Permission>,
+    },
+    GrantPrograms {
+        plugin: String,
+        programs: BTreeSet<String>,
+    },
+    /// An event for one plugin: a job it started, an answer it asked for.
+    Deliver {
+        plugin: String,
+        event: Event,
+    },
     Unload(String),
-    Command { plugin: String, id: String, argument: String },
+    Command {
+        plugin: String,
+        id: String,
+        argument: String,
+    },
     Event(EventKind, Event),
 }
 
@@ -128,6 +167,7 @@ impl PluginHost {
             updates: update_tx,
             wake: Arc::new(wake),
             context: context.clone(),
+            messages: tx.clone(),
         };
         let running = Arc::new(AtomicBool::new(true));
         let ticking = running.clone();
@@ -145,7 +185,28 @@ impl PluginHost {
     }
 
     pub fn load(&self, manifest: Manifest, wasm: Vec<u8>, granted: BTreeSet<Permission>) {
-        let _ = self.tx.send(Msg::Load { manifest: Box::new(manifest), wasm, granted });
+        self.load_with_programs(manifest, wasm, granted, BTreeSet::new());
+    }
+
+    pub fn load_with_programs(
+        &self,
+        manifest: Manifest,
+        wasm: Vec<u8>,
+        granted: BTreeSet<Permission>,
+        programs: BTreeSet<String>,
+    ) {
+        let _ = self.tx.send(Msg::Load { manifest: Box::new(manifest), wasm, granted, programs });
+    }
+
+    /// Changes which programs a running plugin may start.
+    pub fn grant_programs(&self, plugin: &str, programs: BTreeSet<String>) {
+        let _ = self.tx.send(Msg::GrantPrograms { plugin: plugin.to_owned(), programs });
+    }
+
+    /// Gives a plugin the language server's answer to its request.
+    pub fn server_answered(&self, plugin: &str, response: ServerResponse) {
+        let event = Event::ServerAnswered(response);
+        let _ = self.tx.send(Msg::Deliver { plugin: plugin.to_owned(), event });
     }
 
     /// Changes what a running plugin may do.
@@ -188,10 +249,36 @@ struct State {
     plugin: String,
     manifest: Manifest,
     granted: BTreeSet<Permission>,
+    programs: BTreeSet<String>,
     context: Arc<Mutex<Context>>,
     updates: Sender<Update>,
     wake: Arc<dyn Fn() + Send + Sync>,
     limits: StoreLimits,
+    messages: Sender<Msg>,
+    /// Programs running for this plugin; stopped when it is.
+    jobs: Arc<Mutex<HashMap<u64, Arc<Mutex<Child>>>>>,
+    next_id: u64,
+}
+
+impl Drop for State {
+    fn drop(&mut self) {
+        for child in self.jobs.lock().map(|jobs| jobs.values().cloned().collect::<Vec<_>>()).unwrap_or_default() {
+            if let Ok(mut child) = child.lock() {
+                let _ = child.kill();
+            }
+        }
+    }
+}
+
+/// Keeps what a program prints, up to the limit, and goes on reading the rest so
+/// it never blocks on a full pipe.
+fn read_output(mut from: impl Read + Send + 'static) -> JoinHandle<String> {
+    std::thread::spawn(move || {
+        let mut kept = Vec::new();
+        let _ = (&mut from).take(MAX_JOB_OUTPUT).read_to_end(&mut kept);
+        let _ = std::io::copy(&mut from, &mut std::io::sink());
+        String::from_utf8_lossy(&kept).into_owned()
+    })
 }
 
 struct Loaded {
@@ -205,13 +292,22 @@ struct Worker {
     updates: Sender<Update>,
     wake: Arc<dyn Fn() + Send + Sync>,
     context: Arc<Mutex<Context>>,
+    messages: Sender<Msg>,
 }
 
 impl Worker {
     fn run(mut self, rx: Receiver<Msg>) {
         for msg in rx {
             match msg {
-                Msg::Load { manifest, wasm, granted } => self.load(*manifest, &wasm, granted),
+                Msg::Load { manifest, wasm, granted, programs } => self.load(*manifest, &wasm, granted, programs),
+                Msg::GrantPrograms { plugin, programs } => {
+                    if let Some(p) = self.plugins.get_mut(&plugin) {
+                        p.store.data_mut().programs = programs;
+                    }
+                }
+                Msg::Deliver { plugin, event } => {
+                    self.call(&plugin, |b, s| b.call_on_event(s, &event).map(|()| None));
+                }
                 Msg::Grant { plugin, granted } => {
                     if let Some(p) = self.plugins.get_mut(&plugin) {
                         p.store.data_mut().granted = granted;
@@ -243,7 +339,7 @@ impl Worker {
         (self.wake)();
     }
 
-    fn load(&mut self, manifest: Manifest, wasm: &[u8], granted: BTreeSet<Permission>) {
+    fn load(&mut self, manifest: Manifest, wasm: &[u8], granted: BTreeSet<Permission>, programs: BTreeSet<String>) {
         let id = manifest.id.clone();
         self.plugins.remove(&id);
         let loaded = (|| -> wasmtime::Result<Loaded> {
@@ -254,6 +350,10 @@ impl Worker {
                 plugin: id.clone(),
                 manifest,
                 granted,
+                programs,
+                messages: self.messages.clone(),
+                jobs: Arc::default(),
+                next_id: 1,
                 context: self.context.clone(),
                 updates: self.updates.clone(),
                 wake: self.wake.clone(),
@@ -317,6 +417,9 @@ fn describe(e: &wasmtime::Error) -> String {
         };
     }
     let text = format!("{e:#}");
+    if text.contains("rust-code:plugin/") {
+        return format!("was built for an older plugin API and needs rebuilding: {text}");
+    }
     if text.contains("import") && text.contains("wasi") {
         return format!("asks for system access (WASI) that plugins don't get: {text}");
     }
@@ -461,5 +564,82 @@ impl rust_code::plugin::host::Host for State {
         self.need(Permission::EditorWrite)?;
         self.send(Update::Insert { plugin: self.plugin.clone(), text });
         Ok(())
+    }
+
+    fn start_job(&mut self, program: String, args: Vec<String>, stdin: String) -> Result<u64, String> {
+        if !self.programs.contains(&program) {
+            let line = format!("refused: {program} isn't approved");
+            self.send(Update::Log { plugin: self.plugin.clone(), line });
+            return Err(format!("program not approved: {program}"));
+        }
+        let root = self.workspace()?;
+        if !crate::trust::is_trusted(&root) {
+            return Err("this folder isn't trusted, so plugins can't start programs in it".to_owned());
+        }
+        let jobs = self.jobs.clone();
+        if jobs.lock().map_err(|e| e.to_string())?.len() >= MAX_JOBS {
+            return Err(format!("this plugin already has {MAX_JOBS} programs running"));
+        }
+        let exe = which(&program).ok_or_else(|| format!("{program} isn't on PATH"))?;
+        let mut child = quiet_command(&exe)
+            .args(&args)
+            .current_dir(&root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("could not start {program}: {e}"))?;
+        // In the log, so what a plugin ran can always be checked.
+        let line = format!("started: {} {}", exe.display(), args.join(" "));
+        self.send(Update::Log { plugin: self.plugin.clone(), line });
+        let id = self.next_id;
+        self.next_id += 1;
+        let (out, err) = (child.stdout.take(), child.stderr.take());
+        if let Some(mut input) = child.stdin.take() {
+            std::thread::spawn(move || {
+                let _ = input.write_all(stdin.as_bytes());
+            });
+        }
+        let out = out.map(read_output);
+        let err = err.map(read_output);
+        let child = Arc::new(Mutex::new(child));
+        jobs.lock().map_err(|e| e.to_string())?.insert(id, child.clone());
+        let (messages, plugin) = (self.messages.clone(), self.plugin.clone());
+        std::thread::spawn(move || {
+            let status = loop {
+                let polled = child.lock().map(|mut c| c.try_wait());
+                match polled {
+                    Ok(Ok(Some(status))) => break Some(status),
+                    Ok(Ok(None)) => std::thread::sleep(JOB_POLL),
+                    _ => break None,
+                }
+            };
+            if let Ok(mut jobs) = jobs.lock() {
+                jobs.remove(&id);
+            }
+            let text = |handle: Option<JoinHandle<String>>| handle.and_then(|h| h.join().ok()).unwrap_or_default();
+            let result =
+                JobResult { id, exit_code: status.and_then(|s| s.code()), stdout: text(out), stderr: text(err) };
+            let _ = messages.send(Msg::Deliver { plugin, event: Event::JobFinished(result) });
+        });
+        Ok(id)
+    }
+
+    fn cancel_job(&mut self, id: u64) {
+        let child = self.jobs.lock().ok().and_then(|jobs| jobs.get(&id).cloned());
+        if let Some(child) = child
+            && let Ok(mut child) = child.lock()
+        {
+            let _ = child.kill();
+        }
+    }
+
+    fn language_server_request(&mut self, method: String, params: String) -> Result<u64, String> {
+        self.need(Permission::LanguageServer)?;
+        serde_json::from_str::<serde_json::Value>(&params).map_err(|e| format!("params aren't JSON: {e}"))?;
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(Update::ServerRequest { plugin: self.plugin.clone(), id, method, params });
+        Ok(id)
     }
 }

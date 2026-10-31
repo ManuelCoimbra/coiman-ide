@@ -11,7 +11,7 @@ $tool = Join-Path $root 'target\debug\rcplugin.exe'
 # One shared build folder, so guests don't each keep their own copy of wit-bindgen.
 $env:CARGO_TARGET_DIR = Join-Path $root 'target\plugins'
 $dirs = 'extensions\comment-highlights', 'extensions\trailing-spaces', 'extensions\color-preview', 'extensions\scs-sii',
-    'examples\plugins\word-count', 'core\tests\fixtures\test-plugin'
+    'examples\plugins\word-count', 'examples\plugins\tool-runner', 'core\tests\fixtures\test-plugin'
 foreach ($dir in $dirs) {
     Push-Location (Join-Path $root $dir)
     try {

@@ -12,6 +12,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use egui::{Align, RichText, Sense};
 use rust_code_core::lsp::types as lt;
+use rust_code_core::plugin::host::ServerResponse;
 use rust_code_core::plugin::manifest::{Alignment, Manifest, Permission};
 use rust_code_core::plugin::registry::{self, Entry, Package};
 use rust_code_core::plugin::store::{self, Lockfile, UpdateDiff};
@@ -118,6 +119,7 @@ struct Consent {
     trusted: bool,
     diff: Option<UpdateDiff>,
     granted: BTreeSet<Permission>,
+    programs: BTreeSet<String>,
 }
 
 #[derive(Default)]
@@ -216,7 +218,8 @@ impl CodeApp {
                 None => manifest.permissions.clone(),
             };
             let pkg = Package { manifest, manifest_bytes: toml.as_bytes().to_vec(), wasm: wasm.to_vec() };
-            if store::install(dir, &mut self.plugins.lock, &pkg, BUILT_IN_SOURCE, "", granted).is_ok() {
+            let programs = locked.map(|l| l.granted_programs.clone()).unwrap_or_default();
+            if store::install(dir, &mut self.plugins.lock, &pkg, BUILT_IN_SOURCE, "", granted, programs).is_ok() {
                 changed = true;
             }
         }
@@ -366,7 +369,7 @@ impl CodeApp {
         // The document snapshot is sent again for the new plugin.
         self.plugins.last_doc = None;
         if let Some(host) = &self.plugins.host {
-            host.load(pkg.manifest, pkg.wasm, locked.granted);
+            host.load_with_programs(pkg.manifest, pkg.wasm, locked.granted, locked.granted_programs);
         }
     }
 
@@ -550,6 +553,9 @@ impl CodeApp {
                     doc.goto_line(line.max(1) as usize);
                 }
             }
+            Update::ServerRequest { plugin, id, method, params } => {
+                self.plugin_server_request(plugin, id, &method, &params)
+            }
             Update::Insert { text, .. } => {
                 if let Some(doc) = self.active_doc() {
                     doc.buffer.insert(&text);
@@ -628,7 +634,11 @@ impl CodeApp {
                         }
                         None => pkg.manifest.permissions.clone(),
                     };
+                    // New programs always start unapproved.
+                    let programs =
+                        self.plugins.lock.get(&entry.id).map(|l| l.granted_programs.clone()).unwrap_or_default();
                     self.plugins.consent = Some(Consent {
+                        programs,
                         trusted: self.plugins.lock.trusts(&entry.publisher_key),
                         key: entry.publisher_key.clone(),
                         source: self.settings.plugins.registry.trim().to_owned(),
@@ -720,6 +730,7 @@ impl CodeApp {
         match registry::read_folder(&folder) {
             Ok(pkg) => {
                 self.plugins.consent = Some(Consent {
+                    programs: BTreeSet::new(),
                     granted: pkg.manifest.permissions.clone(),
                     pkg,
                     source: format!("folder:{}", folder.display()),
@@ -733,13 +744,42 @@ impl CodeApp {
         }
     }
 
+    /// Passes a plugin's request to the active file's language server.
+    fn plugin_server_request(&mut self, plugin: String, id: u64, method: &str, params: &str) {
+        let mut params = serde_json::from_str::<serde_json::Value>(params).unwrap_or_default();
+        let i = self.active;
+        let sent = self.request_for(i, method, super::lsp::Pending::Plugin { plugin: plugin.clone(), id }, |_, td| {
+            if params.is_null() {
+                params = serde_json::json!({});
+            }
+            if params.is_object() && params.get("textDocument").is_none() {
+                params["textDocument"] = td;
+            }
+            params
+        });
+        if !sent && let Some(host) = &self.plugins.host {
+            let error = Some("The active file has no language server".to_owned());
+            host.server_answered(&plugin, ServerResponse { id, answer: String::new(), error });
+        }
+    }
+
+    /// A language server answered a plugin.
+    pub(super) fn plugin_server_answer(&self, plugin: &str, id: u64, answer: Result<serde_json::Value, String>) {
+        let Some(host) = &self.plugins.host else { return };
+        let response = match answer {
+            Ok(value) => ServerResponse { id, answer: value.to_string(), error: None },
+            Err(e) => ServerResponse { id, answer: String::new(), error: Some(e) },
+        };
+        host.server_answered(plugin, response);
+    }
+
     fn accept_consent(&mut self, ctx: &egui::Context) {
         let Some(c) = self.plugins.consent.take() else { return };
         let Some(dir) = self.plugins.dir.clone().or_else(store::plugins_dir) else { return };
         self.plugins.dir = Some(dir.clone());
         let id = c.pkg.manifest.id.clone();
         self.unload_plugin(&id);
-        if let Err(e) = store::install(&dir, &mut self.plugins.lock, &c.pkg, &c.source, &c.key, c.granted) {
+        if let Err(e) = store::install(&dir, &mut self.plugins.lock, &c.pkg, &c.source, &c.key, c.granted, c.programs) {
             self.status = Some(format!("Could not install {}: {e}", c.pkg.manifest.name));
             return;
         }
@@ -864,6 +904,28 @@ impl CodeApp {
                             .color(pal.text_dim),
                     );
                 }
+                if !m.programs.is_empty() {
+                    ui.label(RichText::new("It also wants to start programs.").strong().color(WARNING));
+                    ui.label(
+                        RichText::new(
+                            "A program runs outside the sandbox with all your rights: it can read and change your \
+                             files and use the network. Approve only what you trust this plugin to run, in folders \
+                             you've trusted. Each start is written to its log.",
+                        )
+                        .small()
+                        .color(WARNING),
+                    );
+                    for program in &m.programs {
+                        let mut on = c.programs.contains(program);
+                        if ui.checkbox(&mut on, RichText::new(program).monospace()).changed() {
+                            if on {
+                                c.programs.insert(program.clone());
+                            } else {
+                                c.programs.remove(program);
+                            }
+                        }
+                    }
+                }
                 ui.horizontal(|ui| {
                     accept = ui.button(verb).clicked();
                     cancel = ui.button("Cancel").clicked();
@@ -878,6 +940,8 @@ impl CodeApp {
             self.plugins.consent = None;
         }
 
+        // A floating bar would cover each plugin's uninstall button when it widens.
+        ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             self.installed_section(ui, &ctx);
             if !self.plugins.updates.is_empty() {
@@ -893,7 +957,7 @@ impl CodeApp {
                             }
                         });
                     });
-                    if !d.manifest.added_permissions.is_empty() || d.key_changed {
+                    if !d.manifest.added_permissions.is_empty() || !d.manifest.added_programs.is_empty() || d.key_changed {
                         ui.label(RichText::new("Asks for more, review before updating").small().color(WARNING));
                     }
                 }
@@ -961,6 +1025,7 @@ impl CodeApp {
         enum Action {
             Enable(String, bool),
             Grant(String, Permission, bool),
+            GrantProgram(String, String, bool),
             Uninstall(String),
         }
         let mut actions = Vec::new();
@@ -1004,6 +1069,13 @@ impl CodeApp {
                         actions.push(Action::Grant(info.id.clone(), *p, on));
                     }
                 }
+                for program in &m.programs {
+                    let mut on = locked.granted_programs.contains(program);
+                    let label = RichText::new(format!("May start {program} (outside the sandbox)")).small();
+                    if ui.checkbox(&mut on, label).changed() {
+                        actions.push(Action::GrantProgram(info.id.clone(), program.clone(), on));
+                    }
+                }
             }
             if !info.log.is_empty() {
                 let label = if info.show_log { "Hide log" } else { "Show log" };
@@ -1045,6 +1117,20 @@ impl CodeApp {
                     }
                     self.plugins.last_doc = None;
                 }
+                Action::GrantProgram(id, program, on) => {
+                    let programs = self.plugins.lock.get_mut(&id).map(|l| {
+                        if on {
+                            l.granted_programs.insert(program);
+                        } else {
+                            l.granted_programs.remove(&program);
+                        }
+                        l.granted_programs.clone()
+                    });
+                    self.save_lock();
+                    if let (Some(host), Some(programs)) = (&self.plugins.host, programs) {
+                        host.grant_programs(&id, programs);
+                    }
+                }
                 Action::Uninstall(id) => self.uninstall_plugin(&id),
             }
         }
@@ -1079,7 +1165,7 @@ impl CodeApp {
             if panel.blocks.is_empty() {
                 ui.label(RichText::new("Nothing to show yet.").color(pal.text_dim));
             }
-            for block in &panel.blocks {
+            for (index, block) in panel.blocks.iter().enumerate() {
                 match block {
                     Block::Heading(t) => {
                         ui.label(RichText::new(t).strong().size(self.font_size * 1.1));
@@ -1099,6 +1185,56 @@ impl CodeApp {
                     }
                     Block::Separator => {
                         ui.separator();
+                    }
+                    Block::Spans(spans) => {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing.x = 0.0;
+                            for span in spans {
+                                let mut text = RichText::new(&span.text);
+                                if let Some(rgb) = span.color {
+                                    text = text.color(egui::Color32::from_rgb(
+                                        (rgb >> 16) as u8,
+                                        (rgb >> 8) as u8,
+                                        rgb as u8,
+                                    ));
+                                }
+                                if span.bold {
+                                    text = text.strong();
+                                }
+                                if span.monospace {
+                                    text = text.monospace();
+                                }
+                                ui.label(text);
+                            }
+                        });
+                    }
+                    Block::Table(table) => {
+                        egui::Grid::new(("plugin_table", index)).striped(true).spacing([12.0, 3.0]).show(ui, |ui| {
+                            for header in &table.headers {
+                                ui.label(RichText::new(header).strong());
+                            }
+                            ui.end_row();
+                            for row in &table.rows {
+                                for cell in row {
+                                    ui.label(cell);
+                                }
+                                ui.end_row();
+                            }
+                        });
+                    }
+                    Block::Diff(text) => {
+                        egui::Frame::new().fill(pal.editor_bg).inner_margin(4.0).show(ui, |ui| {
+                            for line in text.lines() {
+                                let color = if line.starts_with('+') && !line.starts_with("+++") {
+                                    egui::Color32::from_rgb(0x89, 0xD1, 0x85)
+                                } else if line.starts_with('-') && !line.starts_with("---") {
+                                    egui::Color32::from_rgb(0xF1, 0x4C, 0x4C)
+                                } else {
+                                    pal.text
+                                };
+                                ui.label(RichText::new(line).monospace().color(color));
+                            }
+                        });
                     }
                     Block::Button(b) => {
                         if ui.button(&b.label).clicked() {

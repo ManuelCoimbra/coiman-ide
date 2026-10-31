@@ -91,6 +91,11 @@ pub(super) enum Pending {
     PullDiagnostics {
         path: PathBuf,
     },
+    /// Asked by a plugin, which gets the answer as it is.
+    Plugin {
+        plugin: String,
+        id: u64,
+    },
     CodeLens {
         uid: u64,
     },
@@ -589,6 +594,10 @@ impl CodeApp {
     }
 
     fn on_response(&mut self, kind: ServerKind, pending: Pending, result: Result<Value, String>) {
+        if let Pending::Plugin { plugin, id } = &pending {
+            self.plugin_server_answer(plugin, *id, result);
+            return;
+        }
         let value = match result {
             Ok(v) => v,
             Err(e) => {
@@ -645,6 +654,7 @@ impl CodeApp {
             Pending::WorkspaceSymbols => self.on_workspace_symbols(value),
             Pending::PullDiagnostics { path } => self.on_pulled_diagnostics(path, value),
             Pending::VirtualDocument { uri, range } => self.on_virtual_document(&uri, range, &value),
+            Pending::Plugin { .. } => {}
             Pending::CodeLens { uid } => self.on_code_lens(uid, value),
             Pending::CodeLensResolve { uid, index } => self.on_code_lens_resolved(uid, index, value),
             Pending::HierarchyPrepare { hierarchy, word } => self.on_hierarchy_prepared(hierarchy, word, value),
