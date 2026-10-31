@@ -28,6 +28,7 @@ mod repl;
 mod settings_ui;
 mod snippets_ui;
 mod split;
+mod tables;
 mod traces;
 mod web;
 mod window;
@@ -154,6 +155,7 @@ pub struct CodeApp {
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
     web: web::Web,
+    tables: tables::Tables,
     traces: traces::Traces,
     cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
@@ -273,6 +275,7 @@ impl CodeApp {
             snippets_ui: Default::default(),
             md_preview: Default::default(),
             web: Default::default(),
+            tables: Default::default(),
             traces: Default::default(),
             cpp: Default::default(),
             auto_save: Default::default(),
@@ -469,7 +472,7 @@ impl eframe::App for CodeApp {
                 self.diff_view(ui);
                 return;
             }
-            if self.image_view(ui) {
+            if self.image_view(ui) || self.table_view(ui) {
                 return;
             }
             self.markdown_preview(ui);

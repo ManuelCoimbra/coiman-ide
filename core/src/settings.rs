@@ -90,6 +90,8 @@ pub struct EditorSettings {
     pub glyph_bar: bool,
     /// More folders to look for included files in, from the project's folder.
     pub include_paths: Vec<String>,
+    /// Color each column of CSV and TSV files in the text.
+    pub csv_colors: bool,
     /// Tab grows Emmet abbreviations in HTML and CSS.
     pub emmet: bool,
     /// Show what servers report about a line at its end, such as reference counts.
@@ -291,6 +293,7 @@ impl Default for EditorSettings {
             semantic_highlighting: true,
             inlay_hints: true,
             emmet: true,
+            csv_colors: true,
             rulers: Vec::new(),
             glyph_bar: true,
             include_paths: Vec::new(),

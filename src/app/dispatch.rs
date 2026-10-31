@@ -387,6 +387,7 @@ impl CodeApp {
                 self.expand_emmet(false);
             }
             Command::PickColor => self.pick_color(),
+            Command::ToggleTableView => self.toggle_table_view(),
             Command::InsertSymbol => self.pick_glyph(ctx),
             Command::GoToInclude => self.open_include(),
             Command::AnalyzeStackTrace => self.analyze_stack_trace(),

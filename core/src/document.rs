@@ -379,6 +379,8 @@ fn built_in_language_name(ext: &str) -> &'static str {
         "tsx" => "TypeScript React",
         "jsx" => "JavaScript React",
         "json" => "JSON",
+        "csv" => "CSV",
+        "tsv" | "tab" => "TSV",
         "html" | "htm" | "xhtml" => "HTML",
         "css" => "CSS",
         "scss" => "SCSS",

@@ -1038,6 +1038,12 @@ impl CodeApp {
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
             }
+            if let Some(text) = self.table_label() {
+                let resp = ui.add(egui::Label::new(white(text)).sense(Sense::click()).selectable(false));
+                if resp.clicked() {
+                    status_cmd = Some(Command::ToggleTableView);
+                }
+            }
             if let Some((text, tip)) = self.cpp_label() {
                 let resp =
                     ui.add(egui::Label::new(white(text)).sense(Sense::click()).selectable(false)).on_hover_text(tip);

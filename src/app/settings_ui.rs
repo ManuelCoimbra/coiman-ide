@@ -98,6 +98,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 Kind::Toggle,
             ),
             row("editor", "glyph_bar", "Glyph bar", "Characters to click, for languages with their own.", Kind::Toggle),
+            row("editor", "csv_colors", "CSV column colors", "Color each column of CSV and TSV files.", Kind::Toggle),
             row("editor", "emmet", "Emmet", "Tab grows abbreviations in HTML and CSS.", Kind::Toggle),
             row(
                 "editor",

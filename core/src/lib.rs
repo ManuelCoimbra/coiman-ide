@@ -42,6 +42,7 @@ pub mod stacktrace;
 pub mod structure;
 pub mod symbols;
 pub mod syntax;
+pub mod table;
 pub mod termfind;
 pub mod theme;
 pub mod trust;

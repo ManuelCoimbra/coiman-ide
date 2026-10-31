@@ -5,6 +5,7 @@
 mod app;
 mod editor_view;
 mod explorer;
+mod grid_view;
 mod icons;
 mod keymap;
 mod lsp_ui;
