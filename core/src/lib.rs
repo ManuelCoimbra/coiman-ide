@@ -5,6 +5,7 @@
 pub mod baseline;
 pub mod bookmarks;
 pub mod buffer;
+pub mod build_tools;
 pub mod cargo;
 pub mod commands;
 pub mod compile_db;

@@ -11,6 +11,7 @@ use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use egui::{Align, Color32, RichText, Sense};
+use rust_code_core::build_tools::{self, BuildTool};
 use rust_code_core::cargo::{
     self, CargoDiagnostic, FileTarget, Outcome, OutputParser, RunConfig, Runner, TestItem, TestScope,
 };
@@ -137,6 +138,10 @@ pub(super) struct CargoState {
     /// The configuration each folder's Run button is set to; none means the
     /// current file. Kept in the session.
     pub(super) run_pins: std::collections::BTreeMap<PathBuf, String>,
+    /// A tool the build needs, on offer to download.
+    tool_offer: Option<BuildTool>,
+    tool_declined: bool,
+    tool_install: Option<(BuildTool, std::sync::mpsc::Receiver<Result<(), String>>)>,
     /// What `configs` were read for: the folder and its files' change times.
     configs_for: Option<ConfigsKey>,
     configs_checked: f64,
@@ -171,6 +176,9 @@ impl Default for CargoState {
             diagnostics: HashMap::new(),
             configs: Vec::new(),
             run_pins: std::collections::BTreeMap::new(),
+            tool_offer: None,
+            tool_declined: false,
+            tool_install: None,
             configs_for: None,
             configs_checked: f64::NEG_INFINITY,
             nextest: None,
@@ -1147,7 +1155,74 @@ impl CodeApp {
         self.cargo.run_refusal = Some((why, ctx.input(|i| i.time), tab));
     }
 
+    /// Offers a tool the build lacks, and fetches it on a yes. Nothing is downloaded
+    /// without one. Once it's here, Run goes ahead as it was asked to.
+    fn tool_offer_ui(&mut self, ctx: &egui::Context) {
+        if let Some((tool, rx)) = &self.cargo.tool_install
+            && let Ok(result) = rx.try_recv()
+        {
+            let name = tool.name();
+            self.cargo.tool_install = None;
+            match result {
+                Ok(()) => {
+                    self.status = Some(format!("{name} is ready"));
+                    self.run_program(ctx);
+                }
+                Err(why) => self.status = Some(format!("Could not get {name}: {why}")),
+            }
+        }
+        if let Some((tool, _)) = &self.cargo.tool_install {
+            let name = tool.name();
+            egui::Window::new("Getting a build tool")
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0))
+                .show(ctx, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spinner();
+                        ui.label(format!("Downloading and unpacking {name}…"));
+                    });
+                });
+            return;
+        }
+        let Some(tool) = self.cargo.tool_offer else { return };
+        let (mut download, mut later) = (false, false);
+        egui::Window::new("A build tool is missing")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0))
+            .show(ctx, |ui| {
+                ui.set_max_width(460.0);
+                ui.label(tool.offer());
+                ui.label(RichText::new("It uses the system's curl and tar, and checks the file's hash.").small());
+                ui.horizontal(|ui| {
+                    download = ui.button("Download").clicked();
+                    later = ui.button("Not Now").clicked();
+                });
+            });
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            later = true;
+        }
+        if later {
+            self.cargo.tool_offer = None;
+            self.cargo.tool_declined = true;
+            self.status = Some("Run again to try without it: CMake will say what it can't find".to_owned());
+        }
+        if download {
+            self.cargo.tool_offer = None;
+            let (tx, rx) = mpsc::channel();
+            let wake = repaint(ctx);
+            std::thread::spawn(move || {
+                let _ = tx.send(build_tools::install(tool));
+                wake();
+            });
+            self.cargo.tool_install = Some((tool, rx));
+        }
+        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+    }
+
     pub(super) fn run_refusal_ui(&mut self, ctx: &egui::Context) {
+        self.tool_offer_ui(ctx);
         let Some((why, since, tab)) = &self.cargo.run_refusal else { return };
         let left = RUN_REFUSAL_SECONDS - (ctx.input(|i| i.time) - since);
         // It's about that tab: on another it would read as being about this one.
@@ -1223,6 +1298,14 @@ impl CodeApp {
     /// Runs a plan in its own terminal tab.
     fn start_run(&mut self, ctx: &egui::Context, plan: &run::RunPlan) {
         if !self.allowed_to_run(&plan.cwd) {
+            return;
+        }
+        // A build that can't work is better stopped here, with a way forward.
+        if plan.command.starts_with("cmake -S")
+            && !self.cargo.tool_declined
+            && let Some(tool) = build_tools::needed_for_cmake(&plan.cwd)
+        {
+            self.cargo.tool_offer = Some(tool);
             return;
         }
         let (program, args) = shell(&plan.command);

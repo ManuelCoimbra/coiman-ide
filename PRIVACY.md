@@ -52,6 +52,10 @@ from where:
   There are no automatic update checks. A URL is fetched with your system's
   `curl`; a folder is read directly. Nothing is installed until you approve the
   plugin's permissions.
+  - Build tools: when Run finds a CMake project on Windows with no build tool or compiler, it
+  offers Ninja from github.com/ninja-build, or GCC from github.com/brechtsanders. Fixed versions,
+  fetched with your system's `curl` and `tar`, and checked against a known hash. Nothing is
+  downloaded until you click **Download**.
 - **Plugins themselves** have no network access. They run sandboxed with only
   the editor's plugin API, and they reach your files and editor only through
   the permissions you granted.
@@ -75,6 +79,7 @@ from where:
 | `<config>\plugins\` (plugin files, `plugins.lock`) | yes | when you install, update, uninstall, enable or change a plugin's permissions | installed plugins, their hashes, trusted publisher keys and what you granted |
 | `<config>\lsp\` | yes | when you agree to download a language server (clangd, jdtls, its Java runtime) | language servers Rust Code installed itself; jdtls keeps its index there too |
 | `<config>\codelldb\` | yes | when you agree to download the debugger | CodeLLDB, the debug adapter |
+| `<config>\tools\` | yes | when you agree to download a build tool | Ninja, or GCC from winlibs, for CMake projects; only what Rust Code runs uses them |
 | `<folder>\.rust-code\settings.toml` | yes | when you edit it | workspace settings |
 | Installed VS Code themes (`%LOCALAPPDATA%\Programs\Microsoft VS Code`, `~\.vscode\extensions`) | theme files only | never | the Color Theme picker |
 | An installed VS Code CodeLLDB extension (`~\.vscode\extensions\vadimcn.vscode-lldb-*`) | its adapter only | never | debugging without a second download |

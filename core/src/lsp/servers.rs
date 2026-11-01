@@ -281,6 +281,7 @@ pub fn which(name: &str) -> Option<PathBuf> {
     if let Some(appdata) = std::env::var_os("APPDATA") {
         dirs.push(Path::new(&appdata).join("npm"));
     }
+    dirs.extend(crate::build_tools::dirs());
     if let Some(home) = home() {
         dirs.push(home.join(".dotnet").join("tools"));
         dirs.push(home.join("go").join("bin"));
@@ -561,6 +562,11 @@ fn system(name: &str) -> PathBuf {
     let sys = std::env::var_os("SystemRoot")
         .map(|r| Path::new(&r).join("System32").join(format!("{name}{}", std::env::consts::EXE_SUFFIX)));
     sys.filter(|p| p.exists()).unwrap_or_else(|| PathBuf::from(name))
+}
+
+/// A program from the system's own folder, for downloads and unpacking.
+pub fn system_tool(name: &str) -> PathBuf {
+    system(name)
 }
 
 /// Installs a server. Only call this after the user agreed.

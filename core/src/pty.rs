@@ -21,7 +21,10 @@ pub use alacritty_terminal;
 fn merged_path(other: Option<&std::ffi::OsStr>) -> Option<std::ffi::OsString> {
     let own = std::env::var_os("PATH")?;
     let mut parts: Vec<std::path::PathBuf> = std::env::split_paths(&own).collect();
-    for part in other.into_iter().flat_map(std::env::split_paths) {
+    // Then what Rust Code fetched: what's already on the system comes first.
+    let fetched = crate::build_tools::dirs();
+    let extra: Vec<std::path::PathBuf> = other.into_iter().flat_map(std::env::split_paths).chain(fetched).collect();
+    for part in extra {
         if !parts.contains(&part) {
             parts.push(part);
         }
