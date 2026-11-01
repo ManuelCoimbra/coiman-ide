@@ -457,12 +457,14 @@ mod socket_tests {
             let msg = read_message(&mut reader).unwrap().unwrap();
             let answer = json!({ "type": "response", "request_seq": msg["seq"], "success": true, "body": { "ok": 1 } });
             writer.write_all(&encode(&answer)).unwrap();
+            // At once, whatever else is running: a process started meanwhile can hold a copy.
+            writer.shutdown(std::net::Shutdown::Both).unwrap();
         });
         let mut client = DapClient::connect(&address, || {}).unwrap();
         assert_eq!(client.address(), Some(address.as_str()));
         let seq = client.request("initialize", json!({}));
         let mut seen = Vec::new();
-        for _ in 0..200 {
+        for _ in 0..1500 {
             seen.extend(client.poll());
             if seen.iter().any(|e| matches!(e, DapEvent::Exited)) {
                 break;

@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use egui::{Key, RichText};
+use rust_code_core::search::{Msg, Query, SearchHandle};
 
 use crate::commands::{COMMANDS, Command};
 use crate::finder::FileFinder;
@@ -12,6 +13,10 @@ use crate::theme;
 
 pub enum PaletteResult {
     OpenFile(PathBuf),
+    /// A file at a 1-based line, selecting these columns.
+    OpenAt(PathBuf, usize, (usize, usize)),
+    /// Settings, on one setting.
+    OpenSetting(String),
     Run(Command),
     /// A plugin command (its palette key).
     RunPlugin(String),
@@ -68,6 +73,128 @@ struct Picker {
     placeholder: &'static str,
 }
 
+/// What Search Everywhere is showing.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum EverywhereTab {
+    All,
+    Files,
+    Symbols,
+    Commands,
+    Settings,
+    Text,
+}
+
+const EVERYWHERE_TABS: [(EverywhereTab, &str); 6] = [
+    (EverywhereTab::All, "All"),
+    (EverywhereTab::Files, "Files"),
+    (EverywhereTab::Symbols, "Symbols"),
+    (EverywhereTab::Commands, "Commands"),
+    (EverywhereTab::Settings, "Settings"),
+    (EverywhereTab::Text, "Text"),
+];
+
+/// Seconds of no typing before searching the text of a project.
+const TEXT_SEARCH_DELAY: f64 = 0.2;
+/// Lines of text kept from a search.
+const TEXT_RESULTS: usize = 200;
+
+/// Search Everywhere's search of the project's text, running behind it.
+#[derive(Default)]
+struct TextSearch {
+    handle: Option<SearchHandle>,
+    /// What was last searched for.
+    searched: String,
+    /// What's being typed, and when it last changed.
+    typed: String,
+    typed_at: f64,
+    /// (file, 1-based line, its text, columns).
+    results: Vec<(PathBuf, usize, String, (usize, usize))>,
+}
+
+impl TextSearch {
+    /// Follows what's typed, once typing pauses, and collects what's found so far.
+    fn pump(&mut self, ctx: &egui::Context, query: &str, root: Option<&Path>) {
+        let now = ctx.input(|i| i.time);
+        if query != self.typed {
+            self.typed = query.to_owned();
+            self.typed_at = now;
+        }
+        if self.searched != self.typed {
+            if now - self.typed_at < TEXT_SEARCH_DELAY {
+                ctx.request_repaint_after(std::time::Duration::from_millis(50));
+            } else {
+                self.searched = self.typed.clone();
+                self.results.clear();
+                self.handle = match root.filter(|_| self.searched.chars().count() >= 2) {
+                    Some(root) => {
+                        let wake = ctx.clone();
+                        let query = Query { text: self.searched.clone(), ..Query::default() };
+                        Some(SearchHandle::spawn(query, root.to_path_buf(), move || wake.request_repaint()))
+                    }
+                    None => None,
+                };
+            }
+        }
+        let mut finished = false;
+        if let Some(handle) = &self.handle {
+            while let Some(message) = handle.try_recv() {
+                match message {
+                    Msg::File(file) => {
+                        for found in file.matches {
+                            if self.results.len() < TEXT_RESULTS {
+                                self.results.push((file.path.clone(), found.line, found.text, found.cols));
+                            }
+                        }
+                    }
+                    Msg::Done { .. } | Msg::Error(_) => finished = true,
+                }
+            }
+        }
+        if finished || self.results.len() >= TEXT_RESULTS {
+            self.handle = None;
+        }
+    }
+}
+
+/// Tells Shift pressed twice alone from Shift used for anything else.
+#[derive(Default)]
+pub struct DoubleShift {
+    down: bool,
+    clean: bool,
+    pressed_at: f64,
+    last_tap: Option<f64>,
+}
+
+impl DoubleShift {
+    /// Longest press that counts as a tap, and longest wait between the two.
+    const TAP: f64 = 0.4;
+    const BETWEEN: f64 = 0.45;
+
+    /// Each frame: whether Shift is down, and whether anything else was pressed or held.
+    /// Returns true on the release that completes a double press.
+    pub fn update(&mut self, shift: bool, other: bool, now: f64) -> bool {
+        if other {
+            self.clean = false;
+            self.last_tap = None;
+        }
+        if shift && !self.down {
+            self.down = true;
+            self.clean = !other;
+            self.pressed_at = now;
+        } else if !shift && self.down {
+            self.down = false;
+            if self.clean && now - self.pressed_at <= Self::TAP {
+                if self.last_tap.is_some_and(|last| now - last <= Self::BETWEEN) {
+                    self.last_tap = None;
+                    return true;
+                }
+                self.last_tap = Some(now);
+            }
+        }
+        false
+    }
+}
+
 #[derive(Default)]
 pub struct Palette {
     pub open: bool,
@@ -84,6 +211,13 @@ pub struct Palette {
     pub symbols: Vec<(String, String)>,
     /// Commands that don't apply here.
     pub hidden_commands: &'static [Command],
+    /// When set, the palette is Search Everywhere, on this tab.
+    everywhere: Option<EverywhereTab>,
+    /// The folder Search Everywhere searches.
+    everywhere_root: Option<PathBuf>,
+    /// Every setting: (label, section).
+    setting_rows: Vec<(String, String)>,
+    text_search: TextSearch,
 }
 
 impl Palette {
@@ -94,6 +228,20 @@ impl Palette {
         self.just_opened = true;
         self.picker = None;
         self.input = None;
+        self.everywhere = None;
+    }
+
+    /// Opens Search Everywhere over `root`, which also knows these settings.
+    pub fn show_everywhere(&mut self, root: Option<PathBuf>, settings: Vec<(String, String)>) {
+        self.show_with("");
+        self.everywhere = Some(EverywhereTab::All);
+        self.everywhere_root = root;
+        self.setting_rows = settings;
+    }
+
+    /// Search Everywhere's tab, unless a prefix has taken the query over.
+    fn everywhere_tab(&self) -> Option<EverywhereTab> {
+        self.everywhere.filter(|_| !self.query.starts_with(['>', '#', ':']))
     }
 
     /// Opens an input box prefilled with `initial` (all of it selected).
@@ -114,6 +262,10 @@ impl Palette {
     pub fn symbol_query(&self) -> Option<&str> {
         if !self.open || self.picker.is_some() || self.input.is_some() {
             return None;
+        }
+        if let Some(tab) = self.everywhere_tab() {
+            let q = self.query.trim();
+            return (matches!(tab, EverywhereTab::All | EverywhereTab::Symbols) && !q.is_empty()).then_some(q);
         }
         self.query.strip_prefix('#').map(str::trim)
     }
@@ -142,6 +294,58 @@ impl Palette {
             matching.sort_by_key(|t| t.to_lowercase().find(&lower).unwrap_or(usize::MAX));
             for t in matching {
                 items.push((t.clone(), String::new(), PaletteResult::Picked(picker.kind, t.clone()), Vec::new()));
+            }
+        } else if let Some(tab) = self.everywhere_tab() {
+            let q = self.query.trim().to_owned();
+            let all = tab == EverywhereTab::All;
+            // In All each kind gets a few; a tab shows everything it has.
+            let cap = |few: usize, many: usize| if all { few } else { many };
+            let wanted = |one: EverywhereTab| all || tab == one;
+            empty_text = if q.is_empty() { "Type to search" } else { "No matching results" };
+            if wanted(EverywhereTab::Files) {
+                finder.set_query(&q);
+                for m in finder.results(cap(8, 200) as u32) {
+                    let name = m.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let dir = Path::new(&m.rel).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+                    let name_start = m.rel.chars().count() - name.chars().count();
+                    let hl = m.indices.iter().filter_map(|&i| (i as usize).checked_sub(name_start)).collect();
+                    items.push((name, dir, PaletteResult::OpenFile(m.path), hl));
+                }
+                if finder.is_scanning() {
+                    ctx.request_repaint_after(std::time::Duration::from_millis(50));
+                }
+            }
+            if wanted(EverywhereTab::Symbols) && !q.is_empty() {
+                for (i, (name, detail)) in self.symbols.iter().enumerate().take(cap(6, 200)) {
+                    items.push((name.clone(), detail.clone(), PaletteResult::WorkspaceSymbol(i), Vec::new()));
+                }
+                if !all && self.symbols.is_empty() {
+                    empty_text = "No symbols (they need a language server)";
+                }
+            }
+            if wanted(EverywhereTab::Commands) && (!all || !q.is_empty()) {
+                let shown = COMMANDS.iter().filter(|(cmd, name)| {
+                    !self.hidden_commands.contains(cmd)
+                        && if all { words_match(name, &q) } else { fuzzy_match(name, &q) }
+                });
+                for (cmd, name) in shown.take(cap(6, 500)) {
+                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), Vec::new()));
+                }
+            }
+            if wanted(EverywhereTab::Settings) && (!all || !q.is_empty()) {
+                let shown = self.setting_rows.iter().filter(|(label, _)| words_match(label, &q));
+                for (label, section) in shown.take(cap(4, 200)) {
+                    items.push((label.clone(), section.clone(), PaletteResult::OpenSetting(label.clone()), Vec::new()));
+                }
+            }
+            if wanted(EverywhereTab::Text) {
+                let root = self.everywhere_root.clone();
+                self.text_search.pump(ctx, &q, root.as_deref());
+                for (path, line, text, cols) in self.text_search.results.iter().take(cap(8, TEXT_RESULTS)) {
+                    let inside = root.as_deref().and_then(|r| path.strip_prefix(r).ok()).unwrap_or(path);
+                    let detail = format!("{}:{line}", inside.display());
+                    items.push((text.clone(), detail, PaletteResult::OpenAt(path.clone(), *line, *cols), Vec::new()));
+                }
             }
         } else if let Some(q) = self.query.strip_prefix('>') {
             let q = q.trim();
@@ -185,6 +389,17 @@ impl Palette {
             }
         }
 
+        if let Some(tab) = self.everywhere_tab() {
+            let (next, back) = ctx.input_mut(|i| {
+                (i.consume_key(egui::Modifiers::NONE, Key::Tab), i.consume_key(egui::Modifiers::SHIFT, Key::Tab))
+            });
+            if next || back {
+                let at = EVERYWHERE_TABS.iter().position(|t| t.0 == tab).unwrap_or(0);
+                let count = EVERYWHERE_TABS.len();
+                self.everywhere = Some(EVERYWHERE_TABS[(at + if next { 1 } else { count - 1 }) % count].0);
+                self.selected = 0;
+            }
+        }
         let (up, down, enter) = ctx.input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, Key::ArrowUp),
@@ -203,7 +418,12 @@ impl Palette {
         }
 
         let mut result = None;
-        let width = (ctx.content_rect().width() * 0.5).clamp(400.0, 700.0);
+        let shown_tab = self.everywhere_tab();
+        let width = if shown_tab.is_some() {
+            (ctx.content_rect().width() * 0.6).clamp(500.0, 860.0)
+        } else {
+            (ctx.content_rect().width() * 0.5).clamp(400.0, 700.0)
+        };
         let area = egui::Area::new(egui::Id::unique("command_palette"))
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
@@ -212,11 +432,14 @@ impl Palette {
                     ui.set_width(width);
                     let edit = ui.add(
                         egui::TextEdit::singleline(&mut self.query)
-                            .hint_text(
-                                self.picker
-                                    .as_ref()
-                                    .map_or("Search files by name (> commands, : line, # symbols)", |p| p.placeholder),
-                            )
+                            .hint_text(self.picker.as_ref().map_or(
+                                if self.everywhere.is_some() {
+                                    "Search everything (Tab changes what)"
+                                } else {
+                                    "Search files by name (> commands, : line, # symbols)"
+                                },
+                                |p| p.placeholder,
+                            ))
                             .desired_width(f32::INFINITY),
                     );
                     // A click's release can hand focus back to the editor, and Enter would go there too.
@@ -237,17 +460,43 @@ impl Palette {
                         self.selected = 0;
                     }
                     ui.add_space(4.0);
+                    if let Some(tab) = shown_tab {
+                        ui.horizontal(|ui| {
+                            for (one, name) in EVERYWHERE_TABS {
+                                if ui.selectable_label(one == tab, name).clicked() {
+                                    self.everywhere = Some(one);
+                                    self.selected = 0;
+                                }
+                            }
+                        });
+                        ui.separator();
+                    }
 
                     // Room for every item up to the cap (the list otherwise keeps its first, smaller size).
                     let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
                     let wanted = (items.len().max(1) as f32 * row_h).min(360.0);
                     egui::ScrollArea::vertical().max_height(360.0).min_scrolled_height(wanted).show(ui, |ui| {
+                        let mut group = "";
                         for (i, (label, detail, outcome, hl)) in items.iter().enumerate() {
+                            if shown_tab == Some(EverywhereTab::All) && group_name(outcome) != group {
+                                group = group_name(outcome);
+                                ui.label(RichText::new(group).small().strong().color(theme::colors().text_dim));
+                            }
                             let selected = i == self.selected;
                             let resp = ui.horizontal(|ui| {
-                                if matches!(outcome, PaletteResult::OpenFile(_)) {
-                                    let size = ui.text_style_height(&egui::TextStyle::Body);
-                                    crate::icons::show_file(ui, &format!("{detail}/{label}"), size);
+                                let size = ui.text_style_height(&egui::TextStyle::Body);
+                                match outcome {
+                                    PaletteResult::OpenFile(_) => {
+                                        crate::icons::show_file(ui, &format!("{detail}/{label}"), size);
+                                    }
+                                    PaletteResult::OpenAt(path, ..) => {
+                                        crate::icons::show_file(ui, &path.to_string_lossy(), size);
+                                    }
+                                    PaletteResult::OpenSetting(_) => {
+                                        let color = theme::colors().text_dim;
+                                        crate::icons::show(ui, crate::icons::Icon::Gear, size, color);
+                                    }
+                                    _ => {}
                                 }
                                 let text = highlight_label(ui, label, hl);
                                 let r = ui.add(egui::Button::selectable(selected, text).truncate());
@@ -339,8 +588,82 @@ fn highlight_label(ui: &egui::Ui, label: &str, highlights: &[usize]) -> egui::te
     job
 }
 
+/// Which part of Search Everywhere's All tab a result is in.
+fn group_name(outcome: &PaletteResult) -> &'static str {
+    match outcome {
+        PaletteResult::OpenFile(_) => "FILES",
+        PaletteResult::WorkspaceSymbol(_) => "SYMBOLS",
+        PaletteResult::Run(_) | PaletteResult::RunPlugin(_) => "COMMANDS",
+        PaletteResult::OpenSetting(_) => "SETTINGS",
+        PaletteResult::OpenAt(..) => "TEXT",
+        _ => "",
+    }
+}
+
+/// Every word of the query is somewhere in the text, in any case. Short queries match too
+/// much loosely, when mixed in with other results.
+fn words_match(text: &str, query: &str) -> bool {
+    let text = text.to_lowercase();
+    query.to_lowercase().split_whitespace().all(|word| text.contains(word))
+}
+
 /// Case-insensitive subsequence match ("mnrs" matches "main.rs").
 fn fuzzy_match(text: &str, query: &str) -> bool {
     let mut chars = text.chars().flat_map(char::to_lowercase);
     query.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).all(|q| chars.any(|c| c == q))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Runs (shift, other, time) frames; returns the times it fired.
+    fn fired(frames: &[(bool, bool, f64)]) -> Vec<f64> {
+        let mut double = DoubleShift::default();
+        frames.iter().filter(|(shift, other, now)| double.update(*shift, *other, *now)).map(|f| f.2).collect()
+    }
+
+    #[test]
+    fn two_quick_presses_of_shift_alone() {
+        let quick = [(true, false, 0.0), (false, false, 0.1), (true, false, 0.2), (false, false, 0.3)];
+        assert_eq!(fired(&quick), [0.3]);
+    }
+
+    #[test]
+    fn typing_or_waiting_is_not_a_double_press() {
+        // Too far apart.
+        assert!(fired(&[(true, false, 0.0), (false, false, 0.1), (true, false, 2.0), (false, false, 2.1)]).is_empty());
+        // Held.
+        assert!(fired(&[(true, false, 0.0), (false, false, 1.0), (true, false, 1.1), (false, false, 1.2)]).is_empty());
+        // Capitals.
+        let typing =
+            [(true, false, 0.0), (true, true, 0.05), (false, false, 0.1), (true, false, 0.2), (false, false, 0.3)];
+        assert!(fired(&typing).is_empty());
+        // A key between the two.
+        let between =
+            [(true, false, 0.0), (false, false, 0.1), (false, true, 0.15), (true, false, 0.2), (false, false, 0.3)];
+        assert!(fired(&between).is_empty());
+        // With Ctrl held.
+        assert!(fired(&[(true, true, 0.0), (false, true, 0.1), (true, true, 0.2), (false, true, 0.3)]).is_empty());
+    }
+
+    #[test]
+    fn three_presses_fire_once() {
+        let frames = [
+            (true, false, 0.0),
+            (false, false, 0.1),
+            (true, false, 0.2),
+            (false, false, 0.3),
+            (true, false, 0.4),
+            (false, false, 0.5),
+        ];
+        assert_eq!(fired(&frames), [0.3]);
+    }
+
+    #[test]
+    fn words_in_any_order() {
+        assert!(words_match("View: Toggle Terminal", "terminal toggle"));
+        assert!(!words_match("View: Toggle Terminal", "tgl"));
+        assert!(fuzzy_match("View: Toggle Terminal", "tgl"));
+    }
 }

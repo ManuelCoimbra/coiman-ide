@@ -123,6 +123,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
         &[
             row(
                 "workbench",
+                "double_shift",
+                "Double Shift",
+                "Pressing Shift twice opens Search Everywhere.",
+                Kind::Toggle,
+            ),
+            row(
+                "workbench",
                 "ui",
                 "Layout",
                 "Rounded islands with gaps between them, or the classic square panels.",
@@ -451,7 +458,19 @@ fn number(
     None
 }
 
+/// Every setting, as (label, section), for Search Everywhere.
+pub(super) fn searchable() -> Vec<(String, String)> {
+    let rows = SECTIONS.iter().flat_map(|(title, rows)| rows.iter().map(move |r| (r.label, *title)));
+    rows.map(|(label, title)| (label.to_owned(), title.to_owned())).collect()
+}
+
 impl CodeApp {
+    /// Opens Settings on one setting.
+    pub(super) fn show_setting(&mut self, label: &str) {
+        self.settings_ui.open = true;
+        self.settings_ui.filter = label.to_owned();
+    }
+
     pub(super) fn settings_window(&mut self, ctx: &egui::Context) {
         if !self.settings_ui.open {
             return;

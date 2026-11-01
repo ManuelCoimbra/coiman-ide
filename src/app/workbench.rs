@@ -250,8 +250,8 @@ impl CodeApp {
                     if tool_button(ui, Icon::Gear, pal.text, "Settings").clicked() {
                         cmd = Some(Command::OpenUserSettings);
                     }
-                    if tool_button(ui, Icon::Search, pal.text, "Go to File").clicked() {
-                        cmd = Some(Command::QuickOpen);
+                    if tool_button(ui, Icon::Search, pal.text, "Search Everywhere (Double Shift)").clicked() {
+                        cmd = Some(Command::SearchEverywhere);
                     }
                     ui.add_space(8.0);
                     let green = Color32::from_rgb(0x57, 0xC0, 0x6A);
@@ -422,6 +422,7 @@ impl CodeApp {
                 item(ui, "Reset Code Zoom", Command::ResetCodeZoom);
             });
             ui.menu_button("Go", |ui| {
+                item(ui, "Search Everywhere", Command::SearchEverywhere);
                 item(ui, "Go to File...", Command::QuickOpen);
                 item(ui, "Go to Bracket", Command::JumpToBracket);
                 item(ui, "Go to Line...", Command::GoToLine);

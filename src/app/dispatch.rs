@@ -47,6 +47,7 @@ impl CodeApp {
         match cmd {
             Command::CommandPalette => self.open_palette(">"),
             Command::QuickOpen => self.open_palette(""),
+            Command::SearchEverywhere => self.open_everywhere(),
             Command::NewFile => self.new_file(),
             Command::OpenFile => {
                 let mut dialog = rfd::FileDialog::new();
@@ -534,6 +535,11 @@ impl CodeApp {
         }
     }
 
+    fn open_everywhere(&mut self) {
+        self.finder.refresh_if_stale();
+        self.palette.show_everywhere(self.explorer.root.clone(), super::settings_ui::searchable());
+    }
+
     pub(super) fn open_palette(&mut self, prefix: &str) {
         self.finder.refresh_if_stale();
         self.palette.show_with(prefix);
@@ -623,6 +629,19 @@ impl CodeApp {
     }
 
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        let (shift, other, now) = ctx.input(|i| {
+            let mods = i.modifiers;
+            // Shift's own press arrives as a key too.
+            let pressed = i.events.iter().any(|e| match e {
+                egui::Event::Key { key, pressed, .. } => *pressed && !matches!(key, Key::ShiftLeft | Key::ShiftRight),
+                egui::Event::Text(_) | egui::Event::PointerButton { pressed: true, .. } => true,
+                _ => false,
+            });
+            (mods.shift, pressed || mods.ctrl || mods.alt || mods.command, i.time)
+        });
+        if self.double_shift.update(shift, other, now) && self.settings.workbench.double_shift {
+            self.open_everywhere();
+        }
         if self.zen_mode
             && !self.find.open
             && self.chord.is_none()

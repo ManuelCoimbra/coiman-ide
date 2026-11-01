@@ -153,6 +153,7 @@ pub struct CodeApp {
     sidebar_visible: bool,
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
+    double_shift: crate::palette::DoubleShift,
     /// Bottom panel (Problems, References, Terminal).
     panel_visible: bool,
     panel_tab: PanelTab,
@@ -298,6 +299,7 @@ impl CodeApp {
             sidebar_visible: true,
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
+            double_shift: Default::default(),
             panel_visible: false,
             panel_tab: PanelTab::Terminal,
             font_size: DEFAULT_FONT_SIZE,
@@ -720,6 +722,15 @@ impl eframe::App for CodeApp {
         let palette_was_open = self.palette.open;
         match self.palette.ui(&ctx, &mut self.finder, &self.keymap) {
             Some(PaletteResult::OpenFile(path)) => self.open_file(&path),
+            Some(PaletteResult::OpenAt(path, line, cols)) => {
+                self.open_file(&path);
+                if let Some(doc) = self.active_doc() {
+                    let line = line.saturating_sub(1).min(doc.buffer.len_lines() - 1);
+                    let (start, end) = (doc.buffer.line_start(line), doc.buffer.line_end(line));
+                    doc.select((start + cols.0).min(end), (start + cols.1).min(end));
+                }
+            }
+            Some(PaletteResult::OpenSetting(label)) => self.show_setting(&label),
             Some(PaletteResult::Run(c)) => cmd = Some(c),
             Some(PaletteResult::WorkspaceSymbol(i)) => self.picked_workspace_symbol(i),
             Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
