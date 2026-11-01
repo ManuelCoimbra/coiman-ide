@@ -1349,7 +1349,9 @@ impl CodeApp {
                             let text = format!("{}   {place}", f.name);
                             let color =
                                 if f.path.as_ref().is_some_and(|p| p.exists()) { pal.text } else { pal.text_dim };
-                            if ui.selectable_label(i == s.selected, RichText::new(text).color(color)).clicked() {
+                            // Long names of generic code give way, or they'd widen the whole side bar.
+                            let row = egui::Button::selectable(i == s.selected, RichText::new(&text).color(color));
+                            if ui.add(row.truncate()).on_hover_text(&text).clicked() {
                                 select = Some(i);
                             }
                         }

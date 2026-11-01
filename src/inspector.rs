@@ -1,9 +1,14 @@
-//! One row of a tree of values, the same in the debugger and a live session.
+﻿//! One row of a tree of values, the same in the debugger and a live session.
 
 use eframe::egui::{self, Color32, RichText, Sense};
 
 use crate::icons::{self, Icon};
 use crate::theme;
+
+/// The least room a name or value gets, however narrow the panel.
+const NARROWEST: f32 = 40.0;
+/// Room kept at the end of a row for what's added there.
+const END_ROOM: f32 = 56.0;
 
 /// What a row shows.
 pub struct Row<'a> {
@@ -30,9 +35,15 @@ pub fn row(ui: &mut egui::Ui, row: &Row, mono: &egui::FontId, extra: impl FnOnce
             }
             // Not selectable, so a click anywhere on the row reaches it. Copy is on its menu.
             let name = RichText::new(row.name).font(mono.clone()).color(Color32::from_rgb(0x9C, 0xDC, 0xFE));
-            ui.add(egui::Label::new(name).selectable(false));
+            // Long ones give way, or they'd widen the whole side bar. Hovering shows all.
+            let height = ui.text_style_height(&egui::TextStyle::Body);
+            let room = ui.available_width();
+            let name_room = egui::vec2((room * 0.5).max(NARROWEST), height);
+            ui.allocate_ui(name_room, |ui| ui.add(egui::Label::new(name).selectable(false).truncate()));
             ui.add(egui::Label::new(RichText::new("=").font(mono.clone()).color(pal.text_dim)).selectable(false));
-            ui.add(egui::Label::new(RichText::new(row.value).font(mono.clone())).selectable(false));
+            let value_room = egui::vec2((ui.available_width() - END_ROOM).max(NARROWEST), height);
+            let value = RichText::new(row.value).font(mono.clone());
+            ui.allocate_ui(value_room, |ui| ui.add(egui::Label::new(value).selectable(false).truncate()));
             extra(ui);
         })
         .response
@@ -43,5 +54,7 @@ pub fn row(ui: &mut egui::Ui, row: &Row, mono: &egui::FontId, extra: impl FnOnce
             ui.close();
         }
     });
-    if row.type_name.is_empty() { response } else { response.on_hover_text(row.type_name) }
+    let full = format!("{} = {}", row.name, row.value);
+    let tip = if row.type_name.is_empty() { full } else { format!("{}\n{full}", row.type_name) };
+    response.on_hover_text(tip)
 }
