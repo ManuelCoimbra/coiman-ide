@@ -23,6 +23,7 @@ pub mod finder;
 pub mod fonts;
 pub mod formatters;
 pub mod git;
+pub mod goals;
 pub mod hexdata;
 pub mod highlight;
 pub mod history;

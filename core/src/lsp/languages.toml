@@ -195,6 +195,13 @@ include_paths = ["copybook", "copybooks", "copy", "cpy"]
 include_extensions = ["cpy", "cbl", "cob"]
 
 [[language]]
+name = "Coq"
+extensions = ["v"]
+server = "coq-lsp"
+root_markers = ["_CoqProject", "dune-project"]
+hint = "Install coq-lsp with opam"
+
+[[language]]
 name = "Lean"
 extensions = ["lean"]
 comment = "--"

@@ -388,6 +388,9 @@ impl CodeApp {
             }
             Command::PickColor => self.pick_color(),
             Command::ShowLive => self.show_live(),
+            Command::ShowCursorInfo => self.show_at_cursor(),
+            Command::CursorInfoPause => self.at_cursor_toggle_pause(),
+            Command::CursorInfoPin => self.at_cursor_pin(),
             Command::LiveLoadFile => self.live_load_file(),
             Command::ToggleCoverage => self.toggle_coverage(),
             Command::ShowCoverage => self.show_coverage_panel(),

@@ -118,6 +118,12 @@ pub(super) enum Pending {
         hierarchy: super::lsp_extra::Hierarchy,
         word: String,
     },
+    AtCursor {
+        pin: Option<u64>,
+        ask: u64,
+        part: super::at_cursor::Part,
+        prover: Option<rust_code_core::goals::Prover>,
+    },
 }
 
 pub(super) struct CompletionEntry {
@@ -268,7 +274,7 @@ fn fuzzy(text: &str, query: &str) -> bool {
     query.chars().flat_map(char::to_lowercase).all(|q| chars.any(|c| c == q))
 }
 
-fn hover_markdown(value: Value) -> String {
+pub(super) fn hover_markdown(value: Value) -> String {
     let Ok(Some(hover)) = serde_json::from_value::<Option<lt::Hover>>(value) else { return String::new() };
     let marked = |m: lt::MarkedString| match m {
         lt::MarkedString::String(s) => s,
@@ -606,6 +612,10 @@ impl CodeApp {
             self.plugin_server_answer(plugin, *id, result);
             return;
         }
+        if let Pending::AtCursor { pin, ask, part, prover } = pending {
+            self.on_at_cursor(pin, ask, part, prover, result);
+            return;
+        }
         let value = match result {
             Ok(v) => v,
             Err(e) => {
@@ -664,7 +674,7 @@ impl CodeApp {
             Pending::WorkspaceSymbols => self.on_workspace_symbols(value),
             Pending::PullDiagnostics { path } => self.on_pulled_diagnostics(path, value),
             Pending::VirtualDocument { uri, range } => self.on_virtual_document(&uri, range, &value),
-            Pending::Plugin { .. } => {}
+            Pending::Plugin { .. } | Pending::AtCursor { .. } => {}
             Pending::CodeLens { uid } => self.on_code_lens(uid, value),
             Pending::CodeLensResolve { uid, index } => self.on_code_lens_resolved(uid, index, value),
             Pending::HierarchyPrepare { hierarchy, word } => self.on_hierarchy_prepared(hierarchy, word, value),
@@ -807,7 +817,7 @@ impl CodeApp {
     }
 
     /// Problems at char `pos` of document `uid`.
-    fn problems_at(&self, uid: u64, pos: usize) -> Vec<(Severity, String)> {
+    pub(super) fn problems_at(&self, uid: u64, pos: usize) -> Vec<(Severity, String)> {
         let Some(doc) = self.doc_index(uid).map(|i| &self.docs[i]) else { return Vec::new() };
         let Some(path) = &doc.path else { return Vec::new() };
         let rope = doc.buffer.rope();
@@ -1237,6 +1247,12 @@ impl CodeApp {
                 let buf = &self.docs[i].buffer;
                 buf.word_at(a).is_some_and(|w| Some(w) == buf.word_at(b))
             })
+    }
+
+    /// Whether a server is up for this document, so asking won't complain.
+    pub(super) fn has_ready_server(&self, i: usize) -> bool {
+        let target = self.docs.get(i).and_then(lsp_target);
+        target.is_some_and(|(p, _, k)| self.lsp.clients.iter().any(|c| serves(c, k, &p) && c.is_ready()))
     }
 
     /// Ctrl+K Ctrl+I: hover info at the cursor.

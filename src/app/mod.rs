@@ -1,6 +1,7 @@
 //! Main application state and the per-frame loop. The behaviour is split by
 //! area into submodules that each add methods to [`CodeApp`].
 
+mod at_cursor;
 mod autosave;
 mod bookmarks;
 mod bytes_view;
@@ -84,6 +85,8 @@ enum PanelTab {
     PageConsole,
     /// A running system.
     Live,
+    /// What's known where the cursor is.
+    AtCursor,
     /// Files by how much of them ran.
     Coverage,
     /// Stack Trace: Analyze.
@@ -165,6 +168,7 @@ pub struct CodeApp {
     md_preview: md_preview::MdPreview,
     web: web::Web,
     live: live::Live,
+    at_cursor: at_cursor::AtCursor,
     coverage: coverage::Coverage,
     bytes: bytes_view::BytesState,
     logs: logs::Logs,
@@ -292,6 +296,7 @@ impl CodeApp {
             md_preview: Default::default(),
             web: Default::default(),
             live: Default::default(),
+            at_cursor: Default::default(),
             coverage: Default::default(),
             bytes: Default::default(),
             logs: Default::default(),
@@ -390,6 +395,7 @@ impl eframe::App for CodeApp {
         self.refresh_cargo_project(&ctx);
         self.pump_tests(&ctx);
         self.pump_live();
+        self.pump_at_cursor(&ctx);
         self.pump_coverage(&ctx);
         self.periodic_backup(&ctx);
         self.pump_syntax(&ctx);
