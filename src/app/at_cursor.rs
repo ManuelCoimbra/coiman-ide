@@ -37,12 +37,16 @@ struct Section {
     text: String,
     /// Per line, whether it's new since the last answer.
     changed: Vec<bool>,
+    /// Lines the last answer had and this one doesn't.
+    removed: Vec<String>,
 }
 
 /// What's known about one place.
 #[derive(Clone)]
 struct View {
     uid: u64,
+    /// To pick a pin up again if its file is closed and reopened.
+    path: Option<std::path::PathBuf>,
     pos: usize,
     version: u64,
     label: String,
@@ -120,6 +124,12 @@ impl CodeApp {
     }
 
     pub(super) fn pump_at_cursor(&mut self, ctx: &egui::Context) {
+        // In a proof, what's at the cursor is the point: it opens the first time.
+        if !self.at_cursor.used
+            && self.docs.get(self.active).is_some_and(|d| Prover::for_extension(&d.extension()).is_some())
+        {
+            self.show_at_cursor();
+        }
         if !self.panel_visible || self.panel_tab != PanelTab::AtCursor {
             return;
         }
@@ -147,6 +157,15 @@ impl CodeApp {
                 self.at_cursor.rest = None;
                 let (uid, pos, _) = wanted;
                 self.at_cursor_ask(None, uid, pos);
+            }
+        }
+        for at in 0..self.at_cursor.pins.len() {
+            let (uid, path) = (self.at_cursor.pins[at].1.uid, self.at_cursor.pins[at].1.path.clone());
+            let reopened = path.filter(|_| self.doc_index(uid).is_none()).and_then(|p| self.doc_index_by_path(&p));
+            if let Some(i) = reopened {
+                let view = &mut self.at_cursor.pins[at].1;
+                view.uid = self.docs[i].uid;
+                view.version = u64::MAX;
             }
         }
         // A pinned place's answers change with its file.
@@ -185,7 +204,7 @@ impl CodeApp {
         // A pin stays with its line, unless that line itself changed.
         let found = was.and_then(|(line, text, column)| Some(rope.line_to_char(find_line(doc, line, &text)?) + column));
         let pos = found.unwrap_or(pos).min(rope.len_chars());
-        let (version, label) = (doc.buffer.version(), place_label(doc, pos));
+        let (version, label, path) = (doc.buffer.version(), place_label(doc, pos), doc.path.clone());
         let line = rope.char_to_line(pos);
         let (line_text, column) = (doc.buffer.line_text(line), pos - rope.line_to_char(line));
         let prover = Prover::for_extension(&doc.extension());
@@ -206,8 +225,21 @@ impl CodeApp {
         let old = self.at_cursor_view(pin).filter(|v| v.uid == uid);
         let same_place = old.as_ref().is_some_and(|v| v.pos == pos);
         let sections = old.map(|v| std::mem::take(&mut v.sections)).unwrap_or_default();
-        let view =
-            View { uid, pos, version, label, line, line_text, column, sections, ask, waiting, same_place, has_server };
+        let view = View {
+            uid,
+            path,
+            pos,
+            version,
+            label,
+            line,
+            line_text,
+            column,
+            sections,
+            ask,
+            waiting,
+            same_place,
+            has_server,
+        };
         match pin {
             None => self.at_cursor.current = Some(view),
             Some(_) => *self.at_cursor_view(pin).expect("asked about an existing pin") = view,
@@ -256,7 +288,11 @@ impl CodeApp {
             (Part::Hover, _) | (_, None) => vec![false; text.lines().count()],
             (_, Some(at)) => goals::changed_lines(&view.sections[at].text, &text),
         };
-        let section = Section { part, text, changed };
+        let removed = match (part, at) {
+            (Part::Hover, _) | (_, None) => Vec::new(),
+            (_, Some(at)) => goals::removed_lines(&view.sections[at].text, &text),
+        };
+        let section = Section { part, text, changed, removed };
         match at {
             Some(at) => view.sections[at] = section,
             None => view.sections.push(section),
@@ -286,6 +322,10 @@ impl CodeApp {
                 let color = if changed { Color32::from_rgb(0x89, 0xD1, 0x85) } else { pal.editor_fg };
                 ui.add(egui::Label::new(RichText::new(line).font(mono.clone()).color(color)).wrap());
             }
+            for line in &section.removed {
+                let gone = RichText::new(line).font(mono.clone()).color(pal.text_dim).strikethrough();
+                ui.add(egui::Label::new(gone).wrap());
+            }
         }
         if view.sections.is_empty() && problems.is_empty() && view.waiting == 0 {
             let note =
@@ -302,7 +342,7 @@ impl CodeApp {
         let pinned: Vec<_> = self.at_cursor.pins.iter().map(|(_, v)| problems(self, v)).collect();
         let open: Vec<bool> = self.at_cursor.pins.iter().map(|(_, v)| self.doc_index(v.uid).is_some()).collect();
         let state = &self.at_cursor;
-        let (mut pause, mut pin, mut unpin) = (false, false, None);
+        let (mut pause, mut pin, mut unpin, mut go) = (false, false, None, None);
         ui.horizontal(|ui| {
             let label = state.current.as_ref().map_or("", |v| v.label.as_str());
             ui.label(RichText::new(label).strong());
@@ -328,7 +368,11 @@ impl CodeApp {
             for (at, (id, view)) in state.pins.iter().enumerate() {
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("Pinned: {}", view.label)).strong());
+                    let title = RichText::new(format!("Pinned: {}", view.label)).strong();
+                    let link = egui::Label::new(title).sense(egui::Sense::click()).selectable(false);
+                    if ui.add(link).on_hover_text("Go there").clicked() {
+                        go = Some((view.uid, view.pos));
+                    }
                     if !open[at] {
                         ui.label(RichText::new("(file closed)").color(pal.text_dim));
                     } else if view.waiting > 0 {
@@ -341,6 +385,16 @@ impl CodeApp {
                 Self::at_cursor_view_ui(ui, view, &pinned[at], size);
             }
         });
+        if let Some((uid, pos)) = go
+            && let Some(i) = self.doc_index(uid)
+        {
+            self.active = i;
+            let doc = &mut self.docs[i];
+            let pos = pos.min(doc.buffer.rope().len_chars());
+            doc.buffer.set_selections(vec![rust_code_core::buffer::Selection::new(pos, pos)], 0);
+            doc.reveal = true;
+            doc.request_focus = true;
+        }
         if pause {
             self.at_cursor_toggle_pause();
         }

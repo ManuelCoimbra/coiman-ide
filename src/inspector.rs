@@ -28,12 +28,20 @@ pub fn row(ui: &mut egui::Ui, row: &Row, mono: &egui::FontId, extra: impl FnOnce
             } else {
                 ui.add_space(size);
             }
-            ui.label(RichText::new(row.name).font(mono.clone()).color(Color32::from_rgb(0x9C, 0xDC, 0xFE)));
-            ui.label(RichText::new("=").font(mono.clone()).color(pal.text_dim));
-            ui.label(RichText::new(row.value).font(mono.clone()));
+            // Not selectable, so a click anywhere on the row reaches it. Copy is on its menu.
+            let name = RichText::new(row.name).font(mono.clone()).color(Color32::from_rgb(0x9C, 0xDC, 0xFE));
+            ui.add(egui::Label::new(name).selectable(false));
+            ui.add(egui::Label::new(RichText::new("=").font(mono.clone()).color(pal.text_dim)).selectable(false));
+            ui.add(egui::Label::new(RichText::new(row.value).font(mono.clone())).selectable(false));
             extra(ui);
         })
         .response
         .interact(Sense::click());
+    response.context_menu(|ui| {
+        if ui.button("Copy Value").clicked() {
+            ui.ctx().copy_text(row.value.to_owned());
+            ui.close();
+        }
+    });
     if row.type_name.is_empty() { response } else { response.on_hover_text(row.type_name) }
 }

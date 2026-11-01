@@ -399,7 +399,7 @@ impl eframe::App for CodeApp {
         self.pump_symbol_font(&ctx);
         self.refresh_cargo_project(&ctx);
         self.pump_tests(&ctx);
-        self.pump_live();
+        self.pump_live(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
         self.pump_coverage(&ctx);

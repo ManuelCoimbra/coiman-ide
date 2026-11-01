@@ -15,6 +15,8 @@ use crate::theme;
 
 /// What's kept of a session's conversation.
 const TRANSCRIPT_LINES: usize = 2000;
+const RETRIES: u32 = 5;
+const RETRY_SECONDS: f64 = 3.0;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Kind {
@@ -51,6 +53,12 @@ pub(super) struct Live {
     asked: HashMap<u64, Option<String>>,
     open: HashSet<String>,
     inspect_problem: Option<String>,
+    /// Code is reading input: the box below answers it.
+    awaiting_input: bool,
+    /// The connection dropped by itself: tries so far, and when to try next.
+    retry: Option<(u32, f64)>,
+    /// Values may have changed while the panel wasn't showing.
+    refresh_later: bool,
     used: bool,
 }
 
@@ -107,10 +115,31 @@ impl CodeApp {
         self.live.session = None;
         self.live.identity = None;
         self.live.running.clear();
+        self.live.retry = None;
+        self.live.awaiting_input = false;
         add_text(&mut self.live.transcript, Kind::Note, "Disconnected. The server keeps running.");
     }
 
-    pub(super) fn pump_live(&mut self) {
+    pub(super) fn pump_live(&mut self, ctx: &egui::Context) {
+        if let Some((tries, at)) = self.live.retry
+            && self.live.connecting.is_none()
+            && self.live.session.is_none()
+        {
+            let now = ctx.input(|i| i.time);
+            if tries >= RETRIES {
+                self.live.retry = None;
+            } else if now >= at {
+                self.live.retry = Some((tries + 1, now + RETRY_SECONDS));
+                self.live_connect(ctx);
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(RETRY_SECONDS));
+            } else {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(at - now));
+            }
+        }
+        if self.live.refresh_later && self.panel_visible && self.panel_tab == PanelTab::Live {
+            self.live.refresh_later = false;
+            self.live_refresh();
+        }
         if let Some(result) = self.live.connecting.as_ref().and_then(|rx| rx.try_recv().ok()) {
             self.live.connecting = None;
             match result {
@@ -136,6 +165,8 @@ impl CodeApp {
                 LiveEvent::Connected(identity) => {
                     add_text(&mut state.transcript, Kind::Note, &format!("Attached to {}", identity.system));
                     state.identity = Some(identity);
+                    state.retry = None;
+                    state.problem = None;
                     refresh = true;
                 }
                 LiveEvent::Output { text, error, .. } => {
@@ -154,7 +185,12 @@ impl CodeApp {
                         self.repls.set_answer(place.uid, place.line, place.line_text.clone(), text);
                     }
                 }
+                LiveEvent::NeedInput { .. } => {
+                    add_text(&mut state.transcript, Kind::Note, "The code is waiting for input: type it below.");
+                    state.awaiting_input = true;
+                }
                 LiveEvent::Done { id, namespace } => {
+                    state.awaiting_input = false;
                     state.running.retain(|r| *r != id);
                     state.in_editor.remove(&id);
                     if let Some(namespace) = namespace {
@@ -177,6 +213,9 @@ impl CodeApp {
                     state.identity = None;
                     state.running.clear();
                     state.in_editor.clear();
+                    state.awaiting_input = false;
+                    state.retry = Some((0, ctx.input(|i| i.time) + RETRY_SECONDS));
+                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(RETRY_SECONDS));
                     return;
                 }
             }
@@ -188,6 +227,13 @@ impl CodeApp {
     }
 
     fn live_refresh(&mut self) {
+        if !self.panel_visible || self.panel_tab != PanelTab::Live {
+            self.live.refresh_later = true;
+            return;
+        }
+        if !self.live.identity.as_ref().is_some_and(Identity::speaks_clojure) {
+            return;
+        }
         let mut queries: Vec<Option<String>> = vec![None];
         queries.extend(self.live.open.iter().cloned().map(Some));
         for query in queries {
@@ -246,6 +292,10 @@ impl CodeApp {
     }
 
     fn live_send(&mut self, request: Eval, place: Option<InEditor>) {
+        if self.live.identity.as_ref().is_some_and(|i| !i.can("eval")) {
+            self.status = Some("This server doesn't run code".to_owned());
+            return;
+        }
         add_text(&mut self.live.transcript, Kind::Input, &request.code);
         let Some(session) = &mut self.live.session else { return };
         let id = session.eval(request);
@@ -383,9 +433,12 @@ impl CodeApp {
                         }
                     });
                 ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!("{}=>", self.live.namespace)).font(mono.clone()).color(pal.text_dim),
-                    );
+                    let prompt = if self.live.awaiting_input {
+                        "input>".to_owned()
+                    } else {
+                        format!("{}=>", self.live.namespace)
+                    };
+                    ui.label(RichText::new(prompt).font(mono.clone()).color(pal.text_dim));
                     let edit =
                         TextEdit::singleline(&mut self.live.input).font(mono.clone()).desired_width(f32::INFINITY);
                     let response = ui.add_enabled(connected, edit);
@@ -404,7 +457,11 @@ impl CodeApp {
                 }
                 let mut toggle = None;
                 egui::ScrollArea::both().id_salt("live_inspect").auto_shrink([false, false]).show(ui, |ui| {
-                    if connected {
+                    if self.live.identity.as_ref().is_some_and(|i| !i.speaks_clojure()) {
+                        ui.label(
+                            RichText::new("Listing values is only written for Clojure so far.").color(pal.text_dim),
+                        );
+                    } else if connected {
                         Self::inspector_rows(ui, &self.live, None, 0, &mono, &mut toggle);
                     }
                 });
@@ -426,6 +483,14 @@ impl CodeApp {
         }
         if interrupt && let Some(session) = &mut self.live.session {
             session.interrupt();
+        }
+        if self.live.awaiting_input
+            && let Some(text) = send.take()
+            && let Some(session) = &mut self.live.session
+        {
+            add_text(&mut self.live.transcript, Kind::Input, &text);
+            session.stdin(&format!("{text}\n"));
+            self.live.awaiting_input = false;
         }
         if let Some(code) = send.filter(|c| !c.trim().is_empty()) {
             self.live_send(Eval { code, ..Eval::default() }, None);

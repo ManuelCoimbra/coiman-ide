@@ -97,6 +97,22 @@ pub fn changed_lines(old: &str, new: &str) -> Vec<bool> {
         .collect()
 }
 
+/// Lines of `old` that `new` no longer has.
+pub fn removed_lines(old: &str, new: &str) -> Vec<String> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for line in new.lines() {
+        *seen.entry(line).or_default() += 1;
+    }
+    let mut gone = Vec::new();
+    for line in old.lines() {
+        match seen.get_mut(line) {
+            Some(count) if *count > 0 => *count -= 1,
+            _ => gone.push(line.to_owned()),
+        }
+    }
+    gone
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,6 +141,8 @@ mod tests {
         assert_eq!(changed_lines("a\n⊢ b", "a\n⊢ c"), [false, true]);
         assert_eq!(changed_lines("", "a\nb"), [false, false]);
         assert_eq!(changed_lines("a", "a\na"), [false, true], "a repeat counts");
+        assert_eq!(removed_lines("a\n⊢ b", "a\n⊢ c"), ["⊢ b"]);
+        assert!(removed_lines("a", "a\nb").is_empty());
     }
 
     #[test]

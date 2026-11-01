@@ -27,6 +27,12 @@ impl Identity {
     pub fn can(&self, capability: &str) -> bool {
         self.capabilities.iter().any(|c| c == capability)
     }
+
+    /// Whether the inspector's queries, written in Clojure, will mean anything here.
+    pub fn speaks_clojure(&self) -> bool {
+        let system = self.system.to_lowercase();
+        system.contains("clojure") || system.contains("babashka")
+    }
 }
 
 /// Code to run, and where it came from.
@@ -68,6 +74,10 @@ pub enum LiveEvent {
         id: u64,
         text: String,
     },
+    /// The code is reading input.
+    NeedInput {
+        id: u64,
+    },
     /// That's all for this request.
     Done {
         id: u64,
@@ -87,6 +97,8 @@ pub trait Session: Send {
     fn name(&self) -> &str;
     /// Runs code. Returns the request's id.
     fn eval(&mut self, request: Eval) -> u64;
+    /// Gives running code the input it's waiting for.
+    fn stdin(&mut self, text: &str);
     /// Asks the running code to stop, if the server can.
     fn interrupt(&mut self);
     /// Asks for rows: the top level, or the children a row named.
@@ -228,8 +240,10 @@ fn message(fields: &[(&str, Bencode)]) -> Vec<u8> {
 
 /// The `host:port` a project's nREPL left behind, if any.
 pub fn nrepl_port_file(root: &Path) -> Option<String> {
-    let places = [root.join(".nrepl-port"), root.join(".shadow-cljs").join("nrepl.port")];
-    let text = places.iter().find_map(|p| std::fs::read_to_string(p).ok())?;
+    // The server may be running for the project around the folder that's open.
+    let places =
+        root.ancestors().flat_map(|dir| [dir.join(".nrepl-port"), dir.join(".shadow-cljs").join("nrepl.port")]);
+    let text = places.into_iter().find_map(|p| std::fs::read_to_string(p).ok())?;
     let port: u16 = text.trim().parse().ok()?;
     Some(format!("127.0.0.1:{port}"))
 }
@@ -524,6 +538,9 @@ impl Nrepl {
                 if let Some(text) = map.get("ex").and_then(Bencode::as_text) {
                     events.push(LiveEvent::Failed { id, text });
                 }
+                if statuses.iter().any(|s| s == "need-input") {
+                    events.push(LiveEvent::NeedInput { id });
+                }
                 if statuses.iter().any(|s| s == "interrupted") {
                     events.push(LiveEvent::Failed { id, text: "Interrupted".to_owned() });
                 }
@@ -583,6 +600,10 @@ impl Session for Nrepl {
         }
         self.send(Purpose::Eval, id, fields);
         id
+    }
+
+    fn stdin(&mut self, text: &str) {
+        self.send_now(Purpose::Other, 0, &[("op", Bencode::text("stdin")), ("stdin", Bencode::text(text))]);
     }
 
     fn interrupt(&mut self) {
@@ -682,6 +703,9 @@ mod tests {
         assert_eq!(nrepl_port_file(&root), None);
         std::fs::write(root.join(".nrepl-port"), "1667\n").unwrap();
         assert_eq!(nrepl_port_file(&root).as_deref(), Some("127.0.0.1:1667"));
+        let inner = root.join("src").join("deep");
+        std::fs::create_dir_all(&inner).unwrap();
+        assert_eq!(nrepl_port_file(&inner).as_deref(), Some("127.0.0.1:1667"), "found from a folder inside");
         std::fs::write(root.join(".nrepl-port"), "nope").unwrap();
         assert_eq!(nrepl_port_file(&root), None);
         std::fs::remove_dir_all(root).unwrap();

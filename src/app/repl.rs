@@ -239,10 +239,17 @@ impl CodeApp {
     /// Answers beside the code, and a run button on each cell.
     pub(super) fn repl_decorate(&self, i: usize, deco: &mut Decorations) {
         let Some(doc) = self.docs.get(i) else { return };
+        let count = doc.buffer.len_lines();
         for (line, text, answer) in self.repls.results.get(&doc.uid).into_iter().flatten() {
-            // An edited line's answer is about something else now.
-            if *line < doc.buffer.len_lines() && doc.buffer.line_text(*line) == *text {
-                deco.values.push((*line, format!("=> {answer}")));
+            // Lines above may have moved it: it stays with its text, if that's still nearby.
+            let near = (line.saturating_sub(ANSWER_REACH)..(line + ANSWER_REACH).min(count))
+                .filter(|l| doc.buffer.line_text(*l) == *text)
+                .min_by_key(|l| l.abs_diff(*line));
+            match near {
+                Some(at) => deco.values.push((at, format!("=> {answer}"))),
+                // Its line was edited: this was true of the old text, and says so.
+                None if *line < count => deco.values.push((*line, format!("=> {answer} (stale)"))),
+                None => {}
             }
         }
         if let Some((uid, _, cells)) = &self.repls.cells
@@ -253,6 +260,9 @@ impl CodeApp {
         }
     }
 }
+
+/// How far a line's answer looks for the line, once lines above have changed.
+const ANSWER_REACH: usize = 200;
 
 /// Output that plainly hasn't finished: a Python traceback has no end line yet.
 fn repl_busy_hint(lines: &[String]) -> bool {

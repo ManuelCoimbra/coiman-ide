@@ -27,7 +27,7 @@ enum Job {
 }
 
 /// A walk over the project: what it's for, its answer, and how to stop it.
-type Running = (Job, Receiver<(Vec<FileHits>, bool)>, Arc<AtomicBool>);
+type Running = (Job, Receiver<(Vec<FileHits>, bool, usize)>, Arc<AtomicBool>);
 
 #[derive(Default)]
 pub(super) struct TreeTools {
@@ -37,6 +37,7 @@ pub(super) struct TreeTools {
     error: Option<String>,
     results: Vec<(PathBuf, lt::Range, String)>,
     capped: bool,
+    skipped: usize,
     searched: bool,
     job: Option<Running>,
     rules: Arc<Vec<Rule>>,
@@ -44,9 +45,11 @@ pub(super) struct TreeTools {
     rules_modified: Option<std::time::SystemTime>,
     rules_root: Option<PathBuf>,
     next_rules_check: f64,
-    /// (document, version) last looked at, and when it was first seen changed.
-    scanned: Option<(u64, u64)>,
+    /// Each document's version last looked at, and when one was first seen changed.
+    scanned: HashMap<u64, u64>,
     changed_since: Option<f64>,
+    /// Open files' text, handed to the next walk.
+    open_text: HashMap<PathBuf, String>,
     /// What rules found, by file.
     found: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
 }
@@ -87,7 +90,28 @@ impl CodeApp {
     pub(super) fn tree_move(&mut self, what: Move) {
         let Some(doc) = self.docs.get_mut(self.active) else { return };
         let primary = doc.buffer.primary();
-        let result = if tree_edit::is_lisp(&doc.extension()) {
+        let result = if tree_edit::is_lisp(&doc.extension()) && what != Move::Raise {
+            let source = doc.text();
+            let heads: Vec<usize> = doc.buffer.selections().iter().map(|s| s.head).collect();
+            let results: Vec<_> = heads.iter().map(|head| tree_edit::lisp_move(&source, *head, what)).collect();
+            let why = results.iter().find_map(|r| r.as_ref().err().cloned());
+            let mut edits: Vec<_> = results.into_iter().flatten().flat_map(|c| c.edits).collect();
+            // Several cursors in one list move it once.
+            edits.sort_by_key(|(a, b, _)| (*a, *b));
+            edits.dedup();
+            let mut end = 0;
+            edits.retain(|(a, b, _)| {
+                let keep = *a >= end;
+                if keep {
+                    end = *b;
+                }
+                keep
+            });
+            match (edits.is_empty(), why) {
+                (true, Some(why)) => Err(why),
+                _ => Ok(Change { edits, cursor: None }),
+            }
+        } else if tree_edit::is_lisp(&doc.extension()) {
             tree_edit::lisp_move(&doc.text(), primary.head, what)
         } else if what == Move::Raise {
             match doc.fresh_tree() {
@@ -140,6 +164,13 @@ impl CodeApp {
     }
 
     fn tree_search_start(&mut self, ctx: &egui::Context) {
+        let open: HashMap<PathBuf, String> = self
+            .docs
+            .iter()
+            .filter(|d| !d.large)
+            .filter_map(|d| Some((path_key(d.path.as_ref()?), d.text())))
+            .collect();
+        self.tree_tools.open_text = open;
         let tools = &mut self.tree_tools;
         tools.error = None;
         let Some(lang) = tools.lang else { return };
@@ -147,6 +178,8 @@ impl CodeApp {
             Ok(query) => query,
             Err(why) => {
                 tools.error = Some(why);
+                tools.results.clear();
+                tools.searched = false;
                 return;
             }
         };
@@ -165,8 +198,10 @@ impl CodeApp {
         let cancel = Arc::new(AtomicBool::new(false));
         let (tx, rx) = mpsc::channel();
         let (wake, stop) = (repaint(ctx), cancel.clone());
+        let open_text = std::mem::take(&mut self.tree_tools.open_text);
         std::thread::spawn(move || {
-            let _ = tx.send(tree_rules::scan_project(&root, &searches, &stop));
+            let open = |path: &Path| open_text.get(&path_key(path)).cloned();
+            let _ = tx.send(tree_rules::scan_project(&root, &open, &searches, &stop));
             wake();
         });
         self.tree_tools.job = Some((job, rx, cancel));
@@ -175,12 +210,13 @@ impl CodeApp {
     fn take_job(&mut self) {
         let tools = &mut self.tree_tools;
         let Some((_, rx, _)) = &tools.job else { return };
-        let Ok((files, capped)) = rx.try_recv() else { return };
+        let Ok((files, capped, skipped)) = rx.try_recv() else { return };
         let Some((job, _, _)) = tools.job.take() else { return };
         match job {
             Job::Search => {
                 tools.results.clear();
                 tools.capped = capped;
+                tools.skipped = skipped;
                 tools.searched = true;
                 for file in files {
                     for (_, hit) in file.hits {
@@ -198,9 +234,10 @@ impl CodeApp {
                     in_files += 1;
                     tools.found.insert(path_key(&file.path), (file.path, diagnostics));
                 }
-                tools.scanned = None;
+                tools.scanned.clear();
                 let more = if capped { " (stopped early)" } else { "" };
-                self.status = Some(format!("Rules found {count} in {in_files} file(s){more}"));
+                let large = if skipped > 0 { format!(", {skipped} too large to read") } else { String::new() };
+                self.status = Some(format!("Rules found {count} in {in_files} file(s){more}{large}"));
             }
         }
     }
@@ -214,7 +251,7 @@ impl CodeApp {
         let tools = &mut self.tree_tools;
         tools.rules = Arc::new(rules);
         tools.found.clear();
-        tools.scanned = None;
+        tools.scanned.clear();
         tools.rule_problems = problems;
         if !tools.rule_problems.is_empty() {
             let at = lt::Range::default();
@@ -252,9 +289,14 @@ impl CodeApp {
         if self.tree_tools.rules.is_empty() {
             return;
         }
-        let Some(doc) = self.docs.get(self.active) else { return };
-        let current = (doc.uid, doc.buffer.version());
-        if self.tree_tools.scanned == Some(current) || doc.large {
+        let scanned = &self.tree_tools.scanned;
+        let changed: Vec<usize> = (0..self.docs.len())
+            .filter(|i| {
+                let doc = &self.docs[*i];
+                !doc.large && scanned.get(&doc.uid) != Some(&doc.buffer.version())
+            })
+            .collect();
+        if changed.is_empty() {
             return;
         }
         let since = *self.tree_tools.changed_since.get_or_insert(now);
@@ -263,12 +305,15 @@ impl CodeApp {
             return;
         }
         self.tree_tools.changed_since = None;
-        self.tree_tools.scanned = Some(current);
-        self.scan_active_doc();
+        for i in changed {
+            let doc = &self.docs[i];
+            self.tree_tools.scanned.insert(doc.uid, doc.buffer.version());
+            self.scan_doc(i);
+        }
     }
 
-    fn scan_active_doc(&mut self) {
-        let Some(doc) = self.docs.get(self.active) else { return };
+    fn scan_doc(&mut self, i: usize) {
+        let Some(doc) = self.docs.get(i) else { return };
         let Some(path) = doc.path.clone() else { return };
         let Some(lang) = Lang::from_extension(&doc.extension()) else { return };
         let rules = self.tree_tools.rules.clone();
@@ -306,16 +351,27 @@ impl CodeApp {
 
     /// `Rules: Apply Fixes in File`.
     pub(super) fn rules_fix_file(&mut self) {
+        self.rules_fix(false);
+    }
+
+    /// `Rules: Apply Fix at Cursor`.
+    pub(super) fn rules_fix_here(&mut self) {
+        self.rules_fix(true);
+    }
+
+    fn rules_fix(&mut self, only_here: bool) {
         let rules = self.tree_tools.rules.clone();
         let Some(doc) = self.docs.get_mut(self.active) else { return };
         let Some(lang) = Lang::from_extension(&doc.extension()) else { return };
         let Some(tree) = doc.fresh_tree() else { return };
         let source = doc.text();
         let rope = doc.buffer.rope();
+        let here = rope.char_to_byte(doc.buffer.primary().head);
         let mut edits: Vec<(usize, usize, String)> = Vec::new();
         for rule in rules.iter().filter(|r| r.lang == lang) {
             let Some(fix) = &rule.fix else { continue };
-            for hit in tree_rules::scan(&rule.query, &tree, &source) {
+            let hits = tree_rules::scan(&rule.query, &tree, &source);
+            for hit in hits.into_iter().filter(|h| !only_here || (h.start_byte <= here && here <= h.end_byte)) {
                 let (a, b) = (rope.byte_to_char(hit.start_byte), rope.byte_to_char(hit.end_byte));
                 edits.push((a, b, tree_rules::fill(fix, &hit.captures)));
             }
@@ -367,7 +423,11 @@ impl CodeApp {
                 ui.label(RichText::new("Searching…").color(pal.text_dim));
             } else if tools.searched {
                 let more = if tools.capped { " (stopped there)" } else { "" };
-                ui.label(RichText::new(format!("{} found{more}", tools.results.len())).color(pal.text_dim));
+                let large = match tools.skipped {
+                    0 => String::new(),
+                    n => format!(", {n} files too large to read"),
+                };
+                ui.label(RichText::new(format!("{} found{more}{large}", tools.results.len())).color(pal.text_dim));
             }
         });
         let edit = TextEdit::multiline(&mut tools.query)
@@ -385,7 +445,7 @@ impl CodeApp {
         egui::ScrollArea::vertical().id_salt("tree_search_results").auto_shrink([false, false]).show(ui, |ui| {
             for (at, (path, range, line)) in tools.results.iter().enumerate() {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let label = format!("{name}:{}  {line}", range.start.line + 1);
+                let label = format!("{name}:{}:{}  {line}", range.start.line + 1, range.start.character + 1);
                 let row =
                     egui::Label::new(RichText::new(label).font(mono.clone())).truncate().sense(egui::Sense::click());
                 if ui.add(row).on_hover_text(path.display().to_string()).clicked() {

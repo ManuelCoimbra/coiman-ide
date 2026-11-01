@@ -297,7 +297,15 @@ fn char_range(rope: &Rope, node: Node) -> (usize, usize) {
 
 /// What a selection, or the cursor, covers in a syntax tree.
 pub fn node_range(tree: &Tree, rope: &Rope, start: usize, end: usize) -> Option<(usize, usize)> {
-    named_at(tree, rope, start, end).map(|node| char_range(rope, node))
+    let mut node = named_at(tree, rope, start, end)?;
+    // On a name being called, what's meant is the call: `(g)(1)` is nobody's wish.
+    while start == end
+        && let Some(parent) = node.parent().filter(|p| p.start_byte() == node.start_byte())
+        && (parent.kind().contains("call") || parent.kind().contains("invocation"))
+    {
+        node = parent;
+    }
+    Some(char_range(rope, node))
 }
 
 /// The kind of syntax node at a place, to start writing a query from.
@@ -427,6 +435,7 @@ mod tests {
         assert_eq!(apply(source, tree_raise(&tree, &rope, at, at).unwrap()), "fn m() { let x = f(g); }");
         let at = at + 1;
         assert_eq!(apply(source, tree_raise(&tree, &rope, at, at).unwrap()), "fn m() { let x = f(1); }");
+        assert_eq!(node_range(&tree, &rope, at - 1, at - 1), Some((at - 2, at + 2)), "wraps the call");
         // An expression inside a block isn't raised over its function.
         let at = source.find("let").unwrap();
         assert!(tree_raise(&tree, &rope, at, at + 3).is_err());

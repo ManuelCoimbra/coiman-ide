@@ -201,8 +201,16 @@ pub struct FileHits {
 }
 
 /// Runs queries over a project. Meant for a background thread.
-pub fn scan_project(root: &Path, searches: &[Search], cancel: &AtomicBool) -> (Vec<FileHits>, bool) {
-    let (mut files, mut total) = (Vec::new(), 0);
+///
+/// `open` gives a file's unsaved text. Returns what was found, whether it stopped at
+/// the cap, and how many files were too large to read.
+pub fn scan_project(
+    root: &Path,
+    open: &dyn Fn(&Path) -> Option<String>,
+    searches: &[Search],
+    cancel: &AtomicBool,
+) -> (Vec<FileHits>, bool, usize) {
+    let (mut files, mut total, mut skipped) = (Vec::new(), 0, 0);
     for entry in finder::walker(root).build().flatten() {
         if cancel.load(Ordering::Relaxed) {
             break;
@@ -213,10 +221,17 @@ pub fn scan_project(root: &Path, searches: &[Search], cancel: &AtomicBool) -> (V
         if !searches.iter().any(|s| s.lang == lang) {
             continue;
         }
-        if entry.metadata().map_or(true, |m| m.len() > MAX_FILE) {
-            continue;
-        }
-        let Ok(source) = std::fs::read_to_string(path) else { continue };
+        let source = match open(path) {
+            Some(source) => source,
+            None => {
+                if entry.metadata().map_or(true, |m| m.len() > MAX_FILE) {
+                    skipped += 1;
+                    continue;
+                }
+                let Ok(source) = std::fs::read_to_string(path) else { continue };
+                source
+            }
+        };
         let Some(tree) = parse(lang, &source) else { continue };
         let mut hits = Vec::new();
         for (at, search) in searches.iter().enumerate().filter(|(_, s)| s.lang == lang) {
@@ -226,12 +241,12 @@ pub fn scan_project(root: &Path, searches: &[Search], cancel: &AtomicBool) -> (V
             total += hits.len();
             files.push(FileHits { path: path.to_path_buf(), hits });
             if total >= MAX_HITS {
-                return (files, true);
+                return (files, true, skipped);
             }
         }
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
-    (files, false)
+    (files, false, skipped)
 }
 
 #[cfg(test)]
@@ -284,12 +299,21 @@ mod tests {
         std::fs::write(root.join("src/b.rs"), "fn m() {}").unwrap();
         std::fs::write(root.join("c.py"), "x.unwrap()").unwrap();
         let search = Search { lang: Lang::Rust, query: Arc::new(compile(Lang::Rust, UNWRAP).unwrap()) };
-        let (files, capped) = scan_project(&root, std::slice::from_ref(&search), &AtomicBool::new(false));
+        let (files, capped, _) = scan_project(&root, &|_| None, std::slice::from_ref(&search), &AtomicBool::new(false));
         assert!(!capped);
         assert_eq!(files.len(), 1);
         assert!(files[0].path.ends_with("src/a.rs"));
-        let (files, _) = scan_project(&root, &[search], &AtomicBool::new(true));
+        let (files, _, _) = scan_project(
+            &root,
+            &|p| p.ends_with("src/b.rs").then(|| "fn m() { y.unwrap(); }".to_owned()),
+            &[search],
+            &AtomicBool::new(true),
+        );
         assert!(files.is_empty(), "cancelled");
+        let search = Search { lang: Lang::Rust, query: Arc::new(compile(Lang::Rust, UNWRAP).unwrap()) };
+        let unsaved = |p: &Path| p.ends_with("src/b.rs").then(|| "fn m() { y.unwrap(); }".to_owned());
+        let (files, _, _) = scan_project(&root, &unsaved, &[search], &AtomicBool::new(false));
+        assert_eq!(files.len(), 2, "unsaved text counts");
         std::fs::remove_dir_all(root).unwrap();
     }
 }

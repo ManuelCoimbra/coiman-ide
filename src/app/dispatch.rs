@@ -401,6 +401,7 @@ impl CodeApp {
             Command::ShowTreeSearch => self.show_tree_search(),
             Command::RulesCheckProject => self.rules_check_project(ctx),
             Command::RulesFixFile => self.rules_fix_file(),
+            Command::RulesFixHere => self.rules_fix_here(),
             Command::ShowCursorInfo => self.show_at_cursor(),
             Command::CursorInfoPause => self.at_cursor_toggle_pause(),
             Command::CursorInfoPin => self.at_cursor_pin(),
