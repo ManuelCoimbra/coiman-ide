@@ -454,7 +454,11 @@ fn client_capabilities() -> Value {
             "textDocumentContent": {},
         },
         "window": { "workDoneProgress": true, "showMessage": {}, "showDocument": { "support": true } },
-        "experimental": { "serverStatusNotification": true },
+        "experimental": {
+            "serverStatusNotification": true,
+            // rust-analyzer offers a lens only if the client says it can do what it runs.
+            "commands": { "commands": ["rust-analyzer.runSingle", "rust-analyzer.showReferences", "rust-analyzer.gotoLocation"] },
+        },
     })
 }
 

@@ -88,8 +88,48 @@ impl Hierarchy {
 /// Lenses resolved per answer: each one is a request, and a large file has many.
 const MAX_LENS_RESOLVES: usize = 100;
 
+/// A symbol in a hierarchy, and what's known of what's under it.
+struct HierNode {
+    item: Value,
+    name: String,
+    detail: String,
+    place: Option<(PathBuf, lt::Range)>,
+    /// `None` until asked for.
+    children: Option<Vec<usize>>,
+    open: bool,
+}
+
+/// A call or type hierarchy, opened a level at a time.
+pub(super) struct HierTree {
+    hierarchy: Hierarchy,
+    id: u64,
+    word: String,
+    nodes: Vec<HierNode>,
+    roots: Vec<usize>,
+}
+
+impl HierTree {
+    fn add(&mut self, item: &Value) -> usize {
+        let place = serde_json::from_value::<lt::Url>(item["uri"].clone()).ok().and_then(|uri| {
+            let range = serde_json::from_value(item["selectionRange"].clone()).ok()?;
+            Some((convert::path_from_uri(&uri)?, range))
+        });
+        self.nodes.push(HierNode {
+            item: item.clone(),
+            name: item["name"].as_str().unwrap_or("?").to_owned(),
+            detail: item["detail"].as_str().unwrap_or_default().to_owned(),
+            place,
+            children: None,
+            open: false,
+        });
+        self.nodes.len() - 1
+    }
+}
+
 #[derive(Default)]
 pub(super) struct LspExtra {
+    pub(super) tree: Option<HierTree>,
+    next_tree: u64,
     /// Code lenses per document: (line count they were made for, lenses).
     lenses: HashMap<u64, (usize, Vec<lt::CodeLens>)>,
     /// Inlay hints and lens titles together, as drawn.
@@ -168,6 +208,11 @@ fn legend_of(client: &Client) -> Option<Vec<String>> {
         lt::SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(o) => &o.semantic_tokens_options.legend,
     };
     Some(legend.token_types.iter().map(|t| t.as_str().to_owned()).collect())
+}
+
+/// A title as drawn. A text-style selector after a symbol would show as a circle.
+fn lens_title(title: &str) -> String {
+    title.replace('\u{fe0e}', "")
 }
 
 fn inlay_text(hint: &lt::InlayHint) -> String {
@@ -334,10 +379,10 @@ impl CodeApp {
             .get(&uid)
             .filter(|(n, _)| *n == lines)
             .map_or_else(HashMap::new, |(_, hints)| (**hints).clone());
-        let mut titles: HashMap<usize, Vec<&str>> = HashMap::new();
+        let mut titles: HashMap<usize, Vec<String>> = HashMap::new();
         for lens in extra.lenses.get(&uid).filter(|(n, _)| *n == lines).into_iter().flat_map(|(_, l)| l) {
             if let Some(command) = &lens.command {
-                titles.entry(lens.range.start.line as usize).or_default().push(&command.title);
+                titles.entry(lens.range.start.line as usize).or_default().push(lens_title(&command.title));
             }
         }
         for (line, titles) in titles {
@@ -372,9 +417,70 @@ impl CodeApp {
         self.palette.show_picker(PickerKind::CodeLens, titles, "", "Select a code lens");
     }
 
-    pub(super) fn pick_code_lens(&mut self, title: &str) {
+    /// A title beside the code was clicked. They're drawn joined, so `into` says which.
+    pub(super) fn click_code_lens(&mut self, ctx: &egui::Context, line: usize, into: usize) {
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let lenses = self.lsp.extra.lenses.get(&doc.uid).into_iter().flat_map(|(_, lenses)| lenses);
+        let commands: Vec<lt::Command> =
+            lenses.filter(|l| l.range.start.line as usize == line).filter_map(|l| l.command.clone()).collect();
+        let mut end = 2;
+        for command in commands {
+            end += lens_title(&command.title).chars().count() + 3;
+            if into < end {
+                self.run_lens_command(ctx, command);
+                return;
+            }
+        }
+    }
+
+    pub(super) fn pick_code_lens(&mut self, ctx: &egui::Context, title: &str) {
         let commands = std::mem::take(&mut self.lsp.extra.picked_lenses);
         let Some(command) = commands.into_iter().find(|c| c.title == title) else { return };
+        self.run_lens_command(ctx, command);
+    }
+
+    /// What a lens asks for: some things the editor does itself, the rest the server.
+    fn run_lens_command(&mut self, ctx: &egui::Context, command: lt::Command) {
+        let title = command.title.clone();
+        let arg = |at: usize| command.arguments.as_ref().and_then(|a| a.get(at)).cloned().unwrap_or(Value::Null);
+        match command.command.as_str() {
+            "rust-analyzer.showReferences" | "editor.action.showReferences" => {
+                self.on_locations("References", &title, arg(2));
+                return;
+            }
+            "rust-analyzer.gotoLocation" => {
+                let target = arg(0);
+                let uri = serde_json::from_value::<lt::Url>(target["targetUri"].clone()).ok();
+                let range = serde_json::from_value::<lt::Range>(target["targetSelectionRange"].clone()).ok();
+                if let (Some(path), Some(range)) = (uri.as_ref().and_then(convert::path_from_uri), range) {
+                    self.jump_to(&path, range, true);
+                }
+                return;
+            }
+            "rust-analyzer.runSingle" => {
+                let runnable = arg(0);
+                let words = |key: &str| -> Vec<String> {
+                    let list = runnable["args"][key].as_array().map_or(&[][..], Vec::as_slice);
+                    list.iter().filter_map(Value::as_str).map(str::to_owned).collect()
+                };
+                let quote = |w: String| {
+                    if w.contains([' ', '\'']) { format!("'{}'", w.replace('\'', "''")) } else { w }
+                };
+                let mut line = vec!["cargo".to_owned()];
+                line.extend(words("cargoArgs").into_iter().map(quote));
+                let after = words("executableArgs");
+                if !after.is_empty() {
+                    line.push("--".to_owned());
+                    line.extend(after.into_iter().map(quote));
+                }
+                let folder = runnable["args"]["cwd"].as_str().or(runnable["args"]["workspaceRoot"].as_str());
+                let Some(cwd) = folder.map(PathBuf::from).or_else(|| self.explorer.root.clone()) else { return };
+                let name = runnable["label"].as_str().unwrap_or(&title).to_owned();
+                self.start_run(ctx, &rust_code_core::run::RunPlan { title: name, command: line.join(" "), cwd });
+                return;
+            }
+            _ => {}
+        }
         // Others belong to the server's VS Code extension, which isn't here.
         let runs_on_server = self.active_client().is_some_and(|ci| {
             self.lsp.clients[ci]
@@ -410,8 +516,107 @@ impl CodeApp {
             self.status = Some(format!("No {} found for '{word}'", hierarchy.title().to_lowercase()));
             return;
         };
-        let params = json!({ "item": item });
-        self.request_for(self.active, hierarchy.method(), Pending::HierarchyItems { hierarchy, word }, |_, _| params);
+        self.status = None;
+        self.lsp.extra.next_tree += 1;
+        let id = self.lsp.extra.next_tree;
+        let mut tree = HierTree { hierarchy, id, word, nodes: Vec::new(), roots: Vec::new() };
+        let root = tree.add(item);
+        tree.roots.push(root);
+        self.lsp.extra.tree = Some(tree);
+        self.panel_tab = super::PanelTab::References;
+        self.panel_visible = true;
+        self.toggle_hierarchy_node(root);
+    }
+
+    fn toggle_hierarchy_node(&mut self, node: usize) {
+        let Some(tree) = &mut self.lsp.extra.tree else { return };
+        let (hierarchy, id) = (tree.hierarchy, tree.id);
+        let Some(entry) = tree.nodes.get_mut(node) else { return };
+        entry.open = !entry.open;
+        if entry.open && entry.children.is_none() {
+            let params = json!({ "item": entry.item });
+            let pending = Pending::HierarchyItems { hierarchy, node, tree: id };
+            self.request_for(self.active, hierarchy.method(), pending, |_, _| params);
+        }
+    }
+
+    pub(super) fn on_hierarchy_items(&mut self, hierarchy: Hierarchy, node: usize, id: u64, value: Value) {
+        // A newer hierarchy may have taken this one's place.
+        let Some(tree) = self.lsp.extra.tree.as_mut().filter(|t| t.id == id) else { return };
+        let entries = value.as_array().map_or(&[][..], Vec::as_slice);
+        let field = hierarchy.field();
+        let children = entries.iter().map(|e| tree.add(field.map_or(e, |f| &e[f]))).collect();
+        if let Some(entry) = tree.nodes.get_mut(node) {
+            entry.children = Some(children);
+        }
+    }
+
+    fn hierarchy_rows(
+        ui: &mut egui::Ui,
+        tree: &HierTree,
+        list: &[usize],
+        depth: usize,
+        toggle: &mut Option<usize>,
+        jump: &mut Option<(PathBuf, lt::Range)>,
+    ) {
+        let pal = theme::colors();
+        let size = ui.text_style_height(&egui::TextStyle::Body);
+        for &at in list {
+            let node = &tree.nodes[at];
+            let leaf = node.children.as_ref().is_some_and(Vec::is_empty);
+            ui.horizontal(|ui| {
+                ui.add_space(depth as f32 * 14.0);
+                if leaf {
+                    ui.add_space(size);
+                } else {
+                    let chevron =
+                        if node.open { crate::icons::Icon::ChevronDown } else { crate::icons::Icon::ChevronRight };
+                    if crate::icons::button(ui, chevron, "Expand").clicked() {
+                        *toggle = Some(at);
+                    }
+                }
+                let name = egui::Label::new(RichText::new(&node.name).monospace()).sense(egui::Sense::click());
+                if ui.add(name).clicked() {
+                    jump.clone_from(&node.place.clone());
+                }
+                if !node.detail.is_empty() {
+                    ui.add(egui::Label::new(RichText::new(&node.detail).small().color(pal.text_dim)).truncate());
+                }
+                if let Some((path, range)) = &node.place {
+                    let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    let place = format!("{file}:{}", range.start.line + 1);
+                    ui.label(RichText::new(place).small().color(pal.text_dim));
+                }
+            });
+            if node.open {
+                match &node.children {
+                    Some(children) => Self::hierarchy_rows(ui, tree, children, depth + 1, toggle, jump),
+                    None => {
+                        ui.horizontal(|ui| {
+                            ui.add_space((depth + 1) as f32 * 14.0 + size);
+                            ui.label(RichText::new("…").color(pal.text_dim));
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    /// Shows the hierarchy in the References panel, if that's what's there.
+    pub(super) fn hierarchy_panel(&mut self, ui: &mut egui::Ui) -> bool {
+        let Some(tree) = &self.lsp.extra.tree else { return false };
+        ui.label(RichText::new(format!("{} of '{}'", tree.hierarchy.title(), tree.word)).strong());
+        let (mut toggle, mut jump) = (None, None);
+        egui::ScrollArea::both().id_salt("hierarchy").auto_shrink([false, false]).show(ui, |ui| {
+            Self::hierarchy_rows(ui, tree, &tree.roots, 0, &mut toggle, &mut jump);
+        });
+        if let Some(node) = toggle {
+            self.toggle_hierarchy_node(node);
+        }
+        if let Some((path, range)) = jump {
+            self.jump_to(&path, range, true);
+        }
+        true
     }
 
     pub(super) fn on_pulled_diagnostics(&mut self, path: PathBuf, value: Value) {

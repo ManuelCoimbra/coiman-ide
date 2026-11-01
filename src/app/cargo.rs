@@ -1296,7 +1296,7 @@ impl CodeApp {
     }
 
     /// Runs a plan in its own terminal tab.
-    fn start_run(&mut self, ctx: &egui::Context, plan: &run::RunPlan) {
+    pub(super) fn start_run(&mut self, ctx: &egui::Context, plan: &run::RunPlan) {
         if !self.allowed_to_run(&plan.cwd) {
             return;
         }

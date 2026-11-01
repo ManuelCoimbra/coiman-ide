@@ -116,7 +116,8 @@ pub(super) enum Pending {
     },
     HierarchyItems {
         hierarchy: super::lsp_extra::Hierarchy,
-        word: String,
+        node: usize,
+        tree: u64,
     },
     AtCursor {
         pin: Option<u64>,
@@ -709,10 +710,7 @@ impl CodeApp {
             Pending::CodeLens { uid } => self.on_code_lens(uid, value),
             Pending::CodeLensResolve { uid, index } => self.on_code_lens_resolved(uid, index, value),
             Pending::HierarchyPrepare { hierarchy, word } => self.on_hierarchy_prepared(hierarchy, word, value),
-            Pending::HierarchyItems { hierarchy, word } => {
-                let found = convert::hierarchy_locations(&value, hierarchy.field());
-                self.on_locations(hierarchy.title(), &word, json!(found));
-            }
+            Pending::HierarchyItems { hierarchy, node, tree } => self.on_hierarchy_items(hierarchy, node, tree, value),
         }
     }
 
@@ -1447,6 +1445,7 @@ impl CodeApp {
     }
 
     pub(super) fn on_locations(&mut self, title: &'static str, word: &str, value: Value) {
+        self.lsp.extra.tree = None;
         let locations = match serde_json::from_value::<Option<lt::GotoDefinitionResponse>>(value) {
             Ok(Some(lt::GotoDefinitionResponse::Scalar(l))) => vec![l],
             Ok(Some(lt::GotoDefinitionResponse::Array(v))) => v,
@@ -1925,6 +1924,9 @@ impl CodeApp {
 
     /// The References panel: results of Find References / multiple definitions.
     pub(super) fn references_panel(&mut self, ui: &mut egui::Ui) {
+        if self.hierarchy_panel(ui) {
+            return;
+        }
         let mut jump = None;
         ui.label(RichText::new(&self.lsp.locations_title).strong());
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {

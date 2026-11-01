@@ -566,6 +566,9 @@ impl eframe::App for CodeApp {
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
                 }
+                if let Some((line, into)) = out.lens_click {
+                    self.click_code_lens(&ctx, line, into);
+                }
                 if let Some(line) = out.breakpoint_click.filter(|_| self.can_debug()) {
                     self.toggle_breakpoint(line);
                 }

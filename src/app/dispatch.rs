@@ -551,7 +551,7 @@ impl CodeApp {
         match kind {
             PickerKind::Theme => self.set_color_theme(ctx, label),
             PickerKind::CodeAction => self.pick_code_action(label),
-            PickerKind::CodeLens => self.pick_code_lens(label),
+            PickerKind::CodeLens => self.pick_code_lens(ctx, label),
             PickerKind::Branch => self.pick_branch(ctx, label),
             PickerKind::RunConfig => self.picked_run_config(ctx, label),
             PickerKind::RunMode => self.picked_run_mode(label),

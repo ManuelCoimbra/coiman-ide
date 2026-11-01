@@ -162,6 +162,8 @@ pub struct Output {
     pub change_click: Option<(usize, Pos2)>,
     /// A gutter run button was clicked: its line.
     pub run_click: Option<usize>,
+    /// A code lens title was clicked: its line, and how far into the text drawn.
+    pub lens_click: Option<(usize, usize)>,
     /// The breakpoint margin was clicked on this line.
     pub breakpoint_click: Option<usize>,
     /// What Vim/Helix mode asked for this frame (`:w`, `:q`, clipboard).
@@ -210,6 +212,7 @@ pub struct ViewState {
     change_click: Option<(usize, Pos2)>,
     /// Gutter run button clicked this frame.
     run_click: Option<usize>,
+    lens_click: Option<(usize, usize)>,
     /// Breakpoint margin clicked this frame.
     breakpoint_click: Option<usize>,
     /// First lines of the folded regions.
@@ -576,6 +579,7 @@ pub fn show(
         ctrl_click: view.ctrl_click.take(),
         change_click: view.change_click.take(),
         run_click: view.run_click.take(),
+        lens_click: view.lens_click.take(),
         breakpoint_click: view.breakpoint_click.take(),
         vim_effects,
         cursor_rect,
@@ -602,6 +606,41 @@ fn inlay_cols(m: &Metrics, line: usize, from: usize, to: usize) -> usize {
 fn pos_at(doc: &Document, view: &ViewState, layout: &Layout, m: &Metrics, text_rect: Rect, p: Pos2) -> usize {
     let (row_start, row_end, line, col) = cell_at(doc, view, layout, m, text_rect, p);
     doc.buffer.pos_at_visual_col(line, col).clamp(row_start, row_end)
+}
+
+/// The code lens title under `p`, if any: its line, and how far into the drawn text.
+/// Titles are the hint that ends a line, set off by two spaces.
+fn lens_at(
+    doc: &Document,
+    view: &ViewState,
+    layout: &Layout,
+    m: &Metrics,
+    text_rect: Rect,
+    p: Pos2,
+) -> Option<(usize, usize)> {
+    let y = p.y - text_rect.top() + view.scroll.y;
+    let row_idx = (y / m.row_h).floor().max(0.0) as usize;
+    if row_idx >= layout.total_rows || p.x < text_rect.left() {
+        return None;
+    }
+    let row = layout.row(doc, view, row_idx);
+    let buf = &doc.buffer;
+    let hints = m.inlays.as_ref()?.get(&row.line)?;
+    let (col, text) = hints.last().filter(|(_, t)| t.starts_with("  "))?;
+    let line_start = buf.line_start(row.line);
+    if line_start + col != row.end {
+        return None;
+    }
+    let in_row = (row.start - line_start)..*col;
+    let others: usize = hints[..hints.len() - 1]
+        .iter()
+        .filter(|(c, _)| in_row.contains(c) || c == col)
+        .map(|(_, t)| t.chars().count())
+        .sum();
+    let start = visual_width(buf.rope().slice(row.start..row.end).chars()) + others;
+    let screen = ((p.x - text_rect.left() + view.scroll.x) / m.char_w).floor().max(0.0) as usize;
+    let into = screen.checked_sub(start)?;
+    (2..text.chars().count()).contains(&into).then_some((row.line, into))
 }
 
 /// The start and end of the row under `p`, its line, and the visual column
@@ -732,6 +771,10 @@ fn handle_mouse(
     let pos = pos_at(doc, view, layout, m, text_rect, p);
     let (_, _, line, col) = cell_at(doc, view, layout, m, text_rect, p);
     let in_text = text_rect.x_range().contains(p.x);
+    let lens = if mods.any() || !response.hovered() { None } else { lens_at(doc, view, layout, m, text_rect, p) };
+    if lens.is_some() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
 
     if !ui.input(|i| i.pointer.primary_down() || i.pointer.middle_down()) {
         view.column_anchor = None;
@@ -770,7 +813,9 @@ fn handle_mouse(
             view.change_click = Some((line, p));
             return false;
         }
-        if p.x < text_rect.left() {
+        if lens.is_some() {
+            view.lens_click = lens;
+        } else if p.x < text_rect.left() {
             // Click in the gutter selects the whole line.
             let next = (line + 1 < doc.buffer.len_lines()).then(|| doc.buffer.line_start(line + 1));
             let end = next.unwrap_or_else(|| doc.buffer.len_chars());
