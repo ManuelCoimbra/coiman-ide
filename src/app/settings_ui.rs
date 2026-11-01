@@ -479,11 +479,15 @@ impl CodeApp {
             state.fonts = fonts;
             state.fonts_loading = None;
         }
+        // Most of the window: there's a lot to read here. A new id, so a size saved before doesn't stay.
+        let room = ctx.content_rect().size();
+        let size = egui::vec2((room.x * 0.8).clamp(600.0, 1400.0), (room.y * 0.86).max(400.0));
         egui::Window::new("Settings")
+            .id(egui::Id::unique("settings_window_large"))
             .open(&mut open)
             .collapsible(false)
-            .default_size([760.0, 560.0])
-            .default_pos(ctx.content_rect().center() - egui::vec2(380.0, 280.0))
+            .default_size(size)
+            .default_pos(ctx.content_rect().center() - size / 2.0)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     ui.add(
@@ -528,7 +532,7 @@ impl CodeApp {
                                     ui.set_width(ui.available_width() - 340.0);
                                     ui.label(row.label);
                                     if !row.help.is_empty() {
-                                        let help = RichText::new(row.help).small().color(theme::colors().text_dim);
+                                        let help = RichText::new(row.help).color(theme::colors().text_dim);
                                         ui.add(egui::Label::new(help).wrap());
                                     }
                                 });
