@@ -8,6 +8,7 @@ use crate::terminal::Action as TerminalAction;
 use crate::theme;
 use egui::{Align, Color32, Key, RichText, Sense, Stroke};
 use rust_code_core::find;
+use rust_code_core::project_tree::FileRole;
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
@@ -637,7 +638,7 @@ impl CodeApp {
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("EXPLORER").small().strong());
+                    ui.label(RichText::new("PROJECT").small().strong());
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         if self.explorer.root.is_some() {
                             if icons::button(ui, Icon::CollapseAll, "Collapse All").clicked() {
@@ -655,18 +656,11 @@ impl CodeApp {
                             if icons::button(ui, Icon::Folder, "New Folder...").clicked() {
                                 self.start_explorer_action(ExplorerAction::NewFolder(None));
                             }
-                            if icons::button(ui, Icon::Plus, "New File...").clicked() {
-                                self.start_explorer_action(ExplorerAction::NewFile(None));
-                            }
+                            let new = icons::button(ui, Icon::Plus, "New...");
+                            egui::Popup::menu(&new).show(|ui| self.explorer.new_menu(ui, None));
                         }
                     });
                 });
-                if let Some(root) = &self.explorer.root {
-                    let name = root
-                        .file_name()
-                        .map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().to_uppercase());
-                    ui.label(RichText::new(name).strong().size(small_size(ui)));
-                }
                 if self.explorer.root.is_none()
                     && ui.button("Open Folder").clicked()
                     && let Some(path) = rfd::FileDialog::new().pick_folder()
@@ -735,7 +729,11 @@ impl CodeApp {
                                     let inside = doc.path.as_deref().zip(self.explorer.root.as_deref());
                                     let place = inside.and_then(|(p, r)| p.strip_prefix(r).ok());
                                     let place = place.map_or_else(|| doc.title(), |p| p.to_string_lossy().into_owned());
-                                    icons::show_file(ui, &place, icon_size);
+                                    let role = match &doc.path {
+                                        Some(path) => self.explorer.role_of(path, &place),
+                                        None => FileRole::of_name(&place),
+                                    };
+                                    icons::show_source(ui, &place, role, icon_size);
                                     ui.add_space(4.0);
                                     let label = ui.add(
                                         egui::Label::new(RichText::new(doc.title()).color(color))

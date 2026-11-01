@@ -1,6 +1,7 @@
 //! Rust Code's own line icons, inspired by VS Code's codicons and drawn as
 //! vector shapes, so they look sharp at any size and need no icon font.
 
+use rust_code_core::project_tree::{ClassKind, FileRole};
 use std::collections::HashMap;
 
 use egui::{Color32, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, epaint::CubicBezierShape};
@@ -307,6 +308,48 @@ fn file_icon_texture(ctx: &egui::Context, icon: &'static str, pixels: u32) -> Op
 /// Draws the icon for a file. `path` may be just its name; relative to the project, it
 /// also tells a file in a test folder. Tests get a flask, except where their icon says so.
 pub fn paint_file(painter: &egui::Painter, rect: Rect, path: &str) {
+    paint_source(painter, rect, path, FileRole::of_name(path));
+}
+
+/// Draws a file's icon as JetBrains IDEs do once they've read it: its type in a ring if
+/// it's one, with a mark where a program starts or tests are kept.
+pub fn paint_source(painter: &egui::Painter, rect: Rect, path: &str, role: FileRole) {
+    if let Some(kind) = role.class {
+        paint_class(painter, rect, kind);
+    } else {
+        paint_theme_icon(painter, rect, path);
+    }
+    let own_flask = role.class.is_none() && file_icons::icon_for(path, false).starts_with("test");
+    if role.test && !own_flask {
+        paint_test_mark(painter, rect);
+    } else if role.runs {
+        paint_run_mark(painter, rect);
+    }
+}
+
+fn paint_class(painter: &egui::Painter, rect: Rect, kind: ClassKind) {
+    let (letter, color) = match kind {
+        ClassKind::Class => ("C", Color32::from_rgb(0x54, 0x8A, 0xF7)),
+        ClassKind::Abstract => ("A", Color32::from_rgb(0x7F, 0x9A, 0xC9)),
+        ClassKind::Interface => ("I", Color32::from_rgb(0x57, 0x96, 0x5C)),
+        ClassKind::Enum => ("E", Color32::from_rgb(0xB1, 0x89, 0xF5)),
+        ClassKind::Record => ("R", Color32::from_rgb(0x54, 0x8A, 0xF7)),
+        ClassKind::Annotation => ("@", Color32::from_rgb(0xC7, 0x7D, 0xBB)),
+        ClassKind::Object => ("O", Color32::from_rgb(0xD0, 0x8F, 0x3E)),
+        ClassKind::Trait => ("T", Color32::from_rgb(0x57, 0x96, 0x5C)),
+    };
+    paint_ring(painter, rect, letter, color);
+}
+
+/// A letter in a ring: what kind of thing a name is, in the tree and in completion.
+pub fn paint_ring(painter: &egui::Painter, rect: Rect, letter: &str, color: Color32) {
+    let radius = rect.width() * 0.46;
+    painter.circle(rect.center(), radius, color.gamma_multiply(0.18), Stroke::new(1.2, color));
+    let font = egui::FontId::proportional(rect.width() * 0.7);
+    painter.text(rect.center(), egui::Align2::CENTER_CENTER, letter, font, color.lerp_to_gamma(Color32::WHITE, 0.45));
+}
+
+fn paint_theme_icon(painter: &egui::Painter, rect: Rect, path: &str) {
     let ctx = painter.ctx().clone();
     let pal = crate::theme::colors();
     let light = pal.editor_bg.r() as u32 + pal.editor_bg.g() as u32 + pal.editor_bg.b() as u32 > 384;
@@ -316,9 +359,16 @@ pub fn paint_file(painter: &egui::Painter, rect: Rect, path: &str) {
         let whole = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
         painter.image(texture.id(), rect, whole, Color32::WHITE);
     }
-    if file_icons::is_test_file(path) && !icon.starts_with("test") {
-        paint_test_mark(painter, rect);
-    }
+}
+
+/// A green triangle at an icon's corner: a program starts here.
+fn paint_run_mark(painter: &egui::Painter, rect: Rect) {
+    let size = rect.width() * 0.48;
+    let mark = Rect::from_center_size(rect.right_bottom() - Vec2::splat(size * 0.3), Vec2::splat(size));
+    painter.circle_filled(mark.center(), size * 0.56, crate::theme::colors().editor_bg);
+    let at = |x: f32, y: f32| mark.min + Vec2::new(x, y) * size;
+    let points = vec![at(0.22, 0.08), at(0.92, 0.5), at(0.22, 0.92)];
+    painter.add(egui::Shape::convex_polygon(points, Color32::from_rgb(0x57, 0xC0, 0x6A), Stroke::NONE));
 }
 
 /// A flask at an icon's corner: this holds tests.
@@ -327,6 +377,13 @@ pub fn paint_test_mark(painter: &egui::Painter, rect: Rect) {
     let flask = Rect::from_center_size(rect.right_bottom() - Vec2::splat(size * 0.3), Vec2::splat(size));
     painter.circle_filled(flask.center(), size * 0.56, crate::theme::colors().editor_bg);
     paint(painter, flask, Icon::Beaker, Color32::from_rgb(0x73, 0xC9, 0x91));
+}
+
+/// A file icon allocated in a layout, knowing what the file is.
+pub fn show_source(ui: &mut Ui, path: &str, role: FileRole, size: f32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
+    paint_source(ui.painter(), rect, path, role);
+    response
 }
 
 /// A file icon allocated in a layout.

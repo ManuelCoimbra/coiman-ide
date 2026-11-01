@@ -132,8 +132,8 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row(
                 "workbench",
                 "compact_folders",
-                "Compact folders",
-                "In the Explorer, show folders holding only one folder as one row, like src/main/java.",
+                "Compact packages",
+                "In the Explorer, show packages holding only one package as one row, like org.example.",
                 Kind::Toggle,
             ),
         ],

@@ -374,7 +374,12 @@ impl CodeApp {
         if self.cargo.other_tests.as_ref().is_some_and(|(u, v, _)| (*u, *v) == (uid, version)) {
             return;
         }
-        let found = doc.path.as_deref().map_or_else(Vec::new, |p| run::test_lines(p, &doc.text()));
+        let found = doc.path.as_deref().map_or_else(Vec::new, |p| {
+            let text = doc.text();
+            let mut found = run::test_lines(p, &text);
+            found.extend(run::program_lines(p, &text).into_iter().map(|line| (line, run::RUN_PROGRAM.to_owned())));
+            found
+        });
         self.cargo.other_tests = Some((uid, version, found));
     }
 
@@ -700,6 +705,10 @@ impl CodeApp {
             return;
         }
         if let Some(id) = self.other_test_at(line) {
+            if id == run::RUN_PROGRAM {
+                self.run_program(ctx);
+                return;
+            }
             let file = self.docs[self.active].path.clone();
             if file.is_some_and(|f| self.run_one_test(ctx, &f, &id, line)) {
                 return;
@@ -745,17 +754,17 @@ impl CodeApp {
                     None => (*line, None, color),
                 })
                 .collect();
-            return;
         }
         let Some(f) = self.active_tests() else { return };
-        deco.runnables = f
+        let tests = f
             .items
             .iter()
             .map(|item| {
                 let (icon, color) = outcome_icon(self.outcome_of(&f.target, item));
                 (item.line, Some(icon), color)
             })
-            .collect();
+            .collect::<Vec<_>>();
+        deco.runnables.extend(tests);
     }
 
     // ----- views -------------------------------------------------------------------------

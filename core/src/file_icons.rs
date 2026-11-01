@@ -75,7 +75,8 @@ const CODE: &[&str] = &[
     "rs", "py", "pyw", "js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx", "java", "kt", "kts", "scala", "groovy",
     "go", "c", "h", "cc", "cpp", "cxx", "hpp", "cs", "fs", "vb", "rb", "php", "lua", "pl", "pm", "r", "jl", "ex",
     "exs", "erl", "hs", "ml", "clj", "cljs", "cljc", "lisp", "swift", "dart", "zig", "nim", "sh", "ps1", "lean",
-    "agda",
+    "agda", "d", "pas", "f90", "f95", "f03", "f", "for", "cob", "cbl", "m", "mm", "hpp", "rkt", "cl", "nims", "pyx",
+    "bash", "zsh", "fsx",
 ];
 /// Whose class names say so: `AppTest`, `AppTests`, `TestApp`.
 const CLASS_NAMED: &[&str] = &["java", "kt", "kts", "scala", "groovy", "cs", "fs", "vb", "swift", "php", "dart"];

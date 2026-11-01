@@ -1980,11 +1980,12 @@ impl CodeApp {
                                 let (glyph, color) = lsp_ui::kind_glyph(e.item.kind);
                                 let y = rect.center().y;
                                 let p = ui.painter();
-                                p.text(
-                                    rect.left_center() + egui::vec2(6.0, 0.0),
-                                    egui::Align2::LEFT_CENTER,
+                                let ring = font.size * 1.15;
+                                let at = rect.left_center() + egui::vec2(4.0 + ring / 2.0, 0.0);
+                                crate::icons::paint_ring(
+                                    p,
+                                    egui::Rect::from_center_size(at, egui::Vec2::splat(ring)),
                                     glyph,
-                                    font.clone(),
                                     color,
                                 );
                                 p.text(

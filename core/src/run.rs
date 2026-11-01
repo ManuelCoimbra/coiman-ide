@@ -284,6 +284,73 @@ fn java_package(source: &str) -> String {
 
 // ----- C and C++ ----------------------------------------------------------------------
 
+/// A test id meaning: not a test, run the program.
+pub const RUN_PROGRAM: &str = "\0program";
+
+/// The lines a program starts at, going by the text: a `main`, and the type holding it
+/// where a language has one; a script's `#!` line or its "run as a program" check. A script
+/// run from the top with neither has no such mark.
+pub fn program_lines(file: &Path, source: &str) -> Vec<usize> {
+    let extension = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let stem = stem_of(file);
+    let starts = |line: &str, marks: &[&str]| marks.iter().any(|m| line.starts_with(m));
+    let holds = |line: &str, marks: &[&str]| marks.iter().any(|m| line.contains(m));
+    let is_start = |line: &str| match extension.as_str() {
+        "java" | "groovy" => holds(line, &["void main("]),
+        "c" | "h" | "cpp" | "cc" | "cxx" => holds(line, &[" main(", " wmain(", " WinMain("]) && !line.ends_with(';'),
+        "rs" => starts(line, &["fn main(", "pub fn main(", "async fn main(", "pub async fn main("]),
+        "go" => starts(line, &["func main("]),
+        "py" | "pyw" => starts(line, &["if __name__ == '__main__'", "if __name__ == \"__main__\""]),
+        "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" => holds(line, &["require.main === module", "import.meta.main"]),
+        "kt" => starts(line, &["fun main(", "suspend fun main("]),
+        "scala" => holds(line, &["def main(", "@main"]),
+        "cs" => holds(line, &["static void Main(", "static int Main(", "static async Task Main(", "static Task Main("]),
+        "fs" => starts(line, &["[<EntryPoint>]"]),
+        "vb" => holds(line, &["Sub Main("]),
+        "swift" => starts(line, &["@main"]),
+        "dart" => starts(line, &["void main(", "main(", "Future<void> main("]),
+        "rb" => starts(line, &["if __FILE__ == $0", "if __FILE__ == $PROGRAM_NAME"]),
+        "zig" => starts(line, &["pub fn main("]),
+        "nim" | "nims" => starts(line, &["when isMainModule"]),
+        "hs" => starts(line, &["main ::", "main ="]),
+        "jl" => starts(line, &["if abspath(PROGRAM_FILE)"]),
+        "d" => holds(line, &["void main(", "int main("]),
+        "clj" | "cljc" => starts(line, &["(defn -main"]),
+        "erl" => starts(line, &["main("]),
+        "ml" => starts(line, &["let () ="]),
+        "pas" | "f90" | "f95" | "f03" | "f" | "for" => line.to_lowercase().starts_with("program "),
+        "cob" | "cbl" => line.to_uppercase().starts_with("PROGRAM-ID"),
+        _ => false,
+    };
+    let mut lines: Vec<usize> = Vec::new();
+    if source.starts_with("#!") {
+        lines.push(0);
+    }
+    let found: Vec<usize> = source.lines().enumerate().filter(|(_, l)| is_start(l.trim())).map(|(at, _)| at).collect();
+    // Where the syntax tells better than the words do.
+    let confirmed = match extension.as_str() {
+        "java" => java_main(source).is_some(),
+        "c" => c_has_main(Lang::C, source),
+        "cpp" | "cc" | "cxx" => c_has_main(Lang::Cpp, source),
+        "go" => source.lines().any(|l| l.trim_start().starts_with("package main")),
+        _ => true,
+    };
+    if confirmed && !found.is_empty() {
+        if matches!(extension.as_str(), "java" | "kt" | "scala" | "groovy" | "cs") {
+            let word = |w: &str| w.split(|c: char| !c.is_alphanumeric() && c != '_').next() == Some(stem.as_str());
+            let class = source.lines().position(|l| {
+                let words: Vec<&str> = l.split_whitespace().collect();
+                words
+                    .windows(2)
+                    .any(|w| matches!(w[0], "class" | "object" | "record" | "enum" | "interface") && word(w[1]))
+            });
+            lines.extend(class.filter(|c| *c < found[0]));
+        }
+        lines.extend(found);
+    }
+    lines
+}
+
 /// Whether a C or C++ file defines `main`.
 fn c_has_main(lang: Lang, source: &str) -> bool {
     let Some(tree) = parse(lang, source) else { return false };
@@ -1126,6 +1193,49 @@ pub fn preview_plans(file: &Path, source: &str, root: Option<&Path>) -> Result<V
         Ok(Outcome::Run(found)) => Ok(vec![found]),
         Ok(Outcome::Choose(found)) => Ok(found),
         Err(why) => tests_of(file, source, root).map(|found| vec![found]).ok_or(why),
+    }
+}
+
+#[cfg(test)]
+mod program_line_tests {
+    use super::*;
+
+    #[test]
+    fn marks_the_type_and_main_as_those_ides_do() {
+        let java = "package a;\n\npublic class Main {\n    public static void main(String[] args) {}\n}\n";
+        assert_eq!(program_lines(Path::new("Main.java"), java), [2, 3]);
+        assert_eq!(program_lines(Path::new("a.rs"), "use x;\nfn main() {}\n"), [1]);
+        assert_eq!(program_lines(Path::new("a.py"), "x = 1\nif __name__ == '__main__':\n    go()\n"), [1]);
+        assert_eq!(program_lines(Path::new("a.sh"), "#!/bin/sh\necho\n"), [0]);
+        assert!(program_lines(Path::new("a.go"), "package app\nfunc main() {}\n").is_empty());
+        assert!(program_lines(Path::new("a.c"), "// int main() {\nint f(void) { return 0; }\n").is_empty());
+        assert!(program_lines(Path::new("a.py"), "def main(): pass\n").is_empty());
+    }
+
+    #[test]
+    fn every_language_has_its_form() {
+        for (file, source) in [
+            ("a.kt", "fun main() {}"),
+            ("a.scala", "@main def go() = ()"),
+            ("A.cs", "class A { static void Main(string[] args) {} }"),
+            ("a.fs", "[<EntryPoint>]\nlet main argv = 0"),
+            ("a.swift", "@main\nstruct App {}"),
+            ("a.dart", "void main() {}"),
+            ("a.rb", "if __FILE__ == $0\nend"),
+            ("a.js", "if (require.main === module) go();"),
+            ("a.ts", "if (import.meta.main) go();"),
+            ("a.zig", "pub fn main() void {}"),
+            ("a.nim", "when isMainModule:\n  go()"),
+            ("a.hs", "main :: IO ()"),
+            ("a.jl", "if abspath(PROGRAM_FILE) == @__FILE__\nend"),
+            ("a.d", "void main() {}"),
+            ("a.clj", "(defn -main [] 1)"),
+            ("a.f90", "PROGRAM hello\nEND"),
+            ("a.pas", "program hello;"),
+            ("a.cbl", "PROGRAM-ID. HELLO."),
+        ] {
+            assert!(!program_lines(Path::new(file), source).is_empty(), "{file}");
+        }
     }
 }
 

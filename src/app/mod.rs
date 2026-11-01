@@ -270,6 +270,8 @@ pub struct CodeApp {
     refocus_after_palette: bool,
     /// Where the Explorer's next new file, folder or rename applies.
     path_target: Option<PathBuf>,
+    /// The kind of file New is making there.
+    path_template: Option<usize>,
     /// Asking before moving this to the Recycle Bin.
     delete_pending: Option<PathBuf>,
 }
@@ -373,6 +375,7 @@ impl CodeApp {
             trust_prompt_hidden: false,
             refocus_after_palette: false,
             path_target: None,
+            path_template: None,
             delete_pending: None,
         };
         // Always restore the previous session first so unsaved work is never

@@ -8,8 +8,8 @@ use crate::session::{self, Session};
 use crate::syntax::SyntaxWorker;
 use crate::theme;
 use crate::watcher::same_path;
-use rust_code_core::recent;
 use rust_code_core::{editorconfig, find};
+use rust_code_core::{project_tree, recent};
 use std::path::{Path, PathBuf};
 
 use super::{BACKUP_INTERVAL, CodeApp, PendingClose, SidebarView, repaint};
@@ -238,6 +238,11 @@ impl CodeApp {
                 self.path_target = dir.or(root);
                 self.palette.show_input(InputKind::NewFile, "", "New file name, then Enter (a/b.rs makes folders too)");
             }
+            ExplorerAction::NewFromTemplate(dir, template) => {
+                self.path_target = dir.or(root);
+                self.path_template = Some(template);
+                self.palette.show_input(InputKind::NewFile, "", "New file's name, then Enter (its extension is added)");
+            }
             ExplorerAction::NewFolder(dir) => {
                 self.path_target = dir.or(root);
                 self.palette.show_input(InputKind::NewFolder, "", "New folder name, then Enter");
@@ -253,7 +258,9 @@ impl CodeApp {
 
     pub(super) fn finish_new_path(&mut self, name: &str, folder: bool) {
         let Some(dir) = self.path_target.take() else { return };
-        let Some(path) = child_path(&dir, name) else {
+        let template = self.path_template.take().map(|t| &project_tree::TEMPLATES[t]);
+        let typed = template.map_or_else(|| name.to_owned(), |t| t.file_name(name));
+        let Some(path) = child_path(&dir, &typed) else {
             self.status = Some(format!("\"{name}\" isn't a name inside this folder"));
             return;
         };
@@ -264,7 +271,14 @@ impl CodeApp {
         let made = if folder {
             std::fs::create_dir_all(&path)
         } else {
-            path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, ""))
+            let text = template.map_or_else(String::new, |t| {
+                let root = self.explorer.root.as_deref();
+                let folder = path.parent().unwrap_or(&dir);
+                let inside = root.and_then(|r| folder.strip_prefix(r).ok()).unwrap_or(folder);
+                let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                t.text(&stem, &inside.to_string_lossy())
+            });
+            path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, text))
         };
         match made {
             Ok(()) => {

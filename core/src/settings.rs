@@ -122,7 +122,7 @@ pub struct WorkbenchSettings {
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
-    /// Explorer: show a chain of folders holding only each other as one row.
+    /// Explorer: show a chain of packages holding only each other as one row, `org.example`.
     pub compact_folders: bool,
 }
 
