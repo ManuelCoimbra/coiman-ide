@@ -216,6 +216,9 @@ impl CodeApp {
         if first || new.editor.word_wrap != old.editor.word_wrap {
             self.word_wrap = new.editor.word_wrap;
         }
+        if first || new.workbench.ui != old.workbench.ui {
+            theme::set_islands(ctx, new.workbench.ui != "classic");
+        }
         if first || new.workbench.color_theme != old.workbench.color_theme {
             // The built-in theme needs no scan of installed VS Code themes.
             if self.themes.is_empty() && !new.workbench.color_theme.eq_ignore_ascii_case("Dark Modern") {

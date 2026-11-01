@@ -397,7 +397,9 @@ impl CodeApp {
         let mut icon = |ui: &mut egui::Ui, glyph: Icon, tip: &str, active: bool, c: Command| {
             let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
             let (rect, resp) = ui.allocate_exact_size(egui::vec2(48.0, 44.0), Sense::click());
-            if active {
+            if active && theme::islands() {
+                ui.painter().rect_filled(rect.shrink2(egui::vec2(6.0, 2.0)), 8.0, theme::colors().selection);
+            } else if active {
                 ui.painter().rect_filled(
                     egui::Rect::from_min_size(rect.min, egui::vec2(2.0, rect.height())),
                     0.0,

@@ -75,6 +75,27 @@ impl<C: Copy> Palette<C> {
     }
 }
 
+impl Palette<Color> {
+    /// The same theme for the island layout: panels share the editor's color, and stand
+    /// on a canvas a little darker, which also takes the bars around them.
+    pub fn islands(&self) -> Self {
+        let shade = |c: Color, by: f32| {
+            let channel = |v: u8| (f32::from(v) * (1.0 - by)).round() as u8;
+            Color { r: channel(c.r), g: channel(c.g), b: channel(c.b), a: c.a }
+        };
+        let canvas = shade(self.editor_bg, if self.dark { 0.3 } else { 0.07 });
+        Self {
+            sidebar_bg: self.editor_bg,
+            activity_bg: canvas,
+            status_bg: canvas,
+            status_fg: self.text_dim,
+            tab_active_bg: self.editor_bg,
+            tab_inactive_bg: self.editor_bg,
+            ..*self
+        }
+    }
+}
+
 /// An sRGB color with unmultiplied alpha (UI-toolkit independent).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub struct Color {
@@ -627,6 +648,21 @@ pub fn resolve(name: &str, available: &[ThemeEntry]) -> (Theme, Option<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn islands_stand_on_a_darker_canvas_in_any_theme() {
+        let all = [resolve("Dark Modern", &[]).0.palette, resolve("Light Modern", &[]).0.palette];
+        let sum = |c: Color| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
+        for palette in all {
+            let islands = palette.islands();
+            assert_eq!(islands.sidebar_bg, palette.editor_bg);
+            assert_eq!(islands.tab_inactive_bg, palette.editor_bg);
+            assert!(sum(islands.activity_bg) < sum(palette.editor_bg));
+            assert_eq!(islands.status_bg, islands.activity_bg);
+            assert_eq!(islands.status_fg, palette.text_dim);
+            assert_eq!(islands.editor_fg, palette.editor_fg);
+        }
+    }
 
     #[test]
     fn jsonc_comments_and_trailing_commas() {

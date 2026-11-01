@@ -121,6 +121,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
     (
         "Appearance",
         &[
+            row(
+                "workbench",
+                "ui",
+                "Layout",
+                "Rounded islands with gaps between them, or the classic square panels.",
+                Kind::Choice(&[("islands", "Islands"), ("classic", "Classic")]),
+            ),
             row("workbench", "zoom", "Zoom", "Scale of the whole window. 1.25 is 125%.", Kind::Decimal(0.5, 3.0)),
             row(
                 "workbench",

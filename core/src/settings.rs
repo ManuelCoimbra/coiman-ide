@@ -122,6 +122,8 @@ pub struct WorkbenchSettings {
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
+    /// The window's layout: "islands", or "classic" for square panels edge to edge.
+    pub ui: String,
     /// Explorer: show a chain of packages holding only each other as one row, `org.example`.
     pub compact_folders: bool,
     /// Explorer: show `a.test.ts`, `a.js` and `a.css` under `a.ts`.
@@ -325,6 +327,7 @@ impl Default for WorkbenchSettings {
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
             color_theme: "Dark Modern".to_owned(),
+            ui: "islands".to_owned(),
             compact_folders: true,
             nest_files: true,
         }
