@@ -479,11 +479,11 @@ impl CodeApp {
             state.fonts = fonts;
             state.fonts_loading = None;
         }
-        // Most of the window: there's a lot to read here. A new id, so a size saved before doesn't stay.
+        // As wide as its rows need, and most of the window's height. A new id, so a size saved before doesn't stay.
         let room = ctx.content_rect().size();
-        let size = egui::vec2((room.x * 0.8).clamp(600.0, 1400.0), (room.y * 0.86).max(400.0));
+        let size = egui::vec2((room.x * 0.8).min(860.0), (room.y * 0.86).max(400.0));
         egui::Window::new("Settings")
-            .id(egui::Id::unique("settings_window_large"))
+            .id(egui::Id::unique("settings_window_fitted"))
             .open(&mut open)
             .collapsible(false)
             .default_size(size)
