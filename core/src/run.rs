@@ -1113,6 +1113,13 @@ fn tests_of(file: &Path, source: &str, root: Option<&Path>) -> Option<RunPlan> {
     Some(RunPlan { title, command, cwd: dir })
 }
 
+/// Whether a C or C++ file has a `compile_commands.json` above it, or in a `build` folder.
+pub fn has_compile_database(file: &Path, root: Option<&Path>) -> bool {
+    upward(file, root).any(|dir| {
+        dir.join("compile_commands.json").is_file() || dir.join("build").join("compile_commands.json").is_file()
+    })
+}
+
 /// What a constant preview of `file` runs: its program, or else its tests.
 pub fn preview_plans(file: &Path, source: &str, root: Option<&Path>) -> Result<Vec<RunPlan>, String> {
     match plan(file, source, root) {

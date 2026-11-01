@@ -19,6 +19,7 @@ mod git;
 mod hidden;
 mod history;
 mod keys_ui;
+mod likely;
 mod live;
 mod logs;
 mod lsp;
@@ -175,6 +176,7 @@ pub struct CodeApp {
     web: web::Web,
     live: live::Live,
     constant: constant::Constant,
+    likely: likely::Likely,
     tree_tools: tree_tools::TreeTools,
     at_cursor: at_cursor::AtCursor,
     coverage: coverage::Coverage,
@@ -307,6 +309,7 @@ impl CodeApp {
             web: Default::default(),
             live: Default::default(),
             constant: Default::default(),
+            likely: Default::default(),
             tree_tools: Default::default(),
             at_cursor: Default::default(),
             coverage: Default::default(),
@@ -409,6 +412,7 @@ impl eframe::App for CodeApp {
         self.pump_tests(&ctx);
         self.pump_live(&ctx);
         self.pump_constant(&ctx);
+        self.pump_likely(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
         self.pump_coverage(&ctx);

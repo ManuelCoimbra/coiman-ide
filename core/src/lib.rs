@@ -30,6 +30,7 @@ pub mod hexdata;
 pub mod highlight;
 pub mod history;
 pub mod languages;
+pub mod likely;
 pub mod live;
 pub mod live_adapters;
 pub mod logfile;

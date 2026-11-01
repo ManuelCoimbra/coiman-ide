@@ -391,6 +391,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Find References | `Shift+F12`, results in the References panel |
 | Rename Symbol | `F2`; files that aren't open are opened with the changes unsaved, so you can review and undo |
 | Code actions | `Ctrl+.` (quick fixes, refactors) |
+| Likely problems | Warns while you type about loops that look endless (Python, JS, TS, Java, C, C++, C#, Go, Rust, Zig) and memory that looks leaked (C, C++, Zig; `mem::forget` in Rust). C and C++ also use `clang-tidy`'s analyzer on save if it's on `PATH`, in trusted folders. These are likely findings, not proof: some are wrong and some leaks are missed. `editor.likely_problems = false` turns them off |
 | Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving |
 
 Click the server's name in the status bar, or run **Language Servers: Show Status**, for its state,
