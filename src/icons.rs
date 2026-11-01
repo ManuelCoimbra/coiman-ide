@@ -15,6 +15,8 @@ pub enum Icon {
     Terminal,
     Folder,
     FolderOpen,
+    Menu,
+    Gear,
     CollapseAll,
     Locate,
     ChevronRight,
@@ -135,6 +137,20 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::FolderOpen => {
             pen.line(&[(0.18, 0.84), (0.06, 0.84), (0.06, 0.2), (0.38, 0.2), (0.48, 0.32), (0.82, 0.32), (0.82, 0.46)]);
             pen.closed(&[(0.18, 0.46), (0.98, 0.46), (0.84, 0.84), (0.04, 0.84)]);
+        }
+        Icon::Menu => {
+            for y in [0.25, 0.5, 0.75] {
+                pen.line(&[(0.14, y), (0.86, y)]);
+            }
+        }
+        Icon::Gear => {
+            pen.circle(0.5, 0.5, 0.16);
+            pen.circle(0.5, 0.5, 0.31);
+            for tooth in 0..8 {
+                let angle = tooth as f32 * PI / 4.0;
+                let (x, y) = (angle.cos(), angle.sin());
+                pen.line(&[(0.5 + 0.31 * x, 0.5 + 0.31 * y), (0.5 + 0.44 * x, 0.5 + 0.44 * y)]);
+            }
         }
         Icon::CollapseAll => {
             pen.closed(&[(0.3, 0.1), (0.9, 0.1), (0.9, 0.7), (0.3, 0.7)]);

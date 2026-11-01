@@ -413,6 +413,45 @@ pub fn hides_extension(name: &str) -> bool {
     matches!(extension, "java" | "kt" | "scala" | "groovy" | "cs")
 }
 
+/// A project's initials and color, always the same for the same name, so that windows can
+/// be told apart.
+pub fn project_badge(name: &str) -> (String, [u8; 3]) {
+    const COLORS: [[u8; 3]; 8] = [
+        [0x4A, 0x7F, 0xD9],
+        [0x2F, 0x9E, 0x8F],
+        [0x4F, 0x9E, 0x4F],
+        [0xB0, 0x7A, 0x2E],
+        [0xC4, 0x5A, 0x4A],
+        [0xB0, 0x56, 0x96],
+        [0x7E, 0x62, 0xC9],
+        [0x3C, 0x8D, 0xB8],
+    ];
+    let mut words: Vec<String> = Vec::new();
+    let mut after_lower = false;
+    for c in name.chars() {
+        if !c.is_alphanumeric() {
+            words.push(String::new());
+            after_lower = false;
+            continue;
+        }
+        if words.is_empty() || (c.is_uppercase() && after_lower) {
+            words.push(String::new());
+        }
+        if let Some(word) = words.last_mut() {
+            word.push(c);
+        }
+        after_lower = c.is_lowercase();
+    }
+    words.retain(|w| !w.is_empty());
+    let letters: String = match words.as_slice() {
+        [] => "?".to_owned(),
+        [only] => only.chars().take(2).collect(),
+        [first, .., last] => first.chars().take(1).chain(last.chars().take(1)).collect(),
+    };
+    let hash = name.bytes().fold(0x811c_9dc5_u32, |h, b| (h ^ u32::from(b)).wrapping_mul(0x0100_0193));
+    (letters.to_uppercase(), COLORS[hash as usize % COLORS.len()])
+}
+
 /// What New offers: a file of a language, already saying what such a file must.
 pub struct Template {
     pub label: &'static str,
@@ -718,6 +757,19 @@ mod tests {
         assert!(FileRole::of("checks.ex", "  use ExUnit.Case").test);
         assert!(FileRole::of("Checks.swift", "class C: XCTestCase {").test);
         assert!(!FileRole::of("checks.py", "# not unittest.TestCase").test);
+    }
+
+    #[test]
+    fn projects_get_lasting_badges() {
+        assert_eq!(project_badge("rust-code").0, "RC");
+        assert_eq!(project_badge("spring_petclinic").0, "SP");
+        assert_eq!(project_badge("PetClinic").0, "PC");
+        assert_eq!(project_badge("proj").0, "PR");
+        assert_eq!(project_badge("a b c").0, "AC");
+        assert_eq!(project_badge("---").0, "?");
+        assert_eq!(project_badge("rust-code").1, project_badge("rust-code").1);
+        let many: std::collections::HashSet<_> = ["a", "b", "c", "d", "e", "f"].map(|n| project_badge(n).1).into();
+        assert!(many.len() > 1);
     }
 
     #[test]

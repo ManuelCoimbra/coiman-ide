@@ -8,7 +8,7 @@ use crate::terminal::Action as TerminalAction;
 use crate::theme;
 use egui::{Align, Color32, Key, RichText, Sense, Stroke};
 use rust_code_core::find;
-use rust_code_core::project_tree::FileRole;
+use rust_code_core::project_tree::{self, FileRole};
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
@@ -55,8 +55,10 @@ impl CodeApp {
     /// The window's title bar: menus, the title, and minimize/maximize/close.
     /// Dragging it moves the window; double-clicking maximizes or restores.
     pub(super) fn title_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
+        if theme::islands() {
+            return self.top_bar(ui);
+        }
         const HEIGHT: f32 = 30.0;
-        const BUTTON: f32 = 46.0;
         const RUN_BUTTON: f32 = 40.0;
         let ctx = ui.ctx().clone();
         let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
@@ -72,7 +74,7 @@ impl CodeApp {
 
         let mut cmd = None;
         let menus_right = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(bar.with_max_x(bar.max.x - 3.0 * BUTTON)), |ui| {
+            .scope_builder(egui::UiBuilder::new().max_rect(bar.with_max_x(bar.max.x - 3.0 * WINDOW_BUTTON)), |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.add_space(10.0);
                     let logo = egui::Rect::from_center_size(
@@ -98,7 +100,8 @@ impl CodeApp {
         let target = self.run_target_label();
         let target_galley = target.map(|t| ui.painter().layout_no_wrap(t, font_for_target(ui), pal.text_dim));
         let target_width = target_galley.as_ref().map_or(0.0, |g| g.size().x.min(180.0) + 28.0);
-        let room = egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * BUTTON - RUN_BUTTON - target_width - 16.0);
+        let room =
+            egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * WINDOW_BUTTON - RUN_BUTTON - target_width - 16.0);
         if room.span() > 40.0 {
             let width = galley.size().x.min(room.span());
             let x = (bar.center().x - width / 2.0).clamp(room.min, room.max - width);
@@ -112,7 +115,7 @@ impl CodeApp {
 
         // Run Program, just left of the window buttons.
         let run_rect = egui::Rect::from_min_size(
-            egui::pos2(bar.max.x - 3.0 * BUTTON - RUN_BUTTON, bar.min.y),
+            egui::pos2(bar.max.x - 3.0 * WINDOW_BUTTON - RUN_BUTTON, bar.min.y),
             egui::vec2(RUN_BUTTON, HEIGHT),
         );
         // What Run starts, just left of it.
@@ -150,29 +153,129 @@ impl CodeApp {
             }
         }
 
-        // Window buttons.
-        let buttons = [WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close];
-        for (i, which) in buttons.into_iter().enumerate() {
-            let rect = egui::Rect::from_min_size(
-                egui::pos2(bar.max.x - (3 - i) as f32 * BUTTON, bar.min.y),
-                egui::vec2(BUTTON, HEIGHT),
-            );
-            let resp = ui.interact(rect, egui::Id::unique(("window_button", i)), Sense::click());
-            let close = which == WindowButton::Close;
-            if resp.hovered() {
-                let fill = if close { Color32::from_rgb(0xE8, 0x11, 0x23) } else { pal.hover_bg };
-                ui.painter().rect_filled(rect, 0.0, fill);
-            }
-            let color = if close && resp.hovered() { Color32::WHITE } else { pal.text };
-            paint_window_button(ui.painter(), rect, which, maximized, color);
-            if resp.clicked() {
-                match which {
-                    WindowButton::Minimize => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
-                    WindowButton::Maximize => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized)),
-                    WindowButton::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
-                }
-            }
+        window_buttons(ui, bar, maximized);
+        cmd
+    }
+
+    /// The island layout's bar, as in JetBrains IDEs: everything's menu behind one button,
+    /// the project and branch on the left, what runs and the tools on the right.
+    fn top_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
+        const HEIGHT: f32 = 40.0;
+        let ctx = ui.ctx().clone();
+        let maximized = ctx.input(|i| i.viewport().maximized.unwrap_or(false));
+        let bar = egui::Rect::from_min_size(ui.max_rect().min, egui::vec2(ui.max_rect().width(), HEIGHT));
+        let drag = ui.interact(bar, egui::Id::unique("title_bar_drag"), Sense::click_and_drag());
+        if drag.double_clicked() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized));
+        } else if drag.drag_started_by(egui::PointerButton::Primary) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
         }
+        ui.set_min_height(HEIGHT);
+        let pal = theme::colors();
+        let root = self.explorer.root.clone();
+        let name = root
+            .as_ref()
+            .map(|r| r.file_name().map_or_else(|| r.display().to_string(), |n| n.to_string_lossy().into_owned()));
+        let badge = name.as_deref().map(project_tree::project_badge);
+
+        // The project's color fading out behind the left of the bar.
+        if let Some((_, [r, g, b])) = badge {
+            let glow = Color32::from_rgba_unmultiplied(r, g, b, 50);
+            let end = (bar.min.x + 460.0).min(bar.max.x);
+            let mut mesh = egui::Mesh::default();
+            mesh.colored_vertex(bar.left_top(), glow);
+            mesh.colored_vertex(egui::pos2(end, bar.min.y), Color32::TRANSPARENT);
+            mesh.colored_vertex(egui::pos2(end, bar.max.y), Color32::TRANSPARENT);
+            mesh.colored_vertex(bar.left_bottom(), glow);
+            mesh.add_triangle(0, 1, 2);
+            mesh.add_triangle(0, 2, 3);
+            ui.painter().add(mesh);
+        }
+
+        let mut cmd = None;
+        let mut open_folder = None;
+        let inside = bar.with_max_x(bar.max.x - 3.0 * WINDOW_BUTTON);
+        ui.scope_builder(egui::UiBuilder::new().max_rect(inside), |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.add_space(8.0);
+                let menu = tool_button(ui, Icon::Menu, pal.text, "Main Menu");
+                egui::Popup::menu(&menu).show(|ui| cmd = self.menus(ui).0);
+
+                let project = text_chip(ui, name.as_deref().unwrap_or("No Folder"), 30.0, |painter, rect| {
+                    let (letters, [r, g, b]) = badge.clone().unwrap_or(("?".to_owned(), [0x80, 0x80, 0x80]));
+                    painter.rect_filled(rect, 5.0, Color32::from_rgb(r, g, b));
+                    let font = egui::FontId::proportional(11.0);
+                    painter.text(rect.center(), egui::Align2::CENTER_CENTER, letters, font, Color32::WHITE);
+                });
+                let project =
+                    project.on_hover_text(root.as_ref().map_or_else(String::new, |r| r.display().to_string()));
+                egui::Popup::menu(&project).show(|ui| {
+                    if ui.button("Open Folder...").clicked() {
+                        cmd = Some(Command::OpenFolder);
+                        ui.close();
+                    }
+                    let others: Vec<_> = self
+                        .recent_folders
+                        .iter()
+                        .filter(|f| Some(*f) != root.as_ref() && f.is_dir())
+                        .take(8)
+                        .cloned()
+                        .collect();
+                    if !others.is_empty() {
+                        ui.separator();
+                    }
+                    for folder in others {
+                        let label = folder
+                            .file_name()
+                            .map_or_else(|| folder.display().to_string(), |n| n.to_string_lossy().into_owned());
+                        if ui.button(label).on_hover_text(folder.display().to_string()).clicked() {
+                            open_folder = Some(folder);
+                            ui.close();
+                        }
+                    }
+                });
+
+                if let Some(branch) = self.git_branch_label() {
+                    let chip = text_chip(ui, &branch, 22.0, |painter, rect| {
+                        icons::paint(painter, rect.shrink(3.0), Icon::SourceControl, pal.text_dim);
+                    });
+                    if chip.on_hover_text("Switch branch").clicked() {
+                        cmd = Some(Command::GitCheckout);
+                    }
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    ui.add_space(6.0);
+                    if tool_button(ui, Icon::Gear, pal.text, "Settings").clicked() {
+                        cmd = Some(Command::OpenUserSettings);
+                    }
+                    if tool_button(ui, Icon::Search, pal.text, "Go to File").clicked() {
+                        cmd = Some(Command::QuickOpen);
+                    }
+                    ui.add_space(8.0);
+                    let green = Color32::from_rgb(0x57, 0xC0, 0x6A);
+                    // Run stays put whether or not this file can be debugged.
+                    if !self.can_debug() {
+                        ui.add_space(36.0);
+                    } else if tool_button(ui, Icon::Bug, green, "Debug (F5)").clicked() {
+                        cmd = Some(Command::StartDebugging);
+                    }
+                    if self.run_button_visible() && tool_button(ui, Icon::Play, green, &self.run_button_tip()).clicked()
+                    {
+                        cmd = Some(Command::RunProgram);
+                    }
+                    let target = self.run_target_label().unwrap_or_else(|| "Current File".to_owned());
+                    if text_chip(ui, &target, 0.0, |_, _| {}).on_hover_text("Choose what Run starts").clicked() {
+                        cmd = Some(Command::ChooseRunTarget);
+                    }
+                });
+            });
+        });
+        if let Some(folder) = open_folder {
+            self.open_folder(folder);
+        }
+        window_buttons(ui, bar.with_max_y(bar.min.y + HEIGHT), maximized);
         cmd
     }
 
@@ -212,14 +315,21 @@ impl CodeApp {
         }
     }
 
-    /// The menus; also returns where the last one ends.
+    /// The menus in a row; also returns where the last one ends.
     pub(super) fn menu_bar(&mut self, ui: &mut egui::Ui) -> (Option<Command>, f32) {
+        let mut out = (None, 0.0);
+        egui::MenuBar::new().ui(ui, |ui| out = self.menus(ui));
+        out
+    }
+
+    /// Each menu, in whatever `ui` lays them out.
+    fn menus(&mut self, ui: &mut egui::Ui) -> (Option<Command>, f32) {
         let mut cmd = None;
-        let mut end = 0.0;
+        let end;
         let keymap = &self.keymap;
         let cargo_project = self.cargo_project;
         let markdown = self.active_is_markdown();
-        egui::MenuBar::new().ui(ui, |ui| {
+        {
             let mut item = |ui: &mut egui::Ui, label: &str, c: Command| {
                 if ui.add(egui::Button::new(label).shortcut_text(keymap.shortcut_text(c))).clicked() {
                     cmd = Some(c);
@@ -387,7 +497,7 @@ impl CodeApp {
                 }
             });
             end = run.response.rect.max.x;
-        });
+        }
         (cmd, end)
     }
 
@@ -1079,12 +1189,14 @@ impl CodeApp {
             ui.spacing_mut().item_spacing.x = 16.0;
             let size = small_size(ui);
             let white = |s: String| RichText::new(s).size(size).color(theme::colors().status_fg);
-            if let Some(root) = &self.explorer.root {
+            // The top bar says these in the island layout.
+            let classic = !theme::islands();
+            if let Some(root) = self.explorer.root.as_ref().filter(|_| classic) {
                 let name =
                     root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
                 ui.label(white(name));
             }
-            if let Some(branch) = self.git_branch_label() {
+            if let Some(branch) = self.git_branch_label().filter(|_| classic) {
                 let resp = ui
                     .add(egui::Label::new(white(branch)).sense(Sense::click()).selectable(false))
                     .on_hover_text("Switch branch (Git: Checkout to...)");
@@ -1431,6 +1543,85 @@ fn paint_logo(painter: &egui::Painter, rect: egui::Rect) {
 }
 
 /// Size for secondary workbench text (breadcrumbs, status bar): 12/13 of the UI font.
+const WINDOW_BUTTON: f32 = 46.0;
+
+/// Minimize, maximize and close, at the right of the bar.
+fn window_buttons(ui: &mut egui::Ui, bar: egui::Rect, maximized: bool) {
+    let ctx = ui.ctx().clone();
+    let pal = theme::colors();
+    let buttons = [WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close];
+    for (i, which) in buttons.into_iter().enumerate() {
+        let rect = egui::Rect::from_min_size(
+            egui::pos2(bar.max.x - (3 - i) as f32 * WINDOW_BUTTON, bar.min.y),
+            egui::vec2(WINDOW_BUTTON, bar.height()),
+        );
+        let resp = ui.interact(rect, egui::Id::unique(("window_button", i)), Sense::click());
+        let close = which == WindowButton::Close;
+        if resp.hovered() {
+            let fill = if close { Color32::from_rgb(0xE8, 0x11, 0x23) } else { pal.hover_bg };
+            ui.painter().rect_filled(rect, 0.0, fill);
+        }
+        let color = if close && resp.hovered() { Color32::WHITE } else { pal.text };
+        paint_window_button(ui.painter(), rect, which, maximized, color);
+        if resp.clicked() {
+            match which {
+                WindowButton::Minimize => ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true)),
+                WindowButton::Maximize => ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(!maximized)),
+                WindowButton::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            }
+        }
+    }
+}
+
+/// An icon button of the top bar.
+fn tool_button(ui: &mut egui::Ui, icon: Icon, color: Color32, tip: &str) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(32.0, 30.0), Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 6.0, theme::colors().hover_bg);
+    }
+    icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::vec2(18.0, 18.0)), icon, color);
+    response.on_hover_text(tip)
+}
+
+/// A name with a drop-down mark, and `lead` wide of something before it, drawn by `paint`.
+fn text_chip(
+    ui: &mut egui::Ui,
+    text: &str,
+    lead: f32,
+    paint: impl FnOnce(&egui::Painter, egui::Rect),
+) -> egui::Response {
+    let pal = theme::colors();
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, pal.text);
+    let text_width = galley.size().x.min(220.0);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(8.0 + lead + text_width + 24.0, 30.0), Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 6.0, pal.hover_bg);
+    }
+    if lead > 0.0 {
+        let side = lead - 8.0;
+        let at = egui::Rect::from_center_size(
+            egui::pos2(rect.min.x + 8.0 + side / 2.0, rect.center().y),
+            egui::vec2(side, side),
+        );
+        paint(ui.painter(), at);
+    }
+    let left = rect.min.x + 8.0 + lead;
+    let clip = rect.with_min_x(left).with_max_x(left + text_width);
+    ui.painter().with_clip_rect(clip).galley(
+        egui::pos2(left, rect.center().y - galley.size().y / 2.0),
+        galley,
+        pal.text,
+    );
+    let (x, y) = (rect.max.x - 12.0, rect.center().y);
+    ui.painter().add(egui::Shape::convex_polygon(
+        vec![egui::pos2(x - 4.0, y - 2.0), egui::pos2(x + 4.0, y - 2.0), egui::pos2(x, y + 3.0)],
+        pal.text_dim,
+        Stroke::NONE,
+    ));
+    response
+}
+
 fn small_size(ui: &egui::Ui) -> f32 {
     egui::TextStyle::Body.resolve(ui.style()).size * 12.0 / 13.0
 }
