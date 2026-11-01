@@ -285,6 +285,8 @@ impl Palette {
     }
 
     pub fn ui(&mut self, ctx: &egui::Context, finder: &mut FileFinder, keymap: &Keymap) -> Option<PaletteResult> {
+        // Arrives from a little higher up.
+        let arrived = theme::eased(ctx, egui::Id::unique("palette_arrival"), self.open);
         if !self.open {
             return None;
         }
@@ -440,7 +442,7 @@ impl Palette {
         };
         let area = egui::Area::new(egui::Id::unique("command_palette"))
             .order(egui::Order::Foreground)
-            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
+            .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0 - 10.0 * (1.0 - arrived)))
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(6.0).show(ui, |ui| {
                     ui.set_width(width);

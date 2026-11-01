@@ -900,11 +900,20 @@ impl CodeApp {
                             })
                             .response;
                         tabs.push(resp.rect);
-                        if active {
-                            let r = resp.rect;
+                        let r = resp.rect;
+                        if active && theme::islands() {
+                            // A line under the tab, that slides over from the last one.
+                            let ctx = ui.ctx().clone();
+                            let time = ctx.global_style().animation_time;
+                            let left = ctx.animate_value_with_time(egui::Id::unique("tab_line_left"), r.left(), time);
+                            let right =
+                                ctx.animate_value_with_time(egui::Id::unique("tab_line_right"), r.right(), time);
+                            let y = r.bottom() - 2.0;
+                            let line = egui::Rect::from_x_y_ranges(left + 4.0..=right - 4.0, y..=y + 2.0);
+                            ui.painter().rect_filled(line, 1.0, theme::colors().accent);
+                        } else if active {
                             ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, theme::colors().accent));
-                        } else {
-                            let r = resp.rect;
+                        } else if !theme::islands() {
                             ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::colors().border));
                         }
                     }
@@ -1594,8 +1603,9 @@ fn window_buttons(ui: &mut egui::Ui, bar: egui::Rect, maximized: bool) {
 /// An icon button of the top bar.
 fn tool_button(ui: &mut egui::Ui, icon: Icon, color: Color32, tip: &str) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(32.0, 30.0), Sense::click());
-    if response.hovered() {
-        ui.painter().rect_filled(rect, 6.0, theme::colors().hover_bg);
+    let hovered = theme::eased(ui.ctx(), response.id.with("hover"), response.hovered());
+    if hovered > 0.0 {
+        ui.painter().rect_filled(rect, 6.0, theme::colors().hover_bg.gamma_multiply(hovered));
     }
     icons::paint(ui.painter(), egui::Rect::from_center_size(rect.center(), egui::vec2(18.0, 18.0)), icon, color);
     response.on_hover_text(tip)

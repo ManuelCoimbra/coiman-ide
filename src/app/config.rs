@@ -229,6 +229,7 @@ impl CodeApp {
             problems.extend(err);
         }
         theme::apply_style(ctx, new.workbench.ui_font_size);
+        theme::set_motion(ctx, new.workbench.reduced_motion);
         if first || new.workbench.zoom != old.workbench.zoom {
             self.set_zoom(ctx, new.workbench.zoom);
         }

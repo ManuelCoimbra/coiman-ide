@@ -186,8 +186,10 @@ impl CodeApp {
         let (mut again, mut edit) = (false, false);
         egui::Window::new(format!("Language Doctor: {name}"))
             .open(&mut open)
+            .collapsible(false)
             .resizable(true)
             .default_width(560.0)
+            .default_pos(crate::theme::window_spot(ctx, 560.0))
             .show(ctx, |ui| {
                 egui::Grid::new("doctor").num_columns(3).spacing([8.0, 6.0]).show(ui, |ui| {
                     for row in &rows {

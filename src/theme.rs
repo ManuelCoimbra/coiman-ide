@@ -17,6 +17,7 @@ pub fn c32(c: Color) -> Color32 {
 /// The gap around islands, and how round they are.
 const GAP: i8 = 6;
 const RADIUS: u8 = 10;
+const MOTION_SECONDS: f32 = 0.14;
 
 static ISLANDS: AtomicBool = AtomicBool::new(true);
 
@@ -40,6 +41,24 @@ pub fn colors() -> Palette {
 pub fn set(ctx: &egui::Context, theme: Theme) {
     set_current(theme);
     apply_visuals(ctx, &colors());
+}
+
+/// How long panels, tabs and popups take to change: not at all with reduced motion.
+pub fn set_motion(ctx: &egui::Context, reduced: bool) {
+    let seconds = if reduced { 0.0 } else { MOTION_SECONDS };
+    ctx.global_style_mut(|style| style.animation_time = seconds);
+}
+
+/// From 0 to 1 as `on` turns true, and back, over the current motion time.
+pub fn eased(ctx: &egui::Context, id: egui::Id, on: bool) -> f32 {
+    ctx.animate_bool(id, on)
+}
+
+/// Where a tool window of this width first opens: centered, clear of the top bar and its
+/// window buttons.
+pub fn window_spot(ctx: &egui::Context, width: f32) -> egui::Pos2 {
+    let room = ctx.content_rect();
+    egui::pos2(room.center().x - width / 2.0, room.top() + 60.0)
 }
 
 /// The gaps an island keeps on these sides, or none in the classic layout.

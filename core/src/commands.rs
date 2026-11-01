@@ -233,8 +233,6 @@ pub enum Command {
 
 pub const COMMANDS: &[(Command, &str)] = &[
     (Command::SearchEverywhere, "Search Everywhere"),
-    (Command::OpenLog, "Developer: Open Log"),
-    (Command::OpenCrashLog, "Developer: Open Crash Log"),
     (Command::NewFile, "File: New Untitled File"),
     (Command::OpenFile, "File: Open File..."),
     (Command::OpenFolder, "File: Open Folder..."),
@@ -441,6 +439,8 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ManageWorkspaceTrust, "Workspaces: Trust or Restrict This Folder"),
     (Command::ShowExtensions, "View: Show Extensions"),
     (Command::CheckPluginUpdates, "Plugins: Check Registry for Plugins and Updates"),
+    (Command::OpenLog, "Developer: Open Log"),
+    (Command::OpenCrashLog, "Developer: Open Crash Log"),
     (Command::InstallPluginFromFolder, "Plugins: Install from Folder..."),
     (Command::DebugTestAtCursor, "Test: Debug Test at Cursor"),
 ];

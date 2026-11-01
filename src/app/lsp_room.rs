@@ -218,7 +218,8 @@ impl CodeApp {
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
         let mut open = true;
         let mut action = None;
-        egui::Window::new("Language Servers").open(&mut open).collapsible(false).default_width(480.0).show(ctx, |ui| {
+        let window = egui::Window::new("Language Servers").open(&mut open).collapsible(false).default_width(480.0);
+        window.default_pos(theme::window_spot(ctx, 480.0)).show(ctx, |ui| {
             let dim = theme::colors().text_dim;
             if self.lsp.clients.is_empty() {
                 ui.label(RichText::new("No language server is running.").color(dim));

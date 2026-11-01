@@ -123,6 +123,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
         &[
             row(
                 "workbench",
+                "reduced_motion",
+                "Reduced motion",
+                "Panels, tabs and popups change at once instead of moving.",
+                Kind::Toggle,
+            ),
+            row(
+                "workbench",
                 "double_shift",
                 "Double Shift",
                 "Pressing Shift twice opens Search Everywhere.",

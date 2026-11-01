@@ -122,6 +122,8 @@ pub struct WorkbenchSettings {
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
+    /// Panels, tabs and popups change at once instead of moving.
+    pub reduced_motion: bool,
     /// Pressing Shift twice opens Search Everywhere.
     pub double_shift: bool,
     /// The window's layout: "islands", or "classic" for square panels edge to edge.
@@ -329,6 +331,7 @@ impl Default for WorkbenchSettings {
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
             color_theme: "Dark Modern".to_owned(),
+            reduced_motion: false,
             double_shift: true,
             ui: "islands".to_owned(),
             compact_folders: true,

@@ -42,6 +42,8 @@ pub(super) struct ToolRails {
     pub(super) panel_right: bool,
     /// What's open on the right.
     pub(super) right_view: Option<SidebarView>,
+    /// What was last open on the right, to slide away with.
+    pub(super) right_last: Option<SidebarView>,
     /// What's open on the left, as a tool opening on the right mustn't change it.
     left_view: SidebarView,
     left_visible: bool,
@@ -54,6 +56,7 @@ impl ToolRails {
             right_tools: Vec::new(),
             panel_right: false,
             right_view: None,
+            right_last: None,
             left_view: SidebarView::Explorer,
             left_visible: true,
             dragging: None,
@@ -191,10 +194,13 @@ impl CodeApp {
         let pal = theme::colors();
         let (rect, response) = ui.allocate_exact_size(egui::vec2(RAIL_WIDTH, 38.0), Sense::click_and_drag());
         let tile = rect.shrink2(egui::vec2(5.0, 1.0));
-        if open {
-            ui.painter().rect_filled(tile, 8.0, pal.selection);
-        } else if response.hovered() {
-            ui.painter().rect_filled(tile, 8.0, pal.hover_bg);
+        let opened = theme::eased(ui.ctx(), response.id.with("open"), open);
+        let hovered = theme::eased(ui.ctx(), response.id.with("hover"), response.hovered());
+        if hovered > 0.0 {
+            ui.painter().rect_filled(tile, 8.0, pal.hover_bg.gamma_multiply(hovered));
+        }
+        if opened > 0.0 {
+            ui.painter().rect_filled(tile, 8.0, pal.selection.gamma_multiply(opened));
         }
         let color = if open || response.hovered() { pal.tab_active_fg } else { pal.text_dim };
         let glyph = egui::Rect::from_center_size(rect.center(), egui::vec2(21.0, 21.0));
