@@ -98,6 +98,9 @@ pub fn parse_rules(text: &str) -> (Vec<Rule>, Vec<String>) {
     (rules, problems)
 }
 
+/// A query, for those holding on to one.
+pub type CompiledQuery = Query;
+
 pub fn compile(lang: Lang, query: &str) -> Result<Query, String> {
     Query::new(&lang.language(), query).map_err(|e| format!("line {}: {}", e.row + 1, e.message.trim()))
 }
@@ -179,6 +182,26 @@ pub fn fill(template: &str, captures: &[(String, String)]) -> String {
     }
     out.push_str(rest);
     out
+}
+
+/// What replacing each match with `template` changes, as byte ranges in order. Where
+/// matches overlap the outermost wins; a match already as it should be is left alone.
+pub fn replacements(query: &Query, tree: &Tree, source: &str, template: &str) -> Vec<(usize, usize, String)> {
+    let mut hits = scan(query, tree, source);
+    hits.sort_by_key(|h| (h.start_byte, std::cmp::Reverse(h.end_byte)));
+    let mut end = 0;
+    let mut edits = Vec::new();
+    for hit in hits {
+        if hit.start_byte < end {
+            continue;
+        }
+        end = hit.end_byte;
+        let text = fill(template, &hit.captures);
+        if source.get(hit.start_byte..hit.end_byte) != Some(text.as_str()) {
+            edits.push((hit.start_byte, hit.end_byte, text));
+        }
+    }
+    edits
 }
 
 pub fn parse(lang: Lang, source: &str) -> Option<Tree> {
@@ -267,6 +290,28 @@ mod tests {
         assert!(hits[0].line_text.starts_with("let é"));
         assert_eq!(fill("$on? ($f) $x $", &hits[0].captures), "a? (unwrap) $x $");
         assert_eq!(fill("$on", &hits[1].captures), "c.d()");
+    }
+
+    #[test]
+    fn works_out_replacements() {
+        let source = "fn m() { a.unwrap(); b.c.unwrap(); }";
+        let query = compile(Lang::Rust, UNWRAP).unwrap();
+        let tree = parse(Lang::Rust, source).unwrap();
+        let edits = replacements(&query, &tree, source, "$on?");
+        assert_eq!(edits.len(), 2);
+        assert_eq!(&source[edits[0].0..edits[0].1], "a.unwrap()");
+        assert_eq!(edits[0].2, "a?");
+        assert_eq!(edits[1].2, "b.c?");
+        // Nested: the outer one is replaced, and its text holds the inner one as written.
+        let nested = "fn m() { a.unwrap().unwrap(); }";
+        let tree = parse(Lang::Rust, nested).unwrap();
+        let edits = replacements(&query, &tree, nested, "$on?");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].2, "a.unwrap()?");
+        // Already so: nothing to do.
+        let query = compile(Lang::Rust, "(identifier) @match").unwrap();
+        let tree = parse(Lang::Rust, "fn m() { a; }").unwrap();
+        assert!(replacements(&query, &tree, "fn m() { a; }", "$match").is_empty());
     }
 
     #[test]

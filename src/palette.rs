@@ -219,6 +219,10 @@ impl Palette {
                             )
                             .desired_width(f32::INFINITY),
                     );
+                    // A click's release can hand focus back to the editor, and Enter would go there too.
+                    if !self.just_opened && !edit.has_focus() {
+                        edit.request_focus();
+                    }
                     if self.just_opened {
                         edit.request_focus();
                         // Put the cursor at the end of the prefilled text.
@@ -296,6 +300,9 @@ impl Palette {
                 egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(6.0).show(ui, |ui| {
                     ui.set_width(width);
                     let edit = ui.add(egui::TextEdit::singleline(&mut self.query).desired_width(f32::INFINITY));
+                    if !self.just_opened && !edit.has_focus() {
+                        edit.request_focus();
+                    }
                     if self.just_opened {
                         edit.request_focus();
                         if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), edit.id) {

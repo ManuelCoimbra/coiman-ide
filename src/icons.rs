@@ -40,6 +40,8 @@ pub enum Icon {
     /// Plugins (four blocks, one lifted out).
     Extensions,
     Trash,
+    /// A light bulb: quick fixes are on offer.
+    Bulb,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -193,6 +195,11 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             pen.closed(&[(0.24, 0.24), (0.3, 0.9), (0.7, 0.9), (0.76, 0.24)]);
             pen.line(&[(0.43, 0.38), (0.43, 0.76)]);
             pen.line(&[(0.57, 0.38), (0.57, 0.76)]);
+        }
+        Icon::Bulb => {
+            pen.arc(0.5, 0.38, 0.27, PI * 0.8, PI * 2.2);
+            pen.line(&[(0.28, 0.54), (0.38, 0.72), (0.62, 0.72), (0.72, 0.54)]);
+            pen.line(&[(0.4, 0.86), (0.6, 0.86)]);
         }
         Icon::Bug => {
             pen.circle(0.5, 0.58, 0.24);

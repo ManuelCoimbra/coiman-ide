@@ -413,6 +413,7 @@ impl eframe::App for CodeApp {
         self.pump_live(&ctx);
         self.pump_constant(&ctx);
         self.pump_likely(&ctx);
+        self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
         self.pump_coverage(&ctx);
@@ -538,7 +539,8 @@ impl eframe::App for CodeApp {
             let (active_rect, other_rect) = self.split_rects(ui);
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
             let pane = self.active_pane();
-            let deco = self.decorations(self.active);
+            let mut deco = self.decorations(self.active);
+            deco.bulb = self.bulb_at(self.active);
             // Text typed this frame (the editor reads events without consuming them).
             let typed: String = ui.input(|i| {
                 i.events
@@ -575,6 +577,9 @@ impl eframe::App for CodeApp {
                 }
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
+                }
+                if out.bulb_click {
+                    self.request_code_actions();
                 }
                 if let Some((line, into)) = out.lens_click {
                     self.click_code_lens(&ctx, line, into);

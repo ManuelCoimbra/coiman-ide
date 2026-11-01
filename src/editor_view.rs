@@ -16,6 +16,8 @@ const CHANGE_ZONE: f32 = 12.0;
 const RUN_ZONE: f32 = 14.0;
 /// Width of the strip (left of the change markers) for fold chevrons.
 const FOLD_ZONE: f32 = 14.0;
+/// Width of the strip after the run buttons for the quick fix light bulb.
+const BULB_ZONE: f32 = 16.0;
 /// How far to look for a matching bracket around the cursor.
 const BRACKET_SEARCH_LIMIT: usize = 20_000;
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
@@ -135,6 +137,8 @@ pub struct Decorations {
     pub dim_columns: Vec<(usize, usize)>,
     /// Lines with a runnable test, and its last result (gutter run buttons).
     pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
+    /// The line offering quick fixes, and the light bulb's color.
+    pub bulb: Option<(usize, Color32)>,
 }
 
 impl Decorations {
@@ -166,6 +170,8 @@ pub struct Output {
     pub lens_click: Option<(usize, usize)>,
     /// The breakpoint margin was clicked on this line.
     pub breakpoint_click: Option<usize>,
+    /// The light bulb was clicked.
+    pub bulb_click: bool,
     /// What Vim/Helix mode asked for this frame (`:w`, `:q`, clipboard).
     pub vim_effects: Vec<rust_code_core::vim::Effect>,
     /// Screen rectangle of the primary cursor.
@@ -215,6 +221,7 @@ pub struct ViewState {
     lens_click: Option<(usize, usize)>,
     /// Breakpoint margin clicked this frame.
     breakpoint_click: Option<usize>,
+    bulb_click: bool,
     /// First lines of the folded regions.
     folded: std::collections::BTreeSet<usize>,
 }
@@ -417,7 +424,7 @@ pub fn show(
     let char_w = ui.fonts_mut(|f| f.glyph_width(&font_id, '0'));
     let digits = doc.buffer.len_lines().to_string().len().max(3);
     let m = Metrics {
-        gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE + FOLD_ZONE,
+        gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE + BULB_ZONE + FOLD_ZONE,
         font_id,
         row_h,
         char_w,
@@ -581,6 +588,7 @@ pub fn show(
         run_click: view.run_click.take(),
         lens_click: view.lens_click.take(),
         breakpoint_click: view.breakpoint_click.take(),
+        bulb_click: std::mem::take(&mut view.bulb_click),
         vim_effects,
         cursor_rect,
     }
@@ -801,6 +809,11 @@ fn handle_mouse(
             } else {
                 view.breakpoint_click = Some(line);
             }
+            return false;
+        }
+        let in_bulb_zone = (gutter_left + RUN_ZONE..gutter_left + RUN_ZONE + BULB_ZONE).contains(&p.x);
+        if in_bulb_zone && deco.bulb.is_some_and(|(at, _)| at == line) {
+            view.bulb_click = true;
             return false;
         }
         let fold_x = text_rect.left() - CHANGE_ZONE - FOLD_ZONE;
@@ -1451,6 +1464,19 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 Vec2::splat(size),
             );
             crate::icons::paint(&painter, at, icon.unwrap_or(crate::icons::Icon::Play), *color);
+        }
+
+        if row.first
+            && let Some((_, color)) = deco.bulb.filter(|(at, _)| *at == row.line)
+        {
+            let size = (m.row_h * 0.85).min(BULB_ZONE);
+            let center = Pos2::new(text_rect.left() - m.gutter_w + RUN_ZONE + BULB_ZONE / 2.0, y + m.row_h / 2.0);
+            crate::icons::paint(
+                &painter,
+                Rect::from_center_size(center, Vec2::splat(size)),
+                crate::icons::Icon::Bulb,
+                color,
+            );
         }
 
         // Line number.

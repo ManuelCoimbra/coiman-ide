@@ -14,6 +14,7 @@ use rust_code_core::tree_edit::{self, Change, Move};
 use rust_code_core::tree_rules::{self, FileHits, Hit, RULES_FILE, Rule, Search, Severity};
 use rust_code_core::trust;
 
+use super::Document;
 use super::lsp::path_key;
 use super::{CodeApp, PanelTab, repaint};
 use crate::theme;
@@ -26,6 +27,9 @@ enum Job {
     Rules(Arc<Vec<Rule>>),
 }
 
+/// A place found, its line, and what the query captured there.
+type Found = (PathBuf, lt::Range, String, Vec<(String, String)>);
+
 /// A walk over the project: what it's for, its answer, and how to stop it.
 type Running = (Job, Receiver<(Vec<FileHits>, bool, usize)>, Arc<AtomicBool>);
 
@@ -35,7 +39,11 @@ pub(super) struct TreeTools {
     query: String,
     lang: Option<Lang>,
     error: Option<String>,
-    results: Vec<(PathBuf, lt::Range, String)>,
+    /// Place, line, and what the query captured there.
+    results: Vec<Found>,
+    /// What the results came from.
+    searched_with: Option<(String, Lang, Arc<tree_rules::CompiledQuery>)>,
+    replacement: String,
     capped: bool,
     skipped: usize,
     searched: bool,
@@ -180,6 +188,7 @@ impl CodeApp {
                 tools.error = Some(why);
                 tools.results.clear();
                 tools.searched = false;
+                tools.searched_with = None;
                 return;
             }
         };
@@ -187,7 +196,9 @@ impl CodeApp {
             self.tree_tools.error = Some("Open a folder to search it".to_owned());
             return;
         };
-        let searches = vec![Search { lang, query: Arc::new(query) }];
+        let query = Arc::new(query);
+        self.tree_tools.searched_with = Some((self.tree_tools.query.clone(), lang, query.clone()));
+        let searches = vec![Search { lang, query }];
         self.tree_tools_run(ctx, root, searches, Job::Search);
     }
 
@@ -220,7 +231,7 @@ impl CodeApp {
                 tools.searched = true;
                 for file in files {
                     for (_, hit) in file.hits {
-                        tools.results.push((file.path.clone(), range_of(&hit), hit.line_text));
+                        tools.results.push((file.path.clone(), range_of(&hit), hit.line_text, hit.captures));
                     }
                 }
             }
@@ -240,6 +251,63 @@ impl CodeApp {
                 self.status = Some(format!("Rules found {count} in {in_files} file(s){more}{large}"));
             }
         }
+    }
+
+    /// Replaces what was found, reading each file again for where things are now. The
+    /// changes stay unsaved in tabs, so they can be looked over and undone.
+    fn tree_replace_all(&mut self, ctx: &egui::Context) {
+        let Some((_, lang, query)) = self.tree_tools.searched_with.clone() else { return };
+        let template = self.tree_tools.replacement.clone();
+        let mut files: Vec<PathBuf> = self.tree_tools.results.iter().map(|r| r.0.clone()).collect();
+        files.sort();
+        files.dedup();
+        let active = self.docs.get(self.active).map(|d| d.uid);
+        let (mut count, mut changed) = (0, 0);
+        let mut problems = Vec::new();
+        for path in files {
+            let i = match self.doc_index_by_path(&path) {
+                Some(i) => i,
+                None => match Document::open(&path) {
+                    Ok(doc) => {
+                        self.watcher.watch_file(&path);
+                        self.add_doc(doc);
+                        let last = self.docs.len() - 1;
+                        self.docs[last].request_focus = false;
+                        last
+                    }
+                    Err(e) => {
+                        problems.push(format!("{}: {e}", path.display()));
+                        continue;
+                    }
+                },
+            };
+            let doc = &mut self.docs[i];
+            if doc.buffer.read_only {
+                problems.push(format!("{} is read-only", path.display()));
+                continue;
+            }
+            let source = doc.text();
+            let Some(tree) = tree_rules::parse(lang, &source) else { continue };
+            let edits = tree_rules::replacements(&query, &tree, &source, &template);
+            if edits.is_empty() {
+                continue;
+            }
+            count += edits.len();
+            changed += 1;
+            let rope = doc.buffer.rope();
+            let edits =
+                edits.into_iter().map(|(a, b, text)| (rope.byte_to_char(a), rope.byte_to_char(b), text)).collect();
+            doc.buffer.apply_edits(edits);
+        }
+        if let Some(i) = active.and_then(|uid| self.doc_index(uid)) {
+            self.active = i;
+        }
+        let skipped = match problems.first() {
+            Some(first) => format!(". Skipped {}: {first}", problems.len()),
+            None => String::new(),
+        };
+        self.status = Some(format!("Replaced {count} in {changed} file(s), not saved yet{skipped}"));
+        self.tree_search_start(ctx);
     }
 
     // ----- rules ---------------------------------------------------------------------
@@ -407,7 +475,7 @@ impl CodeApp {
         let pal = theme::colors();
         let warn = egui::Color32::from_rgb(0xF1, 0x4C, 0x4C);
         let mono = egui::TextStyle::Monospace.resolve(ui.style());
-        let (mut search, mut from_cursor, mut open) = (false, false, None);
+        let (mut search, mut from_cursor, mut open, mut replace) = (false, false, None, false);
         let running = self.tree_tools.job.as_ref().is_some_and(|(job, ..)| matches!(job, Job::Search));
         let tools = &mut self.tree_tools;
         ui.horizontal(|ui| {
@@ -439,13 +507,29 @@ impl CodeApp {
         if response.has_focus() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter)) {
             search = true;
         }
+        // Replacing goes by the search that was run, so the two can't drift apart.
+        let current = tools.searched_with.as_ref().is_some_and(|(query, ..)| *query == tools.query) && !running;
+        ui.horizontal(|ui| {
+            let edit = TextEdit::singleline(&mut tools.replacement)
+                .font(mono.clone())
+                .desired_width(ui.available_width() - 110.0)
+                .hint_text("Replace with: captures by name, such as $name");
+            ui.add(edit);
+            let can = current && !tools.results.is_empty();
+            let tip = if can { "Changes stay unsaved, so they can be undone" } else { "Search first" };
+            replace = ui.add_enabled(can, egui::Button::new("Replace All")).on_hover_text(tip).clicked();
+        });
         if let Some(why) = &tools.error {
             ui.label(RichText::new(why).color(warn));
         }
         egui::ScrollArea::vertical().id_salt("tree_search_results").auto_shrink([false, false]).show(ui, |ui| {
-            for (at, (path, range, line)) in tools.results.iter().enumerate() {
+            for (at, (path, range, line, captures)) in tools.results.iter().enumerate() {
                 let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                let label = format!("{name}:{}:{}  {line}", range.start.line + 1, range.start.character + 1);
+                let mut label = format!("{name}:{}:{}  {line}", range.start.line + 1, range.start.character + 1);
+                if current && !tools.replacement.is_empty() {
+                    let becomes = tree_rules::fill(&tools.replacement, captures);
+                    label.push_str(&format!("   →   {}", becomes.lines().next().unwrap_or_default()));
+                }
                 let row =
                     egui::Label::new(RichText::new(label).font(mono.clone())).truncate().sense(egui::Sense::click());
                 if ui.add(row).on_hover_text(path.display().to_string()).clicked() {
@@ -459,7 +543,10 @@ impl CodeApp {
         if search {
             self.tree_search_start(&ctx);
         }
-        if let Some((path, range, _)) = open.and_then(|at| self.tree_tools.results.get(at).cloned()) {
+        if replace {
+            self.tree_replace_all(&ctx);
+        }
+        if let Some((path, range, ..)) = open.and_then(|at| self.tree_tools.results.get(at).cloned()) {
             self.jump_to(&path, range, true);
         }
     }

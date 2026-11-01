@@ -85,6 +85,10 @@ pub(super) enum Pending {
         path: PathBuf,
     },
     CodeActions,
+    /// Whether to show the light bulb, for this cursor.
+    Bulb {
+        key: BulbKey,
+    },
     Format {
         uid: u64,
         version: u64,
@@ -196,6 +200,10 @@ pub(super) struct LspState {
     /// The word the pointer rests on: (doc uid, char, since, request sent).
     hover_rest: Option<(u64, usize, f64, bool)>,
     code_actions: Vec<lt::CodeActionOrCommand>,
+    /// A line known to offer actions, and whether any is a fix.
+    bulb: Option<(BulbKey, bool)>,
+    bulb_asked: Option<BulbKey>,
+    bulb_seen: Option<(BulbKey, f64)>,
     locations: Vec<LocationItem>,
     locations_title: String,
     /// Waiting for formatting before saving: (doc uid, started at).
@@ -219,6 +227,11 @@ pub(super) fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, Serve
 }
 
 /// Whether `client` is the server for a file of `kind` at `path`.
+/// A cursor: its document, the text's version, and its line.
+type BulbKey = (u64, u64, usize);
+/// Seconds the cursor must stay before asking about its line.
+const BULB_REST: f64 = 0.4;
+
 fn serves(client: &Client, kind: ServerKind, path: &Path) -> bool {
     client.kind == kind && path.starts_with(&client.root)
 }
@@ -667,6 +680,7 @@ impl CodeApp {
                     | Pending::PullDiagnostics { .. }
                     | Pending::CodeLens { .. }
                     | Pending::CodeLensResolve { .. }
+                    | Pending::Bulb { .. }
                     | Pending::WorkspaceSymbols => {}
                     Pending::Format { uid, save: true, .. } => self.finish_format_save(uid, None),
                     Pending::SwitchHeader { path } => self.switch_by_name(&path),
@@ -688,6 +702,7 @@ impl CodeApp {
             },
             Pending::SwitchHeader { path } => self.on_switch_header(&path, &value),
             Pending::CodeActions => self.on_code_actions(value),
+            Pending::Bulb { key } => self.on_bulb(key, value),
             Pending::Format { uid, version, save } => {
                 let edits = serde_json::from_value::<Option<Vec<lt::TextEdit>>>(value).ok().flatten();
                 if save {
@@ -1536,24 +1551,105 @@ impl CodeApp {
         });
     }
 
-    pub(super) fn request_code_actions(&mut self) {
-        let i = self.active;
-        let Some(doc) = self.docs.get(i) else { return };
+    /// What's selected in document `i`, and the problems on those lines.
+    fn code_action_target(&self, i: usize) -> Option<(lt::Range, Vec<lt::Diagnostic>)> {
+        let doc = self.docs.get(i)?;
         let sel = doc.buffer.primary();
-        let rope = doc.buffer.rope();
-        let range = convert::range_of(rope, sel.start(), sel.end());
-        let diagnostics: Vec<lt::Diagnostic> = doc
+        let range = convert::range_of(doc.buffer.rope(), sel.start(), sel.end());
+        let diagnostics = doc
             .path
             .as_deref()
             .map(|p| self.diagnostics_for(p))
             .unwrap_or_default()
-            .iter()
+            .into_iter()
             .filter(|d| d.range.start.line <= range.end.line && d.range.end.line >= range.start.line)
-            .cloned()
             .collect();
+        Some((range, diagnostics))
+    }
+
+    pub(super) fn request_code_actions(&mut self) {
+        let i = self.active;
+        let Some((range, diagnostics)) = self.code_action_target(i) else { return };
         self.request_for(i, "textDocument/codeAction", Pending::CodeActions, |_, td| {
             json!({ "textDocument": td, "range": range, "context": { "diagnostics": diagnostics, "triggerKind": 1 } })
         });
+    }
+
+    /// The light bulb for document `i`, if the cursor is where the server said.
+    pub(super) fn bulb_at(&self, i: usize) -> Option<(usize, egui::Color32)> {
+        let doc = self.docs.get(i)?;
+        let line = doc.buffer.char_to_line(doc.buffer.primary().head);
+        let ((uid, version, at), fix) = self.lsp.bulb?;
+        (uid == doc.uid && version == doc.buffer.version() && at == line).then(|| {
+            let color = if fix { egui::Color32::from_rgb(0xFF, 0xCC, 0x00) } else { egui::Color32::from_gray(0x99) };
+            (line, color)
+        })
+    }
+
+    /// Asks whether the cursor's line has actions, once it has stayed there a moment.
+    pub(super) fn pump_bulb(&mut self, ctx: &egui::Context) {
+        let i = self.active;
+        let Some(doc) = self.docs.get(i) else { return };
+        let key = (doc.uid, doc.buffer.version(), doc.buffer.char_to_line(doc.buffer.primary().head));
+        if self.lsp.bulb_asked == Some(key) {
+            return;
+        }
+        let now = ctx.input(|inp| inp.time);
+        let since = match self.lsp.bulb_seen {
+            Some((seen, since)) if seen == key => since,
+            _ => {
+                self.lsp.bulb_seen = Some((key, now));
+                now
+            }
+        };
+        let left = BULB_REST - (now - since);
+        if left > 0.0 {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            return;
+        }
+        self.lsp.bulb_asked = Some(key);
+        // It isn't asked for, so a missing server has nothing to say about it.
+        let offers = lsp_target(doc).is_some_and(|(p, _, k)| {
+            self.lsp.clients.iter().any(|c| {
+                serves(c, k, &p)
+                    && c.is_ready()
+                    && c.capabilities().is_some_and(|caps| {
+                        !matches!(
+                            caps.code_action_provider,
+                            None | Some(lt::CodeActionProviderCapability::Simple(false))
+                        )
+                    })
+            })
+        });
+        if !offers {
+            return;
+        }
+        let Some((range, diagnostics)) = self.code_action_target(i) else { return };
+        self.request_for(i, "textDocument/codeAction", Pending::Bulb { key }, |_, td| {
+            json!({ "textDocument": td, "range": range, "context": { "diagnostics": diagnostics, "triggerKind": 2 } })
+        });
+    }
+
+    fn on_bulb(&mut self, key: BulbKey, value: Value) {
+        let actions: Vec<lt::CodeActionOrCommand> =
+            serde_json::from_value::<Option<Vec<_>>>(value).ok().flatten().unwrap_or_default();
+        let usable: Vec<&lt::CodeActionOrCommand> = actions
+            .iter()
+            .filter(|a| !matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.disabled.is_some()))
+            .collect();
+        if usable.is_empty() {
+            self.lsp.bulb = None;
+            return;
+        }
+        let fix = usable.iter().any(|a| match a {
+            lt::CodeActionOrCommand::CodeAction(c) => {
+                c.kind.as_ref().is_some_and(|k| k.as_str().starts_with("quickfix"))
+                    || c.diagnostics.as_ref().is_some_and(|d| !d.is_empty())
+                    || c.is_preferred == Some(true)
+            }
+            lt::CodeActionOrCommand::Command(_) => false,
+        });
+        self.lsp.bulb = Some((key, fix));
     }
 
     fn on_code_actions(&mut self, value: Value) {
