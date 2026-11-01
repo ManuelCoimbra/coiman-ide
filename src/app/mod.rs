@@ -178,6 +178,8 @@ pub struct CodeApp {
     logs: logs::Logs,
     /// A file that asked for the log view, on its way there.
     log_to_open: Option<std::path::PathBuf>,
+    /// What's being pasted this frame, for what follows the editor.
+    pasted: Option<String>,
     tests: test_panel::Tests,
     tables: tables::Tables,
     traces: traces::Traces,
@@ -306,6 +308,7 @@ impl CodeApp {
             bytes: Default::default(),
             logs: Default::default(),
             log_to_open: None,
+            pasted: None,
             tests: Default::default(),
             tables: Default::default(),
             traces: Default::default(),

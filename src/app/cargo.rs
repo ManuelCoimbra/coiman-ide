@@ -472,7 +472,7 @@ impl CodeApp {
         self.cancel_test_run();
         self.cargo.lock_wait = false;
         if let Some(mut job) = self.cargo.job.take() {
-            let _ = job.child.kill();
+            rust_code_core::lsp::discovery::kill_tree(&mut job.child);
             self.push_output("[cancelled]".to_owned());
             self.cargo.results.retain(|_, o| *o != Outcome::Running);
         }

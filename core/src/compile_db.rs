@@ -455,6 +455,60 @@ pub struct Report {
     pub entries: usize,
     is_header: bool,
     uses_flags_file: bool,
+    /// The flags come from the project's `.clangd`.
+    uses_clangd_file: bool,
+}
+
+/// What a project's `.clangd` file says about compiling.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClangdFile {
+    pub database: Option<String>,
+    pub add: Vec<String>,
+}
+
+/// Reads the `CompileFlags` part of a `.clangd`, in the forms it's written in.
+pub fn parse_clangd_file(text: &str) -> ClangdFile {
+    let mut out = ClangdFile::default();
+    let (mut in_flags, mut in_add) = (false, false);
+    let clean = |s: &str| s.trim().trim_matches(|c| c == '"' || c == '\'').to_owned();
+    for line in text.lines() {
+        let content = line.split(" #").next().unwrap_or(line);
+        let trimmed = content.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed == "---" {
+            (in_flags, in_add) = (false, false);
+            continue;
+        }
+        let indented = content.starts_with(char::is_whitespace);
+        if !indented {
+            in_flags = trimmed.starts_with("CompileFlags:");
+            in_add = false;
+            continue;
+        }
+        if !in_flags {
+            continue;
+        }
+        if let Some(value) = trimmed.strip_prefix("CompilationDatabase:") {
+            let value = clean(value);
+            out.database = (!value.is_empty() && value != "Ancestors" && value != "None").then_some(value);
+            in_add = false;
+        } else if let Some(value) = trimmed.strip_prefix("Add:") {
+            let value = value.trim();
+            in_add = value.is_empty();
+            if let Some(list) = value.strip_prefix('[').and_then(|v| v.strip_suffix(']')) {
+                out.add.extend(list.split(',').map(clean).filter(|f| !f.is_empty()));
+            } else if !value.is_empty() {
+                out.add.push(clean(value));
+            }
+        } else if let (true, Some(item)) = (in_add, trimmed.strip_prefix("- ")) {
+            out.add.push(clean(item));
+        } else {
+            in_add = false;
+        }
+    }
+    out
 }
 
 /// A chosen folder, relative to the project unless it's absolute.
@@ -481,12 +535,21 @@ pub fn report(file: &Path, root: &Path, chosen_dir: &str, chosen_config: &str) -
         entries: 0,
         is_header,
         uses_flags_file: false,
+        uses_clangd_file: false,
     };
-    let found = match &chosen {
-        Some(dir) => Some(dir.join(DATABASE)),
-        None => clangd_finds(file),
+    let clangd_file = std::fs::read_to_string(root.join(".clangd")).map(|t| parse_clangd_file(&t)).unwrap_or_default();
+    let found = match (&chosen, &clangd_file.database) {
+        (Some(dir), _) => Some(dir.join(DATABASE)),
+        (None, Some(dir)) => Some(root.join(dir).join(DATABASE)),
+        (None, None) => clangd_finds(file),
     };
     let Some(found) = found else {
+        if !clangd_file.add.is_empty() {
+            report.flags = Some(read_flags(&clangd_file.add, false));
+            report.standing = Standing::Flags;
+            report.uses_clangd_file = true;
+            return report;
+        }
         report.standing = if report.candidates.is_empty() { Standing::Nothing } else { Standing::OutOfReach };
         if report.candidates.is_empty() {
             report.fix = Some(fix_for(root));
@@ -544,6 +607,7 @@ impl Report {
     pub fn short(&self) -> String {
         match self.standing {
             Standing::Flags if self.uses_flags_file => "compile_flags.txt".to_owned(),
+            Standing::Flags if self.uses_clangd_file => ".clangd".to_owned(),
             Standing::Flags => self.config.clone().unwrap_or_else(|| "compile flags found".to_owned()),
             Standing::Borrowed => "flags borrowed".to_owned(),
             Standing::NotListed => "not in database".to_owned(),
@@ -558,6 +622,9 @@ impl Report {
         match self.standing {
             Standing::Flags if self.uses_flags_file => {
                 "clangd gives every file the flags in compile_flags.txt.".to_owned()
+            }
+            Standing::Flags if self.uses_clangd_file => {
+                "There's no database, so clangd guesses, and adds the flags in .clangd.".to_owned()
             }
             Standing::Flags => "clangd compiles this file with these flags.".to_owned(),
             Standing::Borrowed => {
@@ -658,6 +725,27 @@ pub fn counterpart(file: &Path, root: Option<&Path>) -> Option<PathBuf> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod clangd_file_tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_forms_it_comes_in() {
+        let file = parse_clangd_file(
+            "CompileFlags:\n  Add: [-std=c++20, \"-Iinclude\"]\n  Remove: -W*\n  CompilationDatabase: build-x\n",
+        );
+        assert_eq!(file.add, ["-std=c++20", "-Iinclude"]);
+        assert_eq!(file.database.as_deref(), Some("build-x"));
+        let file =
+            parse_clangd_file("# note\nCompileFlags:\n  Add:\n    - -DA=1 # why\n    - -Ib\nDiagnostics:\n  Add: -x\n");
+        assert_eq!(file.add, ["-DA=1", "-Ib"]);
+        let file = parse_clangd_file("CompileFlags:\n  Add: -DONE\n  CompilationDatabase: Ancestors\n");
+        assert_eq!(file.add, ["-DONE"]);
+        assert_eq!(file.database, None);
+        assert_eq!(parse_clangd_file("not: yaml\n"), ClangdFile::default());
+    }
 }
 
 #[cfg(test)]

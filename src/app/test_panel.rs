@@ -10,7 +10,7 @@ use std::time::SystemTime;
 
 use eframe::egui::{self, Align, Color32, RichText, Sense};
 use rust_code_core::cargo::Outcome as CargoOutcome;
-use rust_code_core::lsp::discovery::quiet_command;
+use rust_code_core::lsp::discovery::{kill_tree, quiet_command};
 use rust_code_core::lsp::types as lt;
 use rust_code_core::testing::{self, Adapter, Collect, Format, Outcome, TestResult};
 use rust_code_core::{stacktrace, trust};
@@ -113,20 +113,6 @@ fn scan(root: PathBuf) -> Scan {
     }
     tests.sort();
     Scan { root, adapters, tests, files, problem }
-}
-
-/// Stops a run and what it started: runners are often a shell, then a tool, then a program.
-fn kill_tree(child: &mut Child) {
-    #[cfg(windows)]
-    {
-        let _ = quiet_command(Path::new("taskkill"))
-            .args(["/PID", &child.id().to_string(), "/T", "/F"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 fn to_cargo(outcome: Option<Outcome>) -> Option<CargoOutcome> {

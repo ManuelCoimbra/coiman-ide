@@ -513,8 +513,111 @@ fn hex_color(digits: &str) -> Option<Color> {
 const COLOR_FUNCTIONS: [&str; 11] =
     ["rgb", "rgba", "hsl", "hsla", "hwb", "lab", "lch", "oklab", "oklch", "color", "display-p3"];
 
-/// Every color written as a hex value or a function. Named colors aren't read.
+/// CSS's named colors, each followed by its hex value.
+const NAMED_COLORS: &str = "aliceblue f0f8ff antiquewhite faebd7 aqua 00ffff aquamarine 7fffd4 azure f0ffff beige f5f5dc bisque ffe4c4 black 000000 blanchedalmond ffebcd blue 0000ff blueviolet 8a2be2 brown a52a2a burlywood deb887 cadetblue 5f9ea0 chartreuse 7fff00 chocolate d2691e coral ff7f50 cornflowerblue 6495ed cornsilk fff8dc crimson dc143c cyan 00ffff darkblue 00008b darkcyan 008b8b darkgoldenrod b8860b darkgray a9a9a9 darkgreen 006400 darkgrey a9a9a9 darkkhaki bdb76b darkmagenta 8b008b darkolivegreen 556b2f darkorange ff8c00 darkorchid 9932cc darkred 8b0000 darksalmon e9967a darkseagreen 8fbc8f darkslateblue 483d8b darkslategray 2f4f4f darkslategrey 2f4f4f darkturquoise 00ced1 darkviolet 9400d3 deeppink ff1493 deepskyblue 00bfff dimgray 696969 dimgrey 696969 dodgerblue 1e90ff firebrick b22222 floralwhite fffaf0 forestgreen 228b22 fuchsia ff00ff gainsboro dcdcdc ghostwhite f8f8ff gold ffd700 goldenrod daa520 gray 808080 green 008000 greenyellow adff2f grey 808080 honeydew f0fff0 hotpink ff69b4 indianred cd5c5c indigo 4b0082 ivory fffff0 khaki f0e68c lavender e6e6fa lavenderblush fff0f5 lawngreen 7cfc00 lemonchiffon fffacd lightblue add8e6 lightcoral f08080 lightcyan e0ffff lightgoldenrodyellow fafad2 lightgray d3d3d3 lightgreen 90ee90 lightgrey d3d3d3 lightpink ffb6c1 lightsalmon ffa07a lightseagreen 20b2aa lightskyblue 87cefa lightslategray 778899 lightslategrey 778899 lightsteelblue b0c4de lightyellow ffffe0 lime 00ff00 limegreen 32cd32 linen faf0e6 magenta ff00ff maroon 800000 mediumaquamarine 66cdaa mediumblue 0000cd mediumorchid ba55d3 mediumpurple 9370db mediumseagreen 3cb371 mediumslateblue 7b68ee mediumspringgreen 00fa9a mediumturquoise 48d1cc mediumvioletred c71585 midnightblue 191970 mintcream f5fffa mistyrose ffe4e1 moccasin ffe4b5 navajowhite ffdead navy 000080 oldlace fdf5e6 olive 808000 olivedrab 6b8e23 orange ffa500 orangered ff4500 orchid da70d6 palegoldenrod eee8aa palegreen 98fb98 paleturquoise afeeee palevioletred db7093 papayawhip ffefd5 peachpuff ffdab9 peru cd853f pink ffc0cb plum dda0dd powderblue b0e0e6 purple 800080 rebeccapurple 663399 red ff0000 rosybrown bc8f8f royalblue 4169e1 saddlebrown 8b4513 salmon fa8072 sandybrown f4a460 seagreen 2e8b57 seashell fff5ee sienna a0522d silver c0c0c0 skyblue 87ceeb slateblue 6a5acd slategray 708090 slategrey 708090 snow fffafa springgreen 00ff7f steelblue 4682b4 tan d2b48c teal 008080 thistle d8bfd8 tomato ff6347 turquoise 40e0d0 violet ee82ee wheat f5deb3 white ffffff whitesmoke f5f5f5 yellow ffff00 yellowgreen 9acd32";
+
+fn named_color(name: &str) -> Option<Color> {
+    let mut words = NAMED_COLORS.split(' ');
+    while let (Some(known), Some(hex)) = (words.next(), words.next()) {
+        if known == name {
+            return hex_color(hex);
+        }
+    }
+    None
+}
+
+/// Properties whose words are names, whatever they spell.
+fn names_things(property: &str) -> bool {
+    property.starts_with("font")
+        || property.starts_with("grid")
+        || property.starts_with("animation")
+        || property.starts_with("transition")
+        || matches!(property, "content" | "quotes" | "counter-reset" | "counter-increment" | "will-change")
+}
+
+/// Named colors in a style sheet's declarations, the only place they mean a color.
+fn named_colors_in(chars: &[char], base: usize, out: &mut Vec<FoundColor>) {
+    for segment in segments(chars) {
+        if segment.kind != SegmentKind::Declaration || chars[segment.start] == '@' {
+            continue;
+        }
+        let property_end = ident_end(chars, segment.start);
+        let property: String = chars[segment.start..property_end].iter().collect::<String>().to_lowercase();
+        if chars.get(property_end) != Some(&':') && !chars[property_end..segment.end].contains(&':') {
+            continue;
+        }
+        if names_things(&property) {
+            continue;
+        }
+        let mut i = property_end;
+        while i < segment.end {
+            if chars[i] == '/'
+                && let Some(next) = skip_opaque(chars, i)
+            {
+                i = next;
+            } else if chars[i].is_ascii_alphabetic()
+                && !is_ident(chars[i - 1])
+                && !matches!(chars[i - 1], '#' | '.' | '$' | '@' | '-')
+            {
+                let end = ident_end(chars, i);
+                let name: String = chars[i..end].iter().collect::<String>().to_lowercase();
+                if chars.get(end) == Some(&'(') {
+                    i = after_parens(chars, end);
+                    continue;
+                }
+                if let Some(color) = named_color(&name) {
+                    out.push(FoundColor { start: base + i, end: base + end, color });
+                }
+                i = end;
+            } else {
+                i += 1;
+            }
+        }
+    }
+}
+
+/// The `<style>` blocks of a page, as char ranges of what's inside them.
+pub fn style_blocks(chars: &[char]) -> Vec<(usize, usize)> {
+    let find = |from: usize, needle: &str| -> Option<usize> {
+        let needle: Vec<char> = needle.chars().collect();
+        (from..chars.len().saturating_sub(needle.len() - 1))
+            .find(|&i| chars[i..i + needle.len()].iter().zip(&needle).all(|(a, b)| a.eq_ignore_ascii_case(b)))
+    };
+    let mut out = Vec::new();
+    let mut at = 0;
+    while let Some(open) = find(at, "<style") {
+        let Some(start) = find(open, ">").map(|e| e + 1) else { break };
+        let end = find(start, "</style").unwrap_or(chars.len());
+        out.push((start, end));
+        at = end;
+    }
+    out
+}
+
+/// The selector under `pos` in a page's `<style>` block.
+pub fn selector_in_page(text: &str, pos: usize) -> Option<String> {
+    let chars: Vec<char> = text.chars().collect();
+    let (start, end) = style_blocks(&chars).into_iter().find(|(a, b)| *a <= pos && pos <= *b)?;
+    let block: String = chars[start..end].iter().collect();
+    selector_at(&block, pos - start)
+}
+
+/// Every color written as a hex value, a function or, in a style sheet, a name.
 pub fn colors(text: &str) -> Vec<FoundColor> {
+    let mut found = written_colors(text);
+    let chars: Vec<char> = text.chars().collect();
+    if text.trim_start().starts_with('<') {
+        for (start, end) in style_blocks(&chars) {
+            named_colors_in(&chars[start..end], start, &mut found);
+        }
+    } else {
+        named_colors_in(&chars, 0, &mut found);
+    }
+    found.sort_by_key(|f| f.start);
+    found
+}
+
+fn written_colors(text: &str) -> Vec<FoundColor> {
     let chars: Vec<char> = text.chars().collect();
     let mut out = Vec::new();
     let mut i = 0;
@@ -791,6 +894,25 @@ mod tests {
         // Half-transparent black on white is mid grey.
         let grey = color("#00000080").contrast(&color("#fff"));
         assert!((3.9..4.1).contains(&grey), "{grey}");
+    }
+
+    #[test]
+    fn reads_named_colors_only_where_they_are_colors() {
+        let names = |text: &str| colors(text).iter().map(|f| f.color.srgb8()).collect::<Vec<_>>();
+        assert_eq!(names("a { color: red; }"), [[255, 0, 0, 255]]);
+        assert_eq!(names("a { border: 1px solid RebeccaPurple; }"), [[0x66, 0x33, 0x99, 255]]);
+        assert!(names("red { font-family: red; }").is_empty(), "a selector and a font");
+        assert!(names("a { color: var(--red); background: url(red.png); }").is_empty());
+        assert!(names("<p>color: red</p>").is_empty(), "prose in a page");
+        assert_eq!(names("<style>p { color: blue; }</style>").len(), 1);
+    }
+
+    #[test]
+    fn finds_selectors_in_a_page() {
+        let page = "<p>x</p><style>.a #b { color: red; }</style>";
+        let at = page.find(".a").unwrap();
+        assert_eq!(selector_in_page(page, at).as_deref(), Some(".a #b"));
+        assert_eq!(selector_in_page(page, 2), None);
     }
 
     #[test]

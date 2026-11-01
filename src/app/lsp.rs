@@ -1385,7 +1385,10 @@ impl CodeApp {
         let (uid, head) = (doc.uid, doc.buffer.primary().head);
         self.lsp.cursor_rect = Some(out.cursor_rect);
         let focused = self.editor_focused(ctx);
-        self.symbols_after_typing(typed);
+        match self.pasted.take() {
+            Some(pasted) => self.symbols_after_typing(&pasted),
+            None => self.symbols_after_typing(typed),
+        }
         self.completion_after_typing(typed, focused);
         self.signature_after_typing(typed);
         self.update_hover(ctx, uid, out.hover, head);

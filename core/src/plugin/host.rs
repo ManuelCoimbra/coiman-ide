@@ -269,7 +269,7 @@ impl Drop for State {
     fn drop(&mut self) {
         for child in self.jobs.lock().map(|jobs| jobs.values().cloned().collect::<Vec<_>>()).unwrap_or_default() {
             if let Ok(mut child) = child.lock() {
-                let _ = child.kill();
+                crate::lsp::discovery::kill_tree(&mut child);
             }
         }
     }
@@ -643,7 +643,7 @@ impl rust_code::plugin::host::Host for State {
         if let Some(child) = child
             && let Ok(mut child) = child.lock()
         {
-            let _ = child.kill();
+            crate::lsp::discovery::kill_tree(&mut child);
         }
     }
 

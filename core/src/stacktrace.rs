@@ -323,6 +323,29 @@ pub fn repair(text: &str) -> (Vec<String>, usize) {
 }
 
 /// Paths of code that isn't the project's, whatever a file there is called.
+/// Where tools and their packages are installed. A project could be in one of
+/// these too, so it's only library code if it isn't in the project that's open.
+fn is_installed_path(file: &str) -> bool {
+    let text = file.replace('\\', "/").to_lowercase();
+    [
+        "/.rustup/toolchains/",
+        "/.m2/repository/",
+        "/.gradle/caches/",
+        "/.nuget/packages/",
+        "/go/pkg/mod/",
+        "/usr/local/go/src/",
+        "/usr/local/lib/",
+        "/.pyenv/versions/",
+        "/program files/",
+        "/program files (x86)/",
+        "/appdata/local/programs/",
+        "/library/frameworks/",
+        "/jdk/",
+    ]
+    .iter()
+    .any(|part| text.contains(part))
+}
+
 fn is_library_path(file: &str) -> bool {
     let text = file.replace('\\', "/");
     ["site-packages/", "dist-packages/", "node_modules/", "/usr/lib/", "/usr/include/", "/.cargo/registry/", "/rustc/"]
@@ -342,7 +365,7 @@ fn components(path: &str) -> Vec<String> {
 /// Works out where a frame is, given this project's files.
 pub fn locate(frame: &Frame, root: &Path, files: &[PathBuf]) -> Place {
     let named = Path::new(&frame.file);
-    if is_library_path(&frame.file) {
+    if is_library_path(&frame.file) || (is_installed_path(&frame.file) && !named.starts_with(root)) {
         return Place::Elsewhere;
     }
     if named.is_absolute() && named.is_file() {
@@ -587,6 +610,8 @@ mod tests {
         let f = frame(r#"File "/usr/lib/python3/json/decoder.py", line 1"#);
         assert_eq!(locate(&f, &root, &files), Place::Elsewhere);
         let f = frame("at f (/a/node_modules/x/index.js:1:1)");
+        assert_eq!(locate(&f, &root, &files), Place::Elsewhere);
+        let f = frame(r#"File "C:\\Program Files\\Python\\json\\decoder.py", line 1"#);
         assert_eq!(locate(&f, &root, &files), Place::Elsewhere);
         std::fs::remove_dir_all(root).unwrap();
     }

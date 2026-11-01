@@ -73,7 +73,25 @@ impl CodeApp {
 
     /// `\to` plus a character that can't continue it becomes `→` plus that character.
     pub(super) fn symbols_after_typing(&mut self, typed: &str) {
-        if typed.chars().count() != 1 || !self.profile_of(self.active).is_some_and(|p| p.abbreviations) {
+        let count = typed.chars().count();
+        if count == 0 || !self.profile_of(self.active).is_some_and(|p| p.abbreviations) {
+            return;
+        }
+        // A paste, or several keys in one frame: all of it at once, from where a
+        // name that it finishes could have started.
+        if count > 1 {
+            let Some(doc) = self.docs.get(self.active) else { return };
+            let primary = doc.buffer.primary();
+            if !primary.is_empty() || doc.buffer.selections().len() != 1 || doc.buffer.read_only {
+                return;
+            }
+            let start = primary.head.saturating_sub(count + 17);
+            let text = doc.buffer.slice_string(start, primary.head);
+            let converted = symbols::convert_all(&text, &self.settings.symbols);
+            if converted != text {
+                let length = primary.head - start;
+                self.replace_before_cursor(length, length, &converted);
+            }
             return;
         }
         let Some(before) = self.line_before_cursor() else { return };

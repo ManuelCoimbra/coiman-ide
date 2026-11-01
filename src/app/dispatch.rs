@@ -636,6 +636,20 @@ impl CodeApp {
             return;
         }
         // Tab after a backslash name makes its symbol.
+        self.pasted = ctx.input(|i| {
+            i.events.iter().find_map(|e| match e {
+                egui::Event::Paste(text) if editor_focused => Some(text.clone()),
+                _ => None,
+            })
+        });
+        // Enter ends a name as a space would, and then does what it always does.
+        if editor_focused
+            && self.vim.is_none()
+            && !self.completion_open()
+            && ctx.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none())
+        {
+            self.symbol_on_tab();
+        }
         if editor_focused
             && self.chord.is_none()
             && self.vim.is_none()

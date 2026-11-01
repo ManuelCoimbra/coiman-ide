@@ -14,6 +14,20 @@ pub enum Found {
     },
 }
 
+/// Stops a process and what it started: runners and shells are often a chain of them.
+pub fn kill_tree(child: &mut std::process::Child) {
+    #[cfg(windows)]
+    {
+        let _ = quiet_command(Path::new("taskkill"))
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
 /// A command that never opens a console window (the app is a GUI program).
 pub fn quiet_command(program: &Path) -> Command {
     #[allow(unused_mut)]
@@ -77,5 +91,33 @@ pub fn install_rust_analyzer(rustup: &Path) -> Result<(), String> {
     } else {
         let err = String::from_utf8_lossy(&out.stderr);
         Err(err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("rustup failed").trim().to_owned())
+    }
+}
+
+#[cfg(all(test, windows))]
+mod kill_tests {
+    use super::*;
+    use std::io::Read;
+    use std::process::Stdio;
+    use std::time::Duration;
+
+    #[test]
+    fn stops_what_a_process_started() {
+        // The grandchild holds the pipe open, so it only ends if that dies too.
+        let mut child = quiet_command(Path::new("cmd"))
+            .args(["/c", "ping -n 60 127.0.0.1"])
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut pipe = child.stdout.take().unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        kill_tree(&mut child);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut all = Vec::new();
+            let _ = pipe.read_to_end(&mut all);
+            let _ = tx.send(());
+        });
+        assert!(rx.recv_timeout(Duration::from_secs(10)).is_ok(), "something was left running");
     }
 }

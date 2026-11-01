@@ -52,6 +52,11 @@ struct View {
     ordering: Option<Receiver<Vec<u32>>>,
     grid: GridState,
     sized_for: usize,
+    /// The record selected before the rows moved, to find it again after.
+    keep: Option<(u32, usize)>,
+    /// The cell being edited, and its text.
+    cell: Option<(u32, usize)>,
+    cell_text: String,
 }
 
 #[derive(Default)]
@@ -86,7 +91,9 @@ impl GridSource for Source<'_> {
     }
 
     fn row(&self, row: usize) -> Vec<String> {
-        self.order.get(row).map_or_else(Vec::new, |r| self.table.cells(*r as usize))
+        // Rows are one line high: a cell's line breaks show as what they are.
+        let cells = self.order.get(row).map_or_else(Vec::new, |r| self.table.cells(*r as usize));
+        cells.into_iter().map(|c| c.replace("\r\n", "\n").replace('\n', " \\n ")).collect()
     }
 
     fn row_label(&self, row: usize) -> String {
@@ -124,15 +131,12 @@ impl CodeApp {
             let text = doc.text();
             let lines = (text.len() <= COLOR_LIMIT_BYTES).then(|| {
                 let delimiter = table::detect_delimiter(&text, &doc.extension());
-                let colored: HashMap<usize, Vec<Highlight>> = text
-                    .lines()
-                    .enumerate()
-                    .map(|(line, content)| {
-                        let fields = table::field_ranges(content, delimiter);
+                let colored: HashMap<usize, Vec<Highlight>> = table::colored_fields(&text, delimiter)
+                    .into_iter()
+                    .map(|(line, fields)| {
                         let marks = fields
                             .into_iter()
-                            .enumerate()
-                            .map(|(n, (start, end))| Highlight {
+                            .map(|(start, end, n)| Highlight {
                                 start,
                                 end,
                                 foreground: Some(COLUMN_COLORS[n % COLUMN_COLORS.len()]),
@@ -181,6 +185,7 @@ impl CodeApp {
             view.version = *v;
             view.table = Some(Arc::new(table));
             view.parsing = None;
+            view.cell = None;
             view.asked = None;
         }
         let Some(table) = view.table.clone() else {
@@ -196,6 +201,12 @@ impl CodeApp {
         {
             view.order = Arc::new(order);
             view.ordering = None;
+            // The row that was selected, wherever it went.
+            if let Some((record, column)) = view.keep.take() {
+                let row = view.order.iter().position(|r| *r == record);
+                view.grid.selected = row.map(|row| (row, column));
+                view.grid.reveal = row;
+            }
         }
         if view.asked.as_ref() != Some(&ask) && view.ordering.is_none() {
             view.asked = Some(ask.clone());
@@ -247,9 +258,41 @@ impl CodeApp {
             view.grid.widths = table.column_widths().into_iter().map(|w| w as f32 * char_w + 12.0).collect();
             view.sized_for = table.columns;
         }
+        // The selected cell, to change.
+        let chosen = view.grid.selected.and_then(|(row, column)| Some((*view.order.get(row)?, column)));
+        let mut edited = None;
+        if view.cell != chosen {
+            view.cell = chosen;
+            view.cell_text = chosen
+                .and_then(|(record, column)| table.cells(record as usize).get(column).cloned())
+                .unwrap_or_default();
+        }
+        if let Some((record, column)) = chosen {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                if view.cell_text.contains('\n') {
+                    ui.label(RichText::new("This cell has line breaks: edit it as text").color(pal.text_dim));
+                    return;
+                }
+                ui.label(RichText::new("Cell").color(pal.text_dim));
+                let edit = egui::TextEdit::singleline(&mut view.cell_text).desired_width(320.0);
+                let response = ui.add(edit);
+                if response.lost_focus()
+                    && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                    && view.parsing.is_none()
+                    && let Some(range) = table.cell_range(record as usize, column)
+                {
+                    edited = Some((range, table::quote_cell(&view.cell_text, table.delimiter), record, column));
+                }
+            });
+        }
         let source = Source { table: &table, order: &view.order, header };
         let events = grid_view::show(ui, ui.scope_id().with(("table", uid)), &mut view.grid, &source, self.font_size);
+        if let Some((_, _, record, column)) = &edited {
+            view.keep = Some((*record, *column));
+        }
         if let Some(column) = events.header_clicked {
+            view.keep = chosen;
             // Up, down, then as the file has it.
             view.sort = match view.sort {
                 Some((c, false)) if c == column => Some((c, true)),
@@ -257,6 +300,17 @@ impl CodeApp {
                 _ => Some((column, false)),
             };
         }
+        if let Some(((a, b), value, _, _)) = edited
+            && let Some(doc) = self.docs.get_mut(self.active)
+        {
+            let rope = doc.buffer.rope();
+            let (a, b) = (rope.byte_to_char(a), rope.byte_to_char(b));
+            doc.buffer.apply_edits(vec![(a, b, value)]);
+            let view = self.tables.views.entry(uid).or_default();
+            view.cell = None;
+            return true;
+        }
+        let view = self.tables.views.entry(uid).or_default();
         let jump = events.row_opened.and_then(|row| view.order.get(row)).and_then(|r| table.line_of(*r as usize));
         if to_text || jump.is_some() {
             self.tables.showing.remove(&uid);

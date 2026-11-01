@@ -44,7 +44,11 @@ fn backslash(chars: &[char]) -> Option<usize> {
     let at = (from..chars.len()).rev().find(|&i| chars[i] == '\\')?;
     // A doubled backslash is a backslash, and white space ends a name.
     let escaped = at > 0 && chars[at - 1] == '\\';
-    (!escaped && !chars[at + 1..chars.len().saturating_sub(1)].iter().any(|c| c.is_whitespace())).then_some(at)
+    // The backslash itself may be what was just typed: nothing follows it yet.
+    if at + 1 >= chars.len() {
+        return None;
+    }
+    (!escaped && !chars[at + 1..chars.len() - 1].iter().any(|c| c.is_whitespace())).then_some(at)
 }
 
 /// After a character was typed: what `before`, the line up to the cursor, turns
@@ -71,6 +75,49 @@ pub fn at_cursor(before: &str, mine: &HashMap<String, String>) -> Option<Replace
     let name: String = chars[at + 1..].iter().collect();
     let symbol = lookup(&name, mine)?.to_owned();
     Some(Replacement { back: chars.len() - at, length: chars.len() - at, symbol })
+}
+
+/// What a piece of text becomes when it arrives whole, as a paste or several keys
+/// in one frame. A name at the very end that could still grow is left to finish.
+pub fn convert_all(text: &str, mine: &HashMap<String, String>) -> String {
+    const LONGEST: usize = 16;
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '\\' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        if chars.get(i + 1) == Some(&'\\') {
+            out.push_str("\\\\");
+            i += 2;
+            continue;
+        }
+        // As typing would have it: a name ends at the first character that can't continue it.
+        let limit = (i + 1 + LONGEST).min(chars.len());
+        let mut found = None;
+        for e in i + 1..limit {
+            let with_next: String = chars[i + 1..=e].iter().collect();
+            if lookup(&with_next, mine).is_none() && !can_grow(&with_next, mine) {
+                let name: String = chars[i + 1..e].iter().collect();
+                found = lookup(&name, mine).map(|symbol| (e, symbol.to_owned()));
+                break;
+            }
+        }
+        match found {
+            Some((e, symbol)) => {
+                out.push_str(&symbol);
+                i = e;
+            }
+            None => {
+                out.push('\\');
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 /// Every symbol once, with all its names, for the picker.
@@ -146,6 +193,9 @@ mod tests {
         assert_eq!(typed("\\\\to "), None, "an escaped backslash");
         assert_eq!(typed("\\to and more "), None, "white space ended it");
         assert_eq!(typed("\\ "), None);
+        assert_eq!(typed("\\"), None, "the backslash was just typed");
+        assert_eq!(typed("x \\"), None);
+        assert_eq!(at_cursor("\\", &none()), None);
     }
 
     #[test]
@@ -166,6 +216,16 @@ mod tests {
         assert_eq!(tab("\\nope"), None);
         assert_eq!(tab("plain"), None);
         assert_eq!(tab("\\to x"), None);
+    }
+
+    #[test]
+    fn whole_text_converts() {
+        let all = |text: &str| convert_all(text, &none());
+        assert_eq!(all("\\to x \\forall y"), "→ x ∀ y");
+        assert_eq!(all("(\\alpha)"), "(α)");
+        assert_eq!(all("\\\\to \\nope "), "\\\\to \\nope ");
+        assert_eq!(all("x \\al"), "x \\al", "still being typed");
+        assert_eq!(all("plain"), "plain");
     }
 
     #[test]

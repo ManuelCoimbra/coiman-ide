@@ -200,6 +200,9 @@ extensions = ["v"]
 server = "coq-lsp"
 root_markers = ["_CoqProject", "dune-project"]
 hint = "Install coq-lsp with opam"
+comment = "(*"
+abbreviations = true
+glyphs = "∀∃λ→←↔¬∧∨≤≥≠∈∉⊆∪∩×∘ℕℤℚℝ⟨⟩⊢₁₂"
 
 [[language]]
 name = "Lean"

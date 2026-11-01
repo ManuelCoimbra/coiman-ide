@@ -127,6 +127,24 @@ impl Table {
         split_record(&self.text[a..b], self.delimiter)
     }
 
+    /// Where a cell is in the text, in bytes, quotes included.
+    pub fn cell_range(&self, record: usize, column: usize) -> Option<(usize, usize)> {
+        let &(a, b) = self.ranges.get(record)?;
+        let (mut start, mut quoted, mut field) = (a, false, 0);
+        for (at, byte) in self.text[a..b].bytes().enumerate() {
+            if byte == b'"' {
+                quoted = !quoted;
+            } else if byte == self.delimiter && !quoted {
+                if field == column {
+                    return Some((start, a + at));
+                }
+                field += 1;
+                start = a + at + 1;
+            }
+        }
+        (field == column).then_some((start, b))
+    }
+
     /// Whether the first record reads as column names: none of it is a number,
     /// and there's something for it to name.
     pub fn first_row_is_header(&self) -> bool {
@@ -230,6 +248,42 @@ fn split_record(record: &str, delimiter: u8) -> Vec<String> {
     out
 }
 
+/// A value as it's written in a cell: quoted if it has to be.
+pub fn quote_cell(value: &str, delimiter: u8) -> String {
+    let needs = value.bytes().any(|b| b == delimiter || matches!(b, b'"' | b'\n' | b'\r'));
+    if needs { format!("\"{}\"", value.replace('"', "\"\"")) } else { value.to_owned() }
+}
+
+/// A line's number, and its fields as (first char, last char, column).
+pub type ColoredLine = (usize, Vec<(usize, usize, usize)>);
+
+/// For coloring: each line's fields as char ranges with their column, following a
+/// quoted cell across lines so what comes after it keeps its column.
+pub fn colored_fields(text: &str, delimiter: u8) -> Vec<ColoredLine> {
+    let (mut quoted, mut column) = (false, 0);
+    let mut out = Vec::new();
+    for (number, line) in text.lines().enumerate() {
+        let mut fields = Vec::new();
+        let (mut start, mut at) = (0, 0);
+        for c in line.chars() {
+            if c == '"' {
+                quoted = !quoted;
+            } else if !quoted && c.is_ascii() && c as u8 == delimiter {
+                fields.push((start, at, column));
+                start = at + 1;
+                column += 1;
+            }
+            at += 1;
+        }
+        fields.push((start, at, column));
+        if !quoted {
+            column = 0;
+        }
+        out.push((number, fields));
+    }
+    out
+}
+
 /// Char ranges of the fields on one line, delimiters left out, for coloring.
 pub fn field_ranges(line: &str, delimiter: u8) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
@@ -253,6 +307,30 @@ mod tests {
 
     fn table(text: &str) -> Table {
         Table::parse(text, b',')
+    }
+
+    #[test]
+    fn colors_follow_a_quoted_cell_across_lines() {
+        let fields = colored_fields("a,\"b\nc\",d\ne,f\n", b',');
+        assert_eq!(fields[0].1, [(0, 1, 0), (2, 4, 1)]);
+        assert_eq!(fields[1].1, [(0, 2, 1), (3, 4, 2)]);
+        assert_eq!(fields[2].1, [(0, 1, 0), (2, 3, 1)]);
+    }
+
+    #[test]
+    fn finds_and_quotes_cells() {
+        let t = table("a,\"b,c\",d\ne,f,g\n");
+        let text = "a,\"b,c\",d\ne,f,g\n";
+        let cell = |r, c| t.cell_range(r, c).map(|(a, b)| &text[a..b]);
+        assert_eq!(cell(0, 0), Some("a"));
+        assert_eq!(cell(0, 1), Some("\"b,c\""));
+        assert_eq!(cell(0, 2), Some("d"));
+        assert_eq!(cell(1, 2), Some("g"));
+        assert_eq!(cell(1, 3), None);
+        assert_eq!(cell(5, 0), None);
+        assert_eq!(quote_cell("plain", b','), "plain");
+        assert_eq!(quote_cell("a,b", b','), "\"a,b\"");
+        assert_eq!(quote_cell("say \"x\"", b';'), "\"say \"\"x\"\"\"");
     }
 
     #[test]

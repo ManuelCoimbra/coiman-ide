@@ -22,6 +22,9 @@ pub(super) struct Traces {
     working: Option<Receiver<Analysis>>,
     focus: bool,
     only_project: bool,
+    /// The box stays open though a trace was read.
+    editing: bool,
+    paste: bool,
 }
 
 /// What the row's frame jumps to, with a word about it.
@@ -104,19 +107,38 @@ impl CodeApp {
             if ui.button("Clear").clicked() {
                 self.traces.text.clear();
                 self.traces.focus = true;
+                self.traces.editing = false;
+            }
+            if ui.button("Paste").on_hover_text("Replace the text with what's on the clipboard").clicked() {
+                self.traces.text.clear();
+                self.traces.editing = true;
+                self.traces.focus = true;
+                self.traces.paste = true;
+            }
+            let read = self.traces.analysis.as_ref().is_some_and(|a| a.frames() > 0);
+            if read {
+                ui.toggle_value(&mut self.traces.editing, "Edit Text");
             }
         });
         // With a trace read, its frames need the room more than the box does.
         let read = self.traces.analysis.as_ref().is_some_and(|a| a.frames() > 0);
-        let input = egui::TextEdit::multiline(&mut self.traces.text)
-            .hint_text("Stack trace")
-            .code_editor()
-            .desired_rows(if read { 1 } else { 3 })
-            .desired_width(f32::INFINITY);
-        let box_area = egui::ScrollArea::vertical().id_salt("trace_input").max_height(if read { 30.0 } else { 70.0 });
-        let response = box_area.show(ui, |ui| ui.add(input)).inner;
-        if std::mem::take(&mut self.traces.focus) {
-            response.request_focus();
+        if !read || self.traces.editing {
+            let input = egui::TextEdit::multiline(&mut self.traces.text)
+                .hint_text("Stack trace")
+                .code_editor()
+                .desired_rows(3)
+                .desired_width(f32::INFINITY);
+            let box_area = egui::ScrollArea::vertical().id_salt("trace_input").max_height(70.0);
+            let response = box_area.show(ui, |ui| ui.add(input)).inner;
+            if std::mem::take(&mut self.traces.focus) {
+                response.request_focus();
+            }
+            // The box has the keyboard by now, so the paste lands in it.
+            if response.has_focus() && std::mem::take(&mut self.traces.paste) {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::RequestPaste);
+            } else if self.traces.paste {
+                ui.ctx().request_repaint();
+            }
         }
         ui.separator();
         let mut jump = None;

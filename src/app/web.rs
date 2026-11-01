@@ -311,9 +311,9 @@ impl CodeApp {
             parts.push(note.to_owned());
         }
         // The CSS server says this itself.
-        if style_sheet
-            && !server.contains("Specificity")
-            && let Some(selector) = css::selector_at(&text, pos)
+        let selector = if style_sheet { css::selector_at(&text, pos) } else { css::selector_in_page(&text, pos) };
+        if !server.contains("Specificity")
+            && let Some(selector) = selector
         {
             let (a, b, c) = css::specificity(&selector);
             parts.push(format!("Specificity ({a}, {b}, {c}) of `{selector}`"));
