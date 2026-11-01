@@ -36,6 +36,12 @@ pub struct Session {
     /// Whether the cursor info sits beside the code.
     #[serde(default)]
     pub cursor_info_beside: bool,
+    /// The tools on the right rail, by name.
+    #[serde(default)]
+    pub right_tools: Vec<String>,
+    /// The panel opens at the right, not the bottom.
+    #[serde(default)]
+    pub panel_right: bool,
 }
 
 /// A pinned place, found again by its line's text if lines above it changed.
@@ -89,6 +95,8 @@ impl Session {
             log_views: Vec::new(),
             cursor_pins: Vec::new(),
             cursor_info_beside: false,
+            right_tools: Vec::new(),
+            panel_right: false,
         }
     }
 
@@ -198,6 +206,8 @@ mod tests {
             log_views: Vec::new(),
             cursor_pins: Vec::new(),
             cursor_info_beside: false,
+            right_tools: Vec::new(),
+            panel_right: false,
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

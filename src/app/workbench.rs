@@ -550,7 +550,9 @@ impl CodeApp {
     /// The bottom panel: Problems, References and Terminal tabs.
     pub(super) fn panel(&mut self, ui: &mut egui::Ui) {
         let mut action = None;
-        ui.horizontal(|ui| {
+        // Docked at the side there's no room for the tabs and the buttons on one line.
+        let stacked = ui.available_width() < 760.0;
+        let header = |ui: &mut egui::Ui| {
             let mut tabs = vec![
                 (PanelTab::Problems, self.problems_tab_label()),
                 (PanelTab::References, "REFERENCES".to_owned()),
@@ -603,16 +605,16 @@ impl CodeApp {
                 }
                 ui.add_space(8.0);
             }
-            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if icons::button(ui, Icon::Close, "Close Panel").clicked() {
-                    self.panel_visible = false;
-                }
-                if self.panel_tab == PanelTab::Terminal {
-                    ui.add_space(8.0);
-                    action = self.terminal.header(ui);
-                }
-            });
-        });
+            if !stacked {
+                action = self.panel_buttons(ui);
+            }
+        };
+        if stacked {
+            ui.horizontal_wrapped(header);
+            ui.horizontal(|ui| action = self.panel_buttons(ui));
+        } else {
+            ui.horizontal(header);
+        }
         ui.add_space(4.0);
         match self.panel_tab {
             PanelTab::Problems => self.problems_panel(ui),
@@ -640,6 +642,21 @@ impl CodeApp {
             }
         }
         self.terminal_action(ui.ctx(), action);
+    }
+
+    /// Closing the panel, and the terminal's own buttons, at the right.
+    fn panel_buttons(&mut self, ui: &mut egui::Ui) -> Option<TerminalAction> {
+        let mut action = None;
+        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+            if icons::button(ui, Icon::Close, "Close Panel").clicked() {
+                self.panel_visible = false;
+            }
+            if self.panel_tab == PanelTab::Terminal {
+                ui.add_space(8.0);
+                action = self.terminal.header(ui);
+            }
+        });
+        action
     }
 
     /// Applies a button from the terminal header.

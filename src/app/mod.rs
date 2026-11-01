@@ -39,6 +39,7 @@ mod split;
 mod svg_preview;
 mod tables;
 mod test_panel;
+mod tool_rails;
 mod traces;
 mod tree_tools;
 mod view_tabs;
@@ -151,6 +152,7 @@ pub struct CodeApp {
 
     sidebar_visible: bool,
     sidebar_view: SidebarView,
+    rails: tool_rails::ToolRails,
     /// Bottom panel (Problems, References, Terminal).
     panel_visible: bool,
     panel_tab: PanelTab,
@@ -295,6 +297,7 @@ impl CodeApp {
             watcher: FileWatcher::new(repaint(ctx)),
             sidebar_visible: true,
             sidebar_view: SidebarView::Explorer,
+            rails: tool_rails::ToolRails::new(),
             panel_visible: false,
             panel_tab: PanelTab::Terminal,
             font_size: DEFAULT_FONT_SIZE,
@@ -455,6 +458,7 @@ impl eframe::App for CodeApp {
 
         let zen = self.zen_mode;
         self.window_resize_edges(&ctx);
+        self.place_tools();
         // What islands stand on.
         ui.painter().rect_filled(ui.max_rect(), 0.0, theme::colors().activity_bg);
         // The title bar stays in Zen mode: it holds the window buttons.
@@ -473,13 +477,25 @@ impl eframe::App for CodeApp {
                     cmd = cmd.or(self.status_bar(ui));
                 });
 
-            egui::Panel::left("activity_bar")
-                .exact_size(48.0)
-                .resizable(false)
-                .frame(egui::Frame::new().fill(theme::colors().activity_bg))
-                .show(ui, |ui| {
+            let rail_frame = egui::Frame::new().fill(theme::colors().activity_bg);
+            if theme::islands() {
+                egui::Panel::left("tool_rail_left").exact_size(44.0).resizable(false).frame(rail_frame).show(
+                    ui,
+                    |ui| {
+                        cmd = cmd.or(self.tool_rail(ui, false));
+                    },
+                );
+                egui::Panel::right("tool_rail_right").exact_size(44.0).resizable(false).frame(rail_frame).show(
+                    ui,
+                    |ui| {
+                        cmd = cmd.or(self.tool_rail(ui, true));
+                    },
+                );
+            } else {
+                egui::Panel::left("activity_bar").exact_size(48.0).resizable(false).frame(rail_frame).show(ui, |ui| {
                     cmd = cmd.or(self.activity_bar(ui));
                 });
+            }
         }
 
         let classic = !theme::islands();
@@ -499,7 +515,38 @@ impl eframe::App for CodeApp {
             islands.push(side.response.rect - gaps);
         }
 
-        if self.panel_visible && !zen {
+        let right_view = self.rails.right_view.filter(|_| !zen && !classic);
+        if let Some(view) = right_view {
+            let gaps = theme::island_gaps(false, false, false, true);
+            let max_side = (ui.available_width() * 0.5).max(200.0);
+            let shown = std::mem::replace(&mut self.sidebar_view, view);
+            let side = egui::Panel::right("right_bar")
+                .default_size(300.0)
+                .size_range(160.0..=max_side)
+                .resizable(true)
+                .show_separator_line(false)
+                .frame(theme::island_frame(theme::colors().sidebar_bg, egui::Margin::symmetric(10, 8), gaps))
+                .show(ui, |ui| self.sidebar(ui));
+            // Unless what's in it asked for something else meanwhile.
+            if self.sidebar_view == view {
+                self.sidebar_view = shown;
+            }
+            islands.push(side.response.rect - gaps);
+        }
+        let panel_right = self.rails.panel_right && !classic;
+        if self.panel_visible && !zen && panel_right {
+            let gaps = theme::island_gaps(false, false, false, true);
+            let max_side = (ui.available_width() * 0.7).max(200.0);
+            let panel = egui::Panel::right("panel_right")
+                .default_size(420.0)
+                .size_range(200.0..=max_side)
+                .resizable(true)
+                .show_separator_line(false)
+                .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
+                .show(ui, |ui| self.panel(ui));
+            islands.push(panel.response.rect - gaps);
+        }
+        if self.panel_visible && !zen && !panel_right {
             let gaps = theme::island_gaps(false, true, true, true);
             let panel = egui::Panel::bottom("panel")
                 .default_size(220.0)
@@ -510,7 +557,7 @@ impl eframe::App for CodeApp {
             islands.push(panel.response.rect - gaps);
         }
 
-        let gaps = theme::island_gaps(zen, true, false, !(self.panel_visible && !zen));
+        let gaps = theme::island_gaps(zen, true, false, !(self.panel_visible && !zen && !panel_right));
         let frame = theme::island_frame(theme::colors().editor_bg, egui::Margin::ZERO, gaps);
         let central = egui::CentralPanel::no_frame().frame(frame).show(ui, |ui| {
             if self.docs.is_empty() {

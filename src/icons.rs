@@ -15,6 +15,8 @@ pub enum Icon {
     Terminal,
     Folder,
     FolderOpen,
+    Alert,
+    Lines,
     Menu,
     Gear,
     CollapseAll,
@@ -137,6 +139,16 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::FolderOpen => {
             pen.line(&[(0.18, 0.84), (0.06, 0.84), (0.06, 0.2), (0.38, 0.2), (0.48, 0.32), (0.82, 0.32), (0.82, 0.46)]);
             pen.closed(&[(0.18, 0.46), (0.98, 0.46), (0.84, 0.84), (0.04, 0.84)]);
+        }
+        Icon::Alert => {
+            pen.closed(&[(0.5, 0.12), (0.92, 0.86), (0.08, 0.86)]);
+            pen.line(&[(0.5, 0.4), (0.5, 0.62)]);
+            pen.line(&[(0.5, 0.71), (0.5, 0.74)]);
+        }
+        Icon::Lines => {
+            for (y, end) in [(0.2, 0.86), (0.4, 0.6), (0.6, 0.86), (0.8, 0.5)] {
+                pen.line(&[(0.14, y), (end, y)]);
+            }
         }
         Icon::Menu => {
             for y in [0.25, 0.5, 0.75] {

@@ -237,8 +237,9 @@ impl CodeApp {
         let root = self.tests_root();
         let now = ctx.input(|i| i.time);
         let moved = root != self.tests.root;
-        let due =
-            self.sidebar_visible && self.sidebar_view == super::SidebarView::Testing && now >= self.tests.next_scan;
+        let open = (self.sidebar_visible && self.sidebar_view == super::SidebarView::Testing)
+            || self.rails.right_view == Some(super::SidebarView::Testing);
+        let due = open && now >= self.tests.next_scan;
         if !moved && !due {
             return;
         }

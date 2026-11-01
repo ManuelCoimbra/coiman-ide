@@ -68,6 +68,7 @@ impl CodeApp {
         self.log_to_open = saved.log_view.clone().filter(|p| p.is_file());
         self.restore_log_views(saved.log_views.iter().filter(|p| p.is_file()).cloned().collect());
         self.at_cursor_restore(&saved.cursor_pins, saved.cursor_info_beside);
+        self.rails.restore(&saved.right_tools, saved.panel_right);
         let active = saved.active;
         for doc in saved.restore_docs() {
             self.untitled_counter = self.untitled_counter.max(doc.untitled_index());
@@ -86,6 +87,8 @@ impl CodeApp {
         session.log_views =
             self.log_view_paths().into_iter().filter(|p| Some(p) != session.log_view.as_ref()).collect();
         (session.cursor_pins, session.cursor_info_beside) = self.at_cursor_saved();
+        session.right_tools = self.rails.saved();
+        session.panel_right = self.rails.panel_right;
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
