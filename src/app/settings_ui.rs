@@ -530,8 +530,6 @@ impl CodeApp {
                     style.spacing.icon_width *= 1.3;
                     style.spacing.icon_width_inner *= 1.3;
                     let help_size = ui.text_style_height(&egui::TextStyle::Body) * 0.82;
-                    // Near the text it answers, however wide the window is.
-                    let text_width = (ui.available_width() * 0.5).clamp(280.0, 460.0);
                     if filter.is_empty() || "color theme".contains(&filter) {
                         ui.heading("Color theme");
                         if ui.button(&self.settings.workbench.color_theme).clicked() {
@@ -547,7 +545,7 @@ impl CodeApp {
                         for row in rows.iter().filter(|r| matches(r)) {
                             ui.horizontal(|ui| {
                                 ui.vertical(|ui| {
-                                    ui.set_width(text_width);
+                                    ui.set_width((ui.available_width() - 320.0).max(200.0));
                                     ui.label(row.label);
                                     if !row.help.is_empty() {
                                         let help =
@@ -562,10 +560,14 @@ impl CodeApp {
                                     (Some(v), None) => v.as_str() != Some(""),
                                     _ => false,
                                 };
-                                control(ui, state, row, value, &mut action);
-                                if changed && ui.small_button("Reset").clicked() {
-                                    action = Some(Action::Reset(row.table, row.key));
-                                }
+                                // At the far edge, so options line up down the page.
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.add_space(12.0);
+                                    control(ui, state, row, value, &mut action);
+                                    if changed && ui.small_button("Reset").clicked() {
+                                        action = Some(Action::Reset(row.table, row.key));
+                                    }
+                                });
                             });
                             ui.add_space(8.0);
                         }
