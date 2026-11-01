@@ -25,10 +25,15 @@ const LOG_FILE_LIMIT: u64 = 16 * 1024 * 1024;
 
 /// Whether a file is better read in the log view than loaded into the editor.
 pub fn belongs_in_log_view(path: &Path) -> bool {
+    belongs_in_log_view_from(path, LOG_FILE_LIMIT, ANY_FILE_LIMIT)
+}
+
+/// The same with sizes chosen in settings. A limit of 0 is none.
+pub fn belongs_in_log_view_from(path: &Path, log_limit: u64, any_limit: u64) -> bool {
     let Ok(size) = std::fs::metadata(path).map(|m| m.len()) else { return false };
     let is_log = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("log"))
         || path.file_name().is_some_and(|n| n.to_string_lossy().to_lowercase().contains(".log."));
-    size >= ANY_FILE_LIMIT || (is_log && size >= LOG_FILE_LIMIT)
+    (any_limit > 0 && size >= any_limit) || (log_limit > 0 && is_log && size >= log_limit)
 }
 
 /// Where a file's lines are, as far as it has been read.
@@ -45,6 +50,21 @@ pub struct LineIndex {
     /// Bumped when the file got smaller: it's another file now, as far as anyone can tell.
     pub generation: u32,
     last_mark_offset: u64,
+    /// The start of the file, to notice it being replaced by one that's as long.
+    head: Vec<u8>,
+}
+
+/// Bytes kept to tell one file from another.
+const HEAD_BYTES: usize = 256;
+
+/// UTF-16 in Latin letters is readable with its zeros gone, as logs almost always are.
+fn without_zeros(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+    if bytes.contains(&0) || bytes.starts_with(&[0xFF, 0xFE]) || bytes.starts_with(&[0xFE, 0xFF]) {
+        let body = bytes.strip_prefix(&[0xFF, 0xFE]).or_else(|| bytes.strip_prefix(&[0xFE, 0xFF])).unwrap_or(bytes);
+        body.iter().copied().filter(|b| *b != 0).collect::<Vec<u8>>().into()
+    } else {
+        bytes.into()
+    }
 }
 
 impl LineIndex {
@@ -62,11 +82,15 @@ impl LineIndex {
         let mut file = File::open(path)?;
         let size = file.metadata()?.len();
         let mut changed = false;
-        if size < self.scanned {
+        let mut head = vec![0; HEAD_BYTES];
+        let got = file.read(&mut head)?;
+        head.truncate(got);
+        if size < self.scanned || !head.starts_with(&self.head) {
             let generation = self.generation + 1;
             *self = Self { generation, ..Self::new() };
             changed = true;
         }
+        self.head = head;
         if size == self.scanned {
             return Ok((changed, false));
         }
@@ -116,10 +140,9 @@ impl LineIndex {
         let mut buffer = vec![0; 64 * 1024];
         let mut current: Vec<u8> = Vec::new();
         let finish = |current: &mut Vec<u8>, out: &mut Vec<String>| {
-            if current.last() == Some(&b'\r') {
-                current.pop();
-            }
-            out.push(String::from_utf8_lossy(current).into_owned());
+            let text = without_zeros(current);
+            let text = text.strip_suffix(b"\r").unwrap_or(&text);
+            out.push(String::from_utf8_lossy(text).into_owned());
             current.clear();
         };
         loop {
@@ -196,7 +219,8 @@ pub fn scan_matches(
     let mut held_len = 0u64;
     let mut read = 0u64;
     let test = |bytes: &[u8]| {
-        let bytes = bytes.strip_suffix(b"\r").unwrap_or(bytes);
+        let bytes = without_zeros(bytes);
+        let bytes = bytes.strip_suffix(b"\r").unwrap_or(&bytes);
         regex.is_match(&bytes[..bytes.len().min(MAX_LINE_BYTES)]) != invert
     };
     while !cancel.load(Ordering::Relaxed) && read < limit {
@@ -284,6 +308,30 @@ mod tests {
         assert_eq!(index.read_lines(&path, 256, 1).unwrap(), ["line 256"]);
         assert_eq!(index.read_lines(&path, 4999, 5).unwrap(), ["line 4999"]);
         assert!(index.read_lines(&path, 5000, 1).unwrap().is_empty());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn notices_a_file_replaced_by_one_as_long() {
+        let path = temp("replaced");
+        std::fs::write(&path, "first\nline\n").unwrap();
+        let mut index = index_of(&path);
+        assert_eq!(index.generation, 0);
+        std::fs::write(&path, "other\nfile\nthat is longer\n").unwrap();
+        while index.update(&path, u64::MAX).unwrap().1 {}
+        assert_eq!(index.generation, 1);
+        assert_eq!(index.lines(), 3);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn reads_utf16_lines() {
+        let path = temp("utf16");
+        let mut bytes = vec![0xFF, 0xFE];
+        bytes.extend("ERROR one\nok\n".encode_utf16().flat_map(u16::to_le_bytes));
+        std::fs::write(&path, bytes).unwrap();
+        let index = index_of(&path);
+        assert_eq!(index.read_lines(&path, 0, 1).unwrap(), ["ERROR one"]);
         std::fs::remove_file(path).unwrap();
     }
 

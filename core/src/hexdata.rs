@@ -21,7 +21,46 @@ pub fn looks_binary(path: &Path) -> bool {
     head.truncate(got);
     let marked = [&[0xFF, 0xFE][..], &[0xFE, 0xFF][..]].iter().any(|bom| head.starts_with(bom))
         || head.starts_with(&[0, 0, 0xFE, 0xFF]);
-    !marked && head.contains(&0)
+    !marked && head.contains(&0) && crate::encoding::utf16_without_bom(&head).is_none()
+}
+
+/// What to look for: hex pairs, or a quoted or otherwise plain piece of text.
+pub fn parse_search(text: &str) -> Vec<u8> {
+    let text = text.trim();
+    if let Some(quoted) = text.strip_prefix('"').and_then(|t| t.strip_suffix('"')) {
+        return quoted.as_bytes().to_vec();
+    }
+    let digits: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    let digits = digits.strip_prefix("0x").unwrap_or(&digits);
+    if !digits.is_empty() && digits.len().is_multiple_of(2) && digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        return (0..digits.len()).step_by(2).filter_map(|i| u8::from_str_radix(&digits[i..i + 2], 16).ok()).collect();
+    }
+    text.as_bytes().to_vec()
+}
+
+/// The first place at or after `start` that has these bytes.
+pub fn find_in_file(path: &Path, needle: &[u8], start: u64) -> Option<u64> {
+    if needle.is_empty() {
+        return None;
+    }
+    let mut file = std::fs::File::open(path).ok()?;
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut buffer = vec![0; 1024 * 1024 + needle.len()];
+    let (mut kept, mut offset) = (0, start);
+    loop {
+        let got = file.read(&mut buffer[kept..]).ok()?;
+        if got == 0 {
+            return None;
+        }
+        let filled = kept + got;
+        if let Some(at) = buffer[..filled].windows(needle.len()).position(|w| w == needle) {
+            return Some(offset + at as u64);
+        }
+        // Keep the tail: it may be the start of a match that crosses over.
+        kept = (needle.len() - 1).min(filled);
+        buffer.copy_within(filled - kept..filled, 0);
+        offset += (filled - kept) as u64;
+    }
 }
 
 /// A page of a file.

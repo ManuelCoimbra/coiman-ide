@@ -25,6 +25,9 @@ pub struct Report {
     pub files: BTreeMap<String, Vec<LineCoverage>>,
     /// Folders Cobertura says its file names start from.
     pub sources: Vec<String>,
+    /// (ran, all), where the report counts them.
+    pub branches: (u64, u64),
+    pub functions: (u64, u64),
 }
 
 impl Report {
@@ -57,6 +60,25 @@ pub fn percent(covered: usize, total: usize) -> f64 {
     if total == 0 { 0.0 } else { covered as f64 / total as f64 * 100.0 }
 }
 
+/// Marks for a file's report, moved to where their lines are now. Lines that were
+/// changed or removed lose theirs: nothing is known about them.
+pub fn follow_lines(lines: &[LineCoverage], old: &str, new: &str) -> Vec<LineCoverage> {
+    let (old, new) = (old.replace("\r\n", "\n"), new.replace("\r\n", "\n"));
+    let diff = similar::TextDiff::from_lines(&old, &new);
+    let mut moved = Vec::with_capacity(lines.len());
+    for op in diff.ops() {
+        if let similar::DiffOp::Equal { old_index, new_index, len } = *op {
+            for line in lines {
+                let at = line.line as usize;
+                if at > old_index && at <= old_index + len {
+                    moved.push(LineCoverage { line: (at - old_index + new_index) as u32, ..*line });
+                }
+            }
+        }
+    }
+    moved
+}
+
 /// LCOV: `SF:` starts a file, `DA:line,hits` a line, `BRDA:line,block,branch,taken` a branch.
 pub fn parse_lcov(text: &str) -> Report {
     let mut report = Report::default();
@@ -80,6 +102,14 @@ pub fn parse_lcov(text: &str) -> Report {
             {
                 untaken.push(number);
             }
+        } else if let Some(n) = line.strip_prefix("BRH:").and_then(|n| n.parse::<u64>().ok()) {
+            report.branches.0 += n;
+        } else if let Some(n) = line.strip_prefix("BRF:").and_then(|n| n.parse::<u64>().ok()) {
+            report.branches.1 += n;
+        } else if let Some(n) = line.strip_prefix("FNH:").and_then(|n| n.parse::<u64>().ok()) {
+            report.functions.0 += n;
+        } else if let Some(n) = line.strip_prefix("FNF:").and_then(|n| n.parse::<u64>().ok()) {
+            report.functions.1 += n;
         } else if line == "end_of_record"
             && let Some(lines) = report.files.get_mut(&file)
         {
@@ -113,6 +143,8 @@ pub fn parse_go(text: &str) -> Report {
 /// coverage.py's JSON.
 pub fn parse_coverage_py(json: &Value) -> Report {
     let mut report = Report::default();
+    let total = |name: &str| json["totals"][name].as_u64().unwrap_or(0);
+    report.branches = (total("covered_branches"), total("num_branches"));
     let Some(files) = json["files"].as_object() else { return report };
     let numbers = |v: &Value| -> Vec<u32> {
         v.as_array().into_iter().flatten().filter_map(|n| n.as_u64()).map(|n| n as u32).collect()
@@ -150,6 +182,10 @@ pub fn parse_cobertura(xml: &str) -> Report {
         match reader.read_event() {
             Ok(Event::Start(tag)) => match tag.name().as_ref() {
                 b"class" => file = attr(&tag, "filename").unwrap_or_default(),
+                b"coverage" => {
+                    let number = |key: &str| attr(&tag, key).and_then(|v| v.parse().ok()).unwrap_or(0);
+                    report.branches = (number("branches-covered"), number("branches-valid"));
+                }
                 b"source" => in_source = true,
                 b"method" => in_method += 1,
                 _ => {}
@@ -306,6 +342,14 @@ pub fn resolve(report: Report, root: &Path, files: &[PathBuf]) -> (Vec<(PathBuf,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn marks_follow_edits() {
+        let mark = |line, hits| LineCoverage { line, hits, partial: false };
+        let lines = [mark(1, 1), mark(2, 0), mark(3, 1)];
+        let moved = follow_lines(&lines, "a\r\nb\nc\n", "new\na\nc\n");
+        assert_eq!(moved, [mark(2, 1), mark(3, 1)], "line 2 went, and the rest moved");
+    }
     use serde_json::json;
 
     fn hits(report: &Report, file: &str) -> Vec<(u32, u64, bool)> {

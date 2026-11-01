@@ -34,6 +34,24 @@ pub struct Decoded {
     pub bom: bool,
 }
 
+/// UTF-16 with no mark says so by its zeros: text in Latin letters has one in every
+/// other byte. Returns whether it's little-endian, if it looks like that.
+pub fn utf16_without_bom(head: &[u8]) -> Option<bool> {
+    if head.len() < 8 {
+        return None;
+    }
+    let zeros = |skip: usize| head.iter().skip(skip).step_by(2).filter(|b| **b == 0).count();
+    let (even, odd) = (zeros(0), zeros(1));
+    let half = head.len() / 2;
+    if odd * 10 >= half * 4 && even * 20 < half {
+        Some(true)
+    } else if even * 10 >= half * 4 && odd * 20 < half {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 /// Detects the encoding: a BOM wins, then valid UTF-8, otherwise Windows-1252
 /// (which maps every byte, so nothing is lost and the file can be reopened in
 /// the right encoding).
@@ -42,6 +60,11 @@ pub fn detect_and_decode(bytes: Vec<u8>) -> Decoded {
     if let Some((enc, bom_len)) = Encoding::for_bom(&bytes) {
         let (text, _) = enc.decode_without_bom_handling(&bytes[bom_len..]);
         return Decoded { text: text.into_owned(), encoding: enc, bom: true };
+    }
+    if let Some(little) = utf16_without_bom(&bytes[..bytes.len().min(8192)]) {
+        let enc = if little { UTF_16LE } else { UTF_16BE };
+        let (text, _) = enc.decode_without_bom_handling(&bytes);
+        return Decoded { text: text.into_owned(), encoding: enc, bom: false };
     }
     match String::from_utf8(bytes) {
         Ok(text) => Decoded { text, encoding: UTF_8, bom: false },

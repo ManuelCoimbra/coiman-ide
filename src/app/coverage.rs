@@ -1,6 +1,7 @@
 //! Coverage: reports found around a project or left by a test run, shown beside
 //! the code and in a list of files, least covered first.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -29,6 +30,8 @@ struct Loaded {
     files: Vec<(PathBuf, Vec<LineCoverage>)>,
     lost: Vec<String>,
     problem: Option<String>,
+    branches: (u64, u64),
+    functions: (u64, u64),
 }
 
 struct FileRow {
@@ -44,6 +47,12 @@ pub(super) struct Coverage {
     written: Option<SystemTime>,
     /// The report on disk last looked at: not looked at again until it changes.
     seen: Option<(PathBuf, SystemTime)>,
+    branches: (u64, u64),
+    functions: (u64, u64),
+    /// A file's text as the report knew it, kept once it starts to change.
+    bases: RefCell<HashMap<PathBuf, String>>,
+    /// Marks moved to follow edits, for one version of one document.
+    followed: RefCell<Option<(u64, u64, Vec<LineCoverage>)>>,
     /// By [`path_key`]: the path as it's written, and its lines.
     files: HashMap<PathBuf, (PathBuf, Vec<LineCoverage>)>,
     /// From plugins, by plugin then file.
@@ -63,6 +72,10 @@ impl Default for Coverage {
             label: String::new(),
             written: None,
             seen: None,
+            branches: (0, 0),
+            functions: (0, 0),
+            bases: RefCell::default(),
+            followed: RefCell::default(),
             files: HashMap::new(),
             from_plugins: HashMap::new(),
             rows: Vec::new(),
@@ -83,6 +96,8 @@ fn load(path: &Path, root: &Path, label: String) -> Loaded {
         files: Vec::new(),
         lost: Vec::new(),
         problem: Some(problem),
+        branches: (0, 0),
+        functions: (0, 0),
     };
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
@@ -92,9 +107,10 @@ fn load(path: &Path, root: &Path, label: String) -> Loaded {
         Ok(report) => report,
         Err(why) => return empty(format!("{}: {why}", path.display())),
     };
+    let (branches, functions) = (report.branches, report.functions);
     let files = rust_code_core::stacktrace::project_files(root);
     let (files, lost) = coverage::resolve(report, root, &files);
-    Loaded { label, written, files, lost, problem: None }
+    Loaded { label, written, files, lost, problem: None, branches, functions }
 }
 
 struct Source<'a> {
@@ -154,10 +170,24 @@ impl CodeApp {
         }
         self.coverage.next_check = now + CHECK_EVERY;
         let Some(root) = self.explorer.root.clone() else { return };
-        let Some((path, modified)) = coverage::newest_report(&root) else { return };
+        let newest = coverage::newest_report(&root);
+        // The report shown from disk was deleted, and none has taken its place.
+        if newest.is_none() && self.coverage.seen.take().is_some() {
+            self.coverage.files.clear();
+            self.coverage.written = None;
+            self.coverage.label.clear();
+            self.coverage.lost.clear();
+            self.coverage.branches = (0, 0);
+            self.coverage.functions = (0, 0);
+            self.coverage.bases.borrow_mut().clear();
+            self.rebuild_coverage_rows();
+        }
+        let Some((path, modified)) = newest else { return };
         let fresh = self.coverage.seen.as_ref().is_none_or(|(p, m)| *p != path || *m != modified);
-        // A test run's report stands until something newer comes along.
-        let newer = self.coverage.written.is_none_or(|w| modified > w);
+        // A test run's report stands until something newer comes along. The one
+        // that's showing can change to anything: a restored older copy is still it.
+        let same = self.coverage.seen.as_ref().is_some_and(|(p, _)| *p == path);
+        let newer = same || self.coverage.written.is_none_or(|w| modified > w);
         if fresh && newer {
             self.coverage.seen = Some((path.clone(), modified));
             let label = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
@@ -188,6 +218,10 @@ impl CodeApp {
         state.label = done.label;
         state.written = done.written;
         state.lost = done.lost;
+        state.branches = done.branches;
+        state.functions = done.functions;
+        state.bases.borrow_mut().clear();
+        *state.followed.borrow_mut() = None;
         state.files = done.files.into_iter().map(|(path, lines)| (path_key(&path), (path, lines))).collect();
         self.rebuild_coverage_rows();
     }
@@ -244,10 +278,35 @@ impl CodeApp {
             .or_else(|| self.coverage.files.get(&key).map(|(_, lines)| lines))
     }
 
-    /// Whether a file has moved on from its report, so its line numbers can't be trusted.
-    fn coverage_stale(&self, file: &Path, dirty: bool) -> bool {
-        let changed = std::fs::metadata(file).and_then(|m| m.modified()).ok();
-        dirty || changed.zip(self.coverage.written).is_some_and(|(c, w)| c > w)
+    /// A document's marks where its lines are now, and whether they had to move. None
+    /// if the file changed where it couldn't be watched, so its lines can't be trusted.
+    fn coverage_now(&self, doc: &crate::document::Document) -> Option<(Vec<LineCoverage>, bool)> {
+        let path = doc.path.as_ref()?;
+        let lines = self.coverage_lines(path)?;
+        let changed = std::fs::metadata(path).and_then(|m| m.modified()).ok();
+        let newer = changed.zip(self.coverage.written).is_some_and(|(c, w)| c > w);
+        if !doc.is_dirty() && !newer && !self.coverage.bases.borrow().contains_key(&path_key(path)) {
+            return Some((lines.clone(), false));
+        }
+        let key = path_key(path);
+        let mut bases = self.coverage.bases.borrow_mut();
+        if !bases.contains_key(&key) {
+            if newer {
+                return None;
+            }
+            bases.insert(key.clone(), std::fs::read_to_string(path).ok()?);
+        }
+        let version = doc.buffer.version();
+        let mut cache = self.coverage.followed.borrow_mut();
+        if let Some((uid, at, moved)) = &*cache
+            && *uid == doc.uid
+            && *at == version
+        {
+            return Some((moved.clone(), true));
+        }
+        let moved = coverage::follow_lines(lines, bases.get(&key)?, &doc.text());
+        *cache = Some((doc.uid, version, moved.clone()));
+        Some((moved, true))
     }
 
     pub(super) fn coverage_decorate(&self, i: usize, deco: &mut Decorations) {
@@ -255,11 +314,7 @@ impl CodeApp {
             return;
         }
         let Some(doc) = self.docs.get(i) else { return };
-        let Some(path) = &doc.path else { return };
-        let Some(lines) = self.coverage_lines(path) else { return };
-        if self.coverage_stale(path, doc.is_dirty()) {
-            return;
-        }
+        let Some((lines, _)) = self.coverage_now(doc) else { return };
         deco.coverage = lines
             .iter()
             .map(|l| {
@@ -280,9 +335,17 @@ impl CodeApp {
         let lines = self.coverage_lines(path)?;
         let (covered, total) = coverage::counts(lines);
         let percent = coverage::percent(covered, total);
-        if self.coverage_stale(path, doc.is_dirty()) {
-            let tip = "This file changed after the report was written, so its marks are hidden. Run the tests again.";
-            return Some((format!("Coverage {percent:.0}% (old)"), tip.to_owned()));
+        match self.coverage_now(doc) {
+            None => {
+                let tip =
+                    "This file changed after the report was written, so its marks are hidden. Run the tests again.";
+                return Some((format!("Coverage {percent:.0}% (old)"), tip.to_owned()));
+            }
+            Some((_, true)) => {
+                let tip = "The marks follow your edits. Changed lines have none until the tests run again.";
+                return Some((format!("Coverage {percent:.0}% (edited)"), tip.to_owned()));
+            }
+            Some(_) => {}
         }
         let tip = format!("{covered} of {total} lines ran, from {}. Click for all files.", self.coverage.label);
         Some((format!("Coverage {percent:.0}%"), tip))
@@ -325,6 +388,11 @@ impl CodeApp {
             ui.label(format!("{covered} of {total} lines, in {count} file{}", if count == 1 { "" } else { "s" }));
             if !self.coverage.label.is_empty() {
                 ui.label(RichText::new(format!("from {}", self.coverage.label)).color(pal.text_dim));
+            }
+            for (name, (ran, all)) in [("branches", self.coverage.branches), ("functions", self.coverage.functions)] {
+                if all > 0 {
+                    ui.label(format!("{ran} of {all} {name}"));
+                }
             }
             ui.checkbox(&mut hide, "Show beside the code");
         });

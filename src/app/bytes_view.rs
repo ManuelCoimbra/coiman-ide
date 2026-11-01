@@ -48,6 +48,12 @@ pub(super) struct BytesView {
     /// The stop and frame what's shown belongs to.
     seen: Option<(u64, usize)>,
     grid_for: Option<Showing>,
+    /// The file as last read, to notice it changing.
+    file_stamp: Option<(u64, Option<std::time::SystemTime>)>,
+    find_text: String,
+    /// What was asked for, and the answer on its way.
+    finding: Option<std::sync::mpsc::Receiver<Option<u64>>>,
+    found_at: Option<u64>,
 }
 
 impl BytesView {
@@ -68,6 +74,10 @@ impl BytesView {
             pointer: None,
             seen: None,
             grid_for: None,
+            file_stamp: None,
+            find_text: String::new(),
+            finding: None,
+            found_at: None,
         }
     }
 }
@@ -356,6 +366,23 @@ impl CodeApp {
         }
         let Some(view) = &mut self.bytes.view else { return false };
 
+        if let Some(found) = view.finding.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            view.finding = None;
+            match found {
+                Some(at) => {
+                    let row = (at / BYTES_PER_ROW) as usize;
+                    view.found_at = Some(at);
+                    view.grid.selected = Some((row, (at % BYTES_PER_ROW) as usize));
+                    view.grid.reveal = Some(row);
+                    view.address_problem = Some(format!("Found at 0x{at:x}"));
+                }
+                None => {
+                    view.found_at = None;
+                    view.address_problem = Some("Not found after here".to_owned());
+                }
+            }
+        }
+        let mut find = false;
         let mut close = false;
         let mut go = None;
         let mut switch = None;
@@ -385,6 +412,16 @@ impl CodeApp {
                 if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     go = Some(view.address_text.clone());
                 }
+                if !debugging {
+                    let edit = egui::TextEdit::singleline(&mut view.find_text)
+                        .hint_text("Find: hex bytes or text")
+                        .desired_width(200.0);
+                    let response = ui.add(edit);
+                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        find = true;
+                        response.request_focus();
+                    }
+                }
             } else if capabilities.instruction_stepping {
                 if ui.button("Step Instruction").clicked() {
                     step = Some("next");
@@ -395,6 +432,18 @@ impl CodeApp {
             }
             close = ui.button("Close").clicked();
         });
+        if let (true, Showing::File(path)) = (find, &view.showing) {
+            let (path, needle) = (path.clone(), hexdata::parse_search(&view.find_text));
+            let start = view.found_at.map_or(0, |at| at + 1);
+            let (tx, rx) = std::sync::mpsc::channel();
+            let wake = super::repaint(ui.ctx());
+            std::thread::spawn(move || {
+                let _ = tx.send(hexdata::find_in_file(&path, &needle, start));
+                wake();
+            });
+            view.finding = Some(rx);
+            view.address_problem = None;
+        }
         let warn = Color32::from_rgb(0xCC, 0xA7, 0x00);
         if let Some(problem) = &view.address_problem {
             ui.label(RichText::new(format!("  {problem}")).color(warn));
@@ -424,7 +473,16 @@ impl CodeApp {
             }
             shown => {
                 if let Showing::File(path) = &shown {
-                    view.file_size = std::fs::metadata(path).map_or(0, |m| m.len());
+                    let info = std::fs::metadata(path).ok();
+                    view.file_size = info.as_ref().map_or(0, |m| m.len());
+                    let stamp = (view.file_size, info.and_then(|m| m.modified().ok()));
+                    // It changed on disk: what was read of it no longer holds.
+                    if view.file_stamp != Some(stamp) {
+                        view.file_stamp = Some(stamp);
+                        view.pages.clear();
+                        view.found_at = None;
+                        view.address_problem = None;
+                    }
                 }
                 if view.grid_for.as_ref() != Some(&shown) {
                     let w = font_size * 0.65;

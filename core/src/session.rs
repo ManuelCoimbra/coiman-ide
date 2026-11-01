@@ -24,6 +24,9 @@ pub struct Session {
     /// The run configuration each folder's Run button is set to.
     #[serde(default)]
     pub run_pins: std::collections::BTreeMap<PathBuf, String>,
+    /// The file open in the log view.
+    #[serde(default)]
+    pub log_view: Option<PathBuf>,
 }
 
 /// The window's size, in points.
@@ -63,6 +66,7 @@ impl Session {
             docs,
             window: None,
             run_pins: Default::default(),
+            log_view: None,
         }
     }
 
@@ -168,6 +172,7 @@ mod tests {
             active: 0,
             window: None,
             run_pins: Default::default(),
+            log_view: None,
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

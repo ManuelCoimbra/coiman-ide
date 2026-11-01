@@ -744,6 +744,7 @@ impl CodeApp {
         all.extend(self.preview_problems(&k));
         all.extend(self.baseline_problems(&k));
         all.extend(self.tree_rule_problems(&k));
+        all.extend(self.test_problems(&k));
         for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
             let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
@@ -761,6 +762,7 @@ impl CodeApp {
         plugin_paths.extend(self.preview_problem_paths());
         plugin_paths.extend(self.baseline_problem_paths());
         plugin_paths.extend(self.tree_rule_paths());
+        plugin_paths.extend(self.test_problem_paths());
         let mut keys: Vec<&PathBuf> = self
             .lsp
             .diagnostics

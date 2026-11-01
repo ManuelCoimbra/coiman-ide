@@ -65,6 +65,7 @@ impl CodeApp {
         if let Some(root) = saved.root.clone().filter(|r| r.is_dir()) {
             self.open_folder(root);
         }
+        self.log_to_open = saved.log_view.clone().filter(|p| p.is_file());
         let active = saved.active;
         for doc in saved.restore_docs() {
             self.untitled_counter = self.untitled_counter.max(doc.untitled_index());
@@ -79,6 +80,7 @@ impl CodeApp {
             Session::capture(self.explorer.root.as_deref(), &self.docs, self.active, self.settings.files.hot_exit);
         session.window = self.window;
         session.run_pins = self.cargo.run_pins.clone();
+        session.log_view = self.log_view_path();
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
@@ -164,7 +166,11 @@ impl CodeApp {
             return;
         }
         // Too large for the editor to hold; reading it takes the view's own thread.
-        if rust_code_core::logfile::belongs_in_log_view(path) {
+        let (log_mb, any_mb) = (self.settings.files.log_view_log_mb, self.settings.files.log_view_any_mb);
+        const MIB: u64 = 1024 * 1024;
+        if !self.logs.editor_anyway.contains(path)
+            && rust_code_core::logfile::belongs_in_log_view_from(path, log_mb * MIB, any_mb * MIB)
+        {
             self.log_to_open = Some(path.to_path_buf());
             return;
         }

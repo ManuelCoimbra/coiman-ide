@@ -14,13 +14,15 @@ use crate::theme;
 
 /// How often to look for new lines.
 const POLL: Duration = Duration::from_millis(400);
+/// The most lines one copy takes.
+const COPY_LINES: usize = 1_000_000;
 /// What the index reads between showing progress.
 const INDEX_STEP: u64 = 64 * 1024 * 1024;
 
 /// One filter's results, added to as the file is read.
 #[derive(Default)]
 struct Matches {
-    lines: Vec<u32>,
+    lines: Vec<u64>,
     place: FilterPlace,
     /// It went through everything there was, last it looked.
     caught_up: bool,
@@ -57,6 +59,9 @@ pub(super) struct LogView {
     follow: bool,
     /// The view's row selected, as a line of the file.
     selected: Option<u64>,
+    /// Where a selection of several lines started.
+    anchor: Option<u64>,
+    goto_text: String,
     /// Scroll here next frame: a row.
     scroll_to_row: Option<u64>,
     /// The lines read last: (first line asked for, generation, how many lines there were, text).
@@ -76,6 +81,8 @@ impl Drop for LogView {
 #[derive(Default)]
 pub(super) struct Logs {
     view: Option<LogView>,
+    /// Files someone chose to open in the editor, large or not.
+    pub(super) editor_anyway: std::collections::HashSet<PathBuf>,
 }
 
 fn start_index(path: &Path, ctx: &egui::Context) -> LogView {
@@ -127,6 +134,8 @@ fn start_index(path: &Path, ctx: &egui::Context) -> LogView {
         filter_problem: None,
         follow: false,
         selected: None,
+        anchor: None,
+        goto_text: String::new(),
         scroll_to_row: None,
         cache: None,
         widest: 0.0,
@@ -168,7 +177,7 @@ fn start_filter(view: &LogView, ctx: &egui::Context) -> Option<Filter> {
             }
             let mut batch = Vec::new();
             let step = logfile::scan_matches(&file, &regex, invert, place, INDEX_STEP, &halt, |l| {
-                batch.push(l as u32);
+                batch.push(l);
             });
             let Ok(next) = step else {
                 std::thread::sleep(POLL);
@@ -220,6 +229,10 @@ impl CodeApp {
         }
     }
 
+    pub(super) fn log_view_path(&self) -> Option<PathBuf> {
+        self.logs.view.as_ref().map(|v| v.path.clone())
+    }
+
     /// The status bar's way back to it, from behind a tab.
     pub(super) fn log_label(&self) -> Option<String> {
         let view = self.logs.view.as_ref().filter(|v| !v.showing)?;
@@ -256,11 +269,16 @@ impl CodeApp {
             // Rotated or truncated: what the view knew no longer holds.
             view.seen_generation = generation;
             view.selected = None;
+            view.anchor = None;
             view.cache = None;
+            // Its matches were of the file that's gone.
+            view.filter = None;
         }
 
         let mut close = false;
         let mut analyze = None;
+        let mut goto = None;
+        let mut in_editor = false;
         ui.horizontal(|ui| {
             ui.add_space(8.0);
             let name = view.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -285,6 +303,15 @@ impl CodeApp {
             {
                 analyze = view.selected;
             }
+            let edit = egui::TextEdit::singleline(&mut view.goto_text).hint_text("Go to line").desired_width(80.0);
+            let response = ui.add(edit);
+            if response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                goto = view.goto_text.trim().parse::<u64>().ok();
+            }
+            in_editor = ui
+                .button("Open in Editor")
+                .on_hover_text("Load all of it into the editor, which can take a while and a lot of memory")
+                .clicked();
             close = ui.button("Close").clicked();
         });
 
@@ -331,7 +358,7 @@ impl CodeApp {
             }
             if generation > 0 {
                 ui.label(
-                    RichText::new(format!("Started over {generation}×: the file got smaller")).small().color(warn),
+                    RichText::new(format!("Started over {generation}×: the file was replaced")).small().color(warn),
                 );
             }
         });
@@ -374,7 +401,7 @@ impl CodeApp {
             // Filtered, a row is a matching line; otherwise the line itself.
             let line_of_row = |row: u64| -> Option<u64> {
                 match &view.filter {
-                    Some(f) => f.matches.lock().ok()?.lines.get(row as usize).map(|l| u64::from(*l)),
+                    Some(f) => f.matches.lock().ok()?.lines.get(row as usize).copied(),
                     None => (row < index_lines).then_some(row),
                 }
             };
@@ -401,7 +428,9 @@ impl CodeApp {
                 let y = screen.top() + ((first + at as u64) as f64 * f64::from(row_h) - top) as f32;
                 let text = texts.get(at).map_or("", String::as_str);
                 let bar = Rect::from_min_size(Pos2::new(screen.left(), y), Vec2::new(screen.width(), row_h));
-                if view.selected == Some(*line) {
+                let lo = view.selected.map(|s| view.anchor.map_or(s, |a| a.min(s)));
+                let hi = view.selected.map(|s| view.anchor.map_or(s, |a| a.max(s)));
+                if lo.zip(hi).is_some_and(|(lo, hi)| lo <= *line && *line <= hi) {
                     painter.rect_filled(bar, 0.0, pal.selection);
                 }
                 let color = level_color(logfile::level_of(text), pal.editor_fg, pal.text_dim);
@@ -422,6 +451,7 @@ impl CodeApp {
             if let Some(p) = body.interact_pointer_pos().filter(|_| body.clicked() || body.double_clicked()) {
                 ui.memory_mut(|m| m.request_focus(focus_id));
                 if let Some(line) = line_of_row(row_of(p)) {
+                    view.anchor = if ui.input(|i| i.modifiers.shift) { view.anchor.or(view.selected) } else { None };
                     view.selected = Some(line);
                     // From a filtered row to the lines around it.
                     if body.double_clicked() && view.filter.is_some() {
@@ -447,14 +477,21 @@ impl CodeApp {
                         (Key::Home, i64::MIN / 2),
                         (Key::End, i64::MAX / 2),
                     ] {
+                        // Shift first: a plain key's match accepts Shift too.
+                        if i.consume_key(egui::Modifiers::SHIFT, key) {
+                            step = Some((by, true));
+                        }
                         if i.consume_key(egui::Modifiers::NONE, key) {
-                            step = Some(by);
+                            step = Some((by, false));
                         }
                     }
                     step
                 });
                 if ui.input(|i| i.events.iter().any(|e| matches!(e, egui::Event::Copy))) {
-                    copy = view.selected;
+                    copy = view.selected.map(|s| {
+                        let a = view.anchor.unwrap_or(s);
+                        (a.min(s), a.max(s))
+                    });
                 }
             }
             viewport.top()
@@ -464,19 +501,30 @@ impl CodeApp {
         if view.follow && !at_end && ui.input(|i| i.smooth_scroll_delta.y > 0.0) {
             view.follow = false;
         }
-        if let Some(by) = key_move {
+        if let Some((by, extend)) = key_move {
+            view.anchor = if extend { view.anchor.or(view.selected) } else { None };
             let matches = view.filter.as_ref().and_then(|f| f.matches.lock().ok().map(|m| m.lines.clone()));
             let row_now = match (&matches, view.selected) {
-                (Some(lines), Some(line)) => lines.partition_point(|l| u64::from(*l) < line) as i64,
+                (Some(lines), Some(line)) => lines.partition_point(|l| *l < line) as i64,
                 (None, Some(line)) => line as i64,
                 _ => (output.inner / row_h) as i64,
             };
             let row = row_now.saturating_add(by).clamp(0, (rows as i64 - 1).max(0));
             view.selected = match &matches {
-                Some(lines) => lines.get(row as usize).map(|l| u64::from(*l)),
+                Some(lines) => lines.get(row as usize).copied(),
                 None => Some(row as u64),
             };
             view.scroll_to_row = Some(row as u64);
+            view.follow = false;
+        }
+        if let Some(line) = goto.map(|l| l.saturating_sub(1).min(index_lines.saturating_sub(1))) {
+            let row = match view.filter.as_ref().and_then(|f| f.matches.lock().ok()) {
+                Some(matches) => matches.lines.partition_point(|l| *l < line) as u64,
+                None => line,
+            };
+            view.selected = Some(line);
+            view.anchor = None;
+            view.scroll_to_row = Some(row);
             view.follow = false;
         }
         if let Some(line) = reveal {
@@ -487,11 +535,20 @@ impl CodeApp {
             view.scroll_to_row = Some(line);
             view.follow = false;
         }
-        if let Some(line) = copy {
+        if let Some((lo, hi)) = copy {
             let index = view.index.read().map(|i| i.clone()).unwrap_or_default();
-            if let Some(text) = index.read_lines(&view.path, line, 1).ok().and_then(|mut v| v.pop()) {
-                ctx.copy_text(text);
+            let count = ((hi - lo + 1) as usize).min(COPY_LINES);
+            let mut texts = index.read_lines(&view.path, lo, count).unwrap_or_default();
+            // Filtered, what's selected is the lines that show.
+            if let Some(matches) = view.filter.as_ref().and_then(|f| f.matches.lock().ok()) {
+                let mut at = lo;
+                texts.retain(|_| {
+                    let keep = matches.lines.binary_search(&at).is_ok();
+                    at += 1;
+                    keep
+                });
             }
+            ctx.copy_text(texts.join("\n"));
         }
         if let Some(line) = analyze {
             let index = view.index.read().map(|i| i.clone()).unwrap_or_default();
@@ -500,6 +557,10 @@ impl CodeApp {
         }
         if close {
             self.logs.view = None;
+        }
+        if in_editor && let Some(path) = self.logs.view.take().map(|v| v.path.clone()) {
+            self.logs.editor_anyway.insert(path.clone());
+            self.open_file(&path);
         }
         true
     }

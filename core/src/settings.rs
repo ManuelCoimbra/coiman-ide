@@ -135,6 +135,10 @@ pub struct FilesSettings {
     pub eol: String,
     /// Encoding for new files (VS Code ids: "utf8", "utf8bom", "utf16le", "windows1252", ...).
     pub encoding: String,
+    /// `.log` files from this many MiB open in the log view. 0 never does.
+    pub log_view_log_mb: u64,
+    /// Any file from this many MiB opens in the log view. 0 never does.
+    pub log_view_any_mb: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -316,6 +320,8 @@ impl Default for WorkbenchSettings {
 impl Default for FilesSettings {
     fn default() -> Self {
         Self {
+            log_view_log_mb: 16,
+            log_view_any_mb: 128,
             hot_exit: true,
             auto_save: "off".to_owned(),
             auto_save_delay_ms: 1000,

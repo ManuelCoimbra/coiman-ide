@@ -35,7 +35,7 @@ pub enum Format {
     Jest,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Outcome {
     Passed,
     Failed,
@@ -43,7 +43,7 @@ pub enum Outcome {
 }
 
 /// One test's result.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TestResult {
     /// A class, package or file.
     pub suite: String,

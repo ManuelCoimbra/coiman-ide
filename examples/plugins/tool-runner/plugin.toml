@@ -1,7 +1,7 @@
 id = "example.tool-runner"
 name = "Tool Runner"
 version = "1.0.0"
-description = "Starts approved programs and asks the language server for things, as an example of plugin API 0.3."
+description = "Starts approved programs and asks the language server for things, as an example of the plugin API."
 permissions = ["language-server"]
 programs = ["python", "whoami"]
 

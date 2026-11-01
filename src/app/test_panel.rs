@@ -16,6 +16,7 @@ use rust_code_core::testing::{self, Adapter, Collect, Format, Outcome, TestResul
 use rust_code_core::{stacktrace, trust};
 
 use super::cargo::{outcome_icon, shell};
+use super::lsp::path_key;
 use super::{CodeApp, repaint};
 use crate::icons::{self, Icon};
 use crate::theme;
@@ -72,8 +73,23 @@ pub(super) struct Tests {
     only_failed: bool,
     notice: Option<String>,
     problem: Option<String>,
+    /// Runners still to go, when all of them were asked for.
+    queue: Vec<usize>,
+    /// Failures, as problems: by [`path_key`], the path, and each one.
+    problems: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)>,
+    /// Results from a past session have been looked for.
+    restored: bool,
     /// With Cargo in the same project, which view shows.
     pub(super) show_others: bool,
+}
+
+/// Where a project's last results are kept between sessions.
+fn results_file(root: &Path) -> Option<PathBuf> {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    path_key(root).hash(&mut hash);
+    let name = format!("{:016x}.json", hash.finish());
+    Some(rust_code_core::settings::config_dir()?.join("test_results").join(name))
 }
 
 fn scan(root: PathBuf) -> Scan {
@@ -225,6 +241,9 @@ impl CodeApp {
                 self.tests.tests = done.tests;
                 self.tests.files = done.files;
                 self.tests.problem = done.problem;
+                if !std::mem::replace(&mut self.tests.restored, true) {
+                    self.restore_test_results();
+                }
                 self.tests.rebuild();
             }
         }
@@ -253,6 +272,57 @@ impl CodeApp {
             wake();
         });
         self.tests.scanning = Some(rx);
+    }
+
+    fn restore_test_results(&mut self) {
+        let Some(path) = self.tests.root.as_deref().and_then(results_file) else { return };
+        let Ok(text) = std::fs::read_to_string(path) else { return };
+        let Ok(saved) = serde_json::from_str::<Vec<Vec<TestResult>>>(&text) else { return };
+        if saved.len() == self.tests.adapters.len() && saved.iter().any(|r| !r.is_empty()) {
+            self.tests.results = saved;
+            self.tests.notice = Some("Results from the last run, in an earlier session".to_owned());
+            self.rebuild_test_problems();
+        }
+    }
+
+    fn save_test_results(&self) {
+        let Some(path) = self.tests.root.as_deref().and_then(results_file) else { return };
+        let Ok(text) = serde_json::to_string(&self.tests.results) else { return };
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(path, text);
+    }
+
+    /// Failures show in Problems too, where the code went wrong.
+    fn rebuild_test_problems(&mut self) {
+        let root = self.tests.root.clone().unwrap_or_default();
+        let mut problems: HashMap<PathBuf, (PathBuf, Vec<lt::Diagnostic>)> = HashMap::new();
+        for (adapter, results) in self.tests.results.iter().enumerate() {
+            let source = self.tests.adapters.get(adapter).map(|a| a.name.clone());
+            for result in results.iter().filter(|r| r.outcome == Outcome::Failed) {
+                let Some((path, line)) = testing::failure_place(result, &root, &self.tests.files) else { continue };
+                let first = result.message.lines().next().unwrap_or("failed");
+                let at = lt::Position::new(line.saturating_sub(1), 0);
+                let problem = lt::Diagnostic {
+                    range: lt::Range::new(at, lt::Position::new(at.line, 1000)),
+                    severity: Some(lt::DiagnosticSeverity::ERROR),
+                    source: source.clone(),
+                    message: format!("{}: {first}", result.name),
+                    ..Default::default()
+                };
+                problems.entry(path_key(&path)).or_insert_with(|| (path, Vec::new())).1.push(problem);
+            }
+        }
+        self.tests.problems = problems;
+    }
+
+    pub(super) fn test_problems(&self, file: &Path) -> Vec<lt::Diagnostic> {
+        self.tests.problems.get(file).map(|(_, d)| d.clone()).unwrap_or_default()
+    }
+
+    pub(super) fn test_problem_paths(&self) -> Vec<(PathBuf, PathBuf)> {
+        self.tests.problems.iter().map(|(k, (p, _))| (k.clone(), p.clone())).collect()
     }
 
     /// Runs a project's tests in full, or one of them.
@@ -403,14 +473,21 @@ impl CodeApp {
         }
         self.tests.selected = None;
         self.tests.rebuild();
+        self.rebuild_test_problems();
+        self.save_test_results();
         let (passed, failed, skipped) = self.tests.counts();
         self.status = Some(format!("Tests: {passed} passed, {failed} failed, {skipped} skipped"));
+        if !self.tests.queue.is_empty() {
+            let next = self.tests.queue.remove(0);
+            self.start_test_run(ctx, next, None);
+        }
     }
 
     pub(super) fn cancel_test_run(&mut self) {
         if let Some(mut run) = self.tests.run.take() {
             kill_tree(&mut run.child);
             let _ = std::fs::remove_file(&run.report);
+            self.tests.queue.clear();
             self.tests.notice = Some("Test run stopped".to_owned());
         }
     }
@@ -421,6 +498,8 @@ impl CodeApp {
             return false;
         }
         self.start_test_run(ctx, 0, None);
+        // Each runner in turn, so "all" means all of them.
+        self.tests.queue = (1..self.tests.adapters.len()).collect();
         true
     }
 
