@@ -443,8 +443,12 @@ impl CodeApp {
         let title = command.title.clone();
         let arg = |at: usize| command.arguments.as_ref().and_then(|a| a.get(at)).cloned().unwrap_or(Value::Null);
         match command.command.as_str() {
-            "rust-analyzer.showReferences" | "editor.action.showReferences" => {
+            "rust-analyzer.showReferences" | "editor.action.showReferences" | "java.show.references" => {
                 self.on_locations("References", &title, arg(2));
+                return;
+            }
+            "java.show.implementations" => {
+                self.on_locations("Implementations", &title, arg(2));
                 return;
             }
             "rust-analyzer.gotoLocation" => {

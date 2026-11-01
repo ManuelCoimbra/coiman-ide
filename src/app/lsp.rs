@@ -234,8 +234,9 @@ pub(super) fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, Serve
 /// Larger files take a server's edits as they come: comparing lines costs too much.
 const MINIMAL_EDIT_BYTES: usize = 4 * 1024 * 1024;
 
-/// A cursor: its document, the text's version, and its line.
-type BulbKey = (u64, u64, usize);
+/// A cursor: its document, the text's version, its line, and how many problems the
+/// server has told of. Those arrive after an edit, and can bring fixes with them.
+type BulbKey = (u64, u64, usize, usize);
 /// Seconds the cursor must stay before asking about its line.
 const BULB_REST: f64 = 0.4;
 
@@ -1656,7 +1657,7 @@ impl CodeApp {
     pub(super) fn bulb_at(&self, i: usize) -> Option<(usize, egui::Color32)> {
         let doc = self.docs.get(i)?;
         let line = doc.buffer.char_to_line(doc.buffer.primary().head);
-        let ((uid, version, at), fix) = self.lsp.bulb?;
+        let ((uid, version, at, _), fix) = self.lsp.bulb?;
         (uid == doc.uid && version == doc.buffer.version() && at == line).then(|| {
             let color = if fix { egui::Color32::from_rgb(0xFF, 0xCC, 0x00) } else { egui::Color32::from_gray(0x99) };
             (line, color)
@@ -1667,7 +1668,11 @@ impl CodeApp {
     pub(super) fn pump_bulb(&mut self, ctx: &egui::Context) {
         let i = self.active;
         let Some(doc) = self.docs.get(i) else { return };
-        let key = (doc.uid, doc.buffer.version(), doc.buffer.char_to_line(doc.buffer.primary().head));
+        let told = doc.path.as_deref().map(path_key).map_or(0, |k| {
+            let pushed = self.lsp.diagnostics.get(&k).map_or(0, |(_, d)| d.len());
+            pushed + self.lsp.pulled_diagnostics.get(&k).map_or(0, |(_, d)| d.len())
+        });
+        let key = (doc.uid, doc.buffer.version(), doc.buffer.char_to_line(doc.buffer.primary().head), told);
         if self.lsp.bulb_asked == Some(key) {
             return;
         }
