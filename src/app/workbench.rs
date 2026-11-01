@@ -367,6 +367,7 @@ impl CodeApp {
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Choose What Run Starts...", Command::ChooseRunTarget);
                 item(ui, "Send Line, Selection or Cell to REPL", Command::SendToRepl);
+                item(ui, "Constant Preview", Command::ConstantPreview);
                 item(ui, "Open Live Preview", Command::OpenLivePreview);
                 if self.preview_running() {
                     item(ui, "Stop Live Preview", Command::StopLivePreview);
@@ -463,6 +464,9 @@ impl CodeApp {
             if self.live_tab_shown() {
                 tabs.push((PanelTab::Live, "LIVE".to_owned()));
             }
+            if self.constant_tab_shown() {
+                tabs.push((PanelTab::Constant, "PREVIEW".to_owned()));
+            }
             if self.has_coverage() {
                 tabs.push((PanelTab::Coverage, "COVERAGE".to_owned()));
             }
@@ -512,6 +516,7 @@ impl CodeApp {
             }
             PanelTab::PageConsole => self.page_console(ui),
             PanelTab::Live => self.live_panel(ui),
+            PanelTab::Constant => self.constant_panel(ui),
             PanelTab::TreeSearch => self.tree_search_panel(ui),
             PanelTab::AtCursor => self.at_cursor_panel(ui),
             PanelTab::Coverage => self.coverage_panel(ui),

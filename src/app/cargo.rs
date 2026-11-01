@@ -231,7 +231,7 @@ type OtherTests = (u64, u64, Vec<(usize, String)>);
 /// Seconds between looks at what running programs printed.
 const PROBLEM_SCAN_SECONDS: f64 = 0.5;
 
-fn problem_diagnostic(problem: matchers::Problem) -> lt::Diagnostic {
+pub(super) fn problem_diagnostic(problem: matchers::Problem) -> lt::Diagnostic {
     let line = problem.line.saturating_sub(1);
     let start = problem.col.saturating_sub(1);
     lt::Diagnostic {

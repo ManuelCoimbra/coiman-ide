@@ -1077,9 +1077,69 @@ pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, S
     }
 }
 
+/// How to run all the tests that cover a file, for a file that's no program itself.
+fn tests_of(file: &Path, source: &str, root: Option<&Path>) -> Option<RunPlan> {
+    let ext = file.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let title = format!("{} tests", stem_of(file));
+    let command = if ext == "rs" {
+        let package = find_up(file, root, "Cargo.toml")?;
+        need("cargo", "Rust").ok()?;
+        return Some(RunPlan { title, command: "cargo test".to_owned(), cwd: package });
+    } else if ext == "go" {
+        need("go", "Go").ok()?;
+        "go test .".to_owned()
+    } else if test_lines(file, source).is_empty() {
+        return None;
+    } else if ext == "py" {
+        let python = python_program(file, root).ok()?;
+        match source.contains("unittest") {
+            true => format!("{python} -m unittest {}", quote(&stem_of(file))),
+            false => format!("{python} -m pytest {}", q(file)),
+        }
+    } else {
+        let manifest = find_up(file, root, "package.json")
+            .and_then(|d| std::fs::read_to_string(d.join("package.json")).ok())
+            .unwrap_or_default();
+        if manifest.contains("\"vitest\"") {
+            format!("npx vitest run {}", q(file))
+        } else if manifest.contains("\"jest\"") {
+            format!("npx jest {}", q(file))
+        } else {
+            need("node", "JavaScript").ok()?;
+            format!("node --test {}", q(file))
+        }
+    };
+    Some(RunPlan { title, command, cwd: dir })
+}
+
+/// What a constant preview of `file` runs: its program, or else its tests.
+pub fn preview_plans(file: &Path, source: &str, root: Option<&Path>) -> Result<Vec<RunPlan>, String> {
+    match plan(file, source, root) {
+        Ok(Outcome::Run(found)) => Ok(vec![found]),
+        Ok(Outcome::Choose(found)) => Ok(found),
+        Err(why) => tests_of(file, source, root).map(|found| vec![found]).ok_or(why),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_preview_runs_the_program_or_else_its_tests() {
+        let dir = std::env::temp_dir().join(format!("rc-preview-plans-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("src")).unwrap();
+        std::fs::write(dir.join("Cargo.toml"), "not a manifest [").unwrap();
+        // Data has neither, and says why.
+        let why = preview_plans(&dir.join("a.json"), "{}", Some(&dir)).unwrap_err();
+        assert!(why.contains("isn't a program"), "{why}");
+        let plans = tests_of(&dir.join("src").join("lib.rs"), "", Some(&dir)).unwrap();
+        assert_eq!(plans.command, "cargo test");
+        assert_eq!(comparable(&plans.cwd), comparable(&dir));
+        assert_eq!(tests_of(&dir.join("plain.py"), "x = 1", Some(&dir)), None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn finds_the_java_main_class_and_package() {

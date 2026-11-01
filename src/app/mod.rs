@@ -7,6 +7,7 @@ mod bookmarks;
 mod bytes_view;
 mod cargo;
 mod config;
+mod constant;
 mod coverage;
 mod cpp;
 mod debug;
@@ -86,6 +87,8 @@ enum PanelTab {
     PageConsole,
     /// A running system.
     Live,
+    /// A program kept running as it's edited.
+    Constant,
     /// Searching by syntax tree.
     TreeSearch,
     /// What's known where the cursor is.
@@ -171,6 +174,7 @@ pub struct CodeApp {
     md_preview: md_preview::MdPreview,
     web: web::Web,
     live: live::Live,
+    constant: constant::Constant,
     tree_tools: tree_tools::TreeTools,
     at_cursor: at_cursor::AtCursor,
     coverage: coverage::Coverage,
@@ -302,6 +306,7 @@ impl CodeApp {
             md_preview: Default::default(),
             web: Default::default(),
             live: Default::default(),
+            constant: Default::default(),
             tree_tools: Default::default(),
             at_cursor: Default::default(),
             coverage: Default::default(),
@@ -403,6 +408,7 @@ impl eframe::App for CodeApp {
         self.refresh_cargo_project(&ctx);
         self.pump_tests(&ctx);
         self.pump_live(&ctx);
+        self.pump_constant(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
         self.pump_coverage(&ctx);

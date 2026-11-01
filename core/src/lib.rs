@@ -9,6 +9,7 @@ pub mod build_tools;
 pub mod cargo;
 pub mod commands;
 pub mod compile_db;
+pub mod constant_run;
 pub mod coverage;
 pub mod css;
 pub mod dap;

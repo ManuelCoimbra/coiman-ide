@@ -199,6 +199,7 @@ impl CodeApp {
             Command::ChoosePython => self.choose_python(),
             Command::OpenLanguagesFile => self.open_languages_file(),
             Command::StopLivePreview => self.stop_live_preview(),
+            Command::ConstantPreview => self.toggle_constant_preview(ctx),
             Command::OpenRunConfigs => self.open_run_configs(),
             Command::ShowTesting => self.show_testing(ctx),
             Command::TestAtCursor => self.test_at_cursor(ctx),

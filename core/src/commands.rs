@@ -174,6 +174,8 @@ pub enum Command {
     ChoosePython,
     OpenLanguagesFile,
     StopLivePreview,
+    /// Keeps showing what the active file does.
+    ConstantPreview,
     OpenRunConfigs,
     ShowTesting,
     TestAtCursor,
@@ -387,6 +389,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ChoosePython, "Python: Select Interpreter"),
     (Command::OpenLanguagesFile, "Language: Open languages.toml"),
     (Command::StopLivePreview, "Preview: Stop Live Preview"),
+    (Command::ConstantPreview, "Preview: Constant Preview"),
     (Command::OpenRunConfigs, "Run: Open Configurations"),
     (Command::ShowTesting, "View: Show Testing"),
     (Command::TestAtCursor, "Test: Run Test at Cursor"),
@@ -599,6 +602,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ChoosePython, "python.setInterpreter"),
     (Command::OpenLanguagesFile, "rustcode.openLanguagesFile"),
     (Command::StopLivePreview, "rustcode.stopLivePreview"),
+    (Command::ConstantPreview, "rustcode.constantPreview"),
     (Command::OpenRunConfigs, "workbench.action.debug.configure"),
     (Command::ShowTesting, "workbench.view.testing"),
     (Command::TestAtCursor, "testing.runAtCursor"),
@@ -670,6 +674,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ChoosePython
             | OpenLanguagesFile
             | StopLivePreview
+            | ConstantPreview
             | StartDebugging
             | StopDebugging
             | ShowDebug
