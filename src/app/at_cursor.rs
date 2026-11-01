@@ -66,6 +66,10 @@ struct View {
 #[derive(Default)]
 pub(super) struct AtCursor {
     used: bool,
+    /// Beside the code, rather than in the panel.
+    beside: bool,
+    /// Closed by hand, so a proof doesn't open it again.
+    closed: bool,
     paused: bool,
     current: Option<View>,
     pins: Vec<(u64, View)>,
@@ -94,14 +98,47 @@ fn find_line(doc: &Document, line: usize, text: &str) -> Option<usize> {
 
 impl CodeApp {
     pub(super) fn at_cursor_tab_shown(&self) -> bool {
-        self.at_cursor.used
+        self.at_cursor.used && !self.at_cursor.beside
+    }
+
+    /// `View: Toggle Cursor Info Beside Code`.
+    pub(super) fn at_cursor_toggle_beside(&mut self) {
+        let showing = self.at_cursor.used && self.at_cursor.beside;
+        self.at_cursor.used = true;
+        self.at_cursor.closed = false;
+        self.at_cursor.beside = !showing;
+        if self.at_cursor.beside {
+            if self.panel_tab == PanelTab::AtCursor {
+                self.panel_tab = PanelTab::Terminal;
+                self.panel_visible = false;
+            }
+        } else {
+            self.show_at_cursor();
+        }
+    }
+
+    /// Draws it beside the code, where a proof's goals are easiest to read.
+    pub(super) fn at_cursor_side(&mut self, ui: &mut egui::Ui) {
+        if !self.at_cursor.used || !self.at_cursor.beside {
+            return;
+        }
+        let half = ui.available_width() / 2.0;
+        egui::Panel::right("at_cursor_side")
+            .resizable(true)
+            .default_size((half * 0.8).max(240.0))
+            .size_range(200.0..=(half * 2.0 - 200.0).max(200.0))
+            .frame(egui::Frame::new().fill(theme::colors().editor_bg).inner_margin(8.0))
+            .show(ui, |ui| self.at_cursor_panel(ui));
     }
 
     /// `View: Show Cursor Info`.
     pub(super) fn show_at_cursor(&mut self) {
         self.at_cursor.used = true;
-        self.panel_tab = PanelTab::AtCursor;
-        self.panel_visible = true;
+        self.at_cursor.closed = false;
+        if !self.at_cursor.beside {
+            self.panel_tab = PanelTab::AtCursor;
+            self.panel_visible = true;
+        }
     }
 
     pub(super) fn at_cursor_toggle_pause(&mut self) {
@@ -126,11 +163,14 @@ impl CodeApp {
     pub(super) fn pump_at_cursor(&mut self, ctx: &egui::Context) {
         // In a proof, what's at the cursor is the point: it opens the first time.
         if !self.at_cursor.used
+            && !self.at_cursor.closed
             && self.docs.get(self.active).is_some_and(|d| Prover::for_extension(&d.extension()).is_some())
         {
+            self.at_cursor.beside = true;
             self.show_at_cursor();
         }
-        if !self.panel_visible || self.panel_tab != PanelTab::AtCursor {
+        let shown = self.at_cursor.used && self.at_cursor.beside;
+        if !shown && (!self.panel_visible || self.panel_tab != PanelTab::AtCursor) {
             return;
         }
         let now = ctx.input(|i| i.time);
@@ -343,6 +383,7 @@ impl CodeApp {
         let open: Vec<bool> = self.at_cursor.pins.iter().map(|(_, v)| self.doc_index(v.uid).is_some()).collect();
         let state = &self.at_cursor;
         let (mut pause, mut pin, mut unpin, mut go) = (false, false, None, None);
+        let (mut move_it, mut close) = (false, false);
         ui.horizontal(|ui| {
             let label = state.current.as_ref().map_or("", |v| v.label.as_str());
             ui.label(RichText::new(label).strong());
@@ -353,6 +394,10 @@ impl CodeApp {
                 ui.label(RichText::new("…").color(pal.text_dim));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if state.beside {
+                    close = ui.button("Close").clicked();
+                }
+                move_it = ui.button(if state.beside { "To Panel" } else { "Beside Code" }).clicked();
                 pause = ui.button(if state.paused { "Resume" } else { "Pause" }).clicked();
                 pin = ui.add_enabled(state.current.is_some(), egui::Button::new("Pin")).clicked();
             });
@@ -394,6 +439,13 @@ impl CodeApp {
             doc.buffer.set_selections(vec![rust_code_core::buffer::Selection::new(pos, pos)], 0);
             doc.reveal = true;
             doc.request_focus = true;
+        }
+        if move_it {
+            self.at_cursor_toggle_beside();
+        }
+        if close {
+            self.at_cursor.used = false;
+            self.at_cursor.closed = true;
         }
         if pause {
             self.at_cursor_toggle_pause();

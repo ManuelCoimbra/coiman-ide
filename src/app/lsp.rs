@@ -205,6 +205,9 @@ pub(super) struct LspState {
     bulb_asked: Option<BulbKey>,
     bulb_seen: Option<(BulbKey, f64)>,
     locations: Vec<LocationItem>,
+    /// Tabs of documents only a server can read, by [`path_key`]: their real address,
+    /// and which server, so language features can ask it about them.
+    virtual_docs: HashMap<PathBuf, (lt::Url, ServerKind, PathBuf)>,
     locations_title: String,
     /// Waiting for formatting before saving: (doc uid, started at).
     format_save: Option<(u64, f64)>,
@@ -490,6 +493,16 @@ impl CodeApp {
     /// Returns the server index and the document's URI.
     fn sync_doc(&mut self, i: usize) -> Option<(usize, lt::Url)> {
         let doc = self.docs.get(i)?;
+        // The server knows it by its own address, and it never changes here.
+        if let Some(ci) = self.virtual_client(doc) {
+            let (uri, ..) = self.lsp.virtual_docs.get(&path_key(doc.path.as_deref()?))?.clone();
+            let language = language_id(&doc.extension()).unwrap_or("plaintext");
+            let client = &mut self.lsp.clients[ci];
+            if !client.is_open(&uri) {
+                client.did_open(uri.clone(), language, doc.text());
+            }
+            return Some((ci, uri));
+        }
         let (path, lang, kind) = lsp_target(doc)?;
         let ci = self.lsp.clients.iter().position(|c| serves(c, kind, &path))?;
         let uri = convert::uri_from_path(&path)?;
@@ -511,7 +524,49 @@ impl CodeApp {
         }
     }
 
+    /// Which server answers for a tab holding one of its own documents.
+    fn virtual_client(&self, doc: &Document) -> Option<usize> {
+        let (_, kind, root) = self.lsp.virtual_docs.get(&path_key(doc.path.as_deref()?))?;
+        self.lsp.clients.iter().position(|c| c.kind == *kind && c.root == *root)
+    }
+
+    /// The ready server for document `i`.
+    pub(super) fn doc_client(&self, i: usize) -> Option<usize> {
+        let doc = self.docs.get(i)?;
+        if let Some(ci) = self.virtual_client(doc) {
+            return self.lsp.clients[ci].is_ready().then_some(ci);
+        }
+        let (path, _, kind) = lsp_target(doc)?;
+        self.lsp.clients.iter().position(|c| serves(c, kind, &path) && c.is_ready())
+    }
+
+    /// Notes that the active tab's server is the one holding `uri`.
+    pub(super) fn remember_virtual(&mut self, uri: &lt::Url) {
+        let Some(path) = convert::virtual_path(uri) else { return };
+        let key = path_key(&path);
+        if self.lsp.virtual_docs.contains_key(&key) {
+            return;
+        }
+        let Some(ci) = self.doc_client(self.active) else { return };
+        let client = &self.lsp.clients[ci];
+        self.lsp.virtual_docs.insert(key, (uri.clone(), client.kind, client.root.clone()));
+    }
+
+    /// Goes to a place: a server's own document is asked for again, a file just opens.
+    fn go_to_location(&mut self, path: &Path, range: lt::Range, select: bool) {
+        match self.lsp.virtual_docs.get(&path_key(path)).map(|(uri, ..)| uri.clone()) {
+            Some(uri) => self.request_virtual_document(uri, range),
+            None => self.jump_to(path, range, select),
+        }
+    }
+
     pub(super) fn lsp_did_close(&mut self, doc: &Document) {
+        if let Some(ci) = self.virtual_client(doc)
+            && let Some((uri, ..)) = doc.path.as_deref().and_then(|p| self.lsp.virtual_docs.get(&path_key(p))).cloned()
+        {
+            self.lsp.clients[ci].did_close(&uri);
+            return;
+        }
         self.lsp.synced.remove(&doc.uid);
         let Some((path, _, kind)) = lsp_target(doc) else { return };
         let Some(uri) = convert::uri_from_path(&path) else { return };
@@ -731,8 +786,7 @@ impl CodeApp {
 
     /// Whether a running server handles document `i`.
     pub(super) fn server_ready_for(&self, i: usize) -> bool {
-        let target = self.docs.get(i).and_then(lsp_target);
-        target.is_some_and(|(p, _, k)| self.lsp.clients.iter().any(|c| serves(c, k, &p) && c.is_ready()))
+        self.doc_client(i).is_some()
     }
 
     /// Sends a request about document `i`. `params` gets the document and its
@@ -1303,8 +1357,7 @@ impl CodeApp {
 
     /// Whether a server is up for this document, so asking won't complain.
     pub(super) fn has_ready_server(&self, i: usize) -> bool {
-        let target = self.docs.get(i).and_then(lsp_target);
-        target.is_some_and(|(p, _, k)| self.lsp.clients.iter().any(|c| serves(c, k, &p) && c.is_ready()))
+        self.doc_client(i).is_some()
     }
 
     /// Ctrl+K Ctrl+I: hover info at the cursor.
@@ -1396,12 +1449,7 @@ impl CodeApp {
                 }
                 self.lsp.hover_rest = Some((uid, pos, since, true));
                 let i = self.active;
-                let has_server = self
-                    .docs
-                    .get(i)
-                    .and_then(lsp_target)
-                    .is_some_and(|(p, _, k)| self.lsp.clients.iter().any(|c| serves(c, k, &p) && c.is_ready()));
-                if has_server {
+                if self.doc_client(i).is_some() {
                     let anchor = Some(pointer);
                     self.request_for(i, "textDocument/hover", Pending::Hover { uid, pos, anchor }, |doc, td| {
                         Self::position_params(doc, td, pos)
@@ -1473,27 +1521,25 @@ impl CodeApp {
             }
             _ => Vec::new(),
         };
-        let found: Vec<(PathBuf, lt::Range)> = locations
-            .iter()
-            .filter(|l| l.uri.scheme() == "file")
-            .filter_map(|l| Some((convert::path_from_uri(&l.uri)?, l.range)))
-            .collect();
-        // Only inside something the server holds, like a jar.
-        if found.is_empty()
-            && let Some(l) = locations.first()
-        {
-            self.request_virtual_document(l.uri.clone(), l.range);
-            return;
+        // Some may be inside what only the server holds, like a jar.
+        let mut found: Vec<(PathBuf, lt::Range)> = Vec::new();
+        for l in &locations {
+            let path = if l.uri.scheme() == "file" {
+                convert::path_from_uri(&l.uri)
+            } else {
+                self.remember_virtual(&l.uri);
+                convert::virtual_path(&l.uri)
+            };
+            found.extend(path.map(|p| (p, l.range)));
         }
         if found.is_empty() {
             self.status = Some(format!("No {} found for '{word}'", title.to_lowercase()));
             return;
         }
-        let mut found = found;
         found.sort_by_key(|(path, r)| (path_key(path), r.start.line, r.start.character));
         if title != "References" && found.len() == 1 {
             let (path, range) = &found[0];
-            self.jump_to(path, *range, false);
+            self.go_to_location(path, *range, false);
             return;
         }
         let mut files: HashMap<PathBuf, Vec<String>> = HashMap::new();
@@ -1514,7 +1560,9 @@ impl CodeApp {
                         .cloned()
                         .unwrap_or_default(),
                 };
-                LocationItem { path, range, preview: preview.trim().to_owned() }
+                let held = self.lsp.virtual_docs.contains_key(&path_key(&path));
+                let preview = if preview.is_empty() && held { "(held by the language server)" } else { preview.trim() };
+                LocationItem { path, range, preview: preview.to_owned() }
             })
             .collect();
         self.lsp.locations_title = format!("{title} of '{word}': {}", self.lsp.locations.len());
@@ -2066,7 +2114,7 @@ impl CodeApp {
             }
         });
         if let Some((path, range)) = jump {
-            self.jump_to(&path, range, true);
+            self.go_to_location(&path, range, true);
         }
     }
 

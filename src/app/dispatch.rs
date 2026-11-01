@@ -390,6 +390,7 @@ impl CodeApp {
             }
             Command::PickColor => self.pick_color(),
             Command::ShowLive => self.show_live(),
+            Command::CursorInfoBeside => self.at_cursor_toggle_beside(),
             Command::TreeSlurp => self.tree_move(tree_edit::Move::SlurpForward),
             Command::TreeSlurpBack => self.tree_move(tree_edit::Move::SlurpBackward),
             Command::TreeBarf => self.tree_move(tree_edit::Move::BarfForward),

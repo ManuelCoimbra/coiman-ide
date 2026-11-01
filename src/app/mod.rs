@@ -536,6 +536,7 @@ impl eframe::App for CodeApp {
                 return;
             }
             self.markdown_preview(ui);
+            self.at_cursor_side(ui);
             let (active_rect, other_rect) = self.split_rects(ui);
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
             let pane = self.active_pane();

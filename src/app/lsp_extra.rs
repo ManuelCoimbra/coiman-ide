@@ -13,7 +13,7 @@ use rust_code_core::lsp::{Client, convert};
 use serde_json::{Value, json};
 
 use super::CodeApp;
-use super::lsp::{Pending, lsp_target, path_key};
+use super::lsp::{Pending, path_key};
 use crate::editor_view::{Decorations, Highlight, Inlays};
 use crate::palette::PickerKind;
 use crate::theme;
@@ -227,8 +227,7 @@ fn inlay_text(hint: &lt::InlayHint) -> String {
 
 impl CodeApp {
     fn active_client(&self) -> Option<usize> {
-        let (path, _, kind) = self.docs.get(self.active).and_then(lsp_target)?;
-        self.lsp.clients.iter().position(|c| c.kind == kind && path.starts_with(&c.root) && c.is_ready())
+        self.doc_client(self.active)
     }
 
     /// Runs each frame: asks again once the text or cursor settled.
@@ -662,6 +661,7 @@ impl CodeApp {
 
     /// Asks the server for a document only it can read.
     pub(super) fn request_virtual_document(&mut self, uri: lt::Url, range: lt::Range) {
+        self.remember_virtual(&uri);
         let method = if uri.scheme() == "jdt" { "java/classFileContents" } else { "workspace/textDocumentContent" };
         let params = json!({ "uri": uri });
         self.request_for(self.active, method, Pending::VirtualDocument { uri, range }, |_, _| params);
@@ -676,7 +676,21 @@ impl CodeApp {
         let Some(path) = convert::virtual_path(uri) else { return };
         let written = path.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&path, text));
         match written {
-            Ok(()) => self.jump_to(&path, range, false),
+            Ok(()) => {
+                // The server may have more to say now than when the tab opened.
+                if let Some(i) = self.doc_index_by_path(&path)
+                    && self.docs[i].text() != text
+                {
+                    // Read-only is for typing: the buffer refuses this too otherwise.
+                    self.docs[i].buffer.read_only = false;
+                    let reloaded = self.docs[i].reload_from_disk();
+                    self.docs[i].buffer.read_only = true;
+                    if let Err(e) = reloaded {
+                        self.status = Some(format!("Could not refresh {uri}: {e}"));
+                    }
+                }
+                self.jump_to(&path, range, false);
+            }
             Err(e) => self.status = Some(format!("Could not keep {uri}: {e}")),
         }
     }
