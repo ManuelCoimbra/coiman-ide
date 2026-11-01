@@ -72,10 +72,7 @@ impl CodeApp {
             "html" | "htm" | "css" => return self.open_live_preview(ctx),
             "js" | "mjs" if script_of_a_page(&file) => return self.open_live_preview(ctx),
             "md" | "markdown" => return self.toggle_markdown_preview(),
-            "svg" => {
-                self.refuse_run(ctx, "SVG can't be drawn here yet: it needs a renderer".to_owned());
-                return;
-            }
+            "svg" => return self.toggle_svg_preview(),
             _ => {}
         }
         let folder = self

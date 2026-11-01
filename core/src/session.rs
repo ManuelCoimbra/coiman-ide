@@ -27,6 +27,25 @@ pub struct Session {
     /// The file open in the log view.
     #[serde(default)]
     pub log_view: Option<PathBuf>,
+    /// The other files open in log views.
+    #[serde(default)]
+    pub log_views: Vec<PathBuf>,
+    /// Places pinned in the cursor info.
+    #[serde(default)]
+    pub cursor_pins: Vec<SavedPin>,
+    /// Whether the cursor info sits beside the code.
+    #[serde(default)]
+    pub cursor_info_beside: bool,
+}
+
+/// A pinned place, found again by its line's text if lines above it changed.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct SavedPin {
+    pub path: PathBuf,
+    pub label: String,
+    pub line: usize,
+    pub line_text: String,
+    pub column: usize,
 }
 
 /// The window's size, in points.
@@ -67,6 +86,9 @@ impl Session {
             window: None,
             run_pins: Default::default(),
             log_view: None,
+            log_views: Vec::new(),
+            cursor_pins: Vec::new(),
+            cursor_info_beside: false,
         }
     }
 
@@ -173,6 +195,9 @@ mod tests {
             window: None,
             run_pins: Default::default(),
             log_view: None,
+            log_views: Vec::new(),
+            cursor_pins: Vec::new(),
+            cursor_info_beside: false,
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

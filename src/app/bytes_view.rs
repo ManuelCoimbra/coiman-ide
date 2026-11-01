@@ -219,6 +219,34 @@ impl GridSource for CodeSource<'_> {
 }
 
 impl CodeApp {
+    pub(super) fn bytes_tab(&self) -> Option<(String, bool)> {
+        let view = self.bytes.view.as_ref()?;
+        let title = match &view.showing {
+            Showing::File(path) => path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            Showing::Memory => "Memory".to_owned(),
+            Showing::Disassembly => "Disassembly".to_owned(),
+        };
+        Some((title, view.open))
+    }
+
+    pub(super) fn hide_bytes(&mut self) {
+        if let Some(view) = &mut self.bytes.view {
+            view.open = false;
+        }
+    }
+
+    pub(super) fn show_bytes_tab(&mut self) {
+        let over = self.docs.get(self.active).map(|d| d.uid);
+        if let Some(view) = &mut self.bytes.view {
+            view.open = true;
+            view.over = over;
+        }
+    }
+
+    pub(super) fn close_bytes_tab(&mut self) {
+        self.bytes.view = None;
+    }
+
     /// A binary file asks for this view when it's opened.
     pub(super) fn open_binary_file(&mut self, path: &Path) -> bool {
         if !hexdata::looks_binary(path) {
@@ -329,6 +357,8 @@ impl CodeApp {
     pub(super) fn bytes_view(&mut self, ui: &mut egui::Ui) -> bool {
         let over_now = self.docs.get(self.active).map(|d| d.uid);
         if let Some(path) = self.bytes.to_open.take() {
+            self.hide_logs();
+            self.hide_image();
             self.bytes.view = Some(BytesView::new(Showing::File(path), over_now));
         }
         let paused = self.debug_is_paused();

@@ -391,6 +391,9 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Find References | `Shift+F12`, results in the References panel |
 | Rename Symbol | `F2`; files that aren't open are opened with the changes unsaved, so you can review and undo |
 | Code actions | `Ctrl+.` (quick fixes, refactors) |
+| Other tabs | Log views (several at once, kept across restarts), the byte view and images each get a tab beside the files, and go on existing behind other tabs |
+| Word colors | COBOL, Lean, Agda, Coq and APL have no grammar here, so they're colored by reading their comments, strings, numbers and keywords |
+| SVG | `Preview: Constant Preview` on an `.svg` draws it beside its text, following edits. It reads only the text: no files or addresses the picture names |
 | Quick fixes | A light bulb in the margin of the cursor's line when the language server offers actions there: yellow for fixes, grey for refactorings. Click it or press `Ctrl+.` |
 | Likely problems | Warns while you type about loops that look endless (Python, JS, TS, Java, C, C++, C#, Go, Rust, Zig) and memory that looks leaked (C, C++, Zig; `mem::forget` in Rust). C and C++ also use `clang-tidy`'s analyzer on save if it's on `PATH`, in trusted folders. These are likely findings, not proof: some are wrong and some leaks are missed. `editor.likely_problems = false` turns them off |
 | Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving |

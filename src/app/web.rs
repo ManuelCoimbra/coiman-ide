@@ -46,6 +46,7 @@ struct ImageView {
     scale: Option<f32>,
     /// The document that was active: switching tabs leaves the image.
     over: Option<u64>,
+    showing: bool,
 }
 
 /// The picker's window.
@@ -366,7 +367,6 @@ impl CodeApp {
 
     /// Asks for an image file to be shown. Any other file closes the one showing.
     pub(super) fn open_image_file(&mut self, path: &Path) -> bool {
-        self.web.image = None;
         let image = is_image(path);
         self.web.image_to_open = image.then(|| path.to_path_buf());
         image
@@ -386,19 +386,44 @@ impl CodeApp {
             ImageState::Loading(rx)
         };
         let over = self.docs.get(self.active).map(|d| d.uid);
-        self.web.image = Some(ImageView { path: path.to_path_buf(), bytes, state, scale: None, over });
+        self.web.image = Some(ImageView { path: path.to_path_buf(), bytes, state, scale: None, over, showing: true });
+    }
+
+    pub(super) fn image_tab(&self) -> Option<(String, bool)> {
+        let view = self.web.image.as_ref()?;
+        Some((view.path.file_name()?.to_string_lossy().into_owned(), view.showing))
+    }
+
+    pub(super) fn hide_image(&mut self) {
+        if let Some(view) = &mut self.web.image {
+            view.showing = false;
+        }
+    }
+
+    pub(super) fn show_image_tab(&mut self) {
+        let over = self.docs.get(self.active).map(|d| d.uid);
+        if let Some(view) = &mut self.web.image {
+            view.showing = true;
+            view.over = over;
+        }
+    }
+
+    pub(super) fn close_image_tab(&mut self) {
+        self.web.image = None;
     }
 
     /// Shows the open image in place of the editor. Says whether it did.
     pub(super) fn image_view(&mut self, ui: &mut egui::Ui) -> bool {
         if let Some(path) = self.web.image_to_open.take() {
+            self.hide_logs();
+            self.hide_bytes();
             self.open_image(ui.ctx(), &path);
         }
         let active = self.docs.get(self.active).map(|d| d.uid);
-        if self.web.image.as_ref().is_some_and(|v| v.over != active) {
-            self.web.image = None;
+        if let Some(view) = self.web.image.as_mut().filter(|v| v.over != active) {
+            view.showing = false;
         }
-        let Some(view) = &mut self.web.image else { return false };
+        let Some(view) = self.web.image.as_mut().filter(|v| v.showing) else { return false };
         if let ImageState::Loading(rx) = &view.state
             && let Ok(result) = rx.try_recv()
         {

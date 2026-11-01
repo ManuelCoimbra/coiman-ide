@@ -4,6 +4,7 @@
 
 use eframe::egui::{self, Color32, RichText};
 use rust_code_core::goals::{self, Prover};
+use rust_code_core::session::SavedPin;
 use serde_json::Value;
 
 use super::lsp::{Pending, hover_markdown};
@@ -97,6 +98,48 @@ fn find_line(doc: &Document, line: usize, text: &str) -> Option<usize> {
 }
 
 impl CodeApp {
+    /// What to keep across a restart.
+    pub(super) fn at_cursor_saved(&self) -> (Vec<SavedPin>, bool) {
+        let pins = self.at_cursor.pins.iter().filter_map(|(_, v)| {
+            Some(SavedPin {
+                path: v.path.clone()?,
+                label: v.label.clone(),
+                line: v.line,
+                line_text: v.line_text.clone(),
+                column: v.column,
+            })
+        });
+        (pins.collect(), self.at_cursor.used && self.at_cursor.beside)
+    }
+
+    pub(super) fn at_cursor_restore(&mut self, pins: &[SavedPin], beside: bool) {
+        let state = &mut self.at_cursor;
+        state.beside = beside;
+        state.used = beside || !pins.is_empty();
+        for pin in pins {
+            state.next += 1;
+            state.pins.push((
+                state.next,
+                View {
+                    // No tab has this: it's found by its path once one opens.
+                    uid: u64::MAX,
+                    path: Some(pin.path.clone()),
+                    pos: 0,
+                    version: u64::MAX,
+                    label: pin.label.clone(),
+                    line: pin.line,
+                    line_text: pin.line_text.clone(),
+                    column: pin.column,
+                    sections: Vec::new(),
+                    ask: 0,
+                    waiting: 0,
+                    same_place: false,
+                    has_server: false,
+                },
+            ));
+        }
+    }
+
     pub(super) fn at_cursor_tab_shown(&self) -> bool {
         self.at_cursor.used && !self.at_cursor.beside
     }
@@ -203,9 +246,16 @@ impl CodeApp {
             let (uid, path) = (self.at_cursor.pins[at].1.uid, self.at_cursor.pins[at].1.path.clone());
             let reopened = path.filter(|_| self.doc_index(uid).is_none()).and_then(|p| self.doc_index_by_path(&p));
             if let Some(i) = reopened {
+                let doc = &self.docs[i];
                 let view = &mut self.at_cursor.pins[at].1;
-                view.uid = self.docs[i].uid;
+                view.uid = doc.uid;
                 view.version = u64::MAX;
+                // Saved across a restart: only its line is known.
+                if let Some(line) = find_line(doc, view.line, &view.line_text) {
+                    let length = doc.buffer.line_text(line).chars().count();
+                    view.line = line;
+                    view.pos = doc.buffer.line_start(line) + view.column.min(length);
+                }
             }
         }
         // A pinned place's answers change with its file.
@@ -385,14 +435,6 @@ impl CodeApp {
         let (mut pause, mut pin, mut unpin, mut go) = (false, false, None, None);
         let (mut move_it, mut close) = (false, false);
         ui.horizontal(|ui| {
-            let label = state.current.as_ref().map_or("", |v| v.label.as_str());
-            ui.label(RichText::new(label).strong());
-            if state.paused {
-                ui.label(RichText::new("Paused").color(Color32::from_rgb(0xCC, 0xA7, 0x00)));
-            }
-            if state.current.as_ref().is_some_and(|v| v.waiting > 0) {
-                ui.label(RichText::new("…").color(pal.text_dim));
-            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if state.beside {
                     close = ui.button("Close").clicked();
@@ -400,6 +442,15 @@ impl CodeApp {
                 move_it = ui.button(if state.beside { "To Panel" } else { "Beside Code" }).clicked();
                 pause = ui.button(if state.paused { "Resume" } else { "Pause" }).clicked();
                 pin = ui.add_enabled(state.current.is_some(), egui::Button::new("Pin")).clicked();
+                // Last, so in a narrow panel it's what gives way to the buttons.
+                if state.current.as_ref().is_some_and(|v| v.waiting > 0) {
+                    ui.label(RichText::new("…").color(pal.text_dim));
+                }
+                if state.paused {
+                    ui.label(RichText::new("Paused").color(Color32::from_rgb(0xCC, 0xA7, 0x00)));
+                }
+                let label = state.current.as_ref().map_or("", |v| v.label.as_str());
+                ui.add(egui::Label::new(RichText::new(label).strong()).truncate());
             });
         });
         ui.separator();

@@ -59,6 +59,16 @@ fn problem(list: &[Snippet]) -> Option<String> {
     })
 }
 
+/// The places of a snippet just inserted, to go through with Tab.
+pub(super) struct SnippetStops {
+    uid: u64,
+    /// Char ranges, each as it stands now or will once what's typed is counted.
+    list: Vec<(usize, usize)>,
+    at: usize,
+    /// The document's length when these were last brought up to date.
+    len: usize,
+}
+
 impl CodeApp {
     /// Inserts a body at the selection of the active document, replacing `start..` it.
     pub(super) fn insert_snippet(&mut self, body: &str, start: Option<usize>) {
@@ -69,10 +79,50 @@ impl CodeApp {
         let line = doc.buffer.char_to_line(start);
         let text = doc.buffer.line_text(line);
         let indent: String = text.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
-        let (text, (a, b)) = snippets::prepare(body, &indent, doc.buffer.line_ending);
+        let (text, stops) = snippets::prepare_stops(body, &indent, doc.buffer.line_ending);
+        let (a, b) = stops.first().copied().unwrap_or_else(|| {
+            let end = text.chars().count();
+            (end, end)
+        });
         doc.buffer.apply_edits(vec![(start, end, text)]);
         doc.buffer.set_single(Selection::new(start + a, start + b));
         doc.reveal = true;
+        let list: Vec<(usize, usize)> = stops.into_iter().map(|(a, b)| (start + a, start + b)).collect();
+        self.snippet_stops =
+            (list.len() > 1).then(|| SnippetStops { uid: doc.uid, list, at: 0, len: doc.buffer.len_chars() });
+    }
+
+    /// Tab or Shift+Tab inside a snippet: on to its next place, or back. Says whether
+    /// it moved. Moving the cursor out of the place, or leaving the last, ends this.
+    pub(super) fn snippet_step(&mut self, back: bool) -> bool {
+        let Some(mut stops) = self.snippet_stops.take() else { return false };
+        let Some(doc) = self.docs.get_mut(self.active).filter(|d| d.uid == stops.uid) else { return false };
+        let head = doc.buffer.primary().head;
+        let len = doc.buffer.len_chars();
+        // What was typed went into the place the cursor is in.
+        let grown = len as isize - stops.len as isize;
+        let (a, b) = stops.list[stops.at];
+        let end = b.saturating_add_signed(grown);
+        if head < a || head > end || end < a {
+            return false;
+        }
+        stops.list[stops.at].1 = end;
+        for later in &mut stops.list[stops.at + 1..] {
+            later.0 = later.0.saturating_add_signed(grown);
+            later.1 = later.1.saturating_add_signed(grown);
+        }
+        stops.len = len;
+        let next = if back { stops.at.checked_sub(1) } else { Some(stops.at + 1) };
+        let Some(next) = next.filter(|n| *n < stops.list.len()) else { return false };
+        let (a, b) = stops.list[next];
+        doc.buffer.set_single(Selection::new(a, b));
+        doc.reveal = true;
+        stops.at = next;
+        // At the last, one more Tab is an ordinary Tab.
+        if next + 1 < stops.list.len() || back {
+            self.snippet_stops = Some(stops);
+        }
+        true
     }
 
     /// Tab: if the word before the cursor is a snippet's prefix, inserts it.

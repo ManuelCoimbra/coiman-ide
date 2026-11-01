@@ -80,7 +80,9 @@ impl Drop for LogView {
 
 #[derive(Default)]
 pub(super) struct Logs {
-    view: Option<LogView>,
+    views: Vec<LogView>,
+    /// Saved last time, and not started yet.
+    restoring: Vec<PathBuf>,
     /// Files someone chose to open in the editor, large or not.
     pub(super) editor_anyway: std::collections::HashSet<PathBuf>,
 }
@@ -210,15 +212,48 @@ fn level_color(level: Level, fg: Color32, dim: Color32) -> Color32 {
 
 impl CodeApp {
     pub(super) fn open_log_view(&mut self, ctx: &egui::Context, path: &Path) {
+        self.hide_view_tabs();
         let over = self.docs.get(self.active).map(|d| d.uid);
-        if let Some(view) = self.logs.view.as_mut().filter(|v| v.path == path) {
+        if let Some(view) = self.logs.views.iter_mut().find(|v| v.path == path) {
             view.showing = true;
             view.over = over;
             return;
         }
         let mut view = start_index(path, ctx);
         view.over = over;
-        self.logs.view = Some(view);
+        self.logs.views.push(view);
+    }
+
+    pub(super) fn restore_log_views(&mut self, paths: Vec<PathBuf>) {
+        self.logs.restoring = paths;
+    }
+
+    pub(super) fn log_tabs(&self) -> Vec<(String, bool)> {
+        let name = |v: &LogView| v.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        self.logs.views.iter().map(|v| (name(v), v.showing)).collect()
+    }
+
+    pub(super) fn hide_logs(&mut self) {
+        self.logs.views.iter_mut().for_each(|v| v.showing = false);
+    }
+
+    pub(super) fn show_log_tab(&mut self, i: usize) {
+        let over = self.docs.get(self.active).map(|d| d.uid);
+        if let Some(view) = self.logs.views.get_mut(i) {
+            view.showing = true;
+            view.over = over;
+        }
+    }
+
+    pub(super) fn close_log_tab(&mut self, i: usize) {
+        if i < self.logs.views.len() {
+            self.logs.views.remove(i);
+        }
+    }
+
+    pub(super) fn log_view_paths(&self) -> Vec<PathBuf> {
+        let open = self.logs.views.iter().map(|v| v.path.clone());
+        open.chain(self.logs.restoring.iter().cloned()).collect()
     }
 
     /// `Log: Open in Log View`: the active file, or one to choose.
@@ -230,22 +265,19 @@ impl CodeApp {
     }
 
     pub(super) fn log_view_path(&self) -> Option<PathBuf> {
-        self.logs.view.as_ref().map(|v| v.path.clone())
+        self.logs.views.iter().find(|v| v.showing).map(|v| v.path.clone())
     }
 
     /// The status bar's way back to it, from behind a tab.
     pub(super) fn log_label(&self) -> Option<String> {
-        let view = self.logs.view.as_ref().filter(|v| !v.showing)?;
+        let view = self.logs.views.first().filter(|_| !self.logs.views.iter().any(|v| v.showing))?;
         let name = view.path.file_name()?.to_string_lossy().into_owned();
         Some(format!("Log: {name}"))
     }
 
     pub(super) fn show_log_view(&mut self) {
-        let over = self.docs.get(self.active).map(|d| d.uid);
-        if let Some(view) = &mut self.logs.view {
-            view.showing = true;
-            view.over = over;
-        }
+        self.hide_view_tabs();
+        self.show_log_tab(0);
     }
 
     /// Shows the log view in the editor's place. Says whether it did.
@@ -253,14 +285,20 @@ impl CodeApp {
         let active = self.docs.get(self.active).map(|d| d.uid);
         let ctx = ui.ctx().clone();
         let font_size = self.font_size;
-        let Some(view) = &mut self.logs.view else { return false };
-        // Another tab was chosen. It goes on reading, and the status bar brings it back.
-        if view.showing && view.over != active {
+        for path in std::mem::take(&mut self.logs.restoring) {
+            if !self.logs.views.iter().any(|v| v.path == path) {
+                let mut view = start_index(&path, &ctx);
+                view.showing = false;
+                view.focus = false;
+                self.logs.views.push(view);
+            }
+        }
+        // Another tab was chosen. These go on reading, and their tabs bring them back.
+        for view in self.logs.views.iter_mut().filter(|v| v.over != active) {
             view.showing = false;
         }
-        if !view.showing {
-            return false;
-        }
+        let Some(shown) = self.logs.views.iter().position(|v| v.showing) else { return false };
+        let view = &mut self.logs.views[shown];
         let pal = theme::colors();
         let (index_lines, scanned, generation) =
             view.index.read().map(|i| (i.lines(), i.scanned, i.generation)).unwrap_or_default();
@@ -556,9 +594,9 @@ impl CodeApp {
             self.analyze_stack_trace_text(text);
         }
         if close {
-            self.logs.view = None;
-        }
-        if in_editor && let Some(path) = self.logs.view.take().map(|v| v.path.clone()) {
+            self.logs.views.remove(shown);
+        } else if in_editor {
+            let path = self.logs.views.remove(shown).path.clone();
             self.logs.editor_anyway.insert(path.clone());
             self.open_file(&path);
         }

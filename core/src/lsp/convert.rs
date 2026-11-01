@@ -160,6 +160,25 @@ pub fn expand_snippet(snippet: &str) -> (String, (usize, usize)) {
     (out, pick)
 }
 
+/// Expands an LSP snippet, with every tab stop as a char range: in order, the final
+/// `$0` last, and a number used twice only where it's first.
+pub fn expand_snippet_stops(snippet: &str) -> (String, Vec<(usize, usize)>) {
+    let mut out = String::new();
+    let mut stops: Vec<(u32, usize, usize)> = Vec::new();
+    expand_into(snippet, &mut out, &mut stops);
+    let has_final = stops.iter().any(|s| s.0 == 0);
+    stops.sort_by_key(|s| (s.0 == 0, s.0, s.1));
+    stops.dedup_by_key(|s| s.0);
+    let mut places: Vec<(usize, usize)> = stops.into_iter().map(|s| (s.1, s.2)).collect();
+    // With no `$0`, the last Tab leaves through the end.
+    if !has_final {
+        let end = out.chars().count();
+        places.push((end, end));
+        places.dedup();
+    }
+    (out, places)
+}
+
 fn expand_into(s: &str, out: &mut String, stops: &mut Vec<(u32, usize, usize)>) {
     let chars: Vec<char> = s.chars().collect();
     let mut i = 0;

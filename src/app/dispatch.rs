@@ -86,7 +86,11 @@ impl CodeApp {
                     }
                 }
             }
-            Command::CloseTab => self.request_close_tab(self.active),
+            Command::CloseTab => {
+                if !self.close_shown_view_tab() {
+                    self.request_close_tab(self.active);
+                }
+            }
             Command::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
             Command::ToggleTerminal => {
                 if self.terminal.detached {
@@ -628,6 +632,16 @@ impl CodeApp {
             return;
         }
         let editor_focused = self.editor_focused(ctx);
+        // Inside a snippet, Tab goes on to its next place.
+        if editor_focused && self.chord.is_none() && self.vim.is_none() && !self.completion_open() {
+            let forward = ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers.is_none());
+            let back = ctx.input(|i| i.key_pressed(Key::Tab) && i.modifiers == Modifiers::SHIFT);
+            if (forward || back) && self.snippet_step(back) {
+                let modifiers = if back { Modifiers::SHIFT } else { Modifiers::NONE };
+                ctx.input_mut(|i| i.consume_key(modifiers, Key::Tab));
+                return;
+            }
+        }
         // Tab after a snippet's prefix inserts the snippet; modal editing has its own keys.
         if editor_focused
             && self.chord.is_none()

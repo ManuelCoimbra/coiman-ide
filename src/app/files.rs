@@ -66,6 +66,8 @@ impl CodeApp {
             self.open_folder(root);
         }
         self.log_to_open = saved.log_view.clone().filter(|p| p.is_file());
+        self.restore_log_views(saved.log_views.iter().filter(|p| p.is_file()).cloned().collect());
+        self.at_cursor_restore(&saved.cursor_pins, saved.cursor_info_beside);
         let active = saved.active;
         for doc in saved.restore_docs() {
             self.untitled_counter = self.untitled_counter.max(doc.untitled_index());
@@ -81,6 +83,9 @@ impl CodeApp {
         session.window = self.window;
         session.run_pins = self.cargo.run_pins.clone();
         session.log_view = self.log_view_path();
+        session.log_views =
+            self.log_view_paths().into_iter().filter(|p| Some(p) != session.log_view.as_ref()).collect();
+        (session.cursor_pins, session.cursor_info_beside) = self.at_cursor_saved();
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
@@ -156,6 +161,7 @@ impl CodeApp {
     }
 
     pub(super) fn open_file(&mut self, path: &Path) {
+        self.hide_view_tabs();
         if self.open_image_file(path) {
             return;
         }

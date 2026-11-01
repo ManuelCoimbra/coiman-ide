@@ -76,9 +76,32 @@ pub fn prepare(body: &str, indent: &str, nl: &str) -> (String, (usize, usize)) {
     (text.replace('\n', nl), range)
 }
 
+/// Like [`prepare`], with every tab stop rather than only the first.
+pub fn prepare_stops(body: &str, indent: &str, nl: &str) -> (String, Vec<(usize, usize)>) {
+    let indented = body.replace("\r\n", "\n").replace('\n', &format!("\n{indent}"));
+    let (text, stops) = crate::lsp::convert::expand_snippet_stops(&indented);
+    let extra = nl.chars().count() - 1;
+    let shift = |at: usize| at + extra * text.chars().take(at).filter(|c| *c == '\n').count();
+    let stops = stops.into_iter().map(|(a, b)| (shift(a), shift(b))).collect();
+    (text.replace('\n', nl), stops)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn prepares_every_stop_in_order() {
+        let (text, stops) = prepare_stops("<a href=\"$1\" id=\"${2:x}\">$0</a>", "", "\n");
+        assert_eq!(text, "<a href=\"\" id=\"x\"></a>");
+        assert_eq!(stops, [(9, 9), (15, 16), (18, 18)]);
+        // Line breaks count as written.
+        let (_, stops) = prepare_stops("a\n$1", "", "\r\n");
+        assert_eq!(stops, [(3, 3)]);
+        // A number repeated is one stop.
+        let (_, stops) = prepare_stops("$1 $1 $2", "", "\n");
+        assert_eq!(stops, [(0, 0), (2, 2)]);
+    }
 
     fn snippet(prefix: &str, language: &str) -> Snippet {
         Snippet { name: prefix.into(), prefix: prefix.into(), language: language.into(), body: "x".into() }

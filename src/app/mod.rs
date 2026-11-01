@@ -19,6 +19,7 @@ mod git;
 mod hidden;
 mod history;
 mod keys_ui;
+mod light_colors;
 mod likely;
 mod live;
 mod logs;
@@ -35,10 +36,12 @@ mod repl;
 mod settings_ui;
 mod snippets_ui;
 mod split;
+mod svg_preview;
 mod tables;
 mod test_panel;
 mod traces;
 mod tree_tools;
+mod view_tabs;
 mod web;
 mod window;
 mod workbench;
@@ -177,6 +180,9 @@ pub struct CodeApp {
     live: live::Live,
     constant: constant::Constant,
     likely: likely::Likely,
+    light_colors: light_colors::LightColors,
+    svg_preview: svg_preview::SvgPreview,
+    snippet_stops: Option<snippets_ui::SnippetStops>,
     tree_tools: tree_tools::TreeTools,
     at_cursor: at_cursor::AtCursor,
     coverage: coverage::Coverage,
@@ -310,6 +316,9 @@ impl CodeApp {
             live: Default::default(),
             constant: Default::default(),
             likely: Default::default(),
+            light_colors: Default::default(),
+            svg_preview: Default::default(),
+            snippet_stops: None,
             tree_tools: Default::default(),
             at_cursor: Default::default(),
             coverage: Default::default(),
@@ -496,6 +505,12 @@ impl eframe::App for CodeApp {
                 if let Some(path) = self.log_to_open.take() {
                     self.open_log_view(ui.ctx(), &path);
                 }
+                if !self.view_tabs().is_empty() {
+                    egui::Frame::new().fill(theme::colors().tab_inactive_bg).show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        self.tab_bar(ui);
+                    });
+                }
                 if self.log_view(ui) || self.bytes_view(ui) || self.image_view(ui) {
                     return;
                 }
@@ -506,7 +521,9 @@ impl eframe::App for CodeApp {
                 ui.set_width(ui.available_width());
                 self.tab_bar(ui);
             });
-            if !zen {
+            // These speak of the file behind, not of a view showing over it.
+            let view_showing = self.view_tabs().iter().any(|t| t.2);
+            if !zen && !view_showing {
                 self.breadcrumbs(ui);
             }
             self.disk_conflict_bar(ui);
@@ -514,7 +531,9 @@ impl eframe::App for CodeApp {
             self.lock_bar(ui);
             self.lsp_offer_bar(ui);
             self.find_bar(ui);
-            self.glyph_bar(ui);
+            if !view_showing {
+                self.glyph_bar(ui);
+            }
             let opts = editor_view::Options {
                 font_size: self.font_size,
                 word_wrap: self.word_wrap,
@@ -536,6 +555,7 @@ impl eframe::App for CodeApp {
                 return;
             }
             self.markdown_preview(ui);
+            self.svg_preview_ui(ui);
             self.at_cursor_side(ui);
             let (active_rect, other_rect) = self.split_rects(ui);
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));

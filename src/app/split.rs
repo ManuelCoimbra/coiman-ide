@@ -148,6 +148,7 @@ impl CodeApp {
         self.cargo_decorate(i, &mut deco);
         self.debug_decorate(i, &mut deco);
         // Plugins last: their colors go over the server's.
+        self.light_colors_decorate(i, &mut deco);
         self.lsp_views_decorate(i, &mut deco);
         self.table_decorate(i, &mut deco);
         self.plugin_decorate(i, &mut deco);

@@ -702,6 +702,9 @@ impl CodeApp {
         let mut close = None;
         let mut tabs = Vec::with_capacity(self.docs.len());
         let mut drag_started = None;
+        let view_tabs = self.view_tabs();
+        let view_showing = view_tabs.iter().any(|t| t.2);
+        let (mut view_select, mut view_close) = (None, None);
         egui::ScrollArea::horizontal()
             .id_salt("tabs")
             .auto_shrink([false, true])
@@ -710,7 +713,7 @@ impl CodeApp {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
                     for (i, doc) in self.docs.iter().enumerate() {
-                        let active = i == self.active;
+                        let active = i == self.active && !view_showing;
                         let fill = if active { theme::colors().tab_active_bg } else { theme::colors().tab_inactive_bg };
                         let resp = egui::Frame::new()
                             .fill(fill)
@@ -764,11 +767,60 @@ impl CodeApp {
                             ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::colors().border));
                         }
                     }
+                    for (tab, title, shown) in &view_tabs {
+                        let pal = theme::colors();
+                        let fill = if *shown { pal.tab_active_bg } else { pal.tab_inactive_bg };
+                        let resp = egui::Frame::new()
+                            .fill(fill)
+                            .inner_margin(egui::Margin::symmetric(10, 7))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let color = if *shown { pal.tab_active_fg } else { pal.text_dim };
+                                    let size = ui.text_style_height(&egui::TextStyle::Body);
+                                    icons::show_file(ui, title, size);
+                                    ui.add_space(4.0);
+                                    let label = ui.add(
+                                        egui::Label::new(RichText::new(title).color(color))
+                                            .sense(Sense::click())
+                                            .selectable(false),
+                                    );
+                                    if label.clicked() {
+                                        view_select = Some(*tab);
+                                    }
+                                    if label.middle_clicked() {
+                                        view_close = Some(*tab);
+                                    }
+                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+                                    let hovered = resp.hovered();
+                                    if hovered {
+                                        ui.painter().rect_filled(rect, 3.0, pal.hover_bg);
+                                    }
+                                    let glyph = if hovered { pal.tab_active_fg } else { pal.text_dim };
+                                    icons::paint(ui.painter(), rect.shrink(size * 0.12), Icon::Close, glyph);
+                                    if resp.on_hover_text("Close (Ctrl+W)").clicked() {
+                                        view_close = Some(*tab);
+                                    }
+                                });
+                            })
+                            .response;
+                        let r = resp.rect;
+                        if *shown {
+                            ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, pal.accent));
+                        } else {
+                            ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, pal.border));
+                        }
+                    }
                 });
             });
         if let Some(i) = select {
+            self.hide_view_tabs();
             self.active = i;
             self.git.diff = None;
+        }
+        if let Some(tab) = view_close {
+            self.close_view_tab(tab);
+        } else if let Some(tab) = view_select {
+            self.show_view_tab(tab);
         }
         if let Some(i) = close {
             self.request_close_tab(i);
