@@ -640,6 +640,14 @@ impl CodeApp {
                     ui.label(RichText::new("EXPLORER").small().strong());
                     ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                         if self.explorer.root.is_some() {
+                            if icons::button(ui, Icon::CollapseAll, "Collapse All").clicked() {
+                                self.explorer.collapse_all();
+                            }
+                            if let Some(path) = active_path.as_deref()
+                                && icons::button(ui, Icon::Locate, "Select Opened File").clicked()
+                            {
+                                self.explorer.reveal(path);
+                            }
                             if icons::button(ui, Icon::Refresh, "Refresh Explorer").clicked() {
                                 self.explorer.refresh();
                                 self.finder.mark_stale();
@@ -666,6 +674,7 @@ impl CodeApp {
                     self.open_folder(path);
                 }
                 self.delete_prompt(ui);
+                self.explorer.compact = self.settings.workbench.compact_folders;
                 if let Some(path) = self.explorer.ui(ui, active_path.as_deref()) {
                     self.open_file(&path);
                 }

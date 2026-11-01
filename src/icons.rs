@@ -14,6 +14,8 @@ pub enum Icon {
     Terminal,
     Folder,
     FolderOpen,
+    CollapseAll,
+    Locate,
     ChevronRight,
     ChevronDown,
     Refresh,
@@ -132,6 +134,18 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
         Icon::FolderOpen => {
             pen.line(&[(0.18, 0.84), (0.06, 0.84), (0.06, 0.2), (0.38, 0.2), (0.48, 0.32), (0.82, 0.32), (0.82, 0.46)]);
             pen.closed(&[(0.18, 0.46), (0.98, 0.46), (0.84, 0.84), (0.04, 0.84)]);
+        }
+        Icon::CollapseAll => {
+            pen.closed(&[(0.3, 0.1), (0.9, 0.1), (0.9, 0.7), (0.3, 0.7)]);
+            pen.line(&[(0.1, 0.3), (0.1, 0.9), (0.7, 0.9)]);
+            pen.line(&[(0.45, 0.4), (0.75, 0.4)]);
+        }
+        Icon::Locate => {
+            pen.circle(0.5, 0.5, 0.28);
+            pen.line(&[(0.5, 0.06), (0.5, 0.3)]);
+            pen.line(&[(0.5, 0.7), (0.5, 0.94)]);
+            pen.line(&[(0.06, 0.5), (0.3, 0.5)]);
+            pen.line(&[(0.7, 0.5), (0.94, 0.5)]);
         }
         Icon::ChevronRight => pen.line(&[(0.38, 0.24), (0.64, 0.5), (0.38, 0.76)]),
         Icon::ChevronDown => pen.line(&[(0.24, 0.38), (0.5, 0.64), (0.76, 0.38)]),
@@ -303,11 +317,16 @@ pub fn paint_file(painter: &egui::Painter, rect: Rect, path: &str) {
         painter.image(texture.id(), rect, whole, Color32::WHITE);
     }
     if file_icons::is_test_file(path) && !icon.starts_with("test") {
-        let size = rect.width() * 0.62;
-        let flask = Rect::from_center_size(rect.right_bottom() - Vec2::splat(size * 0.3), Vec2::splat(size));
-        painter.circle_filled(flask.center(), size * 0.56, pal.editor_bg);
-        paint(painter, flask, Icon::Beaker, Color32::from_rgb(0x73, 0xC9, 0x91));
+        paint_test_mark(painter, rect);
     }
+}
+
+/// A flask at an icon's corner: this holds tests.
+pub fn paint_test_mark(painter: &egui::Painter, rect: Rect) {
+    let size = rect.width() * 0.62;
+    let flask = Rect::from_center_size(rect.right_bottom() - Vec2::splat(size * 0.3), Vec2::splat(size));
+    painter.circle_filled(flask.center(), size * 0.56, crate::theme::colors().editor_bg);
+    paint(painter, flask, Icon::Beaker, Color32::from_rgb(0x73, 0xC9, 0x91));
 }
 
 /// A file icon allocated in a layout.

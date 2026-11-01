@@ -79,7 +79,11 @@ const CODE: &[&str] = &[
 ];
 /// Whose class names say so: `AppTest`, `AppTests`, `TestApp`.
 const CLASS_NAMED: &[&str] = &["java", "kt", "kts", "scala", "groovy", "cs", "fs", "vb", "swift", "php", "dart"];
-const TEST_FOLDERS: &[&str] = &["test", "tests", "__tests__", "spec", "specs", "testing"];
+
+/// Whether a file extension, in any case, is one of code.
+pub fn is_code(extension: &str) -> bool {
+    CODE.contains(&extension.to_lowercase().as_str())
+}
 
 /// Whether a file holds tests, going by what test tools themselves look for. `path` is
 /// best relative to the project: a folder above it called `test` says nothing.
@@ -104,7 +108,7 @@ pub fn is_test_file(path: &str) -> bool {
         stem.ends_with("Test") || stem.ends_with("Tests") || after_test.is_some_and(char::is_uppercase)
     };
     let folders = path[..path.len() - name.len()].split(['/', '\\']);
-    by_name || by_class || folders.into_iter().any(|f| TEST_FOLDERS.contains(&f.to_lowercase().as_str()))
+    by_name || by_class || folders.into_iter().any(crate::project_tree::is_test_folder)
 }
 
 #[cfg(test)]

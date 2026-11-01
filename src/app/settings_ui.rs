@@ -129,6 +129,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "Menus, side bar, tabs and status bar.",
                 Kind::Decimal(8.0, 32.0),
             ),
+            row(
+                "workbench",
+                "compact_folders",
+                "Compact folders",
+                "In the Explorer, show folders holding only one folder as one row, like src/main/java.",
+                Kind::Toggle,
+            ),
         ],
     ),
     (

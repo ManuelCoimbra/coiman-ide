@@ -122,6 +122,8 @@ pub struct WorkbenchSettings {
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
+    /// Explorer: show a chain of folders holding only each other as one row.
+    pub compact_folders: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -316,7 +318,13 @@ impl Default for EditorSettings {
 
 impl Default for WorkbenchSettings {
     fn default() -> Self {
-        Self { ui_font_size: 13.0, zoom: DEFAULT_ZOOM, preview_port: 0, color_theme: "Dark Modern".to_owned() }
+        Self {
+            ui_font_size: 13.0,
+            zoom: DEFAULT_ZOOM,
+            preview_port: 0,
+            color_theme: "Dark Modern".to_owned(),
+            compact_folders: true,
+        }
     }
 }
 
