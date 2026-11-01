@@ -514,6 +514,24 @@ impl CodeApp {
                         || r.key.contains(&filter)
                 };
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                    // Larger than the rest of the workbench: this is a page for reading.
+                    let style = ui.style_mut();
+                    for (text, scale) in [
+                        (egui::TextStyle::Body, 1.25),
+                        (egui::TextStyle::Button, 1.25),
+                        (egui::TextStyle::Monospace, 1.25),
+                        (egui::TextStyle::Heading, 1.2),
+                    ] {
+                        if let Some(font) = style.text_styles.get_mut(&text) {
+                            font.size *= scale;
+                        }
+                    }
+                    style.spacing.interact_size.y *= 1.3;
+                    style.spacing.icon_width *= 1.3;
+                    style.spacing.icon_width_inner *= 1.3;
+                    let help_size = ui.text_style_height(&egui::TextStyle::Body) * 0.82;
+                    // Near the text it answers, however wide the window is.
+                    let text_width = (ui.available_width() * 0.5).clamp(280.0, 460.0);
                     if filter.is_empty() || "color theme".contains(&filter) {
                         ui.heading("Color theme");
                         if ui.button(&self.settings.workbench.color_theme).clicked() {
@@ -529,10 +547,11 @@ impl CodeApp {
                         for row in rows.iter().filter(|r| matches(r)) {
                             ui.horizontal(|ui| {
                                 ui.vertical(|ui| {
-                                    ui.set_width(ui.available_width() - 340.0);
+                                    ui.set_width(text_width);
                                     ui.label(row.label);
                                     if !row.help.is_empty() {
-                                        let help = RichText::new(row.help).color(theme::colors().text_dim);
+                                        let help =
+                                            RichText::new(row.help).size(help_size).color(theme::colors().text_dim);
                                         ui.add(egui::Label::new(help).wrap());
                                     }
                                 });
@@ -548,9 +567,9 @@ impl CodeApp {
                                     action = Some(Action::Reset(row.table, row.key));
                                 }
                             });
-                            ui.add_space(4.0);
+                            ui.add_space(8.0);
                         }
-                        ui.add_space(10.0);
+                        ui.add_space(12.0);
                     }
                 });
             });
