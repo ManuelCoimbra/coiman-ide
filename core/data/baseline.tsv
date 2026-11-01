@@ -25,162 +25,847 @@ css.properties.-webkit-text-stroke	high	2017-04-05	2019-10-05	Text stroke and fi
 css.properties.-webkit-text-stroke-color	high	2017-04-05	2019-10-05	Text stroke and fill  (compatibility prefixes)
 css.properties.-webkit-text-stroke-width	high	2017-04-05	2019-10-05	Text stroke and fill  (compatibility prefixes)
 css.properties.accent-color	no			accent-color
+css.properties.accent-color.auto	no			accent-color
+css.properties.accent-color.currentColor	no			accent-color
+css.properties.accent-color.transparent	no			accent-color
 css.properties.align-content	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-content.baseline	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-content.center	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-content.end	high	2022-07-20	2025-01-20	Flexbox
+css.properties.align-content.flex-end	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-content.flex-start	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-content.normal	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-content.safe	low	2024-07-29		Flexbox
+css.properties.align-content.space-around	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-content.space-between	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-content.space-evenly	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-content.start	high	2022-07-20	2025-01-20	Flexbox
+css.properties.align-content.stretch	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-content.unsafe	low	2024-07-29		Flexbox
 css.properties.align-items	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-items.anchor-center	low	2026-01-13		Anchor positioning
+css.properties.align-items.baseline	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-items.center	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-items.end	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-items.normal	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-items.safe	low	2024-07-29		Flexbox
+css.properties.align-items.self-end	high	2022-07-20	2025-01-20	Flexbox
+css.properties.align-items.self-start	high	2022-07-20	2025-01-20	Flexbox
+css.properties.align-items.start	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-items.stretch	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-items.unsafe	low	2024-07-29		Flexbox
 css.properties.align-self	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-self.anchor-center	low	2026-01-13		Anchor positioning
+css.properties.align-self.auto	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-self.baseline	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-self.center	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-self.end	high	2022-03-14	2024-09-14	Flexbox
+css.properties.align-self.flex-end	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-self.flex-start	high	2015-09-30	2018-03-30	Flexbox
+css.properties.align-self.normal	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-self.safe	low	2024-07-29		Flexbox
+css.properties.align-self.self-end	high	2022-07-20	2025-01-20	Flexbox
+css.properties.align-self.self-start	high	2022-07-20	2025-01-20	Flexbox
+css.properties.align-self.start	high	2022-03-14	2024-09-14	Flexbox
+css.properties.align-self.stretch	high	2020-01-15	2022-07-15	Flexbox
+css.properties.align-self.unsafe	low	2024-07-29		Flexbox
 css.properties.alignment-baseline	low	2026-03-24		alignment-baseline
+css.properties.alignment-baseline.alphabetic	low	2026-07-21		alignment-baseline
+css.properties.alignment-baseline.baseline	low	2026-03-24		alignment-baseline
+css.properties.alignment-baseline.central	low	2026-07-21		alignment-baseline
+css.properties.alignment-baseline.ideographic	low	2026-07-21		alignment-baseline
+css.properties.alignment-baseline.mathematical	low	2026-07-21		alignment-baseline
+css.properties.alignment-baseline.middle	low	2026-03-24		alignment-baseline
+css.properties.alignment-baseline.text-after-edge	no			alignment-baseline
+css.properties.alignment-baseline.text-before-edge	no			alignment-baseline
 css.properties.all	high	2020-01-15	2022-07-15	all
 css.properties.anchor-name	low	2026-01-13		Anchor positioning
+css.properties.anchor-name.none	low	2026-01-13		Anchor positioning
 css.properties.anchor-scope	low	2026-01-13		Anchor positioning
+css.properties.anchor-scope.all	low	2026-01-13		Anchor positioning
+css.properties.anchor-scope.none	low	2026-01-13		Anchor positioning
 css.properties.animation	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-composition	high	2023-07-04	2026-01-04	animation-composition
 css.properties.animation-delay	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-direction	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-direction.alternate	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-direction.alternate-reverse	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-direction.normal	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-direction.reverse	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-duration	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-duration.auto	no			Animations (CSS)
 css.properties.animation-fill-mode	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-fill-mode.backwards	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-fill-mode.both	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-fill-mode.forwards	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-fill-mode.none	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-iteration-count	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-iteration-count.infinite	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-name	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-name.none	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-play-state	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-play-state.paused	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-play-state.running	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-range	no			Scroll-driven animations
 css.properties.animation-range-end	no			Scroll-driven animations
+css.properties.animation-range-end.normal	no			Scroll-driven animations
 css.properties.animation-range-start	no			Scroll-driven animations
+css.properties.animation-range-start.normal	no			Scroll-driven animations
 css.properties.animation-timeline	no			Scroll-driven animations
+css.properties.animation-timeline.scroll	no			Scroll-driven animations
+css.properties.animation-timeline.view	no			Scroll-driven animations
 css.properties.animation-timing-function	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.ease	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.ease-in	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.ease-in-out	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.ease-out	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.jump	high	2020-09-16	2023-03-16	Animations (CSS)
+css.properties.animation-timing-function.linear	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.step-end	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation-timing-function.step-start	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.animation-trigger	no			Scroll-triggered animations
+css.properties.animation-trigger.none	no			Scroll-triggered animations
+css.properties.animation.alternate	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.alternate-reverse	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.auto	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.backwards	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.both	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.ease	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.ease-in	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.ease-in-out	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.ease-out	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.forwards	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.infinite	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.linear	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.none	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.normal	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.paused	high	2020-01-15	2022-07-15	Animations (CSS)
+css.properties.animation.reverse	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.running	high	2020-01-15	2022-07-15	Animations (CSS)
+css.properties.animation.step-end	high	2015-09-30	2018-03-30	Animations (CSS)
+css.properties.animation.step-start	high	2015-09-30	2018-03-30	Animations (CSS)
 css.properties.appearance	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.auto	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.base-select	no			Customizable <select>
+css.properties.appearance.button	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.checkbox	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.listbox	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.menulist	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.menulist-button	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.meter	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.none	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.progress-bar	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.radio	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.searchfield	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.textarea	high	2022-03-14	2024-09-14	appearance
+css.properties.appearance.textfield	high	2022-03-14	2024-09-14	appearance
 css.properties.aspect-ratio	high	2021-09-20	2024-03-20	aspect-ratio
+css.properties.aspect-ratio.auto	high	2021-09-20	2024-03-20	aspect-ratio
 css.properties.backdrop-filter	low	2024-09-16		backdrop-filter
 css.properties.backface-visibility	high	2022-03-14	2024-09-14	3D transforms
+css.properties.backface-visibility.hidden	high	2022-03-14	2024-09-14	3D transforms
+css.properties.backface-visibility.visible	high	2022-03-14	2024-09-14	3D transforms
 css.properties.background	high	2015-07-29	2018-01-29	background
 css.properties.background-attachment	high	2015-07-29	2018-01-29	background-attachment
+css.properties.background-attachment.fixed	no			background-attachment
+css.properties.background-attachment.local	high	2022-03-14	2024-09-14	background-attachment
+css.properties.background-attachment.scroll	high	2015-07-29	2018-01-29	background-attachment
 css.properties.background-blend-mode	high	2020-01-15	2022-07-15	background-blend-mode
 css.properties.background-clip	high	2015-07-29	2018-01-29	background-clip
+css.properties.background-clip.border-area	no			background-clip: border-area
+css.properties.background-clip.border-box	high	2015-07-29	2018-01-29	background-clip
+css.properties.background-clip.content-box	high	2015-07-29	2018-01-29	background-clip
+css.properties.background-clip.padding-box	high	2015-07-29	2018-01-29	background-clip
+css.properties.background-clip.text	no			background-clip: text
 css.properties.background-color	high	2015-07-29	2018-01-29	background-color
+css.properties.background-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.background-color.transparent	high	2015-07-29	2018-01-29	background-color
 css.properties.background-image	high	2015-07-29	2018-01-29	background-image
+css.properties.background-image.element	no			element()
+css.properties.background-image.gradients	high	2015-07-29	2018-01-29	Gradients
+css.properties.background-image.image-set	high	2023-09-18	2026-03-18	image-set()
+css.properties.background-image.none	high	2015-07-29	2018-01-29	background-image
 css.properties.background-origin	high	2015-07-29	2018-01-29	background-origin
+css.properties.background-origin.border-box	high	2015-07-29	2018-01-29	background-origin
+css.properties.background-origin.content-box	high	2015-07-29	2018-01-29	background-origin
+css.properties.background-origin.padding-box	high	2015-07-29	2018-01-29	background-origin
 css.properties.background-position	high	2015-07-29	2018-01-29	background-position
 css.properties.background-position-x	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position-x.center	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position-x.left	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position-x.right	high	2016-09-20	2019-03-20	background-position
 css.properties.background-position-y	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position-y.bottom	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position-y.center	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position-y.top	high	2016-09-20	2019-03-20	background-position
+css.properties.background-position.bottom	high	2020-01-15	2022-07-15	background-position
+css.properties.background-position.center	high	2020-01-15	2022-07-15	background-position
+css.properties.background-position.left	high	2020-01-15	2022-07-15	background-position
+css.properties.background-position.right	high	2020-01-15	2022-07-15	background-position
+css.properties.background-position.top	high	2020-01-15	2022-07-15	background-position
 css.properties.background-repeat	high	2015-07-29	2018-01-29	background-repeat
+css.properties.background-repeat.2-value	high	2015-07-29	2018-01-29	background-repeat
+css.properties.background-repeat.no-repeat	high	2015-07-29	2018-01-29	background-repeat
+css.properties.background-repeat.repeat	high	2015-07-29	2018-01-29	background-repeat
+css.properties.background-repeat.repeat-x	high	2015-07-29	2018-01-29	background-repeat
+css.properties.background-repeat.repeat-y	high	2015-07-29	2018-01-29	background-repeat
+css.properties.background-repeat.round	high	2016-09-20	2019-03-20	background-repeat
+css.properties.background-repeat.space	high	2016-09-20	2019-03-20	background-repeat
 css.properties.background-size	high	2015-07-29	2018-01-29	background-size
+css.properties.background-size.auto	high	2015-07-29	2018-01-29	background-size
+css.properties.background-size.contain	high	2015-07-29	2018-01-29	background-size
+css.properties.background-size.cover	high	2015-07-29	2018-01-29	background-size
+css.properties.background.background-clip	high	2015-07-29	2018-01-29	background-clip
+css.properties.background.background-origin	high	2015-07-29	2018-01-29	background-origin
+css.properties.background.background-size	high	2015-07-29	2018-01-29	background-size
+css.properties.background.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.background.local	high	2015-07-29	2018-01-29	background
+css.properties.background.no-repeat	high	2015-07-29	2018-01-29	background
+css.properties.background.none	high	2015-07-29	2018-01-29	background
+css.properties.background.repeat	high	2015-07-29	2018-01-29	background
+css.properties.background.repeat-x	high	2015-07-29	2018-01-29	background
+css.properties.background.repeat-y	high	2015-07-29	2018-01-29	background
+css.properties.background.round	high	2015-07-29	2018-01-29	background
+css.properties.background.scroll	high	2015-07-29	2018-01-29	background
+css.properties.background.space	high	2015-07-29	2018-01-29	background
+css.properties.background.text	no			background-clip: text
+css.properties.background.transparent	high	2015-07-29	2018-01-29	background
 css.properties.baseline-shift	low	2026-03-24		baseline-shift
+css.properties.baseline-shift.sub	low	2026-03-24		baseline-shift
+css.properties.baseline-shift.super	low	2026-03-24		baseline-shift
 css.properties.baseline-source	no			baseline-source
+css.properties.baseline-source.auto	no			baseline-source
+css.properties.baseline-source.first	no			baseline-source
+css.properties.baseline-source.last	no			baseline-source
 css.properties.block-size	high	2020-01-15	2022-07-15	Logical properties
+css.properties.block-size.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.block-size.fit-content	high	2021-11-02	2024-05-02	Logical properties
+css.properties.block-size.max-content	high	2020-01-15	2022-07-15	Logical properties
+css.properties.block-size.min-content	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border	high	2015-07-29	2018-01-29	Borders
 css.properties.border-block	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-block-color	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-color.currentColor	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-color.transparent	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-block-end	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-end-color	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-color.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-color.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-end-style	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-style.solid	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-end-width	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-width.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-width.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end-width.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.solid	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-end.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-start	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-start-color	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-color.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-color.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-start-style	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-style.solid	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-start-width	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-width.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-width.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start-width.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.solid	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-block-start.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-block-style	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.dashed	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.dotted	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.double	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.groove	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.hidden	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.inset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.none	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.outset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.ridge	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-style.solid	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-block-width	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-width.medium	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-width.thick	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block-width.thin	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.currentColor	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.dashed	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.dotted	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.double	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.groove	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.hidden	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.inset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.medium	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.none	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.outset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.ridge	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.solid	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.thick	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.thin	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-block.transparent	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-bottom	high	2015-07-29	2018-01-29	Borders
 css.properties.border-bottom-color	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-bottom-color.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-bottom-left-radius	high	2015-07-29	2018-01-29	border-radius
+css.properties.border-bottom-left-radius.percentages	high	2015-07-29	2018-01-29	border-radius
 css.properties.border-bottom-right-radius	high	2015-07-29	2018-01-29	border-radius
+css.properties.border-bottom-right-radius.percentages	high	2015-07-29	2018-01-29	border-radius
 css.properties.border-bottom-style	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-style.solid	high	2015-07-29	2018-01-29	Borders
 css.properties.border-bottom-width	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-width.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-width.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom-width.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-bottom.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.solid	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-bottom.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-collapse	high	2015-07-29	2018-01-29	Tables
+css.properties.border-collapse.collapse	high	2020-01-15	2022-07-15	Tables
+css.properties.border-collapse.separate	high	2020-01-15	2022-07-15	Tables
 css.properties.border-color	high	2015-07-29	2018-01-29	Borders
+css.properties.border-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-color.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-end-end-radius	high	2021-09-20	2024-03-20	Logical properties
 css.properties.border-end-start-radius	high	2021-09-20	2024-03-20	Logical properties
 css.properties.border-image	high	2015-07-29	2018-01-29	Border images
 css.properties.border-image-outset	high	2015-07-29	2018-01-29	Border images
 css.properties.border-image-repeat	high	2016-03-21	2018-09-21	Border images
+css.properties.border-image-repeat.repeat	high	2016-03-21	2018-09-21	Border images
+css.properties.border-image-repeat.round	high	2016-03-21	2018-09-21	Border images
+css.properties.border-image-repeat.space	high	2017-02-01	2019-08-01	Border images
+css.properties.border-image-repeat.stretch	high	2016-03-21	2018-09-21	Border images
 css.properties.border-image-slice	high	2015-07-29	2018-01-29	Border images
 css.properties.border-image-source	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image-source.none	high	2015-07-29	2018-01-29	Border images
 css.properties.border-image-width	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image-width.auto	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.fill	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.gradient	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.none	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.repeat	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.round	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.space	high	2015-07-29	2018-01-29	Border images
+css.properties.border-image.stretch	high	2015-07-29	2018-01-29	Border images
 css.properties.border-inline	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-inline-color	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-color.currentColor	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-color.transparent	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-inline-end	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-end-color	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-color.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-color.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-end-style	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-style.solid	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-end-width	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-width.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-width.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end-width.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.solid	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-end.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-start	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-start-color	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-color.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-color.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-start-style	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-style.solid	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-start-width	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-width.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-width.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start-width.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.currentColor	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.dashed	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.dotted	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.double	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.groove	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.hidden	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.inset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.medium	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.none	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.outset	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.ridge	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.solid	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.thick	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.thin	high	2020-01-15	2022-07-15	Logical properties
+css.properties.border-inline-start.transparent	high	2020-01-15	2022-07-15	Logical properties
 css.properties.border-inline-style	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.dashed	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.dotted	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.double	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.groove	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.hidden	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.inset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.none	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.outset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.ridge	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-style.solid	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-inline-width	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-width.medium	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-width.thick	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline-width.thin	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.currentColor	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.dashed	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.dotted	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.double	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.groove	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.hidden	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.inset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.medium	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.none	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.outset	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.ridge	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.solid	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.thick	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.thin	high	2021-04-26	2023-10-26	Logical properties
+css.properties.border-inline.transparent	high	2021-04-26	2023-10-26	Logical properties
 css.properties.border-left	high	2015-07-29	2018-01-29	Borders
 css.properties.border-left-color	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-left-color.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-left-style	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-style.solid	high	2015-07-29	2018-01-29	Borders
 css.properties.border-left-width	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-width.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-width.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left-width.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-left.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.solid	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-left.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-radius	high	2015-07-29	2018-01-29	border-radius
+css.properties.border-radius.percentages	high	2015-07-29	2018-01-29	border-radius
 css.properties.border-right	high	2015-07-29	2018-01-29	Borders
 css.properties.border-right-color	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-right-color.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-right-style	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-style.solid	high	2015-07-29	2018-01-29	Borders
 css.properties.border-right-width	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-width.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-width.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right-width.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-right.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.solid	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-right.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-shape	no			border-shape
+css.properties.border-shape.none	no			border-shape
 css.properties.border-spacing	high	2015-07-29	2018-01-29	Tables
 css.properties.border-start-end-radius	high	2021-09-20	2024-03-20	Logical properties
 css.properties.border-start-start-radius	high	2021-09-20	2024-03-20	Logical properties
 css.properties.border-style	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-style.solid	high	2015-07-29	2018-01-29	Borders
 css.properties.border-top	high	2015-07-29	2018-01-29	Borders
 css.properties.border-top-color	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-top-color.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-top-left-radius	high	2015-07-29	2018-01-29	border-radius
+css.properties.border-top-left-radius.percentages	high	2015-07-29	2018-01-29	border-radius
 css.properties.border-top-right-radius	high	2015-07-29	2018-01-29	border-radius
+css.properties.border-top-right-radius.percentages	high	2015-07-29	2018-01-29	border-radius
 css.properties.border-top-style	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-style.solid	high	2015-07-29	2018-01-29	Borders
 css.properties.border-top-width	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-width.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-width.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top-width.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border-top.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.solid	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border-top.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.border-width	high	2015-07-29	2018-01-29	Borders
+css.properties.border-width.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border-width.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border-width.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.border.dashed	high	2015-07-29	2018-01-29	Borders
+css.properties.border.dotted	high	2015-07-29	2018-01-29	Borders
+css.properties.border.double	high	2015-07-29	2018-01-29	Borders
+css.properties.border.groove	high	2015-07-29	2018-01-29	Borders
+css.properties.border.hidden	high	2015-07-29	2018-01-29	Borders
+css.properties.border.inset	high	2015-07-29	2018-01-29	Borders
+css.properties.border.medium	high	2015-07-29	2018-01-29	Borders
+css.properties.border.none	high	2015-07-29	2018-01-29	Borders
+css.properties.border.outset	high	2015-07-29	2018-01-29	Borders
+css.properties.border.ridge	high	2015-07-29	2018-01-29	Borders
+css.properties.border.solid	high	2015-07-29	2018-01-29	Borders
+css.properties.border.thick	high	2015-07-29	2018-01-29	Borders
+css.properties.border.thin	high	2015-07-29	2018-01-29	Borders
+css.properties.border.transparent	high	2015-07-29	2018-01-29	Borders
 css.properties.bottom	high	2015-07-29	2018-01-29	Physical properties
+css.properties.bottom.anchor	low	2026-01-13		Anchor positioning
+css.properties.bottom.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.bottom.auto	high	2015-07-29	2018-01-29	Physical properties
 css.properties.box-decoration-break	no			box-decoration-break
+css.properties.box-decoration-break.clone	no			box-decoration-break
+css.properties.box-decoration-break.slice	no			box-decoration-break
 css.properties.box-shadow	high	2015-07-29	2018-01-29	box-shadow
+css.properties.box-shadow.inset	high	2015-07-29	2018-01-29	box-shadow
+css.properties.box-shadow.none	high	2015-07-29	2018-01-29	box-shadow
 css.properties.box-sizing	high	2015-07-29	2018-01-29	box-sizing
+css.properties.box-sizing.border-box	high	2015-07-29	2018-01-29	box-sizing
+css.properties.box-sizing.content-box	high	2015-07-29	2018-01-29	box-sizing
 css.properties.break-after	high	2019-01-29	2021-07-29	Page breaks
+css.properties.break-after.always	no			Page breaks
+css.properties.break-after.auto	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-after.avoid	no			Page breaks
+css.properties.break-after.avoid-column	no			Column breaks
+css.properties.break-after.avoid-page	no			Page breaks
+css.properties.break-after.column	no			Column breaks
+css.properties.break-after.left	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-after.page	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-after.recto	no			Page breaks
+css.properties.break-after.right	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-after.verso	no			Page breaks
 css.properties.break-before	high	2019-01-29	2021-07-29	Page breaks
+css.properties.break-before.always	no			Page breaks
+css.properties.break-before.auto	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-before.avoid	no			Page breaks
+css.properties.break-before.avoid-column	no			Column breaks
+css.properties.break-before.avoid-page	no			Page breaks
+css.properties.break-before.column	no			Column breaks
+css.properties.break-before.left	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-before.page	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-before.recto	no			Page breaks
+css.properties.break-before.right	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-before.verso	no			Page breaks
 css.properties.break-inside	high	2019-01-29	2021-07-29	Page breaks
+css.properties.break-inside.auto	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-inside.avoid	high	2020-01-15	2022-07-15	Page breaks
+css.properties.break-inside.avoid-column	high	2021-09-07	2024-03-07	Column breaks
+css.properties.break-inside.avoid-page	high	2021-09-07	2024-03-07	Page breaks
 css.properties.caption-side	high	2015-07-29	2018-01-29	Tables
+css.properties.caption-side.bottom	high	2020-01-15	2022-07-15	Tables
+css.properties.caption-side.bottom-outside	no			Tables
+css.properties.caption-side.top	high	2020-01-15	2022-07-15	Tables
+css.properties.caption-side.top-outside	no			Tables
 css.properties.caret-color	high	2020-01-15	2022-07-15	caret-color
+css.properties.caret-color.currentColor	high	2020-01-15	2022-07-15	caret-color
+css.properties.caret-color.transparent	high	2020-01-15	2022-07-15	caret-color
 css.properties.caret-shape	no			caret-shape
+css.properties.caret-shape.auto	no			caret-shape
+css.properties.caret-shape.bar	no			caret-shape
+css.properties.caret-shape.block	no			caret-shape
+css.properties.caret-shape.underscore	no			caret-shape
 css.properties.clear	high	2015-07-29	2018-01-29	float and clear
+css.properties.clear.both	high	2015-07-29	2018-01-29	float and clear
+css.properties.clear.inline-end	high	2023-10-13	2026-04-13	Logical properties
+css.properties.clear.inline-start	high	2023-10-13	2026-04-13	Logical properties
+css.properties.clear.left	high	2015-07-29	2018-01-29	float and clear
+css.properties.clear.none	high	2015-07-29	2018-01-29	float and clear
+css.properties.clear.right	high	2015-07-29	2018-01-29	float and clear
 css.properties.clip	no			clip
 css.properties.clip-path	high	2020-01-15	2022-07-15	clip-path
+css.properties.clip-path.fill-box	high	2023-11-02	2026-05-02	Clip path boxes
+css.properties.clip-path.none	high	2020-01-15	2022-07-15	clip-path
+css.properties.clip-path.path	high	2021-01-21	2023-07-21	clip-path
+css.properties.clip-path.stroke-box	high	2023-11-02	2026-05-02	Clip path boxes
+css.properties.clip-path.view-box	high	2023-11-02	2026-05-02	Clip path boxes
 css.properties.clip-rule	high	2020-01-15	2022-07-15	SVG
+css.properties.clip-rule.evenodd	high	2020-01-15	2022-07-15	SVG
+css.properties.clip-rule.nonzero	high	2020-01-15	2022-07-15	SVG
+css.properties.clip.auto	no			clip
 css.properties.color	high	2015-07-29	2018-01-29	Color
 css.properties.color-adjust	no			color-adjust
 css.properties.color-interpolation	high	2020-01-15	2022-07-15	SVG
 css.properties.color-interpolation-filters	high	2020-01-15	2022-07-15	SVG filters
+css.properties.color-interpolation-filters.auto	high	2020-01-15	2022-07-15	SVG filters
+css.properties.color-interpolation-filters.linearRGB	high	2020-01-15	2022-07-15	SVG filters
+css.properties.color-interpolation-filters.sRGB	high	2020-01-15	2022-07-15	SVG filters
+css.properties.color-interpolation.auto	high	2020-01-15	2022-07-15	SVG
+css.properties.color-interpolation.linearGradient	no			SVG
+css.properties.color-interpolation.linearRGB	high	2020-01-15	2022-07-15	SVG
+css.properties.color-interpolation.sRGB	high	2020-01-15	2022-07-15	SVG
 css.properties.color-scheme	high	2022-01-11	2024-07-11	color-scheme
+css.properties.color-scheme.dark	high	2022-01-11	2024-07-11	color-scheme
+css.properties.color-scheme.light	high	2022-01-11	2024-07-11	color-scheme
+css.properties.color-scheme.normal	high	2022-01-11	2024-07-11	color-scheme
+css.properties.color-scheme.only	high	2022-02-03	2024-08-03	color-scheme
+css.properties.color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.color.transparent	high	2015-07-29	2018-01-29	Color
 css.properties.column-count	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-count.auto	high	2017-03-07	2019-09-07	Multi-column layout
 css.properties.column-fill	high	2017-03-07	2019-09-07	column-fill
+css.properties.column-fill.auto	high	2017-03-07	2019-09-07	column-fill
+css.properties.column-fill.balance	high	2017-03-07	2019-09-07	column-fill
 css.properties.column-gap	high	2015-07-29	2018-01-29	Multi-column layout
+css.properties.column-gap.normal	high	2015-07-29	2018-01-29	Multi-column layout
 css.properties.column-height	no			column-wrap
 css.properties.column-rule	high	2017-03-07	2019-09-07	Multi-column layout
 css.properties.column-rule-break	no			Gap decorations
+css.properties.column-rule-break.intersection	no			Gap decorations
+css.properties.column-rule-break.none	no			Gap decorations
+css.properties.column-rule-break.normal	no			Gap decorations
 css.properties.column-rule-color	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-color.currentColor	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-color.transparent	high	2017-03-07	2019-09-07	Multi-column layout
 css.properties.column-rule-inset	no			Gap decorations
 css.properties.column-rule-inset-cap	no			Gap decorations
 css.properties.column-rule-inset-cap-end	no			Gap decorations
+css.properties.column-rule-inset-cap-end.overlap-join	no			Gap decorations
 css.properties.column-rule-inset-cap-start	no			Gap decorations
+css.properties.column-rule-inset-cap-start.overlap-join	no			Gap decorations
+css.properties.column-rule-inset-cap.overlap-join	no			Gap decorations
 css.properties.column-rule-inset-end	no			Gap decorations
+css.properties.column-rule-inset-end.overlap-join	no			Gap decorations
 css.properties.column-rule-inset-junction	no			Gap decorations
 css.properties.column-rule-inset-junction-end	no			Gap decorations
+css.properties.column-rule-inset-junction-end.overlap-join	no			Gap decorations
 css.properties.column-rule-inset-junction-start	no			Gap decorations
+css.properties.column-rule-inset-junction-start.overlap-join	no			Gap decorations
+css.properties.column-rule-inset-junction.overlap-join	no			Gap decorations
 css.properties.column-rule-inset-start	no			Gap decorations
+css.properties.column-rule-inset-start.overlap-join	no			Gap decorations
+css.properties.column-rule-inset.overlap-join	no			Gap decorations
 css.properties.column-rule-style	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.dashed	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.dotted	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.double	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.groove	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.hidden	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.inset	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.none	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.outset	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.ridge	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-style.solid	high	2017-03-07	2019-09-07	Multi-column layout
 css.properties.column-rule-visibility-items	no			Gap decorations
+css.properties.column-rule-visibility-items.all	no			Gap decorations
+css.properties.column-rule-visibility-items.around	no			Gap decorations
+css.properties.column-rule-visibility-items.between	no			Gap decorations
+css.properties.column-rule-visibility-items.normal	no			Gap decorations
 css.properties.column-rule-width	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-width.medium	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-width.thick	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule-width.thin	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.currentColor	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.dashed	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.dotted	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.double	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.groove	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.hidden	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.inset	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.medium	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.none	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.outset	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.ridge	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.solid	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.thick	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.thin	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.column-rule.transparent	high	2017-03-07	2019-09-07	Multi-column layout
 css.properties.column-span	high	2020-07-28	2023-01-28	column-span
+css.properties.column-span.all	high	2020-07-28	2023-01-28	column-span
+css.properties.column-span.none	high	2020-07-28	2023-01-28	column-span
 css.properties.column-width	high	2016-11-15	2019-05-15	Multi-column layout
+css.properties.column-width.auto	high	2016-11-15	2019-05-15	Multi-column layout
 css.properties.column-wrap	no			column-wrap
 css.properties.columns	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.columns.auto	high	2017-03-07	2019-09-07	Multi-column layout
+css.properties.columns.column-height	no			column-wrap
 css.properties.contain	high	2022-03-14	2024-09-14	contain
 css.properties.contain-intrinsic-block-size	high	2023-09-18	2026-03-18	contain-intrinsic-size
+css.properties.contain-intrinsic-block-size.none	high	2023-09-18	2026-03-18	contain-intrinsic-size
 css.properties.contain-intrinsic-height	high	2023-09-18	2026-03-18	contain-intrinsic-size
+css.properties.contain-intrinsic-height.none	high	2023-09-18	2026-03-18	contain-intrinsic-size
 css.properties.contain-intrinsic-inline-size	high	2023-09-18	2026-03-18	contain-intrinsic-size
+css.properties.contain-intrinsic-inline-size.none	high	2023-09-18	2026-03-18	contain-intrinsic-size
 css.properties.contain-intrinsic-size	high	2023-09-18	2026-03-18	contain-intrinsic-size
+css.properties.contain-intrinsic-size.none	high	2023-09-18	2026-03-18	contain-intrinsic-size
 css.properties.contain-intrinsic-width	high	2023-09-18	2026-03-18	contain-intrinsic-size
+css.properties.contain-intrinsic-width.none	high	2023-09-18	2026-03-18	contain-intrinsic-size
+css.properties.contain.content	high	2022-03-14	2024-09-14	contain
+css.properties.contain.inline-size	high	2022-09-12	2025-03-12	Inline-size containment
+css.properties.contain.layout	high	2022-03-14	2024-09-14	Layout containment
+css.properties.contain.none	high	2022-03-14	2024-09-14	contain
+css.properties.contain.paint	high	2022-03-14	2024-09-14	Paint containment
+css.properties.contain.size	high	2022-03-14	2024-09-14	Size containment
+css.properties.contain.strict	high	2022-03-14	2024-09-14	contain
+css.properties.contain.style	high	2022-07-26	2025-01-26	Style containment
 css.properties.container	high	2023-02-14	2025-08-14	Container queries (size)
 css.properties.container-name	high	2023-02-14	2025-08-14	Container queries (size)
+css.properties.container-name.none	high	2023-02-14	2025-08-14	Container queries (size)
 css.properties.container-type	high	2023-02-14	2025-08-14	Container queries (size)
+css.properties.container-type.anchored	no			Anchor position container queries
+css.properties.container-type.inline-size	high	2023-02-14	2025-08-14	Container queries (size)
+css.properties.container-type.normal	high	2023-02-14	2025-08-14	Container queries (size)
+css.properties.container-type.scroll-state	no			Container scroll-state queries
+css.properties.container-type.size	high	2023-02-14	2025-08-14	Container queries (size)
 css.properties.content	high	2015-07-29	2018-01-29	Content
 css.properties.content-visibility	low	2024-09-16		content-visibility
+css.properties.content-visibility.auto	low	2025-09-15		content-visibility
+css.properties.content-visibility.hidden	low	2024-09-16		content-visibility
+css.properties.content-visibility.visible	low	2024-09-16		content-visibility
+css.properties.content.close-quote	high	2015-07-29	2018-01-29	Content
+css.properties.content.gradient	no			Content
+css.properties.content.image-set	high	2023-09-18	2026-03-18	image-set()
+css.properties.content.no-close-quote	high	2015-07-29	2018-01-29	Content
+css.properties.content.no-open-quote	high	2015-07-29	2018-01-29	Content
+css.properties.content.none	high	2015-07-29	2018-01-29	Content
+css.properties.content.normal	high	2015-07-29	2018-01-29	Content
+css.properties.content.open-quote	high	2015-07-29	2018-01-29	Content
+css.properties.content.url	high	2015-07-29	2018-01-29	Content
 css.properties.corner-block-end-shape	no			corner-shape
 css.properties.corner-block-start-shape	no			corner-shape
 css.properties.corner-bottom-left-shape	no			corner-shape
@@ -199,69 +884,372 @@ css.properties.corner-top-left-shape	no			corner-shape
 css.properties.corner-top-right-shape	no			corner-shape
 css.properties.corner-top-shape	no			corner-shape
 css.properties.counter-increment	high	2015-07-29	2018-01-29	Counters (CSS)
+css.properties.counter-increment.list-item	high	2015-09-30	2018-03-30	Counters (CSS)
+css.properties.counter-increment.none	high	2015-07-29	2018-01-29	Counters (CSS)
 css.properties.counter-reset	high	2015-07-29	2018-01-29	Counters (CSS)
+css.properties.counter-reset.list-item	no			Counters (CSS)
+css.properties.counter-reset.none	high	2015-07-29	2018-01-29	Counters (CSS)
+css.properties.counter-reset.reversed	no			Reversed counter-reset
 css.properties.counter-set	high	2023-12-11	2026-06-11	counter-set
+css.properties.counter-set.list-item	high	2023-12-11	2026-06-11	counter-set
+css.properties.counter-set.none	high	2023-12-11	2026-06-11	counter-set
 css.properties.cursor	high	2021-12-07	2024-06-07	Cursor styles
+css.properties.cursor.alias	no			Cursor styles
+css.properties.cursor.all-scroll	no			Cursor styles
+css.properties.cursor.auto	high	2021-12-07	2024-06-07	Cursor styles
+css.properties.cursor.cell	high	2021-12-07	2024-06-07	Cursor styles
+css.properties.cursor.col-resize	no			Cursor styles
+css.properties.cursor.context-menu	no			Cursor styles
+css.properties.cursor.copy	no			Cursor styles
+css.properties.cursor.crosshair	no			Cursor styles
+css.properties.cursor.default	no			Cursor styles
+css.properties.cursor.e-resize	no			Cursor styles
+css.properties.cursor.ew-resize	no			Cursor styles
+css.properties.cursor.grab	no			Cursor styles
+css.properties.cursor.grabbing	no			Cursor styles
+css.properties.cursor.help	no			Cursor styles
+css.properties.cursor.move	no			Cursor styles
+css.properties.cursor.n-resize	no			Cursor styles
+css.properties.cursor.ne-resize	no			Cursor styles
+css.properties.cursor.nesw-resize	no			Cursor styles
+css.properties.cursor.no-drop	no			Cursor styles
+css.properties.cursor.none	no			Cursor styles
+css.properties.cursor.not-allowed	no			Cursor styles
+css.properties.cursor.ns-resize	no			Cursor styles
+css.properties.cursor.nw-resize	no			Cursor styles
+css.properties.cursor.nwse-resize	no			Cursor styles
+css.properties.cursor.pointer	no			Cursor styles
+css.properties.cursor.progress	no			Cursor styles
+css.properties.cursor.row-resize	no			Cursor styles
+css.properties.cursor.s-resize	no			Cursor styles
+css.properties.cursor.se-resize	no			Cursor styles
+css.properties.cursor.sw-resize	no			Cursor styles
+css.properties.cursor.text	high	2021-12-07	2024-06-07	Cursor styles
+css.properties.cursor.url	high	2021-12-07	2024-06-07	Cursor styles
+css.properties.cursor.vertical-text	no			Cursor styles
+css.properties.cursor.w-resize	no			Cursor styles
+css.properties.cursor.wait	no			Cursor styles
+css.properties.cursor.zoom-in	no			Cursor styles
+css.properties.cursor.zoom-out	no			Cursor styles
 css.properties.custom-property	high	2017-04-05	2019-10-05	Custom properties
 css.properties.cx	high	2020-07-28	2023-01-28	SVG
 css.properties.cy	high	2020-07-28	2023-01-28	SVG
 css.properties.d	no			SVG
 css.properties.direction	high	2015-07-29	2018-01-29	Layout direction override
+css.properties.direction.ltr	high	2015-07-29	2018-01-29	Layout direction override
+css.properties.direction.rtl	high	2015-07-29	2018-01-29	Layout direction override
 css.properties.display	high	2015-07-29	2018-01-29	Display
+css.properties.display.block	high	2015-07-29	2018-01-29	Display
+css.properties.display.contents	high	2020-01-15	2022-07-15	display: contents
+css.properties.display.flex	high	2015-09-30	2018-03-30	Flexbox
+css.properties.display.flow-root	high	2020-01-15	2022-07-15	display: flow-root
+css.properties.display.grid	high	2017-10-17	2020-04-17	Grid
+css.properties.display.grid-lanes	no			Grid lanes
+css.properties.display.inline	high	2015-07-29	2018-01-29	Display
+css.properties.display.inline-block	high	2015-07-29	2018-01-29	Display
+css.properties.display.inline-flex	high	2015-09-30	2018-03-30	Flexbox
+css.properties.display.inline-grid	high	2017-10-17	2020-04-17	Grid
+css.properties.display.inline-grid-lanes	no			Grid lanes
+css.properties.display.inline-table	high	2015-07-29	2018-01-29	display: table
+css.properties.display.list-item	high	2015-07-29	2018-01-29	display: list-item
+css.properties.display.math	no			MathML
+css.properties.display.none	high	2015-07-29	2018-01-29	Display
+css.properties.display.ruby	no			display: ruby
+css.properties.display.ruby-base	no			display: ruby
+css.properties.display.ruby-base-container	no			display: ruby
+css.properties.display.ruby-text	no			display: ruby
+css.properties.display.ruby-text-container	no			display: ruby
+css.properties.display.table	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-caption	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-cell	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-column	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-column-group	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-footer-group	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-header-group	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-row	high	2015-07-29	2018-01-29	display: table
+css.properties.display.table-row-group	high	2015-07-29	2018-01-29	display: table
 css.properties.dominant-baseline	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.alphabetic	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.auto	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.central	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.hanging	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.ideographic	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.mathematical	high	2020-01-15	2022-07-15	dominant-baseline
+css.properties.dominant-baseline.middle	high	2020-01-15	2022-07-15	dominant-baseline
 css.properties.dynamic-range-limit	no			dynamic-range-limit
+css.properties.dynamic-range-limit.constrained	no			dynamic-range-limit
+css.properties.dynamic-range-limit.no-limit	no			dynamic-range-limit
+css.properties.dynamic-range-limit.standard	no			dynamic-range-limit
 css.properties.empty-cells	high	2015-07-29	2018-01-29	Tables
+css.properties.empty-cells.hide	high	2015-07-29	2018-01-29	Tables
+css.properties.empty-cells.show	high	2015-07-29	2018-01-29	Tables
 css.properties.field-sizing	low	2026-06-16		field-sizing
+css.properties.field-sizing.content	low	2026-06-16		field-sizing
+css.properties.field-sizing.fixed	low	2026-06-16		field-sizing
 css.properties.fill	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.fill-opacity	high	≤2017-04-05	≤2019-10-05	Opacity (SVG)
 css.properties.fill-rule	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.fill-rule.evenodd	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.fill-rule.nonzero	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.fill.none	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.filter	high	2016-09-07	2019-03-07	filter
+css.properties.filter.blur	high	2016-09-07	2019-03-07	filter
+css.properties.filter.brightness	high	2016-09-07	2019-03-07	filter
+css.properties.filter.contrast	high	2016-09-07	2019-03-07	filter
+css.properties.filter.drop-shadow	high	2016-09-07	2019-03-07	filter
+css.properties.filter.grayscale	high	2016-09-07	2019-03-07	filter
+css.properties.filter.hue-rotate	high	2016-09-07	2019-03-07	filter
+css.properties.filter.invert	high	2016-09-07	2019-03-07	filter
+css.properties.filter.opacity	high	2016-09-07	2019-03-07	filter
+css.properties.filter.saturate	high	2016-09-07	2019-03-07	filter
+css.properties.filter.sepia	high	2016-09-07	2019-03-07	filter
 css.properties.fit-tolerance	no			Grid lanes
+css.properties.fit-tolerance.infinite	no			Grid lanes
+css.properties.fit-tolerance.normal	no			Grid lanes
 css.properties.flex	high	2015-09-30	2018-03-30	Flexbox
 css.properties.flex-basis	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-basis.auto	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-basis.content	high	2022-03-14	2024-09-14	Flexbox
+css.properties.flex-basis.fit-content	high	2022-09-12	2025-03-12	Flexbox
+css.properties.flex-basis.max-content	high	2022-09-12	2025-03-12	Flexbox
+css.properties.flex-basis.min-content	high	2022-09-12	2025-03-12	Flexbox
 css.properties.flex-direction	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-direction.column	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-direction.column-reverse	high	2020-09-22	2023-03-22	Flexbox
+css.properties.flex-direction.row	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-direction.row-reverse	high	2020-09-22	2023-03-22	Flexbox
 css.properties.flex-flow	high	2015-09-30	2018-03-30	Flexbox
 css.properties.flex-grow	high	2015-09-30	2018-03-30	Flexbox
 css.properties.flex-shrink	high	2015-09-30	2018-03-30	Flexbox
 css.properties.flex-wrap	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-wrap.balance	no			flex-wrap: balance
+css.properties.flex-wrap.nowrap	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-wrap.wrap	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex-wrap.wrap-reverse	high	2015-09-30	2018-03-30	Flexbox
+css.properties.flex.none	high	2015-09-30	2018-03-30	Flexbox
 css.properties.float	high	2015-07-29	2018-01-29	float and clear
+css.properties.float.inline-end	high	2023-10-13	2026-04-13	Logical properties
+css.properties.float.inline-start	high	2023-10-13	2026-04-13	Logical properties
+css.properties.float.left	high	2015-07-29	2018-01-29	float and clear
+css.properties.float.none	high	2015-07-29	2018-01-29	float and clear
+css.properties.float.right	high	2015-07-29	2018-01-29	float and clear
 css.properties.flood-color	high	2015-07-29	2018-01-29	SVG filters
+css.properties.flood-color.currentColor	high	2015-07-29	2018-01-29	SVG filters
+css.properties.flood-color.transparent	high	2015-07-29	2018-01-29	SVG filters
 css.properties.flood-opacity	high	2015-07-29	2018-01-29	SVG filters
 css.properties.font	high	2015-07-29	2018-01-29	Font shorthand
 css.properties.font-family	high	2015-07-29	2018-01-29	font-family
+css.properties.font-family.cursive	high	2015-07-29	2018-01-29	font-family
+css.properties.font-family.fantasy	high	2015-07-29	2018-01-29	font-family
+css.properties.font-family.math	low	2026-03-24		Math font family
+css.properties.font-family.monospace	high	2015-07-29	2018-01-29	font-family
+css.properties.font-family.sans-serif	high	2015-07-29	2018-01-29	font-family
+css.properties.font-family.serif	high	2015-07-29	2018-01-29	font-family
+css.properties.font-family.system-ui	high	2021-09-07	2024-03-07	System font
+css.properties.font-family.ui-monospace	no			UI fonts
+css.properties.font-family.ui-rounded	no			UI fonts
+css.properties.font-family.ui-sans-serif	no			UI fonts
+css.properties.font-family.ui-serif	no			UI fonts
 css.properties.font-feature-settings	high	2016-03-21	2018-09-21	font-feature-settings
+css.properties.font-feature-settings.normal	high	2016-03-21	2018-09-21	font-feature-settings
 css.properties.font-kerning	high	2020-01-15	2022-07-15	font-kerning
+css.properties.font-kerning.auto	high	2020-01-15	2022-07-15	font-kerning
+css.properties.font-kerning.none	high	2020-01-15	2022-07-15	font-kerning
+css.properties.font-kerning.normal	high	2020-01-15	2022-07-15	font-kerning
 css.properties.font-language-override	no			font-language-override
 css.properties.font-optical-sizing	high	2020-03-24	2022-09-24	font-optical-sizing
+css.properties.font-optical-sizing.auto	high	2020-03-24	2022-09-24	font-optical-sizing
+css.properties.font-optical-sizing.none	high	2020-03-24	2022-09-24	font-optical-sizing
 css.properties.font-palette	high	2022-11-15	2025-05-15	font-palette
+css.properties.font-palette.dark	high	2022-11-15	2025-05-15	font-palette
+css.properties.font-palette.light	high	2022-11-15	2025-05-15	font-palette
+css.properties.font-palette.normal	high	2022-11-15	2025-05-15	font-palette
 css.properties.font-size	high	2015-07-29	2018-01-29	font-size
 css.properties.font-size-adjust	low	2024-07-25		font-size-adjust
+css.properties.font-size-adjust.from-font	low	2024-07-25		font-size-adjust
+css.properties.font-size-adjust.none	low	2024-07-25		font-size-adjust
+css.properties.font-size-adjust.two-values	low	2024-07-25		font-size-adjust
+css.properties.font-size.large	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.larger	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.math	low	2026-03-24		MathML
+css.properties.font-size.medium	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.small	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.smaller	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.x-large	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.x-small	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.xx-large	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.xx-small	high	2015-07-29	2018-01-29	font-size
+css.properties.font-size.xxx-large	high	2023-03-27	2025-09-27	font-size
 css.properties.font-stretch	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.condensed	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.expanded	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.extra-condensed	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.extra-expanded	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.normal	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.percentage	high	2018-10-02	2021-04-02	font-stretch
+css.properties.font-stretch.semi-condensed	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.semi-expanded	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.ultra-condensed	high	2017-09-19	2020-03-19	font-stretch
+css.properties.font-stretch.ultra-expanded	high	2017-09-19	2020-03-19	font-stretch
 css.properties.font-style	high	2015-07-29	2018-01-29	font-style
+css.properties.font-style.italic	high	2015-07-29	2018-01-29	font-style
+css.properties.font-style.normal	high	2015-07-29	2018-01-29	font-style
+css.properties.font-style.oblique	high	2015-07-29	2018-01-29	font-style
+css.properties.font-style.oblique-angle	no			font-style
 css.properties.font-synthesis	high	2022-01-06	2024-07-06	font-synthesis
 css.properties.font-synthesis-position	no			font-synthesis-position
+css.properties.font-synthesis-position.auto	no			font-synthesis-position
+css.properties.font-synthesis-position.none	no			font-synthesis-position
 css.properties.font-synthesis-small-caps	high	2023-03-27	2025-09-27	font-synthesis-small-caps
+css.properties.font-synthesis-small-caps.auto	high	2023-03-27	2025-09-27	font-synthesis-small-caps
+css.properties.font-synthesis-small-caps.none	high	2023-03-27	2025-09-27	font-synthesis-small-caps
 css.properties.font-synthesis-style	high	2023-03-27	2025-09-27	font-synthesis-style
+css.properties.font-synthesis-style.auto	high	2023-03-27	2025-09-27	font-synthesis-style
+css.properties.font-synthesis-style.none	high	2023-03-27	2025-09-27	font-synthesis-style
 css.properties.font-synthesis-weight	high	2023-03-27	2025-09-27	font-synthesis-weight
+css.properties.font-synthesis-weight.auto	high	2023-03-27	2025-09-27	font-synthesis-weight
+css.properties.font-synthesis-weight.none	high	2023-03-27	2025-09-27	font-synthesis-weight
+css.properties.font-synthesis.position	no			font-synthesis
+css.properties.font-synthesis.small-caps	high	2022-01-06	2024-07-06	font-synthesis
+css.properties.font-synthesis.style	high	2022-01-06	2024-07-06	font-synthesis
+css.properties.font-synthesis.weight	high	2022-01-06	2024-07-06	font-synthesis
 css.properties.font-variant	high	2015-07-29	2018-01-29	font-variant
 css.properties.font-variant-alternates	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.annotation	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.historical-forms	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.normal	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.ornaments	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.styleset	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.stylistic	high	2023-03-13	2025-09-13	font-variant-alternates
+css.properties.font-variant-alternates.swash	high	2023-03-13	2025-09-13	font-variant-alternates
 css.properties.font-variant-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.all-petite-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.all-small-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.normal	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.petite-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.small-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.titling-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant-caps.unicase	high	2020-01-15	2022-07-15	font-variant-caps
 css.properties.font-variant-east-asian	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.full-width	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.jis04	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.jis78	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.jis83	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.jis90	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.normal	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.proportional-width	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.ruby	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.simplified	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant-east-asian.traditional	high	2020-01-15	2022-07-15	font-variant-east-asian
 css.properties.font-variant-emoji	no			font-variant-emoji
+css.properties.font-variant-emoji.emoji	no			font-variant-emoji
+css.properties.font-variant-emoji.normal	no			font-variant-emoji
+css.properties.font-variant-emoji.text	no			font-variant-emoji
+css.properties.font-variant-emoji.unicode	no			font-variant-emoji
 css.properties.font-variant-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.common-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.contextual	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.discretionary-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.historical-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.no-common-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.no-contextual	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.no-discretionary-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.no-historical-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.none	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant-ligatures.normal	high	2020-01-15	2022-07-15	font-variant-ligatures
 css.properties.font-variant-numeric	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.diagonal-fractions	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.lining-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.normal	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.oldstyle-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.ordinal	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.proportional-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.slashed-zero	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.stacked-fractions	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant-numeric.tabular-nums	high	2020-01-15	2022-07-15	font-variant-numeric
 css.properties.font-variant-position	high	2023-09-15	2026-03-15	font-variant-position
+css.properties.font-variant-position.normal	high	2023-09-15	2026-03-15	font-variant-position
+css.properties.font-variant-position.sub	no			font-variant-position
+css.properties.font-variant-position.super	no			font-variant-position
+css.properties.font-variant.all-petite-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant.all-small-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant.common-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.contextual	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.diagonal-fractions	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.discretionary-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.full-width	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.historical-forms	high	2023-03-13	2025-09-13	font-variant
+css.properties.font-variant.historical-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.jis04	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.jis78	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.jis83	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.jis90	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.lining-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.no-common-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.no-contextual	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.no-discretionary-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.no-historical-ligatures	high	2020-01-15	2022-07-15	font-variant-ligatures
+css.properties.font-variant.none	high	2020-01-15	2022-07-15	font-variant
+css.properties.font-variant.normal	high	2015-07-29	2018-01-29	font-variant
+css.properties.font-variant.oldstyle-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.ordinal	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.petite-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant.proportional-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.proportional-width	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.ruby	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.simplified	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.slashed-zero	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.small-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant.stacked-fractions	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.sub	high	2023-02-09	2025-08-09	font-variant
+css.properties.font-variant.super	high	2023-02-09	2025-08-09	font-variant
+css.properties.font-variant.tabular-nums	high	2020-01-15	2022-07-15	font-variant-numeric
+css.properties.font-variant.titling-caps	high	2020-01-15	2022-07-15	font-variant-caps
+css.properties.font-variant.traditional	high	2020-01-15	2022-07-15	font-variant-east-asian
+css.properties.font-variant.unicase	high	2020-01-15	2022-07-15	font-variant-caps
 css.properties.font-variation-settings	high	2018-09-05	2021-03-05	font-variation-settings
 css.properties.font-weight	high	2015-07-29	2018-01-29	font-weight
+css.properties.font-weight.bold	high	2015-07-29	2018-01-29	font-weight
+css.properties.font-weight.bolder	high	2015-07-29	2018-01-29	font-weight
+css.properties.font-weight.lighter	high	2015-07-29	2018-01-29	font-weight
+css.properties.font-weight.normal	high	2015-07-29	2018-01-29	font-weight
+css.properties.font-weight.number	high	2018-06-26	2020-12-26	font-weight
 css.properties.font-width	no			font-width
+css.properties.font-width.condensed	no			font-width
+css.properties.font-width.expanded	no			font-width
+css.properties.font-width.extra-condensed	no			font-width
+css.properties.font-width.extra-expanded	no			font-width
+css.properties.font-width.normal	no			font-width
+css.properties.font-width.semi-condensed	no			font-width
+css.properties.font-width.semi-expanded	no			font-width
+css.properties.font-width.ultra-condensed	no			font-width
+css.properties.font-width.ultra-expanded	no			font-width
+css.properties.font.caption	high	2015-07-29	2018-01-29	Font shorthand
+css.properties.font.icon	high	2015-07-29	2018-01-29	Font shorthand
+css.properties.font.menu	high	2015-07-29	2018-01-29	Font shorthand
+css.properties.font.message-box	high	2015-07-29	2018-01-29	Font shorthand
+css.properties.font.small-caption	high	2015-07-29	2018-01-29	Font shorthand
+css.properties.font.status-bar	high	2015-07-29	2018-01-29	Font shorthand
 css.properties.forced-color-adjust	no			Forced colors
+css.properties.forced-color-adjust.auto	no			Forced colors
+css.properties.forced-color-adjust.none	no			Forced colors
+css.properties.forced-color-adjust.preserve-parent-color	no			Forced colors
 css.properties.frame-sizing	no			Responsive iframes
+css.properties.frame-sizing.auto	no			Responsive iframes
+css.properties.frame-sizing.content-block-size	no			Responsive iframes
+css.properties.frame-sizing.content-height	no			Responsive iframes
+css.properties.frame-sizing.content-inline-size	no			Responsive iframes
+css.properties.frame-sizing.content-width	no			Responsive iframes
 css.properties.gap	high	2017-10-17	2020-04-17	Grid
+css.properties.gap.normal	high	2017-10-17	2020-04-17	Grid
 css.properties.glyph-orientation-vertical	no			glyph-orientation-vertical
 css.properties.grid	high	2017-10-17	2020-04-17	Grid
 css.properties.grid-area	high	2017-10-17	2020-04-17	Grid
 css.properties.grid-auto-columns	high	2020-07-28	2023-01-28	Grid
 css.properties.grid-auto-flow	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-auto-flow.column	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-auto-flow.dense	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-auto-flow.row	high	2020-01-15	2022-07-15	Grid
 css.properties.grid-auto-rows	high	2020-07-28	2023-01-28	Grid
 css.properties.grid-column	high	2017-10-17	2020-04-17	Grid
 css.properties.grid-column-end	high	2017-10-17	2020-04-17	Grid
@@ -271,117 +1259,539 @@ css.properties.grid-row-end	high	2017-10-17	2020-04-17	Grid
 css.properties.grid-row-start	high	2017-10-17	2020-04-17	Grid
 css.properties.grid-template	high	2017-10-17	2020-04-17	Grid
 css.properties.grid-template-areas	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-areas.none	high	2020-01-15	2022-07-15	Grid
 css.properties.grid-template-columns	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-columns.animation	high	2022-10-27	2025-04-27	Grid animation
+css.properties.grid-template-columns.auto	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-columns.fit-content	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-columns.max-content	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-columns.min-content	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-columns.minmax	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-columns.none	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-columns.repeat	high	2020-07-28	2023-01-28	Grid
+css.properties.grid-template-columns.subgrid	high	2023-09-15	2026-03-15	Subgrid
 css.properties.grid-template-rows	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-rows.animation	high	2022-10-27	2025-04-27	Grid animation
+css.properties.grid-template-rows.auto	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-rows.fit-content	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-rows.max-content	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-rows.min-content	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-rows.minmax	high	2017-10-17	2020-04-17	Grid
+css.properties.grid-template-rows.none	high	2020-01-15	2022-07-15	Grid
+css.properties.grid-template-rows.repeat	high	2020-07-28	2023-01-28	Grid
+css.properties.grid-template-rows.subgrid	high	2023-09-15	2026-03-15	Subgrid
+css.properties.grid-template.none	high	2020-01-15	2022-07-15	Grid
 css.properties.hanging-punctuation	no			Hanging punctuation
+css.properties.hanging-punctuation.allow-end	no			Hanging punctuation
+css.properties.hanging-punctuation.first	no			Hanging punctuation
+css.properties.hanging-punctuation.force-end	no			Hanging punctuation
+css.properties.hanging-punctuation.last	no			Hanging punctuation
+css.properties.hanging-punctuation.none	no			Hanging punctuation
 css.properties.height	high	2015-07-29	2018-01-29	Width and height
+css.properties.height.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.height.auto	high	2015-07-29	2018-01-29	Width and height
+css.properties.height.fit-content	high	2021-11-02	2024-05-02	fit-content
+css.properties.height.max-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.height.min-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.height.stretch	no			stretch
 css.properties.hyphenate-character	high	2023-09-18	2026-03-18	Hyphenate character
+css.properties.hyphenate-character.auto	high	2023-09-18	2026-03-18	Hyphenate character
 css.properties.hyphenate-limit-chars	no			Hyphenate limit chars
+css.properties.hyphenate-limit-chars.auto	no			Hyphenate limit chars
 css.properties.hyphens	high	2023-09-18	2026-03-18	Hyphenation
+css.properties.hyphens.auto	high	2023-09-18	2026-03-18	Hyphenation
 css.properties.image-orientation	high	2020-04-13	2022-10-13	image-orientation
+css.properties.image-orientation.from-image	high	2020-04-13	2022-10-13	image-orientation
+css.properties.image-orientation.none	high	2020-04-13	2022-10-13	image-orientation
 css.properties.image-rendering	high	2020-01-15	2022-07-15	image-rendering
+css.properties.image-rendering.auto	high	2020-01-15	2022-07-15	image-rendering
+css.properties.image-rendering.crisp-edges	low	2026-05-07		crisp-edges
+css.properties.image-rendering.pixelated	high	2021-10-05	2024-04-05	image-rendering
+css.properties.image-rendering.smooth	no			image-rendering: smooth
 css.properties.ime-mode	no			ime-mode
 css.properties.initial-letter	no			initial-letter
+css.properties.initial-letter.normal	no			initial-letter
 css.properties.inline-size	high	2020-01-15	2022-07-15	Logical properties
+css.properties.inline-size.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inline-size.fit-content	high	2021-11-02	2024-05-02	Logical properties
+css.properties.inline-size.max-content	high	2020-01-15	2022-07-15	Logical properties
+css.properties.inline-size.min-content	high	2020-01-15	2022-07-15	Logical properties
 css.properties.inset	high	2021-04-26	2023-10-26	Logical properties
 css.properties.inset-block	high	2021-04-26	2023-10-26	Logical properties
 css.properties.inset-block-end	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset-block-end.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset-block-end.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset-block-end.auto	high	2021-04-26	2023-10-26	Logical properties
 css.properties.inset-block-start	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset-block-start.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset-block-start.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset-block-start.auto	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset-block.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset-block.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset-block.auto	high	2021-04-26	2023-10-26	Logical properties
 css.properties.inset-inline	high	2021-04-26	2023-10-26	Logical properties
 css.properties.inset-inline-end	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset-inline-end.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset-inline-end.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset-inline-end.auto	high	2021-04-26	2023-10-26	Logical properties
 css.properties.inset-inline-start	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset-inline-start.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset-inline-start.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset-inline-start.auto	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset-inline.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset-inline.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset-inline.auto	high	2021-04-26	2023-10-26	Logical properties
+css.properties.inset.anchor	low	2026-01-13		Anchor positioning
+css.properties.inset.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.inset.auto	high	2021-04-26	2023-10-26	Logical properties
 css.properties.interactivity	no			interactivity
+css.properties.interactivity.auto	no			interactivity
+css.properties.interactivity.inert	no			interactivity
 css.properties.interpolate-size	no			interpolate-size
+css.properties.interpolate-size.allow-keywords	no			interpolate-size
+css.properties.interpolate-size.numeric-only	no			interpolate-size
 css.properties.isolation	high	2020-01-15	2022-07-15	isolation
 css.properties.justify-content	high	2015-09-30	2018-03-30	Flexbox
+css.properties.justify-content.end	high	2022-03-14	2024-09-14	Flexbox
+css.properties.justify-content.left	high	2022-03-14	2024-09-14	Flexbox
+css.properties.justify-content.normal	high	2020-01-15	2022-07-15	Flexbox
+css.properties.justify-content.right	high	2022-03-14	2024-09-14	Flexbox
+css.properties.justify-content.safe	low	2024-07-29		Flexbox
+css.properties.justify-content.space-evenly	high	2020-01-15	2022-07-15	Flexbox
+css.properties.justify-content.start	high	2022-03-14	2024-09-14	Flexbox
+css.properties.justify-content.stretch	high	2020-01-15	2022-07-15	Flexbox
+css.properties.justify-content.unsafe	low	2024-07-29		Flexbox
 css.properties.justify-items	high	2016-07-27	2019-01-27	Flexbox
+css.properties.justify-items.anchor-center	low	2026-01-13		Anchor positioning
+css.properties.justify-items.center	high	2020-01-15	2022-07-15	Flexbox
+css.properties.justify-items.left	high	2020-01-15	2022-07-15	Flexbox
+css.properties.justify-items.legacy	high	2020-01-15	2022-07-15	Flexbox
+css.properties.justify-items.right	high	2020-01-15	2022-07-15	Flexbox
 css.properties.justify-self	high	2017-10-17	2020-04-17	Grid
+css.properties.justify-self.anchor-center	low	2026-01-13		Anchor positioning
+css.properties.justify-self.auto	high	2020-01-15	2022-07-15	Grid
+css.properties.justify-self.left	high	2020-01-15	2022-07-15	Grid
+css.properties.justify-self.normal	high	2020-01-15	2022-07-15	Grid
+css.properties.justify-self.right	high	2020-01-15	2022-07-15	Grid
+css.properties.justify-self.stretch	high	2020-01-15	2022-07-15	Grid
 css.properties.left	high	2015-07-29	2018-01-29	Physical properties
+css.properties.left.anchor	low	2026-01-13		Anchor positioning
+css.properties.left.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.left.auto	high	2015-07-29	2018-01-29	Physical properties
 css.properties.letter-spacing	high	2015-07-29	2018-01-29	letter-spacing
+css.properties.letter-spacing.normal	high	2015-07-29	2018-01-29	letter-spacing
 css.properties.lighting-color	high	2015-07-29	2018-01-29	SVG filters
+css.properties.lighting-color.currentColor	high	2015-07-29	2018-01-29	SVG filters
+css.properties.lighting-color.transparent	high	2015-07-29	2018-01-29	SVG filters
 css.properties.line-break	high	2020-07-28	2023-01-28	line-break
+css.properties.line-break.anywhere	high	2020-07-28	2023-01-28	line-break
+css.properties.line-break.auto	high	2020-07-28	2023-01-28	line-break
+css.properties.line-break.loose	high	2020-07-28	2023-01-28	line-break
+css.properties.line-break.normal	high	2020-07-28	2023-01-28	line-break
+css.properties.line-break.strict	high	2020-07-28	2023-01-28	line-break
 css.properties.line-clamp	no			line-clamp
+css.properties.line-clamp.none	no			line-clamp
 css.properties.line-height	high	2015-07-29	2018-01-29	line-height
+css.properties.line-height.normal	high	2015-07-29	2018-01-29	line-height
 css.properties.link-parameters	no			Link parameters
+css.properties.link-parameters.none	no			Link parameters
 css.properties.list-style	high	2015-07-29	2018-01-29	List style
 css.properties.list-style-image	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-image.none	high	2015-07-29	2018-01-29	List style
 css.properties.list-style-position	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-position.inside	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-position.outside	high	2015-07-29	2018-01-29	List style
 css.properties.list-style-type	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.arabic-indic	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.armenian	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.bengali	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.cambodian	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.circle	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.cjk-decimal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.cjk-earthly-branch	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.cjk-heavenly-stem	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.cjk-ideographic	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.decimal	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.decimal-leading-zero	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.devanagari	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.disc	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.disclosure-closed	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.disclosure-open	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.ethiopic-numeric	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.georgian	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.gujarati	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.gurmukhi	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.hebrew	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.hiragana	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.hiragana-iroha	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.japanese-formal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.japanese-informal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.kannada	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.katakana	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.katakana-iroha	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.khmer	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.korean-hangul-formal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.korean-hanja-formal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.korean-hanja-informal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.lao	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.lower-alpha	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.lower-armenian	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.lower-greek	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.lower-latin	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.lower-roman	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.malayalam	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.mongolian	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.myanmar	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.none	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.oriya	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.persian	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.simp-chinese-formal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.simp-chinese-informal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.square	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.string	high	2021-04-26	2023-10-26	List style
+css.properties.list-style-type.symbols	no			symbols()
+css.properties.list-style-type.tamil	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.telugu	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.thai	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.tibetan	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.trad-chinese-formal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.trad-chinese-informal	high	2021-09-20	2024-03-20	List style
+css.properties.list-style-type.upper-alpha	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.upper-armenian	high	2020-01-15	2022-07-15	List style
+css.properties.list-style-type.upper-latin	high	2015-07-29	2018-01-29	List style
+css.properties.list-style-type.upper-roman	high	2015-07-29	2018-01-29	List style
+css.properties.list-style.inside	high	2015-07-29	2018-01-29	List style
+css.properties.list-style.none	high	2015-07-29	2018-01-29	List style
+css.properties.list-style.outside	high	2015-07-29	2018-01-29	List style
+css.properties.list-style.symbols	no			symbols()
 css.properties.margin	high	2015-07-29	2018-01-29	margin
 css.properties.margin-block	high	2021-04-26	2023-10-26	Logical properties
 css.properties.margin-block-end	high	2020-01-15	2022-07-15	Logical properties
+css.properties.margin-block-end.anchor-size	low	2026-01-13		Anchor positioning
 css.properties.margin-block-start	high	2020-01-15	2022-07-15	Logical properties
+css.properties.margin-block-start.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin-block.anchor-size	low	2026-01-13		Anchor positioning
 css.properties.margin-bottom	high	2015-07-29	2018-01-29	margin
+css.properties.margin-bottom.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin-bottom.auto	high	2015-07-29	2018-01-29	margin
 css.properties.margin-inline	high	2021-04-26	2023-10-26	Logical properties
 css.properties.margin-inline-end	high	2020-01-15	2022-07-15	Logical properties
+css.properties.margin-inline-end.anchor-size	low	2026-01-13		Anchor positioning
 css.properties.margin-inline-start	high	2020-01-15	2022-07-15	Logical properties
+css.properties.margin-inline-start.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin-inline.anchor-size	low	2026-01-13		Anchor positioning
 css.properties.margin-left	high	2015-07-29	2018-01-29	margin
+css.properties.margin-left.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin-left.auto	high	2015-07-29	2018-01-29	margin
 css.properties.margin-right	high	2015-07-29	2018-01-29	margin
+css.properties.margin-right.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin-right.auto	high	2015-07-29	2018-01-29	margin
 css.properties.margin-top	high	2015-07-29	2018-01-29	margin
+css.properties.margin-top.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin-top.auto	high	2015-07-29	2018-01-29	margin
 css.properties.margin-trim	no			margin-trim
+css.properties.margin-trim.block	no			margin-trim
+css.properties.margin-trim.block-end	no			margin-trim
+css.properties.margin-trim.block-start	no			margin-trim
+css.properties.margin-trim.inline	no			margin-trim
+css.properties.margin-trim.inline-end	no			margin-trim
+css.properties.margin-trim.inline-start	no			margin-trim
+css.properties.margin-trim.none	no			margin-trim
+css.properties.margin.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.margin.auto	high	2015-07-29	2018-01-29	margin
 css.properties.marker	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.marker-end	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.marker-end.none	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.marker-mid	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.marker-mid.none	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.marker-start	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.marker-start.none	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.marker.none	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.mask	high	2023-12-07	2026-06-07	Masks
 css.properties.mask-border	no			mask-border
 css.properties.mask-border-outset	no			mask-border
 css.properties.mask-border-repeat	no			mask-border
+css.properties.mask-border-repeat.repeat	no			mask-border
+css.properties.mask-border-repeat.round	no			mask-border
+css.properties.mask-border-repeat.space	no			mask-border
+css.properties.mask-border-repeat.stretch	no			mask-border
 css.properties.mask-border-slice	no			mask-border
 css.properties.mask-border-source	no			mask-border
+css.properties.mask-border-source.none	no			mask-border
 css.properties.mask-border-width	no			mask-border
+css.properties.mask-border-width.auto	no			mask-border
+css.properties.mask-border.none	no			mask-border
+css.properties.mask-border.repeat	no			mask-border
+css.properties.mask-border.round	no			mask-border
+css.properties.mask-border.space	no			mask-border
+css.properties.mask-border.stretch	no			mask-border
 css.properties.mask-clip	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-clip.border	no			Masks
+css.properties.mask-clip.border-box	no			Masks
+css.properties.mask-clip.content	no			Masks
+css.properties.mask-clip.content-box	no			Masks
+css.properties.mask-clip.fill-box	no			Masks
+css.properties.mask-clip.no-clip	no			Masks
+css.properties.mask-clip.padding	no			Masks
+css.properties.mask-clip.padding-box	no			Masks
+css.properties.mask-clip.stroke-box	no			Masks
+css.properties.mask-clip.text	no			Masks
+css.properties.mask-clip.view-box	no			Masks
 css.properties.mask-composite	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-composite.add	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-composite.exclude	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-composite.intersect	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-composite.subtract	high	2023-12-07	2026-06-07	Masks
 css.properties.mask-image	high	2023-12-07	2026-06-07	Masks
 css.properties.mask-mode	no			Masks
+css.properties.mask-mode.alpha	no			Masks
+css.properties.mask-mode.luminance	no			Masks
+css.properties.mask-mode.match-source	no			Masks
 css.properties.mask-origin	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-origin.border	no			Masks
+css.properties.mask-origin.border-box	no			Masks
+css.properties.mask-origin.content	no			Masks
+css.properties.mask-origin.content-box	no			Masks
+css.properties.mask-origin.fill-box	no			Masks
+css.properties.mask-origin.padding	no			Masks
+css.properties.mask-origin.padding-box	no			Masks
+css.properties.mask-origin.stroke-box	no			Masks
+css.properties.mask-origin.view-box	no			Masks
 css.properties.mask-position	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-position.bottom	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-position.center	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-position.left	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-position.right	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-position.top	high	2023-12-07	2026-06-07	Masks
 css.properties.mask-repeat	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-repeat.no-repeat	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-repeat.repeat	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-repeat.repeat-x	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-repeat.repeat-y	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-repeat.round	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-repeat.space	high	2023-12-07	2026-06-07	Masks
 css.properties.mask-size	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-size.auto	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-size.contain	high	2023-12-07	2026-06-07	Masks
+css.properties.mask-size.cover	high	2023-12-07	2026-06-07	Masks
 css.properties.mask-type	high	2020-01-15	2022-07-15	mask-type
+css.properties.mask-type.alpha	high	2020-01-15	2022-07-15	mask-type
+css.properties.mask-type.luminance	high	2020-01-15	2022-07-15	mask-type
+css.properties.mask.add	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.alpha	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.border-box	no			Masks
+css.properties.mask.bottom	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.center	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.content-box	no			Masks
+css.properties.mask.exclude	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.fill-box	no			Masks
+css.properties.mask.intersect	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.left	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.luminance	no			Masks
+css.properties.mask.match-source	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.no-clip	no			Masks
+css.properties.mask.no-repeat	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.padding-box	no			Masks
+css.properties.mask.repeat	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.repeat-x	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.repeat-y	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.right	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.round	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.space	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.stroke-box	no			Masks
+css.properties.mask.subtract	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.top	high	2023-12-07	2026-06-07	Masks
+css.properties.mask.view-box	no			Masks
 css.properties.math-depth	low	2026-03-24		MathML
 css.properties.math-shift	low	2025-12-12		MathML
 css.properties.math-style	high	2023-08-29	2026-02-28	MathML
 css.properties.max-block-size	high	2020-01-15	2022-07-15	Logical properties
+css.properties.max-block-size.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.max-block-size.fit-content	high	2021-11-02	2024-05-02	Logical properties
+css.properties.max-block-size.max-content	high	2020-01-15	2022-07-15	Logical properties
+css.properties.max-block-size.min-content	high	2020-01-15	2022-07-15	Logical properties
 css.properties.max-height	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.max-height.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.max-height.fit-content	high	2021-11-02	2024-05-02	fit-content
+css.properties.max-height.max-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.max-height.min-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.max-height.none	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.max-height.stretch	no			stretch
 css.properties.max-inline-size	high	2020-01-15	2022-07-15	Logical properties
+css.properties.max-inline-size.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.max-inline-size.fit-content	high	2021-11-02	2024-05-02	Logical properties
+css.properties.max-inline-size.max-content	high	2020-01-15	2022-07-15	Logical properties
+css.properties.max-inline-size.min-content	high	2020-01-15	2022-07-15	Logical properties
 css.properties.max-width	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.max-width.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.max-width.fit-content	high	2021-11-02	2024-05-02	fit-content
+css.properties.max-width.max-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.max-width.min-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.max-width.none	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.max-width.stretch	no			stretch
 css.properties.min-block-size	high	2020-01-15	2022-07-15	Logical properties
+css.properties.min-block-size.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.min-block-size.fit-content	high	2021-11-02	2024-05-02	Logical properties
+css.properties.min-block-size.max-content	high	2020-01-15	2022-07-15	Logical properties
+css.properties.min-block-size.min-content	high	2020-01-15	2022-07-15	Logical properties
 css.properties.min-height	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.min-height.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.min-height.auto	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.min-height.fit-content	high	2021-11-02	2024-05-02	fit-content
+css.properties.min-height.max-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.min-height.min-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.min-height.stretch	no			stretch
 css.properties.min-inline-size	high	2020-01-15	2022-07-15	Logical properties
+css.properties.min-inline-size.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.min-inline-size.fit-content	high	2021-11-02	2024-05-02	Logical properties
+css.properties.min-inline-size.max-content	high	2020-01-15	2022-07-15	Logical properties
+css.properties.min-inline-size.min-content	high	2020-01-15	2022-07-15	Logical properties
 css.properties.min-width	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.min-width.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.min-width.auto	high	2015-07-29	2018-01-29	Min and max width and height
+css.properties.min-width.fit-content	high	2021-11-02	2024-05-02	fit-content
+css.properties.min-width.max-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.min-width.min-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.min-width.stretch	no			stretch
 css.properties.mix-blend-mode	high	2020-01-15	2022-07-15	mix-blend-mode
+css.properties.mix-blend-mode.plus-darker	no			mix-blend-mode
+css.properties.mix-blend-mode.plus-lighter	high	2022-04-05	2024-10-05	mix-blend-mode
 css.properties.object-fit	high	2020-01-15	2022-07-15	object-fit
+css.properties.object-fit.contain	high	2020-01-15	2022-07-15	object-fit
+css.properties.object-fit.cover	high	2020-01-15	2022-07-15	object-fit
+css.properties.object-fit.fill	high	2020-01-15	2022-07-15	object-fit
+css.properties.object-fit.none	high	2020-01-15	2022-07-15	object-fit
+css.properties.object-fit.scale-down	high	2020-01-15	2022-07-15	object-fit
 css.properties.object-position	high	2020-01-15	2022-07-15	object-position
 css.properties.object-view-box	no			object-view-box
+css.properties.object-view-box.none	no			object-view-box
 css.properties.offset	high	2022-09-12	2025-03-12	Motion path
 css.properties.offset-anchor	high	2023-08-21	2026-02-21	Motion path
+css.properties.offset-anchor.auto	high	2023-08-21	2026-02-21	Motion path
+css.properties.offset-anchor.bottom	high	2023-08-21	2026-02-21	Motion path
+css.properties.offset-anchor.center	high	2023-08-21	2026-02-21	Motion path
+css.properties.offset-anchor.left	high	2023-08-21	2026-02-21	Motion path
+css.properties.offset-anchor.right	high	2023-08-21	2026-02-21	Motion path
+css.properties.offset-anchor.top	high	2023-08-21	2026-02-21	Motion path
 css.properties.offset-distance	high	2022-09-12	2025-03-12	Motion path
 css.properties.offset-path	high	2022-03-14	2024-09-14	Motion path
+css.properties.offset-path.border-box	low	2024-09-16		Motion path
+css.properties.offset-path.content-box	low	2024-09-16		Motion path
+css.properties.offset-path.fill-box	low	2024-09-16		Motion path
+css.properties.offset-path.margin-box	no			Motion path
+css.properties.offset-path.none	low	2024-09-16		Motion path
+css.properties.offset-path.padding-box	low	2024-09-16		Motion path
+css.properties.offset-path.path	high	2022-09-12	2025-03-12	Motion path
+css.properties.offset-path.ray	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-path.stroke-box	low	2024-09-16		Motion path
+css.properties.offset-path.url	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-path.view-box	low	2024-09-16		Motion path
 css.properties.offset-position	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.auto	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.bottom	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.center	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.left	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.normal	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.right	high	2024-01-23	2026-07-23	Motion path
+css.properties.offset-position.top	high	2024-01-23	2026-07-23	Motion path
 css.properties.offset-rotate	high	2022-09-12	2025-03-12	Motion path
+css.properties.offset-rotate.auto	high	2022-09-12	2025-03-12	Motion path
+css.properties.offset-rotate.reverse	high	2022-09-12	2025-03-12	Motion path
 css.properties.opacity	high	2015-07-29	2018-01-29	opacity
+css.properties.opacity.percentages	high	2020-07-28	2023-01-28	opacity
 css.properties.order	high	2015-09-30	2018-03-30	Flexbox
 css.properties.orphans	no			Widows and orphans
 css.properties.outline	high	2023-03-27	2025-09-27	outline
 css.properties.outline-color	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-color.currentColor	high	2015-07-29	2018-01-29	currentColor
+css.properties.outline-color.transparent	high	2015-07-29	2018-01-29	Outlines
 css.properties.outline-offset	high	2017-04-05	2019-10-05	Outlines
 css.properties.outline-style	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.auto	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.dashed	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.dotted	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.double	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.groove	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.inset	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.none	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.outset	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.ridge	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-style.solid	high	2015-07-29	2018-01-29	Outlines
 css.properties.outline-width	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-width.medium	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-width.thick	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline-width.thin	high	2015-07-29	2018-01-29	Outlines
+css.properties.outline.auto	high	2023-03-27	2025-09-27	outline
+css.properties.outline.currentColor	high	2023-03-27	2025-09-27	outline
+css.properties.outline.dashed	high	2023-03-27	2025-09-27	outline
+css.properties.outline.dotted	high	2023-03-27	2025-09-27	outline
+css.properties.outline.double	high	2023-03-27	2025-09-27	outline
+css.properties.outline.groove	high	2023-03-27	2025-09-27	outline
+css.properties.outline.inset	high	2023-03-27	2025-09-27	outline
+css.properties.outline.medium	high	2023-03-27	2025-09-27	outline
+css.properties.outline.none	high	2023-03-27	2025-09-27	outline
+css.properties.outline.outset	high	2023-03-27	2025-09-27	outline
+css.properties.outline.ridge	high	2023-03-27	2025-09-27	outline
+css.properties.outline.solid	high	2023-03-27	2025-09-27	outline
+css.properties.outline.thick	high	2023-03-27	2025-09-27	outline
+css.properties.outline.thin	high	2023-03-27	2025-09-27	outline
+css.properties.outline.transparent	high	2023-03-27	2025-09-27	outline
 css.properties.overflow	high	2015-07-29	2018-01-29	overflow
 css.properties.overflow-anchor	low	2026-09-14		overflow-anchor
+css.properties.overflow-anchor.auto	low	2026-09-14		overflow-anchor
+css.properties.overflow-anchor.none	low	2026-09-14		overflow-anchor
 css.properties.overflow-block	low	2025-09-15		Logical properties
+css.properties.overflow-block.overlay	no			Logical properties
 css.properties.overflow-clip-margin	no			overflow-clip-margin
+css.properties.overflow-clip-margin.border-box	no			overflow-clip-margin
+css.properties.overflow-clip-margin.content-box	no			overflow-clip-margin
+css.properties.overflow-clip-margin.padding-box	no			overflow-clip-margin
 css.properties.overflow-inline	low	2025-09-15		Logical properties
+css.properties.overflow-inline.overlay	no			Logical properties
 css.properties.overflow-wrap	high	2018-10-02	2021-04-02	overflow-wrap
+css.properties.overflow-wrap.anywhere	high	2022-03-14	2024-09-14	overflow-wrap
+css.properties.overflow-wrap.break-word	high	2018-10-02	2021-04-02	overflow-wrap
+css.properties.overflow-wrap.normal	high	2018-10-02	2021-04-02	overflow-wrap
 css.properties.overflow-x	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-x.auto	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-x.clip	high	2022-09-12	2025-03-12	overflow: clip
+css.properties.overflow-x.hidden	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-x.scroll	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-x.visible	high	2015-07-29	2018-01-29	overflow
 css.properties.overflow-y	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-y.auto	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-y.clip	high	2022-09-12	2025-03-12	overflow: clip
+css.properties.overflow-y.hidden	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-y.scroll	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow-y.visible	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow.auto	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow.clip	high	2022-09-12	2025-03-12	overflow: clip
+css.properties.overflow.hidden	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow.scroll	high	2015-07-29	2018-01-29	overflow
+css.properties.overflow.visible	high	2015-07-29	2018-01-29	overflow
 css.properties.overlay	no			overlay
+css.properties.overlay.auto	no			overlay
+css.properties.overlay.none	no			overlay
 css.properties.overscroll-behavior	no			overscroll-behavior
 css.properties.overscroll-behavior-block	no			overscroll-behavior
+css.properties.overscroll-behavior-block.auto	no			overscroll-behavior
+css.properties.overscroll-behavior-block.contain	no			overscroll-behavior
+css.properties.overscroll-behavior-block.none	no			overscroll-behavior
 css.properties.overscroll-behavior-inline	no			overscroll-behavior
+css.properties.overscroll-behavior-inline.auto	no			overscroll-behavior
+css.properties.overscroll-behavior-inline.contain	no			overscroll-behavior
+css.properties.overscroll-behavior-inline.none	no			overscroll-behavior
 css.properties.overscroll-behavior-x	no			overscroll-behavior
+css.properties.overscroll-behavior-x.auto	no			overscroll-behavior
+css.properties.overscroll-behavior-x.contain	no			overscroll-behavior
+css.properties.overscroll-behavior-x.none	no			overscroll-behavior
 css.properties.overscroll-behavior-y	no			overscroll-behavior
+css.properties.overscroll-behavior-y.auto	no			overscroll-behavior
+css.properties.overscroll-behavior-y.contain	no			overscroll-behavior
+css.properties.overscroll-behavior-y.none	no			overscroll-behavior
+css.properties.overscroll-behavior.auto	no			overscroll-behavior
+css.properties.overscroll-behavior.contain	no			overscroll-behavior
+css.properties.overscroll-behavior.none	no			overscroll-behavior
 css.properties.padding	high	2015-07-29	2018-01-29	padding
 css.properties.padding-block	high	2021-04-26	2023-10-26	Logical properties
 css.properties.padding-block-end	high	2020-01-15	2022-07-15	Logical properties
@@ -395,67 +1805,402 @@ css.properties.padding-right	high	2015-07-29	2018-01-29	padding
 css.properties.padding-top	high	2015-07-29	2018-01-29	padding
 css.properties.page	high	2023-02-14	2025-08-14	Page setup
 css.properties.page-break-after	no			Page break aliases
+css.properties.page-break-after.always	no			Page break aliases
+css.properties.page-break-after.auto	no			Page break aliases
+css.properties.page-break-after.avoid	no			Page break aliases
+css.properties.page-break-after.left	no			Page break aliases
+css.properties.page-break-after.right	no			Page break aliases
 css.properties.page-break-before	no			Page break aliases
+css.properties.page-break-before.always	no			Page break aliases
+css.properties.page-break-before.auto	no			Page break aliases
+css.properties.page-break-before.avoid	no			Page break aliases
+css.properties.page-break-before.left	no			Page break aliases
+css.properties.page-break-before.right	no			Page break aliases
 css.properties.page-break-inside	no			Page break aliases
+css.properties.page-break-inside.auto	no			Page break aliases
+css.properties.page-break-inside.avoid	no			Page break aliases
 css.properties.paint-order	high	2024-03-22	2026-09-22	paint-order
 css.properties.perspective	high	2015-09-30	2018-03-30	3D transforms
 css.properties.perspective-origin	high	2015-09-30	2018-03-30	3D transforms
+css.properties.perspective-origin.bottom	high	2015-09-30	2018-03-30	3D transforms
+css.properties.perspective-origin.center	high	2015-09-30	2018-03-30	3D transforms
+css.properties.perspective-origin.left	high	2015-09-30	2018-03-30	3D transforms
+css.properties.perspective-origin.right	high	2015-09-30	2018-03-30	3D transforms
+css.properties.perspective-origin.top	high	2015-09-30	2018-03-30	3D transforms
+css.properties.perspective.none	high	2015-09-30	2018-03-30	3D transforms
 css.properties.place-content	high	2020-01-15	2022-07-15	Flexbox
 css.properties.place-items	high	2020-01-15	2022-07-15	Flexbox
+css.properties.place-items.anchor-center	low	2026-01-13		Anchor positioning
 css.properties.place-self	high	2020-01-15	2022-07-15	Flexbox
+css.properties.place-self.anchor-center	low	2026-01-13		Anchor positioning
 css.properties.pointer-events	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.all	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.auto	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.fill	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.none	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.painted	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.stroke	high	2015-07-29	2018-01-29	pointer-events
+css.properties.pointer-events.visible	high	2015-07-29	2018-01-29	pointer-events
 css.properties.position	high	2015-07-29	2018-01-29	Position
 css.properties.position-anchor	low	2026-09-14		Anchor positioning
+css.properties.position-anchor.auto	low	2026-09-14		Anchor positioning
+css.properties.position-anchor.none	low	2026-09-14		Anchor positioning
+css.properties.position-anchor.normal	low	2026-09-14		Anchor positioning
 css.properties.position-area	low	2026-01-13		Anchor positioning
+css.properties.position-area.block-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.block-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.bottom	low	2026-02-24		Anchor positioning
+css.properties.position-area.center	low	2026-01-13		Anchor positioning
+css.properties.position-area.end	low	2026-02-24		Anchor positioning
+css.properties.position-area.inline-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.inline-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.left	low	2026-02-24		Anchor positioning
+css.properties.position-area.none	low	2026-01-13		Anchor positioning
+css.properties.position-area.right	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-block-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-block-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-inline-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-inline-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-x-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-x-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-y-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.self-y-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.span-all	low	2026-02-24		Anchor positioning
+css.properties.position-area.span-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-bottom	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-left	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-right	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-x-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-x-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-y-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-self-y-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-top	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-x-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-x-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-y-end	low	2026-01-13		Anchor positioning
+css.properties.position-area.span-y-start	low	2026-01-13		Anchor positioning
+css.properties.position-area.start	low	2026-01-13		Anchor positioning
+css.properties.position-area.top	low	2026-02-24		Anchor positioning
+css.properties.position-area.x-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.x-start	low	2026-02-24		Anchor positioning
+css.properties.position-area.y-end	low	2026-02-24		Anchor positioning
+css.properties.position-area.y-start	low	2026-02-24		Anchor positioning
 css.properties.position-try	low	2026-01-13		Anchor positioning
 css.properties.position-try-fallbacks	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.bottom	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.center	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.flip-block	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.flip-inline	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.flip-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.flip-x	low	2026-01-21		Anchor positioning
+css.properties.position-try-fallbacks.flip-y	low	2026-01-21		Anchor positioning
+css.properties.position-try-fallbacks.inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.left	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.none	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.position-area	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.right	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.self-x-end	low	2026-02-24		Anchor positioning
+css.properties.position-try-fallbacks.self-x-start	low	2026-02-24		Anchor positioning
+css.properties.position-try-fallbacks.self-y-end	low	2026-02-24		Anchor positioning
+css.properties.position-try-fallbacks.self-y-start	low	2026-02-24		Anchor positioning
+css.properties.position-try-fallbacks.span-all	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-bottom	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-left	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-right	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-x-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-x-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-y-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-self-y-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-top	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-x-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-x-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-y-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.span-y-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.top	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.x-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.x-start	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.y-end	low	2026-01-13		Anchor positioning
+css.properties.position-try-fallbacks.y-start	low	2026-01-13		Anchor positioning
 css.properties.position-try-order	low	2026-02-24		Anchor positioning
+css.properties.position-try-order.most-block-size	low	2026-02-24		Anchor positioning
+css.properties.position-try-order.most-height	low	2026-02-24		Anchor positioning
+css.properties.position-try-order.most-inline-size	low	2026-02-24		Anchor positioning
+css.properties.position-try-order.most-width	low	2026-02-24		Anchor positioning
+css.properties.position-try-order.normal	low	2026-02-24		Anchor positioning
+css.properties.position-try.block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.bottom	low	2026-01-13		Anchor positioning
+css.properties.position-try.center	low	2026-01-13		Anchor positioning
+css.properties.position-try.end	low	2026-01-13		Anchor positioning
+css.properties.position-try.flip-block	low	2026-01-13		Anchor positioning
+css.properties.position-try.flip-inline	low	2026-01-13		Anchor positioning
+css.properties.position-try.flip-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.flip-x	low	2026-01-21		Anchor positioning
+css.properties.position-try.flip-y	low	2026-01-21		Anchor positioning
+css.properties.position-try.inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.left	low	2026-01-13		Anchor positioning
+css.properties.position-try.none	low	2026-01-13		Anchor positioning
+css.properties.position-try.right	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.self-x-end	low	2026-02-24		Anchor positioning
+css.properties.position-try.self-x-start	low	2026-02-24		Anchor positioning
+css.properties.position-try.self-y-end	low	2026-02-24		Anchor positioning
+css.properties.position-try.self-y-start	low	2026-02-24		Anchor positioning
+css.properties.position-try.span-all	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-bottom	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-left	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-right	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-block-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-block-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-inline-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-inline-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-x-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-x-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-y-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-self-y-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-top	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-x-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-x-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-y-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.span-y-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.start	low	2026-01-13		Anchor positioning
+css.properties.position-try.top	low	2026-01-13		Anchor positioning
+css.properties.position-try.x-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.x-start	low	2026-01-13		Anchor positioning
+css.properties.position-try.y-end	low	2026-01-13		Anchor positioning
+css.properties.position-try.y-start	low	2026-01-13		Anchor positioning
 css.properties.position-visibility	low	2026-01-13		Anchor positioning
+css.properties.position-visibility.always	low	2026-01-13		Anchor positioning
+css.properties.position-visibility.anchor-valid	no			Anchor positioning
+css.properties.position-visibility.anchor-visible	no			Anchor positioning
+css.properties.position-visibility.anchors-valid	no			anchors-valid and anchors-visible
+css.properties.position-visibility.anchors-visible	no			anchors-valid and anchors-visible
+css.properties.position-visibility.no-overflow	low	2026-01-13		Anchor positioning
+css.properties.position.absolute	high	2015-07-29	2018-01-29	Absolute positioning
+css.properties.position.fixed	high	2015-07-29	2018-01-29	Fixed positioning
+css.properties.position.relative	high	2015-07-29	2018-01-29	Relative positioning
+css.properties.position.static	high	2015-07-29	2018-01-29	Static positioning
+css.properties.position.sticky	high	2019-09-19	2022-03-19	Sticky positioning
 css.properties.print-color-adjust	low	2025-05-01		print-color-adjust
+css.properties.print-color-adjust.economy	low	2025-05-01		print-color-adjust
+css.properties.print-color-adjust.exact	low	2025-05-01		print-color-adjust
 css.properties.quotes	high	2015-09-30	2018-03-30	Quotes
+css.properties.quotes.auto	high	2021-04-26	2023-10-26	Quotes
+css.properties.quotes.none	high	2015-09-30	2018-03-30	Quotes
 css.properties.r	high	2020-07-28	2023-01-28	SVG
 css.properties.reading-flow	no			reading-flow
+css.properties.reading-flow.flex-flow	no			reading-flow
+css.properties.reading-flow.flex-visual	no			reading-flow
+css.properties.reading-flow.grid-columns	no			reading-flow
+css.properties.reading-flow.grid-order	no			reading-flow
+css.properties.reading-flow.grid-rows	no			reading-flow
+css.properties.reading-flow.normal	no			reading-flow
+css.properties.reading-flow.source-order	no			reading-flow
 css.properties.reading-order	no			reading-flow
 css.properties.resize	no			resize (CSS property)
+css.properties.resize.block	no			resize (CSS property)
+css.properties.resize.inline	no			resize (CSS property)
 css.properties.right	high	2015-07-29	2018-01-29	Physical properties
+css.properties.right.anchor	low	2026-01-13		Anchor positioning
+css.properties.right.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.right.auto	high	2015-07-29	2018-01-29	Physical properties
 css.properties.rotate	high	2022-08-05	2025-02-05	Individual transform properties
+css.properties.rotate.none	high	2022-08-05	2025-02-05	Individual transform properties
 css.properties.row-gap	high	2017-10-17	2020-04-17	Grid
+css.properties.row-gap.normal	high	2017-10-17	2020-04-17	Grid
 css.properties.row-rule	no			Gap decorations
 css.properties.row-rule-break	no			Gap decorations
+css.properties.row-rule-break.intersection	no			Gap decorations
+css.properties.row-rule-break.none	no			Gap decorations
+css.properties.row-rule-break.normal	no			Gap decorations
 css.properties.row-rule-color	no			Gap decorations
+css.properties.row-rule-color.currentColor	no			Gap decorations
+css.properties.row-rule-color.transparent	no			Gap decorations
 css.properties.row-rule-inset	no			Gap decorations
 css.properties.row-rule-inset-cap	no			Gap decorations
 css.properties.row-rule-inset-cap-end	no			Gap decorations
+css.properties.row-rule-inset-cap-end.overlap-join	no			Gap decorations
 css.properties.row-rule-inset-cap-start	no			Gap decorations
+css.properties.row-rule-inset-cap-start.overlap-join	no			Gap decorations
+css.properties.row-rule-inset-cap.overlap-join	no			Gap decorations
 css.properties.row-rule-inset-end	no			Gap decorations
+css.properties.row-rule-inset-end.overlap-join	no			Gap decorations
 css.properties.row-rule-inset-junction	no			Gap decorations
 css.properties.row-rule-inset-junction-end	no			Gap decorations
+css.properties.row-rule-inset-junction-end.overlap-join	no			Gap decorations
 css.properties.row-rule-inset-junction-start	no			Gap decorations
+css.properties.row-rule-inset-junction-start.overlap-join	no			Gap decorations
+css.properties.row-rule-inset-junction.overlap-join	no			Gap decorations
 css.properties.row-rule-inset-start	no			Gap decorations
+css.properties.row-rule-inset-start.overlap-join	no			Gap decorations
+css.properties.row-rule-inset.overlap-join	no			Gap decorations
 css.properties.row-rule-style	no			Gap decorations
+css.properties.row-rule-style.dashed	no			Gap decorations
+css.properties.row-rule-style.dotted	no			Gap decorations
+css.properties.row-rule-style.double	no			Gap decorations
+css.properties.row-rule-style.groove	no			Gap decorations
+css.properties.row-rule-style.hidden	no			Gap decorations
+css.properties.row-rule-style.inset	no			Gap decorations
+css.properties.row-rule-style.none	no			Gap decorations
+css.properties.row-rule-style.outset	no			Gap decorations
+css.properties.row-rule-style.ridge	no			Gap decorations
+css.properties.row-rule-style.solid	no			Gap decorations
 css.properties.row-rule-visibility-items	no			Gap decorations
+css.properties.row-rule-visibility-items.all	no			Gap decorations
+css.properties.row-rule-visibility-items.around	no			Gap decorations
+css.properties.row-rule-visibility-items.between	no			Gap decorations
+css.properties.row-rule-visibility-items.normal	no			Gap decorations
 css.properties.row-rule-width	no			Gap decorations
+css.properties.row-rule-width.medium	no			Gap decorations
+css.properties.row-rule-width.thick	no			Gap decorations
+css.properties.row-rule-width.thin	no			Gap decorations
+css.properties.row-rule.currentColor	no			Gap decorations
+css.properties.row-rule.dashed	no			Gap decorations
+css.properties.row-rule.dotted	no			Gap decorations
+css.properties.row-rule.double	no			Gap decorations
+css.properties.row-rule.groove	no			Gap decorations
+css.properties.row-rule.hidden	no			Gap decorations
+css.properties.row-rule.inset	no			Gap decorations
+css.properties.row-rule.medium	no			Gap decorations
+css.properties.row-rule.none	no			Gap decorations
+css.properties.row-rule.outset	no			Gap decorations
+css.properties.row-rule.ridge	no			Gap decorations
+css.properties.row-rule.solid	no			Gap decorations
+css.properties.row-rule.thick	no			Gap decorations
+css.properties.row-rule.thin	no			Gap decorations
+css.properties.row-rule.transparent	no			Gap decorations
 css.properties.ruby-align	low	2024-12-11		ruby-align
+css.properties.ruby-align.center	low	2024-12-11		ruby-align
+css.properties.ruby-align.space-around	low	2024-12-11		ruby-align
+css.properties.ruby-align.space-between	low	2024-12-11		ruby-align
+css.properties.ruby-align.start	low	2024-12-11		ruby-align
 css.properties.ruby-overhang	no			ruby-overhang
+css.properties.ruby-overhang.auto	no			ruby-overhang
+css.properties.ruby-overhang.none	no			ruby-overhang
 css.properties.ruby-position	low	2024-12-11		ruby-position
+css.properties.ruby-position.alternate	no			display: ruby
+css.properties.ruby-position.inter-character	no			ruby-position
+css.properties.ruby-position.over	low	2024-12-11		ruby-position
+css.properties.ruby-position.under	low	2024-12-11		ruby-position
 css.properties.rule	no			Gap decorations
 css.properties.rule-break	no			Gap decorations
+css.properties.rule-break.intersection	no			Gap decorations
+css.properties.rule-break.none	no			Gap decorations
+css.properties.rule-break.normal	no			Gap decorations
 css.properties.rule-color	no			Gap decorations
+css.properties.rule-color.currentColor	no			Gap decorations
+css.properties.rule-color.transparent	no			Gap decorations
 css.properties.rule-inset	no			Gap decorations
 css.properties.rule-inset-cap	no			Gap decorations
+css.properties.rule-inset-cap.overlap-join	no			Gap decorations
 css.properties.rule-inset-end	no			Gap decorations
+css.properties.rule-inset-end.overlap-join	no			Gap decorations
 css.properties.rule-inset-junction	no			Gap decorations
+css.properties.rule-inset-junction.overlap-join	no			Gap decorations
 css.properties.rule-inset-start	no			Gap decorations
+css.properties.rule-inset-start.overlap-join	no			Gap decorations
+css.properties.rule-inset.overlap-join	no			Gap decorations
 css.properties.rule-overlap	no			Gap decorations
+css.properties.rule-overlap.column-over-row	no			Gap decorations
+css.properties.rule-overlap.row-over-column	no			Gap decorations
 css.properties.rule-style	no			Gap decorations
+css.properties.rule-style.dashed	no			Gap decorations
+css.properties.rule-style.dotted	no			Gap decorations
+css.properties.rule-style.double	no			Gap decorations
+css.properties.rule-style.groove	no			Gap decorations
+css.properties.rule-style.hidden	no			Gap decorations
+css.properties.rule-style.inset	no			Gap decorations
+css.properties.rule-style.none	no			Gap decorations
+css.properties.rule-style.outset	no			Gap decorations
+css.properties.rule-style.ridge	no			Gap decorations
+css.properties.rule-style.solid	no			Gap decorations
 css.properties.rule-visibility-items	no			Gap decorations
+css.properties.rule-visibility-items.all	no			Gap decorations
+css.properties.rule-visibility-items.around	no			Gap decorations
+css.properties.rule-visibility-items.between	no			Gap decorations
+css.properties.rule-visibility-items.normal	no			Gap decorations
 css.properties.rule-width	no			Gap decorations
+css.properties.rule-width.medium	no			Gap decorations
+css.properties.rule-width.thick	no			Gap decorations
+css.properties.rule-width.thin	no			Gap decorations
+css.properties.rule.currentColor	no			Gap decorations
+css.properties.rule.dashed	no			Gap decorations
+css.properties.rule.dotted	no			Gap decorations
+css.properties.rule.double	no			Gap decorations
+css.properties.rule.groove	no			Gap decorations
+css.properties.rule.hidden	no			Gap decorations
+css.properties.rule.inset	no			Gap decorations
+css.properties.rule.medium	no			Gap decorations
+css.properties.rule.none	no			Gap decorations
+css.properties.rule.outset	no			Gap decorations
+css.properties.rule.ridge	no			Gap decorations
+css.properties.rule.solid	no			Gap decorations
+css.properties.rule.thick	no			Gap decorations
+css.properties.rule.thin	no			Gap decorations
+css.properties.rule.transparent	no			Gap decorations
 css.properties.rx	high	2024-03-05	2026-09-05	SVG
 css.properties.ry	high	2024-03-05	2026-09-05	SVG
 css.properties.scale	high	2022-08-05	2025-02-05	Individual transform properties
+css.properties.scale.none	high	2022-08-05	2025-02-05	Individual transform properties
 css.properties.scroll-axis-lock	no			scroll-axis-lock
+css.properties.scroll-axis-lock.auto	no			scroll-axis-lock
+css.properties.scroll-axis-lock.none	no			scroll-axis-lock
 css.properties.scroll-behavior	high	2022-03-14	2024-09-14	scroll-behavior
+css.properties.scroll-behavior.auto	high	2022-03-14	2024-09-14	scroll-behavior
+css.properties.scroll-behavior.smooth	high	2022-03-14	2024-09-14	scroll-behavior
 css.properties.scroll-initial-target	no			scroll-initial-target
+css.properties.scroll-initial-target.nearest	no			scroll-initial-target
+css.properties.scroll-initial-target.none	no			scroll-initial-target
 css.properties.scroll-margin	high	2021-07-13	2024-01-13	Scroll snap
 css.properties.scroll-margin-block	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-margin-block-end	high	2021-09-20	2024-03-20	Scroll snap
@@ -468,128 +2213,447 @@ css.properties.scroll-margin-left	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-margin-right	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-margin-top	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-marker-group	no			Scroll markers
+css.properties.scroll-marker-group.after	no			Scroll markers
+css.properties.scroll-marker-group.before	no			Scroll markers
+css.properties.scroll-marker-group.none	no			Scroll markers
 css.properties.scroll-padding	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-padding-block	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-padding-block-end	high	2021-09-20	2024-03-20	Scroll snap
+css.properties.scroll-padding-block-end.auto	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-padding-block-start	high	2021-09-20	2024-03-20	Scroll snap
+css.properties.scroll-padding-block-start.auto	high	2021-09-20	2024-03-20	Scroll snap
+css.properties.scroll-padding-block.auto	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-padding-bottom	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-padding-inline	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-padding-inline-end	high	2021-09-20	2024-03-20	Scroll snap
+css.properties.scroll-padding-inline-end.auto	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-padding-inline-start	high	2021-09-20	2024-03-20	Scroll snap
+css.properties.scroll-padding-inline-start.auto	high	2021-09-20	2024-03-20	Scroll snap
+css.properties.scroll-padding-inline.auto	high	2021-09-20	2024-03-20	Scroll snap
 css.properties.scroll-padding-left	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-padding-right	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-padding-top	high	2021-04-26	2023-10-26	Scroll snap
+css.properties.scroll-padding.auto	high	2021-04-26	2023-10-26	Scroll snap
 css.properties.scroll-snap-align	high	2020-01-15	2022-07-15	Scroll snap
+css.properties.scroll-snap-align.center	high	2020-01-15	2022-07-15	Scroll snap
+css.properties.scroll-snap-align.end	high	2020-01-15	2022-07-15	Scroll snap
+css.properties.scroll-snap-align.none	high	2020-01-15	2022-07-15	Scroll snap
+css.properties.scroll-snap-align.start	high	2020-01-15	2022-07-15	Scroll snap
 css.properties.scroll-snap-stop	high	2022-07-26	2025-01-26	Scroll snap
+css.properties.scroll-snap-stop.always	high	2022-07-26	2025-01-26	Scroll snap
+css.properties.scroll-snap-stop.normal	high	2022-07-26	2025-01-26	Scroll snap
 css.properties.scroll-snap-type	high	2022-04-05	2024-10-05	Scroll snap
+css.properties.scroll-snap-type.block	high	2022-04-05	2024-10-05	Scroll snap
+css.properties.scroll-snap-type.both	high	2022-04-05	2024-10-05	Scroll snap
+css.properties.scroll-snap-type.inline	high	2022-04-05	2024-10-05	Scroll snap
+css.properties.scroll-snap-type.none	high	2022-04-05	2024-10-05	Scroll snap
+css.properties.scroll-snap-type.x	high	2022-04-05	2024-10-05	Scroll snap
+css.properties.scroll-snap-type.y	high	2022-04-05	2024-10-05	Scroll snap
 css.properties.scroll-target-group	no			scroll-target-group
+css.properties.scroll-target-group.auto	no			scroll-target-group
+css.properties.scroll-target-group.none	no			scroll-target-group
 css.properties.scroll-timeline	no			Scroll-driven animations
 css.properties.scroll-timeline-axis	no			Scroll-driven animations
+css.properties.scroll-timeline-axis.block	no			Scroll-driven animations
+css.properties.scroll-timeline-axis.inline	no			Scroll-driven animations
+css.properties.scroll-timeline-axis.x	no			Scroll-driven animations
+css.properties.scroll-timeline-axis.y	no			Scroll-driven animations
 css.properties.scroll-timeline-name	no			Scroll-driven animations
 css.properties.scrollbar-color	low	2025-12-12		scrollbar-color
+css.properties.scrollbar-color.auto	low	2025-12-12		scrollbar-color
 css.properties.scrollbar-gutter	low	2024-12-11		scrollbar-gutter
+css.properties.scrollbar-gutter.auto	low	2024-12-11		scrollbar-gutter
+css.properties.scrollbar-gutter.stable	low	2024-12-11		scrollbar-gutter
 css.properties.scrollbar-width	low	2024-12-11		scrollbar-width
+css.properties.scrollbar-width.auto	low	2024-12-11		scrollbar-width
+css.properties.scrollbar-width.none	low	2024-12-11		scrollbar-width
+css.properties.scrollbar-width.thin	low	2024-12-11		scrollbar-width
 css.properties.shape-image-threshold	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-image-threshold.percentages	no			shape-outside
 css.properties.shape-margin	high	2020-01-15	2022-07-15	shape-outside
 css.properties.shape-outside	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-outside.circle	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-outside.gradient	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-outside.image	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-outside.inset	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-outside.none	high	2020-01-15	2022-07-15	shape-outside
+css.properties.shape-outside.path	no			shape-outside
+css.properties.shape-outside.polygon	high	2020-01-15	2022-07-15	shape-outside
 css.properties.shape-rendering	high	2020-01-15	2022-07-15	SVG
+css.properties.shape-rendering.auto	high	2020-01-15	2022-07-15	SVG
 css.properties.speak	no			speak
 css.properties.speak-as	no			speak-as
+css.properties.speak-as.digits	no			speak-as
+css.properties.speak-as.literal-punctuation	no			speak-as
+css.properties.speak-as.no-punctuation	no			speak-as
+css.properties.speak-as.normal	no			speak-as
+css.properties.speak-as.spell-out	no			speak-as
 css.properties.stop-color	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stop-color.currentColor	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stop-color.transparent	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stop-opacity	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke-color	no			SVG
+css.properties.stroke-color.currentColor	no			SVG
+css.properties.stroke-color.transparent	no			SVG
 css.properties.stroke-dasharray	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-dasharray.none	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke-dashoffset	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke-linecap	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-linecap.butt	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-linecap.round	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-linecap.square	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke-linejoin	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-linejoin.bevel	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-linejoin.miter	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke-linejoin.round	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke-miterlimit	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.stroke-opacity	high	≤2017-04-05	≤2019-10-05	Opacity (SVG)
 css.properties.stroke-width	high	≤2017-04-05	≤2019-10-05	SVG
+css.properties.stroke.none	high	≤2017-04-05	≤2019-10-05	SVG
 css.properties.tab-size	high	2021-08-10	2024-02-10	tab-size
+css.properties.tab-size.length	high	2021-08-10	2024-02-10	tab-size
 css.properties.table-layout	high	2015-07-29	2018-01-29	Tables
+css.properties.table-layout.auto	high	2015-07-29	2018-01-29	Tables
+css.properties.table-layout.fixed	high	2015-07-29	2018-01-29	Tables
 css.properties.text-align	high	2015-07-29	2018-01-29	text-align
 css.properties.text-align-last	high	2022-09-12	2025-03-12	text-align-last
+css.properties.text-align-last.auto	high	2022-09-12	2025-03-12	text-align-last
+css.properties.text-align.center	high	2020-01-15	2022-07-15	text-align
+css.properties.text-align.end	high	2020-01-15	2022-07-15	text-align
+css.properties.text-align.justify	high	2015-07-29	2018-01-29	text-align
+css.properties.text-align.left	high	2020-01-15	2022-07-15	text-align
+css.properties.text-align.match-parent	no			text-align
+css.properties.text-align.right	high	2020-01-15	2022-07-15	text-align
+css.properties.text-align.start	high	2020-01-15	2022-07-15	text-align
 css.properties.text-anchor	high	≤2016-08-02	≤2019-02-02	SVG
+css.properties.text-anchor.end	high	≤2016-08-02	≤2019-02-02	SVG
+css.properties.text-anchor.middle	high	≤2016-08-02	≤2019-02-02	SVG
+css.properties.text-anchor.start	high	≤2016-08-02	≤2019-02-02	SVG
 css.properties.text-autospace	low	2025-11-11		text-autospace
+css.properties.text-autospace.auto	no			text-autospace
+css.properties.text-autospace.ideograph-alpha	no			text-autospace
+css.properties.text-autospace.ideograph-numeric	no			text-autospace
+css.properties.text-autospace.insert	no			text-autospace
+css.properties.text-autospace.no-autospace	low	2025-11-11		text-autospace
+css.properties.text-autospace.normal	low	2025-11-11		text-autospace
 css.properties.text-box	low	2026-08-18		text-box
 css.properties.text-box-edge	low	2026-08-18		text-box
+css.properties.text-box-edge.auto	low	2026-08-18		text-box
 css.properties.text-box-trim	low	2026-08-18		text-box
+css.properties.text-box-trim.none	low	2026-08-18		text-box
+css.properties.text-box-trim.trim-both	low	2026-08-18		text-box
+css.properties.text-box-trim.trim-end	low	2026-08-18		text-box
+css.properties.text-box-trim.trim-start	low	2026-08-18		text-box
+css.properties.text-box.normal	low	2026-08-18		text-box
 css.properties.text-combine-upright	high	2022-03-14	2024-09-14	text-combine-upright
+css.properties.text-combine-upright.all	high	2022-03-14	2024-09-14	text-combine-upright
+css.properties.text-combine-upright.none	high	2022-03-14	2024-09-14	text-combine-upright
 css.properties.text-decoration	high	2015-07-29	2018-01-29	text-decoration
 css.properties.text-decoration-color	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-color.currentColor	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-color.transparent	high	2020-01-15	2022-07-15	text-decoration
 css.properties.text-decoration-line	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-line.blink	no			text-decoration-line: blink
+css.properties.text-decoration-line.grammar-error	low	2025-12-12		Spelling and grammar text decorations
+css.properties.text-decoration-line.line-through	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-line.none	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-line.overline	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-line.spelling-error	low	2025-12-12		Spelling and grammar text decorations
+css.properties.text-decoration-line.underline	high	2020-01-15	2022-07-15	text-decoration
 css.properties.text-decoration-skip-ink	high	2022-03-14	2024-09-14	text-decoration-skip-ink
+css.properties.text-decoration-skip-ink.all	low	2026-05-07		text-decoration-skip-ink: all
+css.properties.text-decoration-skip-ink.auto	high	2022-03-14	2024-09-14	text-decoration-skip-ink
+css.properties.text-decoration-skip-ink.none	high	2022-03-14	2024-09-14	text-decoration-skip-ink
 css.properties.text-decoration-skip-spaces	no			text-decoration-skip-spaces
+css.properties.text-decoration-skip-spaces.all	no			text-decoration-skip-spaces
+css.properties.text-decoration-skip-spaces.end	no			text-decoration-skip-spaces
+css.properties.text-decoration-skip-spaces.none	no			text-decoration-skip-spaces
+css.properties.text-decoration-skip-spaces.start	no			text-decoration-skip-spaces
 css.properties.text-decoration-style	high	2020-01-15	2022-07-15	text-decoration
+css.properties.text-decoration-style.wavy	high	2020-01-15	2022-07-15	text-decoration
 css.properties.text-decoration-thickness	high	2021-03-04	2023-09-04	text-decoration
+css.properties.text-decoration-thickness.auto	high	2021-03-04	2023-09-04	text-decoration
+css.properties.text-decoration-thickness.from-font	high	2021-03-04	2023-09-04	text-decoration
+css.properties.text-decoration-thickness.percentage	high	2024-03-05	2026-09-05	text-decoration
+css.properties.text-decoration.currentColor	low	2025-12-12		text-decoration
+css.properties.text-decoration.line-through	high	2015-07-29	2018-01-29	text-decoration
+css.properties.text-decoration.none	high	2015-07-29	2018-01-29	text-decoration
+css.properties.text-decoration.overline	high	2015-07-29	2018-01-29	text-decoration
+css.properties.text-decoration.transparent	low	2025-12-12		text-decoration
+css.properties.text-decoration.underline	high	2015-07-29	2018-01-29	text-decoration
 css.properties.text-emphasis	high	2022-03-03	2024-09-03	text-emphasis
 css.properties.text-emphasis-color	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-color.currentColor	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-color.transparent	high	2022-03-03	2024-09-03	text-emphasis
 css.properties.text-emphasis-position	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-position.auto	no			text-emphasis
+css.properties.text-emphasis-position.left	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-position.over	high	2022-12-13	2025-06-13	text-emphasis
+css.properties.text-emphasis-position.right	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-position.under	high	2022-12-13	2025-06-13	text-emphasis
 css.properties.text-emphasis-style	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.circle	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.dot	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.double-circle	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.filled	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.none	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.sesame	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis-style.triangle	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis.currentColor	high	2022-03-03	2024-09-03	text-emphasis
+css.properties.text-emphasis.transparent	high	2022-03-03	2024-09-03	text-emphasis
 css.properties.text-fit	no			text-fit
+css.properties.text-fit.grow	no			text-fit
+css.properties.text-fit.none	no			text-fit
+css.properties.text-fit.shrink	no			text-fit
 css.properties.text-indent	high	2015-07-29	2018-01-29	text-indent
+css.properties.text-indent.each-line	low	2026-03-13		text-indent: each-line
+css.properties.text-indent.hanging	low	2026-03-13		text-indent: hanging
 css.properties.text-justify	no			text-justify
+css.properties.text-justify.auto	no			text-justify
+css.properties.text-justify.inter-character	no			text-justify
+css.properties.text-justify.inter-word	no			text-justify
+css.properties.text-justify.none	no			text-justify
 css.properties.text-orientation	high	2020-09-16	2023-03-16	text-orientation
+css.properties.text-orientation.mixed	high	2020-09-16	2023-03-16	text-orientation
+css.properties.text-orientation.sideways	high	2020-09-16	2023-03-16	text-orientation
+css.properties.text-orientation.upright	high	2020-09-16	2023-03-16	text-orientation
 css.properties.text-overflow	high	2015-07-29	2018-01-29	Text overflow
+css.properties.text-overflow.clip	high	2015-07-29	2018-01-29	Text overflow
+css.properties.text-overflow.ellipsis	high	2015-07-29	2018-01-29	Text overflow
+css.properties.text-overflow.string	no			Custom ellipses
 css.properties.text-rendering	high	2020-01-15	2022-07-15	SVG
+css.properties.text-rendering.auto	high	2020-01-15	2022-07-15	SVG
+css.properties.text-rendering.geometricPrecision	high	2020-01-15	2022-07-15	SVG
 css.properties.text-shadow	high	2015-07-29	2018-01-29	text-shadow
+css.properties.text-shadow.none	high	2015-07-29	2018-01-29	text-shadow
 css.properties.text-size-adjust	no			text-size-adjust
+css.properties.text-size-adjust.auto	no			text-size-adjust
+css.properties.text-size-adjust.none	no			text-size-adjust
+css.properties.text-size-adjust.percentages	no			text-size-adjust
 css.properties.text-spacing-trim	no			text-spacing-trim
+css.properties.text-spacing-trim.normal	no			text-spacing-trim
+css.properties.text-spacing-trim.space-all	no			text-spacing-trim
+css.properties.text-spacing-trim.space-first	no			text-spacing-trim
+css.properties.text-spacing-trim.trim-start	no			text-spacing-trim
 css.properties.text-transform	high	2015-07-29	2018-01-29	text-transform
+css.properties.text-transform.capitalize	high	2015-07-29	2018-01-29	text-transform
+css.properties.text-transform.full-size-kana	no			text-transform
+css.properties.text-transform.full-width	no			text-transform
+css.properties.text-transform.lowercase	high	2015-07-29	2018-01-29	text-transform
+css.properties.text-transform.math-auto	no			MathML
+css.properties.text-transform.none	high	2015-07-29	2018-01-29	text-transform
+css.properties.text-transform.uppercase	high	2015-07-29	2018-01-29	text-transform
 css.properties.text-underline-offset	high	2020-11-19	2023-05-19	text-underline-offset
+css.properties.text-underline-offset.auto	high	2020-11-19	2023-05-19	text-underline-offset
+css.properties.text-underline-offset.percentage	low	2024-12-11		text-underline-offset
 css.properties.text-underline-position	high	2020-07-28	2023-01-28	text-underline-position
+css.properties.text-underline-position.auto	high	2020-07-28	2023-01-28	text-underline-position
+css.properties.text-underline-position.from-font	high	2020-11-19	2023-05-19	text-underline-position
+css.properties.text-underline-position.left	low	2024-12-11		text-underline-position
+css.properties.text-underline-position.right	low	2024-12-11		text-underline-position
+css.properties.text-underline-position.under	high	2020-07-28	2023-01-28	text-underline-position
 css.properties.text-wrap	high	2024-03-05	2026-09-05	text-wrap
 css.properties.text-wrap-mode	low	2024-10-17		text-wrap
+css.properties.text-wrap-mode.nowrap	low	2024-10-17		text-wrap
+css.properties.text-wrap-mode.wrap	low	2024-10-17		text-wrap
 css.properties.text-wrap-style	low	2024-10-17		text-wrap
+css.properties.text-wrap-style.auto	low	2024-10-17		text-wrap
+css.properties.text-wrap-style.balance	low	2024-10-17		text-wrap: balance
+css.properties.text-wrap-style.pretty	no			text-wrap: pretty
+css.properties.text-wrap-style.stable	low	2024-10-17		text-wrap
+css.properties.text-wrap.balance	low	2024-05-13		text-wrap: balance
+css.properties.text-wrap.nowrap	high	2024-03-19	2026-09-19	text-wrap
+css.properties.text-wrap.pretty	no			text-wrap: pretty
+css.properties.text-wrap.stable	low	2024-10-17		text-wrap
+css.properties.text-wrap.wrap	high	2024-03-19	2026-09-19	text-wrap
 css.properties.timeline-scope	no			Scroll-driven animations
+css.properties.timeline-scope.all	no			Scroll-driven animations
+css.properties.timeline-scope.none	no			Scroll-driven animations
 css.properties.timeline-trigger	no			Scroll-triggered animations
 css.properties.timeline-trigger-activation-range	no			Scroll-triggered animations
 css.properties.timeline-trigger-activation-range-end	no			Scroll-triggered animations
+css.properties.timeline-trigger-activation-range-end.normal	no			Scroll-triggered animations
 css.properties.timeline-trigger-activation-range-start	no			Scroll-triggered animations
+css.properties.timeline-trigger-activation-range-start.normal	no			Scroll-triggered animations
+css.properties.timeline-trigger-activation-range.normal	no			Scroll-triggered animations
 css.properties.timeline-trigger-active-range	no			Scroll-triggered animations
 css.properties.timeline-trigger-active-range-end	no			Scroll-triggered animations
+css.properties.timeline-trigger-active-range-end.auto	no			Scroll-triggered animations
+css.properties.timeline-trigger-active-range-end.normal	no			Scroll-triggered animations
 css.properties.timeline-trigger-active-range-start	no			Scroll-triggered animations
+css.properties.timeline-trigger-active-range-start.auto	no			Scroll-triggered animations
+css.properties.timeline-trigger-active-range-start.normal	no			Scroll-triggered animations
+css.properties.timeline-trigger-active-range.auto	no			Scroll-triggered animations
+css.properties.timeline-trigger-active-range.normal	no			Scroll-triggered animations
 css.properties.timeline-trigger-name	no			Scroll-triggered animations
+css.properties.timeline-trigger-name.none	no			Scroll-triggered animations
 css.properties.timeline-trigger-source	no			Scroll-triggered animations
+css.properties.timeline-trigger-source.auto	no			Scroll-triggered animations
+css.properties.timeline-trigger-source.none	no			Scroll-triggered animations
+css.properties.timeline-trigger.auto	no			Scroll-triggered animations
+css.properties.timeline-trigger.none	no			Scroll-triggered animations
+css.properties.timeline-trigger.normal	no			Scroll-triggered animations
 css.properties.top	high	2015-07-29	2018-01-29	Physical properties
+css.properties.top.anchor	low	2026-01-13		Anchor positioning
+css.properties.top.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.top.auto	high	2015-07-29	2018-01-29	Physical properties
 css.properties.touch-action	high	2019-09-19	2022-03-19	touch-action
+css.properties.touch-action.manipulation	high	2019-09-19	2022-03-19	touch-action
+css.properties.touch-action.none	high	2019-09-19	2022-03-19	touch-action
+css.properties.touch-action.pan-down	no			touch-action
+css.properties.touch-action.pan-left	no			touch-action
+css.properties.touch-action.pan-right	no			touch-action
+css.properties.touch-action.pan-up	no			touch-action
+css.properties.touch-action.pan-x	high	2019-09-19	2022-03-19	touch-action
+css.properties.touch-action.pan-y	high	2019-09-19	2022-03-19	touch-action
+css.properties.touch-action.pinch-zoom	high	2021-01-26	2023-07-26	touch-action
 css.properties.transform	high	2015-09-30	2018-03-30	2D transforms
 css.properties.transform-box	high	2020-01-15	2022-07-15	transform-box
+css.properties.transform-box.border-box	high	2023-10-13	2026-04-13	transform-box
+css.properties.transform-box.content-box	high	2024-04-16	2026-10-16	transform-box
+css.properties.transform-box.fill-box	high	2020-01-15	2022-07-15	transform-box
+css.properties.transform-box.stroke-box	high	2024-04-16	2026-10-16	transform-box
+css.properties.transform-box.view-box	high	2020-01-15	2022-07-15	transform-box
 css.properties.transform-origin	high	2015-09-30	2018-03-30	2D transforms
+css.properties.transform-origin.bottom	high	2015-09-30	2018-03-30	2D transforms
+css.properties.transform-origin.center	high	2015-09-30	2018-03-30	2D transforms
+css.properties.transform-origin.left	high	2015-09-30	2018-03-30	2D transforms
+css.properties.transform-origin.right	high	2015-09-30	2018-03-30	2D transforms
+css.properties.transform-origin.top	high	2015-09-30	2018-03-30	2D transforms
 css.properties.transform-style	high	2015-09-30	2018-03-30	3D transforms
+css.properties.transform-style.flat	high	2015-09-30	2018-03-30	3D transforms
+css.properties.transform-style.preserve-3d	high	2015-09-30	2018-03-30	3D transforms
+css.properties.transform.3d	high	2015-09-30	2018-03-30	3D transforms
+css.properties.transform.none	high	2015-09-30	2018-03-30	2D transforms
 css.properties.transition	high	2015-09-30	2018-03-30	Transitions (CSS)
 css.properties.transition-behavior	no			transition-behavior
 css.properties.transition-delay	high	2015-09-30	2018-03-30	Transitions (CSS)
 css.properties.transition-duration	high	2015-09-30	2018-03-30	Transitions (CSS)
 css.properties.transition-property	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-property.all	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-property.none	high	2015-09-30	2018-03-30	Transitions (CSS)
 css.properties.transition-timing-function	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.ease	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.ease-in	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.ease-in-out	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.ease-out	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.jump	high	2020-09-16	2023-03-16	Transitions (CSS)
+css.properties.transition-timing-function.linear	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.step-end	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition-timing-function.step-start	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.all	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.ease	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.ease-in	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.ease-in-out	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.ease-out	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.linear	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.none	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.step-end	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.step-start	high	2015-09-30	2018-03-30	Transitions (CSS)
+css.properties.transition.transition-behavior	low	2024-08-06		transition-behavior
 css.properties.translate	high	2022-08-05	2025-02-05	Individual transform properties
+css.properties.translate.none	high	2022-08-05	2025-02-05	Individual transform properties
 css.properties.trigger-scope	no			Scroll-triggered animations
+css.properties.trigger-scope.all	no			Scroll-triggered animations
+css.properties.trigger-scope.none	no			Scroll-triggered animations
 css.properties.unicode-bidi	high	2015-07-29	2018-01-29	Layout direction override
+css.properties.unicode-bidi.bidi-override	high	2015-07-29	2018-01-29	Layout direction override
+css.properties.unicode-bidi.embed	high	2015-07-29	2018-01-29	Layout direction override
+css.properties.unicode-bidi.isolate	high	2020-01-15	2022-07-15	Layout direction override
+css.properties.unicode-bidi.isolate-override	high	2020-01-15	2022-07-15	Layout direction override
+css.properties.unicode-bidi.normal	high	2015-07-29	2018-01-29	Layout direction override
+css.properties.unicode-bidi.plaintext	high	2020-01-15	2022-07-15	Layout direction override
 css.properties.user-select	no			user-select
+css.properties.user-select.all	no			user-select
+css.properties.user-select.auto	no			user-select
+css.properties.user-select.none	no			user-select
+css.properties.user-select.text	no			user-select
 css.properties.vector-effect	high	2020-01-15	2022-07-15	SVG
+css.properties.vector-effect.non-scaling-stroke	high	2020-01-15	2022-07-15	SVG
+css.properties.vector-effect.none	high	2020-01-15	2022-07-15	SVG
 css.properties.vertical-align	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.baseline	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.bottom	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.middle	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.sub	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.super	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.text-bottom	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.text-top	high	2015-07-29	2018-01-29	vertical-align
+css.properties.vertical-align.top	high	2015-07-29	2018-01-29	vertical-align
 css.properties.view-timeline	no			Scroll-driven animations
 css.properties.view-timeline-axis	no			Scroll-driven animations
+css.properties.view-timeline-axis.block	no			Scroll-driven animations
+css.properties.view-timeline-axis.inline	no			Scroll-driven animations
+css.properties.view-timeline-axis.x	no			Scroll-driven animations
+css.properties.view-timeline-axis.y	no			Scroll-driven animations
 css.properties.view-timeline-inset	no			Scroll-driven animations
+css.properties.view-timeline-inset.auto	no			Scroll-driven animations
 css.properties.view-timeline-name	no			Scroll-driven animations
 css.properties.view-transition-class	low	2025-10-14		view-transition-class
+css.properties.view-transition-class.none	low	2025-10-14		view-transition-class
 css.properties.view-transition-name	low	2025-10-14		View transitions
+css.properties.view-transition-name.match-element	low	2025-10-14		View transitions
+css.properties.view-transition-name.none	low	2025-10-14		View transitions
 css.properties.view-transition-scope	no			Element-scoped view transitions
+css.properties.view-transition-scope.all	no			Element-scoped view transitions
+css.properties.view-transition-scope.none	no			Element-scoped view transitions
 css.properties.visibility	high	2015-07-29	2018-01-29	visibility
+css.properties.visibility.collapse	high	2015-07-29	2018-01-29	visibility
+css.properties.visibility.hidden	high	2015-07-29	2018-01-29	visibility
+css.properties.visibility.visible	high	2015-07-29	2018-01-29	visibility
 css.properties.white-space	high	2015-07-29	2018-01-29	white-space
 css.properties.white-space-collapse	high	2024-03-19	2026-09-19	white-space-collapse
+css.properties.white-space-collapse.break-spaces	high	2024-03-19	2026-09-19	white-space-collapse
+css.properties.white-space-collapse.collapse	high	2024-03-19	2026-09-19	white-space-collapse
+css.properties.white-space-collapse.preserve	high	2024-03-19	2026-09-19	white-space-collapse
+css.properties.white-space-collapse.preserve-breaks	high	2024-03-19	2026-09-19	white-space-collapse
+css.properties.white-space-collapse.preserve-spaces	no			white-space-collapse
+css.properties.white-space.break-spaces	high	2020-07-28	2023-01-28	white-space
+css.properties.white-space.normal	high	2015-07-29	2018-01-29	white-space
+css.properties.white-space.nowrap	high	2015-07-29	2018-01-29	white-space
+css.properties.white-space.pre	high	2015-07-29	2018-01-29	white-space
+css.properties.white-space.pre-line	high	2015-07-29	2018-01-29	white-space
+css.properties.white-space.pre-wrap	high	2015-07-29	2018-01-29	white-space
 css.properties.widows	no			Widows and orphans
 css.properties.width	high	2015-07-29	2018-01-29	Width and height
+css.properties.width.anchor-size	low	2026-01-13		Anchor positioning
+css.properties.width.auto	high	2015-07-29	2018-01-29	Width and height
+css.properties.width.fit-content	high	2021-11-02	2024-05-02	fit-content
+css.properties.width.max-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.width.min-content	high	2020-01-15	2022-07-15	min-content and max-content
+css.properties.width.stretch	no			stretch
 css.properties.will-change	high	2020-01-15	2022-07-15	will-change
+css.properties.will-change.auto	high	2020-01-15	2022-07-15	will-change
+css.properties.will-change.contents	high	2020-01-15	2022-07-15	will-change
+css.properties.will-change.scroll-position	high	2020-01-15	2022-07-15	will-change
 css.properties.window-drag	no			window-drag
+css.properties.window-drag.move	no			window-drag
+css.properties.window-drag.none	no			window-drag
 css.properties.word-break	high	2015-07-29	2018-01-29	word-break
+css.properties.word-break.auto-phrase	no			word-break: auto-phrase
+css.properties.word-break.break-all	high	2015-07-29	2018-01-29	word-break
+css.properties.word-break.break-word	no			word-break: break-word
+css.properties.word-break.keep-all	high	2015-09-30	2018-03-30	word-break
+css.properties.word-break.normal	high	2015-07-29	2018-01-29	word-break
 css.properties.word-spacing	high	2015-07-29	2018-01-29	word-spacing
+css.properties.word-spacing.normal	high	2015-07-29	2018-01-29	word-spacing
 css.properties.writing-mode	high	2017-03-27	2019-09-27	writing-mode
+css.properties.writing-mode.horizontal-tb	high	2017-03-27	2019-09-27	writing-mode
+css.properties.writing-mode.lr	no			writing-mode SVG 1.1 values
+css.properties.writing-mode.lr-tb	no			writing-mode SVG 1.1 values
+css.properties.writing-mode.rl	no			writing-mode SVG 1.1 values
+css.properties.writing-mode.rl-tb	no			writing-mode SVG 1.1 values
+css.properties.writing-mode.sideways-lr	low	2025-03-31		writing-mode
+css.properties.writing-mode.sideways-rl	low	2025-03-31		writing-mode
+css.properties.writing-mode.tb	no			writing-mode SVG 1.1 values
+css.properties.writing-mode.tb-rl	no			writing-mode SVG 1.1 values
+css.properties.writing-mode.vertical-lr	high	2017-03-27	2019-09-27	writing-mode
+css.properties.writing-mode.vertical-rl	high	2017-03-27	2019-09-27	writing-mode
 css.properties.x	high	2020-07-28	2023-01-28	SVG
 css.properties.y	high	2020-07-28	2023-01-28	SVG
 css.properties.z-index	high	2015-07-29	2018-01-29	z-index
+css.properties.z-index.auto	high	2015-07-29	2018-01-29	z-index
 css.properties.zoom	low	2024-05-14		zoom
 css.selectors.active	high	2015-07-29	2018-01-29	User action pseudo-classes
 css.selectors.active-view-transition	low	2025-10-14		Active view transition

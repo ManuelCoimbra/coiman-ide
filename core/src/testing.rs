@@ -350,7 +350,10 @@ impl Adapter {
             Kind::Dotnet => format!("{all} --collect:'XPlat Code Coverage' --results-directory {}", q(folder)),
             Kind::Jest => format!("{all} --coverage --coverageReporters=lcov --coverageDirectory={}", q(folder)),
             Kind::Vitest => {
-                format!("{all} --coverage --coverage.reporter=lcovonly --coverage.reportsDirectory={}", q(folder))
+                format!(
+                    "{all} --coverage --coverage.reportOnFailure --coverage.reporter=lcovonly --coverage.reportsDirectory={}",
+                    q(folder)
+                )
             }
             _ => return None,
         })

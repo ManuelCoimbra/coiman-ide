@@ -247,8 +247,12 @@ pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
         // A global typescript-language-server needs to be told where the
         // global TypeScript is; a project's own TypeScript still wins.
         ServerKind::TypeScript => {
-            let lib = launch.program.parent().map(|d| d.join("node_modules").join("typescript").join("lib"));
-            match lib.filter(|l| l.join("tsserver.js").is_file()) {
+            // Beside a global install's command, or above a project's `.bin`.
+            let folder = launch.program.parent();
+            let global = folder.map(|d| d.join("node_modules"));
+            let local = folder.and_then(Path::parent).map(Path::to_path_buf);
+            let found = [global, local].into_iter().flatten().map(|d| d.join("typescript").join("lib"));
+            match found.into_iter().find(|l| l.join("tsserver.js").is_file()) {
                 Some(lib) => serde_json::json!({ "tsserver": { "fallbackPath": lib } }),
                 None => serde_json::Value::Null,
             }

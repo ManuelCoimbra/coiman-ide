@@ -153,12 +153,16 @@ fn css_uses_in(chars: &[char], base: usize, out: &mut Vec<Use>) {
             SegmentKind::Declaration => {
                 let name_end = word_end(chars, a);
                 add("css.properties.", a, name_end);
+                let property: String = chars[a..name_end].iter().collect::<String>().to_lowercase();
+                let values = format!("css.properties.{property}.");
                 let mut i = name_end;
                 while i < b {
                     if chars[i].is_alphabetic() && !chars[i - 1].is_alphanumeric() && chars[i - 1] != '-' {
                         let end = word_end(chars, i);
                         if chars.get(end) == Some(&'(') {
                             add("css.types.", i, end);
+                        } else {
+                            add(&values, i, end);
                         }
                         i = end.max(i + 1);
                     } else {

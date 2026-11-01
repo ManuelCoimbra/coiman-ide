@@ -37,18 +37,16 @@ pub struct Replacement {
     pub symbol: String,
 }
 
-/// The backslash of an abbreviation being typed: its place among `chars`.
+/// The backslash of an abbreviation being typed: its place among `chars`. The last
+/// character is what was just typed, so it ends a name, even if it's a backslash.
 fn backslash(chars: &[char]) -> Option<usize> {
     const LONGEST: usize = 16;
+    let last = chars.len().checked_sub(1)?;
     let from = chars.len().saturating_sub(LONGEST + 2);
-    let at = (from..chars.len()).rev().find(|&i| chars[i] == '\\')?;
+    let at = (from..last).rev().find(|&i| chars[i] == '\\')?;
     // A doubled backslash is a backslash, and white space ends a name.
     let escaped = at > 0 && chars[at - 1] == '\\';
-    // The backslash itself may be what was just typed: nothing follows it yet.
-    if at + 1 >= chars.len() {
-        return None;
-    }
-    (!escaped && !chars[at + 1..chars.len() - 1].iter().any(|c| c.is_whitespace())).then_some(at)
+    (!escaped && !chars[at + 1..last].iter().any(|c| c.is_whitespace())).then_some(at)
 }
 
 /// After a character was typed: what `before`, the line up to the cursor, turns
@@ -195,6 +193,7 @@ mod tests {
         assert_eq!(typed("\\ "), None);
         assert_eq!(typed("\\"), None, "the backslash was just typed");
         assert_eq!(typed("x \\"), None);
+        assert_eq!(typed("\\to\\").unwrap().symbol, "→", "the next name ends this one");
         assert_eq!(at_cursor("\\", &none()), None);
     }
 
@@ -203,7 +202,7 @@ mod tests {
         let typed = |before: &str| after_typing(before, &none());
         assert_eq!(typed("\\_1 ").unwrap().symbol, "₁");
         assert_eq!(typed("\\|- ").unwrap().symbol, "⊢");
-        assert_eq!(typed("\\<- "), None);
+        assert_eq!(typed("\\<- ").unwrap().symbol, "←");
         assert_eq!(typed("\\<-> ").unwrap().symbol, "↔");
         assert_eq!(at_cursor("\\<", &none()).unwrap().symbol, "⟨");
     }

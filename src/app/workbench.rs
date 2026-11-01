@@ -1097,12 +1097,13 @@ impl CodeApp {
             }
             if let Some(msg) = &self.status {
                 // Long messages, like git's errors, would run into the right side.
-                const ROOM: usize = 90;
-                if msg.chars().count() > ROOM {
-                    let cut: String = msg.chars().take(ROOM).collect();
-                    ui.label(white(format!("{cut}…"))).on_hover_text(msg);
-                } else {
-                    ui.label(white(msg.clone()));
+                const RIGHT_SIDE: f32 = 440.0;
+                let room = (ui.available_width() - RIGHT_SIDE).max(0.0);
+                if room > 40.0 {
+                    let height = ui.available_height();
+                    ui.allocate_ui(egui::vec2(room, height), |ui| {
+                        ui.add(egui::Label::new(white(msg.clone())).truncate()).on_hover_text(msg);
+                    });
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {

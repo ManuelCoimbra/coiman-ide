@@ -367,13 +367,24 @@ fn make_targets(text: &str) -> Vec<String> {
 
 fn cmake_plans(dir: &Path, title_suffix: &str) -> Result<Outcome, String> {
     let text = std::fs::read_to_string(dir.join("CMakeLists.txt")).unwrap_or_default();
+    // Windows defaults to Visual Studio's tools, often absent. A folder already
+    // configured keeps its generator: it can't change.
+    let generator = if !cfg!(windows) || dir.join("build").join("CMakeCache.txt").is_file() {
+        ""
+    } else if which("ninja").is_some() {
+        " -G Ninja"
+    } else if which("mingw32-make").is_some() {
+        " -G 'MinGW Makefiles'"
+    } else {
+        ""
+    };
     let plans = cmake_executables(&text)
         .into_iter()
         .map(|name| {
-            let configure = "cmake -S . -B build";
+            let configure = format!("cmake -S . -B build{generator}");
             let build = format!("cmake --build build --target {}", quote(&name));
             let exe = dir.join("build").join(exe_name(&name));
-            let command = then(&then(configure, &build), &call(&exe));
+            let command = then(&then(&configure, &build), &call(&exe));
             RunPlan { title: format!("{name}{title_suffix}"), command, cwd: dir.to_path_buf() }
         })
         .collect();

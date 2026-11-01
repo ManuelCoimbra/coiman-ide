@@ -17,6 +17,18 @@ use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_s
 
 pub use alacritty_terminal;
 
+/// This process's PATH, then what `other` adds to it.
+fn merged_path(other: Option<&std::ffi::OsStr>) -> Option<std::ffi::OsString> {
+    let own = std::env::var_os("PATH")?;
+    let mut parts: Vec<std::path::PathBuf> = std::env::split_paths(&own).collect();
+    for part in other.into_iter().flat_map(std::env::split_paths) {
+        if !parts.contains(&part) {
+            parts.push(part);
+        }
+    }
+    std::env::join_paths(parts).ok()
+}
+
 /// Terminal size in character cells.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Size {
@@ -177,6 +189,11 @@ impl Session {
         let mut cmd = CommandBuilder::new(&program);
         cmd.args(args);
         cmd.cwd(cwd);
+        // On Windows the builder starts from the registry's PATH. What this program was
+        // started with counts too: it's what found the tools being run.
+        if let Some(path) = merged_path(cmd.get_env("PATH")) {
+            cmd.env("PATH", path);
+        }
         for (k, v) in env {
             cmd.env(k, v);
         }

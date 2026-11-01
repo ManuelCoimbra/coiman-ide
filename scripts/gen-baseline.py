@@ -3,7 +3,7 @@
 Usage: python -I scripts/gen-baseline.py <data.json> <version> core/data/baseline.tsv
 
 Only CSS and HTML features at the level the editor can see them are kept: a
-property, selector, at-rule or function, or an element.
+property, a keyword value of one, a selector, at-rule or function, or an element.
 """
 
 import json
@@ -16,6 +16,10 @@ def short_key(key):
     """The key the editor looks up, or None if it is finer than the editor can tell."""
     parts = key.split(".")
     if key.startswith(KEPT) and len(parts) == 3:
+        return key
+    # A keyword value, such as css.properties.display.grid. Names with `_` are
+    # contexts the data adds, not words anyone writes.
+    if key.startswith("css.properties.") and len(parts) == 4 and "_" not in parts[3]:
         return key
     # Functions sit under the type they make: css.types.color.oklch.
     if key.startswith("css.types.") and len(parts) in (3, 4):
