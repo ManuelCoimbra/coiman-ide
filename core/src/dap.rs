@@ -3,14 +3,15 @@
 //! Nothing here downloads unless [`install_codelldb`] is called, which the
 //! editor only does after the user agreed.
 
-use std::io::{BufReader, Write};
+use std::io::{BufRead, BufReader, Write};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use serde_json::{Value, json};
 
-use crate::lsp::discovery::quiet_command;
+use crate::lsp::discovery::{kill_tree, quiet_command};
 use crate::lsp::transport::{encode, read_message};
 
 /// Something the adapter sent.
@@ -40,6 +41,19 @@ pub struct DapClient {
     out: Sender<Vec<u8>>,
     events: Receiver<DapEvent>,
     next_seq: i64,
+    /// For an adapter reached by a socket: where, for its further sessions.
+    address: Option<String>,
+}
+
+/// How long an adapter gets to say which port it listens on.
+const LISTEN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The address in an adapter's "listening at 127.0.0.1:1234". Only this computer's counts.
+fn listening_address(line: &str) -> Option<String> {
+    let at = line.find("127.0.0.1:")?;
+    let rest = &line[at + "127.0.0.1:".len()..];
+    let port: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    (!port.is_empty()).then(|| format!("127.0.0.1:{port}"))
 }
 
 impl DapClient {
@@ -81,7 +95,84 @@ impl DapClient {
             let _ = tx.send(DapEvent::Exited);
             wake();
         });
-        Ok(Self { child: Some(child), out, events, next_seq: 1 })
+        Ok(Self { child: Some(child), out, events, next_seq: 1, address: None })
+    }
+
+    /// Starts an adapter that listens on a port of this computer, and connects to it.
+    pub fn start_listening(
+        program: &Path,
+        args: &[String],
+        cwd: &Path,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> std::io::Result<Self> {
+        let mut child = quiet_command(program)
+            .args(args)
+            .current_dir(cwd)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()?;
+        let stdout = child.stdout.take().expect("piped stdout");
+        let (found, address) = mpsc::channel();
+        // It goes on reading, so the adapter never blocks on a full pipe.
+        std::thread::spawn(move || {
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if let Some(at) = listening_address(&line) {
+                    let _ = found.send(at);
+                }
+            }
+        });
+        let connected = address
+            .recv_timeout(LISTEN_TIMEOUT)
+            .map_err(|_| std::io::Error::other("It didn't say where it's listening"))
+            .and_then(|at| Self::connect(&at, wake));
+        match connected {
+            Ok(mut client) => {
+                client.child = Some(child);
+                Ok(client)
+            }
+            Err(why) => {
+                kill_tree(&mut child);
+                Err(why)
+            }
+        }
+    }
+
+    /// Opens another session with an adapter already listening.
+    pub fn connect(address: &str, wake: impl Fn() + Send + Sync + 'static) -> std::io::Result<Self> {
+        let stream = TcpStream::connect(address)?;
+        let reader = stream.try_clone()?;
+        let mut writer = stream;
+        let (out, out_rx) = mpsc::channel::<Vec<u8>>();
+        std::thread::spawn(move || {
+            for bytes in out_rx {
+                if writer.write_all(&bytes).and_then(|()| writer.flush()).is_err() {
+                    break;
+                }
+            }
+            // What was queued, such as a `disconnect`, has gone: this ends the session.
+            let _ = writer.shutdown(std::net::Shutdown::Both);
+        });
+        let (tx, events) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(reader);
+            while let Ok(Some(msg)) = read_message(&mut reader) {
+                if let Some(ev) = classify(msg)
+                    && tx.send(ev).is_err()
+                {
+                    return;
+                }
+                wake();
+            }
+            let _ = tx.send(DapEvent::Exited);
+            wake();
+        });
+        Ok(Self { child: None, out, events, next_seq: 1, address: Some(address.to_owned()) })
+    }
+
+    /// Where a further session with this adapter can connect.
+    pub fn address(&self) -> Option<&str> {
+        self.address.as_deref()
     }
 
     /// Sends a request; returns its sequence number (matched by responses).
@@ -114,6 +205,12 @@ impl Drop for DapClient {
     /// stdin ends it), and kills it if it hasn't exited after two seconds.
     fn drop(&mut self) {
         let Some(mut child) = self.child.take() else { return };
+        // One that listens doesn't end with its connection, and a thread wouldn't outlive
+        // the editor closing. What it's debugging goes with it.
+        if self.address.is_some() {
+            kill_tree(&mut child);
+            return;
+        }
         std::thread::spawn(move || {
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
             while std::time::Instant::now() < deadline {
@@ -122,8 +219,7 @@ impl Drop for DapClient {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
-            let _ = child.kill();
-            let _ = child.wait();
+            kill_tree(&mut child);
         });
     }
 }
@@ -161,6 +257,8 @@ pub fn initialize_args() -> Value {
         // its launcher there, so the program's output and input stay off the
         // adapter's stdio (on Windows the program would otherwise inherit it).
         "supportsRunInTerminalRequest": true,
+        // js-debug runs each program in a session of its own, on another connection.
+        "supportsStartDebuggingRequest": true,
     })
 }
 
@@ -200,6 +298,43 @@ pub enum DebugKind {
     Python { python: PathBuf, env: Vec<(String, String)> },
     /// An adapter named by a language's entry in `languages.toml`.
     Data { command: String, debug_type: String },
+    /// Delve, for Go.
+    Go,
+    /// js-debug, for JavaScript on Node.
+    Js,
+}
+
+/// Where Delve is: on PATH, or where `go install` puts it.
+fn find_dlv() -> Option<PathBuf> {
+    crate::lsp::servers::which("dlv").or_else(|| {
+        let gopath = std::env::var_os("GOPATH").map(PathBuf::from);
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
+        let places = gopath.into_iter().chain(home.map(|h| Path::new(&h).join("go")));
+        places.map(|p| p.join("bin").join(exe("dlv"))).find(|p| p.is_file())
+    })
+}
+
+/// What Delve should build for this file: the package, when there's a module around it.
+fn go_target(file: &Path) -> PathBuf {
+    let dir = file.parent().unwrap_or(file);
+    let in_module = dir.ancestors().any(|d| d.join("go.mod").is_file());
+    if in_module || is_go_test(file) { dir.to_path_buf() } else { file.to_path_buf() }
+}
+
+/// Where Delve's build goes. One killed along with Delve stays behind, so older ones go
+/// here; one still running can't be deleted, so another editor's is safe.
+fn go_build_path() -> PathBuf {
+    let dir = std::env::temp_dir().join("rust-code-run");
+    for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+        if entry.file_name().to_string_lossy().starts_with("dlv-") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    dir.join(format!("dlv-{}", std::process::id()))
+}
+
+fn is_go_test(file: &Path) -> bool {
+    file.file_name().is_some_and(|n| n.to_string_lossy().ends_with("_test.go"))
 }
 
 impl DebugKind {
@@ -208,6 +343,8 @@ impl DebugKind {
             Self::Lldb => "CodeLLDB".to_owned(),
             Self::Python { .. } => "debugpy".to_owned(),
             Self::Data { command, .. } => command.split_whitespace().next().unwrap_or(command).to_owned(),
+            Self::Go => "Delve".to_owned(),
+            Self::Js => "js-debug".to_owned(),
         }
     }
 
@@ -223,7 +360,21 @@ impl DebugKind {
                 let program = crate::lsp::servers::which(words.next()?)?;
                 Some(Adapter { program, args: words.map(str::to_owned).collect() })
             }
+            Self::Go => {
+                let args = ["dap", "--listen=127.0.0.1:0"].map(str::to_owned).to_vec();
+                Some(Adapter { program: find_dlv()?, args })
+            }
+            Self::Js => {
+                let server = crate::build_tools::js_debug_server()?.to_string_lossy().into_owned();
+                let program = crate::lsp::servers::which("node")?;
+                Some(Adapter { program, args: vec![server, "0".to_owned(), "127.0.0.1".to_owned()] })
+            }
         }
+    }
+
+    /// Whether it's reached by a port on this computer, rather than its standard streams.
+    pub fn listens(&self) -> bool {
+        matches!(self, Self::Go | Self::Js)
     }
 
     /// The `launch` request for this debugger.
@@ -252,7 +403,93 @@ impl DebugKind {
                 "cwd": cwd,
                 "stopOnEntry": false,
             }),
+            Self::Go => json!({
+                "type": "go",
+                "request": "launch",
+                "name": name,
+                "mode": if is_go_test(program) { "test" } else { "debug" },
+                "program": go_target(program),
+                "args": args,
+                "cwd": cwd,
+                "stopOnEntry": false,
+                // What the program prints comes as output events, not to Delve's own stream.
+                "outputMode": "remote",
+                // Its build goes outside the project.
+                "output": go_build_path(),
+            }),
+            Self::Js => json!({
+                "type": "pwa-node",
+                "request": "launch",
+                "name": name,
+                "program": program,
+                "args": args,
+                "cwd": cwd,
+                "console": "internalConsole",
+                "stopOnEntry": false,
+                "skipFiles": if step_into_std { json!([]) } else { json!(["<node_internals>/**"]) },
+            }),
         }
+    }
+}
+
+#[cfg(test)]
+mod socket_tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    #[test]
+    fn reads_where_an_adapter_listens() {
+        let found = |line| listening_address(line);
+        assert_eq!(found("DAP server listening at: 127.0.0.1:53124").as_deref(), Some("127.0.0.1:53124"));
+        assert_eq!(found("Debug server listening at 127.0.0.1:9229").as_deref(), Some("127.0.0.1:9229"));
+        assert_eq!(found("listening at 192.0.2.1:9229"), None);
+        assert_eq!(found("127.0.0.1: nothing"), None);
+    }
+
+    #[test]
+    fn talks_over_a_socket_and_ends_with_it() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap().to_string();
+        std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut writer = stream.try_clone().unwrap();
+            let mut reader = BufReader::new(stream);
+            let msg = read_message(&mut reader).unwrap().unwrap();
+            let answer = json!({ "type": "response", "request_seq": msg["seq"], "success": true, "body": { "ok": 1 } });
+            writer.write_all(&encode(&answer)).unwrap();
+        });
+        let mut client = DapClient::connect(&address, || {}).unwrap();
+        assert_eq!(client.address(), Some(address.as_str()));
+        let seq = client.request("initialize", json!({}));
+        let mut seen = Vec::new();
+        for _ in 0..200 {
+            seen.extend(client.poll());
+            if seen.iter().any(|e| matches!(e, DapEvent::Exited)) {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            matches!(seen.first(), Some(DapEvent::Response { request_seq, success: true, .. }) if *request_seq == seq),
+            "{seen:?}"
+        );
+        assert!(matches!(seen.last(), Some(DapEvent::Exited)), "{seen:?}");
+    }
+
+    #[test]
+    fn launches_go_and_js_as_they_expect() {
+        let (file, cwd) = (Path::new("C:/none/main.go"), Path::new("C:/none"));
+        let go = DebugKind::Go.launch_args(file, &[], cwd, false);
+        assert_eq!(go["type"], "go");
+        assert_eq!(go["mode"], "debug");
+        assert_eq!(go["program"], json!(file));
+        let test = DebugKind::Go.launch_args(Path::new("C:/none/a_test.go"), &[], cwd, false);
+        assert_eq!(test["mode"], "test");
+        assert_eq!(test["program"], json!(cwd));
+        let js = DebugKind::Js.launch_args(Path::new("C:/none/a.js"), &[], cwd, false);
+        assert_eq!(js["type"], "pwa-node");
+        assert_eq!(js["skipFiles"][0], "<node_internals>/**");
+        assert!(DebugKind::Go.listens() && DebugKind::Js.listens() && !DebugKind::Lldb.listens());
     }
 }
 

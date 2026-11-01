@@ -8,7 +8,9 @@ Rust Code is built to be trusted with your code. These are commitments, and
 - **No telemetry.** No usage statistics, crash reports or analytics are
   collected or sent, and there is no setting to turn them on.
 - **No network access.** The editor makes no network connections: no update
-  checks, no downloads, no "what's new" feeds. The live session panel connects only when you press Connect, to an address on this computer. For a BEAM node, Rust Code's helper joins it as a hidden node on this computer, using Erlang's own distribution. For a Python kernel or a BEAM node, a small helper script is written to the system's temporary folder and run from there. The one other socket it opens is to a
+  checks, no downloads, no "what's new" feeds. Debugging Go or JavaScript starts Delve or js-debug listening on a port of this computer only, and connects to it. js-debug 1.140.0 is downloaded from github.com/microsoft only if you agree, and checked against its hash.
+
+The live session panel connects only when you press Connect, to an address on this computer. For a BEAM node, Rust Code's helper joins it as a hidden node on this computer, using Erlang's own distribution. For a Python kernel or a BEAM node, a small helper script is written to the system's temporary folder and run from there. The one other socket it opens is to a
   language server already running on this computer (`tcp://` in `[lsp.paths]`,
   or Godot's editor for `.gd` files), and it refuses any other address. The live
   preview listens on `127.0.0.1` only, while it runs, and answers only requests

@@ -104,12 +104,18 @@ enum RunState {
 
 struct Session {
     client: DapClient,
+    /// Sessions the current one was started from, kept open while it runs.
+    parents: Vec<DapClient>,
+    /// What the adapter asked this session to launch, in place of our own.
+    asked_launch: Option<(String, Value)>,
     launch: Launch,
     state: RunState,
     threads: Vec<(i64, String)>,
     frames: Vec<Frame>,
     selected: usize,
     scopes: Vec<(String, i64)>,
+    /// Scopes read only when asked for.
+    lazy_scopes: HashSet<i64>,
     vars: HashMap<i64, Vec<Var>>,
     /// Expanded variables by path (`Local/names/[0]`): references change on
     /// every stop, paths don't, so expansion survives stepping.
@@ -178,6 +184,11 @@ impl Default for DebugState {
             rx,
         }
     }
+}
+
+/// A path as an adapter wrote it, as this system writes it: Delve uses forward slashes.
+fn native_path(path: &str) -> PathBuf {
+    if cfg!(windows) { PathBuf::from(path.replace('/', "\\")) } else { PathBuf::from(path) }
 }
 
 fn key(path: &Path) -> PathBuf {
@@ -273,6 +284,8 @@ impl CodeApp {
             }
         }
         let Some(session) = &mut self.debug.session else { return };
+        // Only the newest session is being debugged; the rest just stay connected.
+        session.parents.iter_mut().for_each(|p| drop(p.poll()));
         let events = session.client.poll();
         for ev in events {
             self.on_dap_event(ctx, ev);
@@ -327,6 +340,9 @@ impl CodeApp {
                     s.client.respond(seq, &command, ok, json!({}));
                 }
             }
+            DapEvent::Request { seq, command, arguments } if command == "startDebugging" => {
+                self.start_child_session(ctx, seq, &arguments);
+            }
             DapEvent::Request { seq, command, .. } => {
                 if let Some(s) = &mut self.debug.session {
                     s.client.respond(seq, &command, false, Value::Null);
@@ -351,6 +367,12 @@ impl CodeApp {
             Pending::Initialize => {
                 if let Some(s) = &mut self.debug.session {
                     s.capabilities = hexdata::Capabilities::parse(&body);
+                }
+                // A session the adapter asked for runs what it was told to.
+                let asked = self.debug.session.as_mut().and_then(|s| s.asked_launch.take());
+                if let Some((request, configuration)) = asked {
+                    self.request(&request, configuration, Pending::Launch);
+                    return;
                 }
                 let Some(s) = &self.debug.session else { return };
                 let l = &s.launch;
@@ -396,7 +418,7 @@ impl CodeApp {
                                 Some(Frame {
                                     id: f["id"].as_i64()?,
                                     name: f["name"].as_str().unwrap_or("").to_owned(),
-                                    path: f["source"]["path"].as_str().map(PathBuf::from),
+                                    path: f["source"]["path"].as_str().map(native_path),
                                     line: f["line"].as_u64().unwrap_or(0) as usize,
                                     pointer: f["instructionPointerReference"].as_str().map(str::to_owned),
                                 })
@@ -427,8 +449,14 @@ impl CodeApp {
                             .collect()
                     })
                     .unwrap_or_default();
-                for (_, reference, expensive) in &scopes {
-                    if !expensive {
+                // Everything global to Node is hundreds of names: only if asked for.
+                let lazy: HashSet<i64> = scopes
+                    .iter()
+                    .filter(|(name, _, expensive)| *expensive || name == "Global")
+                    .map(|(_, reference, _)| *reference)
+                    .collect();
+                for (_, reference, _) in &scopes {
+                    if !lazy.contains(reference) {
                         self.request(
                             "variables",
                             json!({ "variablesReference": reference }),
@@ -438,6 +466,7 @@ impl CodeApp {
                 }
                 if let Some(s) = &mut self.debug.session {
                     s.scopes = scopes.into_iter().map(|(n, r, _)| (n, r)).collect();
+                    s.lazy_scopes = lazy;
                 }
             }
             Pending::Variables(reference) => {
@@ -517,6 +546,17 @@ impl CodeApp {
                     && let Some(text) = body["output"].as_str()
                 {
                     self.push_console(text);
+                }
+            }
+            // js-debug only knows a script's breakpoints once it has loaded.
+            "breakpoint" => {
+                let found = &body["breakpoint"];
+                if let (Some(path), Some(line), Some(verified)) =
+                    (found["source"]["path"].as_str(), found["line"].as_u64(), found["verified"].as_bool())
+                    && let Some((_, bps)) = self.debug.breakpoints.get_mut(&key(&native_path(path)))
+                    && let Some(bp) = bps.iter_mut().find(|b| b.line + 1 == line as usize)
+                {
+                    bp.verified = Some(verified);
                 }
             }
             // CodeLLDB reports the exit code in the console itself.
@@ -635,6 +675,23 @@ impl CodeApp {
 
     // ----- starting -------------------------------------------------------------------------
 
+    /// js-debug's way of running a program: another connection, which is then the session.
+    fn start_child_session(&mut self, ctx: &egui::Context, seq: i64, arguments: &Value) {
+        let Some(s) = &mut self.debug.session else { return };
+        let connected = s.client.address().map(|at| DapClient::connect(at, repaint(ctx)));
+        let Some(Ok(child)) = connected else {
+            s.client.respond(seq, "startDebugging", false, Value::Null);
+            self.push_console("Could not open the program's debugging session");
+            return;
+        };
+        s.client.respond(seq, "startDebugging", true, json!({}));
+        let request = arguments["request"].as_str().unwrap_or("launch").to_owned();
+        s.asked_launch = Some((request, arguments["configuration"].clone()));
+        s.parents.push(std::mem::replace(&mut s.client, child));
+        s.pending.clear();
+        self.request("initialize", dap::initialize_args(), Pending::Initialize);
+    }
+
     fn start_session(&mut self, ctx: &egui::Context, launch: Launch) {
         if !self.allowed_to_run(&launch.cwd) {
             return;
@@ -644,10 +701,26 @@ impl CodeApp {
             other => other.adapter(),
         };
         let Some(adapter) = adapter else {
-            if launch.kind != DebugKind::Lldb {
-                let name = launch.kind.name();
-                self.refuse_run(ctx, format!("{name} isn't on PATH"));
-                return;
+            match &launch.kind {
+                DebugKind::Lldb => {}
+                DebugKind::Go => {
+                    let how = "Debugging Go needs Delve: run `go install github.com/go-delve/delve/cmd/dlv@latest`";
+                    self.refuse_run(ctx, how.to_owned());
+                    return;
+                }
+                DebugKind::Js if rust_code_core::lsp::servers::which("node").is_none() => {
+                    self.refuse_run(ctx, "Debugging JavaScript needs Node.js, which isn't on PATH".to_owned());
+                    return;
+                }
+                DebugKind::Js => {
+                    self.offer_build_tool(rust_code_core::build_tools::BuildTool::JsDebug);
+                    return;
+                }
+                other => {
+                    let name = other.name();
+                    self.refuse_run(ctx, format!("{name} isn't on PATH"));
+                    return;
+                }
             }
             // Ask to install CodeLLDB; start once it is there.
             self.debug.queued = Some(launch);
@@ -662,17 +735,25 @@ impl CodeApp {
         if !self.allowed_to_run(&launch.cwd) {
             return;
         }
-        match DapClient::start(&adapter.program, &adapter.args, &launch.cwd, repaint(ctx)) {
+        let started = if launch.kind.listens() {
+            DapClient::start_listening(&adapter.program, &adapter.args, &launch.cwd, repaint(ctx))
+        } else {
+            DapClient::start(&adapter.program, &adapter.args, &launch.cwd, repaint(ctx))
+        };
+        match started {
             Ok(client) => {
                 self.debug.last_launch = Some(launch.clone());
                 self.debug.session = Some(Session {
                     client,
+                    parents: Vec::new(),
+                    asked_launch: None,
                     launch,
                     state: RunState::Starting,
                     threads: Vec::new(),
                     frames: Vec::new(),
                     selected: 0,
                     scopes: Vec::new(),
+                    lazy_scopes: HashSet::new(),
                     vars: HashMap::new(),
                     expanded: HashSet::new(),
                     watch_values: Vec::new(),
@@ -733,6 +814,11 @@ impl CodeApp {
             && let (Some(command), Some(debug_type)) = (language.debugger, language.debug_type)
         {
             return Some(DebugKind::Data { command: command.to_owned(), debug_type: debug_type.to_owned() });
+        }
+        match ext.as_str() {
+            "go" => return Some(DebugKind::Go),
+            "js" | "mjs" | "cjs" => return Some(DebugKind::Js),
+            _ => {}
         }
         if matches!(ext.as_str(), "py" | "pyw") {
             let env = self.python_env()?;
@@ -1208,6 +1294,12 @@ impl CodeApp {
                 |ui| match &self.debug.session {
                     Some(s) if !s.scopes.is_empty() => {
                         for (name, reference) in &s.scopes {
+                            if s.lazy_scopes.contains(reference) && !s.vars.contains_key(reference) {
+                                if ui.link(RichText::new(format!("{name}: show")).small()).clicked() {
+                                    expand.push(*reference);
+                                }
+                                continue;
+                            }
                             ui.label(RichText::new(name).color(pal.text_dim));
                             var_rows(ui, s, *reference, name, 1, &mono, &mut toggle, &mut expand, &mut memory_at);
                         }

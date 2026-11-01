@@ -1155,6 +1155,11 @@ impl CodeApp {
         self.cargo.run_refusal = Some((why, ctx.input(|i| i.time), tab));
     }
 
+    /// Asks whether to fetch a tool.
+    pub(super) fn offer_build_tool(&mut self, tool: BuildTool) {
+        self.cargo.tool_offer = Some(tool);
+    }
+
     /// Offers a tool the build lacks, and fetches it on a yes. Nothing is downloaded
     /// without one. Once it's here, Run goes ahead as it was asked to.
     fn tool_offer_ui(&mut self, ctx: &egui::Context) {
@@ -1162,18 +1167,23 @@ impl CodeApp {
             && let Ok(result) = rx.try_recv()
         {
             let name = tool.name();
+            let tool = *tool;
             self.cargo.tool_install = None;
             match result {
                 Ok(()) => {
                     self.status = Some(format!("{name} is ready"));
-                    self.run_program(ctx);
+                    if tool == BuildTool::JsDebug {
+                        self.start_debugging(ctx);
+                    } else {
+                        self.run_program(ctx);
+                    }
                 }
                 Err(why) => self.status = Some(format!("Could not get {name}: {why}")),
             }
         }
         if let Some((tool, _)) = &self.cargo.tool_install {
             let name = tool.name();
-            egui::Window::new("Getting a build tool")
+            egui::Window::new("Getting a tool")
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0))
@@ -1187,7 +1197,7 @@ impl CodeApp {
         }
         let Some(tool) = self.cargo.tool_offer else { return };
         let (mut download, mut later) = (false, false);
-        egui::Window::new("A build tool is missing")
+        egui::Window::new("A tool is missing")
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 60.0))
@@ -1205,8 +1215,12 @@ impl CodeApp {
         }
         if later {
             self.cargo.tool_offer = None;
-            self.cargo.tool_declined = true;
-            self.status = Some("Run again to try without it: CMake will say what it can't find".to_owned());
+            if tool == BuildTool::JsDebug {
+                self.status = Some("Not fetched: JavaScript can still run, without debugging".to_owned());
+            } else {
+                self.cargo.tool_declined = true;
+                self.status = Some("Run again to try without it: CMake will say what it can't find".to_owned());
+            }
         }
         if download {
             self.cargo.tool_offer = None;

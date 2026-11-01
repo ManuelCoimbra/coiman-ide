@@ -13,6 +13,7 @@ use crate::plugin::registry::sha256_hex;
 pub enum BuildTool {
     Ninja,
     MinGw,
+    JsDebug,
 }
 
 impl BuildTool {
@@ -20,6 +21,7 @@ impl BuildTool {
         match self {
             Self::Ninja => "Ninja 1.13.2",
             Self::MinGw => "GCC 16.2 for Windows (winlibs MinGW-w64)",
+            Self::JsDebug => "js-debug 1.140.0",
         }
     }
 
@@ -33,6 +35,9 @@ impl BuildTool {
                             build tools (winlibs MinGW-w64) from github.com/brechtsanders (264 MB, about 900 MB unpacked) \
                             into Rust Code's config folder?"
                 .to_owned(),
+            Self::JsDebug => "Debugging JavaScript needs js-debug, and it wasn't found. Download js-debug 1.140.0 from \
+                              github.com/microsoft (about 1 MB) into Rust Code's config folder?"
+                .to_owned(),
         }
     }
 
@@ -43,6 +48,9 @@ impl BuildTool {
                 "https://github.com/brechtsanders/winlibs_mingw/releases/download/16.2.0posix-23.1.3-14.0.0-ucrt-r3/\
                  winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64ucrt-14.0.0-r3.zip"
             }
+            Self::JsDebug => {
+                "https://github.com/microsoft/vscode-js-debug/releases/download/v1.140.0/js-debug-dap-v1.140.0.tar.gz"
+            }
         }
     }
 
@@ -50,6 +58,7 @@ impl BuildTool {
         match self {
             Self::Ninja => "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65",
             Self::MinGw => "3c69305081e4a647144339a936244fcf7d3d9e558319e1ad7be2cd2886d4b6a1",
+            Self::JsDebug => "27dab92937ec1ab35821ae955aac867544fe06a1b6307229049f2d789af10968",
         }
     }
 
@@ -57,13 +66,14 @@ impl BuildTool {
         match self {
             Self::Ninja => "ninja",
             Self::MinGw => "mingw",
+            Self::JsDebug => "js-debug",
         }
     }
 
     /// Where its programs end up, under its folder.
     fn bin(self) -> &'static str {
         match self {
-            Self::Ninja => "",
+            Self::Ninja | Self::JsDebug => "",
             Self::MinGw => "mingw64/bin",
         }
     }
@@ -81,6 +91,12 @@ pub fn dirs() -> Vec<PathBuf> {
         .map(|t| tools.join(t.folder()).join(t.bin()))
         .filter(|d| d.is_dir())
         .collect()
+}
+
+/// The server program of js-debug, if it's been fetched.
+pub fn js_debug_server() -> Option<PathBuf> {
+    let dir = tools_dir()?.join(BuildTool::JsDebug.folder());
+    Some(dir.join("js-debug").join("src").join("dapDebugServer.js")).filter(|p| p.is_file())
 }
 
 /// What's in the way of CMake building here, given what's installed.
@@ -160,7 +176,7 @@ mod tests {
 
     #[test]
     fn pins_are_whole() {
-        for tool in [BuildTool::Ninja, BuildTool::MinGw] {
+        for tool in [BuildTool::Ninja, BuildTool::MinGw, BuildTool::JsDebug] {
             assert_eq!(tool.sha256().len(), 64);
             assert!(tool.url().starts_with("https://github.com/") && !tool.url().contains(' '));
         }
