@@ -782,6 +782,17 @@ impl Buffer {
             e.1 = e.1.min(len);
             e.0 = e.0.min(e.1);
         }
+        // Servers may replace much more than changes: only what differs is an edit, so
+        // cursors and undo stay where they make sense.
+        for e in &mut edits {
+            let old: Vec<char> = self.rope().slice(e.0..e.1).chars().collect();
+            let new: Vec<char> = e.2.chars().collect();
+            let same = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+            let tail = old[same..].iter().rev().zip(new[same..].iter().rev()).take_while(|(a, b)| a == b).count();
+            e.0 += same;
+            e.1 -= tail;
+            e.2 = new[same..new.len() - tail].iter().collect();
+        }
         edits.retain(|(s, e, t)| e > s || !t.is_empty());
         if edits.is_empty() {
             return;
@@ -804,7 +815,14 @@ impl Buffer {
         let sels: Vec<Selection> = self
             .selections
             .iter()
-            .map(|s| Selection { anchor: map(s.anchor), head: map(s.head), goal: None })
+            .map(|s| {
+                // A selection an edit cuts into no longer means anything: a cursor remains.
+                let cut = |pos: usize| edits.iter().any(|(a, b, _)| *a < pos && pos < *b);
+                if !s.is_empty() && (cut(s.anchor) || cut(s.head)) {
+                    return Selection { anchor: map(s.head), head: map(s.head), goal: None };
+                }
+                Selection { anchor: map(s.anchor), head: map(s.head), goal: None }
+            })
             .collect();
         self.begin_edit(EditKind::Other);
         let first_line = self.char_to_line(edits[0].0);
@@ -1104,6 +1122,92 @@ pub fn char_width(c: char, col: usize) -> usize {
 
 pub fn visual_width(chars: impl Iterator<Item = char>) -> usize {
     chars.fold(0, |col, c| col + char_width(c, col))
+}
+
+/// What differs between two texts, line by line, as edits in chars. A server's own edits
+/// can move far more than changes, which takes cursors along for the ride.
+pub fn minimal_edits(old: &str, new: &str) -> Vec<(usize, usize, String)> {
+    let diff = similar::TextDiff::from_lines(old, new);
+    let char_starts = |lines: &[&str]| {
+        let mut at = 0;
+        let mut starts = Vec::with_capacity(lines.len() + 1);
+        for line in lines {
+            starts.push(at);
+            at += line.chars().count();
+        }
+        starts.push(at);
+        starts
+    };
+    let old_starts = char_starts(diff.old_slices());
+    let new_lines = diff.new_slices();
+    let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    for op in diff.ops() {
+        if matches!(op, similar::DiffOp::Equal { .. }) {
+            continue;
+        }
+        let (from, to) = (op.old_range(), op.new_range());
+        let (start, end, text) = (old_starts[from.start], old_starts[from.end], new_lines[to].concat());
+        // A removal and an insertion side by side are one change.
+        match edits.last_mut() {
+            Some((_, last_end, last_text)) if *last_end == start => {
+                *last_end = end;
+                last_text.push_str(&text);
+            }
+            _ => edits.push((start, end, text)),
+        }
+    }
+    edits
+}
+
+#[cfg(test)]
+mod edit_selection_tests {
+    use super::*;
+
+    #[test]
+    fn finds_what_really_changed() {
+        let old = "use a;\n\nfn main() {\n    x;\n}\n\nfn b() {}\n";
+        let new = "\n\nfn main() {\n    x;\n}\n\nfn b() {}\n";
+        let edits = minimal_edits(old, new);
+        assert_eq!(edits, [(0, 7, "\n".to_owned())]);
+        // Lines of many bytes count as chars.
+        assert_eq!(minimal_edits("é\nb\n", "é\nc\n"), [(2, 4, "c\n".to_owned())]);
+        assert!(minimal_edits("same\n", "same\n").is_empty());
+        // Applied, they make the new text, and a cursor further down keeps its line.
+        let mut b = Buffer::new(old);
+        b.set_single(Selection::cursor(14));
+        b.apply_edits(edits);
+        assert_eq!(b.rope().to_string(), new);
+        assert_eq!(b.char_to_line(b.primary().head), 2);
+    }
+
+    #[test]
+    fn an_edit_cutting_into_a_selection_leaves_a_cursor() {
+        let mut b = Buffer::new("use a;\nfn main() {}\n");
+        b.set_single(Selection::new(0, 3));
+        // The whole file replaced, as a server's fix may do.
+        let len = b.len_chars();
+        b.apply_edits(vec![(0, len, "fn main() {}\n".to_owned())]);
+        let s = b.primary();
+        assert!(s.is_empty(), "{s:?}");
+        assert_eq!(s.head, 0, "it stays by what changed");
+        assert_eq!(b.rope().to_string(), "fn main() {}\n");
+        // A cursor past what changed follows the text it was in.
+        let mut b = Buffer::new("one\ntwo\nthree\n");
+        b.set_single(Selection::cursor(9));
+        let len = b.len_chars();
+        b.apply_edits(vec![(0, len, "ONE\ntwo\nthree\n".to_owned())]);
+        assert_eq!(b.primary().head, 9);
+        // Nothing different is no edit at all.
+        let version = b.version();
+        let len = b.len_chars();
+        b.apply_edits(vec![(0, len, b.rope().to_string())]);
+        assert_eq!(b.version(), version);
+        // One the edit doesn't touch stays selected, moved along.
+        let mut b = Buffer::new("abc def");
+        b.set_single(Selection::new(4, 7));
+        b.apply_edits(vec![(0, 1, "xx".to_owned())]);
+        assert_eq!((b.primary().start(), b.primary().end()), (5, 8));
+    }
 }
 
 #[cfg(test)]

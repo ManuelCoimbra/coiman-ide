@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
+use rust_code_core::buffer::minimal_edits;
 use rust_code_core::lsp::servers::{self, Found, Installer, Launch, ServerKind};
 use rust_code_core::lsp::status::{Health, ServerStatus};
 use rust_code_core::lsp::types as lt;
@@ -230,6 +231,9 @@ pub(super) fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, Serve
 }
 
 /// Whether `client` is the server for a file of `kind` at `path`.
+/// Larger files take a server's edits as they come: comparing lines costs too much.
+const MINIMAL_EDIT_BYTES: usize = 4 * 1024 * 1024;
+
 /// A cursor: its document, the text's version, and its line.
 type BulbKey = (u64, u64, usize);
 /// Seconds the cursor must stay before asking about its line.
@@ -837,6 +841,13 @@ impl CodeApp {
         let k = path_key(path);
         let mut all = self.lsp.diagnostics.get(&k).map(|(_, d)| d.clone()).unwrap_or_default();
         all.extend(self.lsp.pulled_diagnostics.get(&k).into_iter().flat_map(|(_, d)| d.iter().cloned()));
+        // rust-analyzer passes on `rustc`'s word as well as its own, which says more.
+        let own: Vec<(u32, Option<lt::NumberOrString>)> = all
+            .iter()
+            .filter(|d| d.source.as_deref() == Some("rust-analyzer") && d.code.is_some())
+            .map(|d| (d.range.start.line, d.code.clone()))
+            .collect();
+        all.retain(|d| d.source.as_deref() != Some("rustc") || !own.contains(&(d.range.start.line, d.code.clone())));
         all.extend(self.plugin_problems(&k));
         all.extend(self.run_problems(&k));
         all.extend(self.constant_problems(&k));
@@ -848,7 +859,12 @@ impl CodeApp {
         for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
             let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
-            if !all.iter().any(|a| a.range.start == d.range.start && first(&a.message) == first(&d.message)) {
+            let same_code =
+                |a: &lt::Diagnostic| a.code.is_some() && a.code == d.code && a.range.start.line == d.range.start.line;
+            if !all
+                .iter()
+                .any(|a| (a.range.start == d.range.start && first(&a.message) == first(&d.message)) || same_code(a))
+            {
                 all.push(d.clone());
             }
         }
@@ -1003,13 +1019,26 @@ impl CodeApp {
     fn apply_text_edits(&mut self, i: usize, edits: Vec<lt::TextEdit>) {
         let Some(doc) = self.docs.get_mut(i) else { return };
         let rope = doc.buffer.rope();
-        let edits = edits
+        let mut edits: Vec<(usize, usize, String)> = edits
             .into_iter()
             .map(|e| {
                 let (a, b) = convert::chars_of(rope, e.range);
                 (a, b, e.new_text.replace("\r\n", "\n").replace('\n', doc.buffer.line_ending))
             })
             .collect();
+        // What the server's edits add up to, as what really differs.
+        if rope.len_bytes() <= MINIMAL_EDIT_BYTES {
+            edits.sort_by_key(|(a, b, _)| (*a, *b));
+            let mut new = String::new();
+            let mut at = 0;
+            for (a, b, text) in &edits {
+                new.extend(rope.slice(at..(*a).max(at)).chunks());
+                new.push_str(text);
+                at = (*b).max(at);
+            }
+            new.extend(rope.slice(at..).chunks());
+            edits = minimal_edits(&doc.text(), &new);
+        }
         doc.buffer.apply_edits(edits);
     }
 
@@ -1896,7 +1925,14 @@ impl CodeApp {
                 None if self.lsp.clients.iter().any(|c| c.kind == kind && !c.is_ready()) => starting(),
                 None => {
                     let status = self.lsp.clients.iter().find(|c| c.kind == kind).and_then(|c| c.status.as_ref());
+                    // Outside any Cargo project, this is expected and not a failure.
+                    let file = self.docs.get(self.active).and_then(|d| d.path.as_deref());
+                    let loose_rust = file.is_some_and(|f| {
+                        f.extension().is_some_and(|e| e == "rs")
+                            && !f.ancestors().skip(1).any(|d| d.join("Cargo.toml").is_file())
+                    });
                     match status.map(|s| s.health) {
+                        Some(Health::Error | Health::Warning) if loose_rust => format!("{name}: no Cargo project here"),
                         Some(Health::Error) => format!("{name}: error"),
                         Some(Health::Warning) => format!("{name}: warning"),
                         _ => name.to_owned(),

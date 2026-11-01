@@ -222,6 +222,8 @@ pub struct ViewState {
     /// Breakpoint margin clicked this frame.
     breakpoint_click: Option<usize>,
     bulb_click: bool,
+    /// The press that's down was on a margin button: it isn't selecting text.
+    margin_press: bool,
     /// First lines of the folded regions.
     folded: std::collections::BTreeSet<usize>,
 }
@@ -786,6 +788,7 @@ fn handle_mouse(
 
     if !ui.input(|i| i.pointer.primary_down() || i.pointer.middle_down()) {
         view.column_anchor = None;
+        view.margin_press = false;
     }
     // The middle button drags a column selection from where it goes down.
     if in_text
@@ -804,6 +807,7 @@ fn handle_mouse(
         let gutter_left = text_rect.left() - m.gutter_w;
         // The left margin runs a test on test lines, and toggles a breakpoint elsewhere.
         if p.x < gutter_left + RUN_ZONE {
+            view.margin_press = true;
             if deco.runnables.iter().any(|r| r.0 == line) && !deco.breakpoints.iter().any(|b| b.0 == line) {
                 view.run_click = Some(line);
             } else {
@@ -814,16 +818,19 @@ fn handle_mouse(
         let in_bulb_zone = (gutter_left + RUN_ZONE..gutter_left + RUN_ZONE + BULB_ZONE).contains(&p.x);
         if in_bulb_zone && deco.bulb.is_some_and(|(at, _)| at == line) {
             view.bulb_click = true;
+            view.margin_press = true;
             return false;
         }
         let fold_x = text_rect.left() - CHANGE_ZONE - FOLD_ZONE;
         if (fold_x..fold_x + FOLD_ZONE).contains(&p.x) && deco.folds.iter().any(|f| f.start == line) {
             let folded = view.folded.contains(&line);
             view.set_folded(line, !folded);
+            view.margin_press = true;
             return false;
         }
         if p.x < text_rect.left() && p.x >= text_rect.left() - CHANGE_ZONE && deco.change_at(line).is_some() {
             view.change_click = Some((line, p));
+            view.margin_press = true;
             return false;
         }
         if lens.is_some() {
@@ -853,6 +860,9 @@ fn handle_mouse(
         return false;
     }
 
+    if view.margin_press {
+        return false;
+    }
     if response.triple_clicked() {
         let line = doc.buffer.char_to_line(pos);
         let next = (line + 1 < doc.buffer.len_lines()).then(|| doc.buffer.line_start(line + 1));
