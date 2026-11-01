@@ -457,6 +457,9 @@ impl CodeApp {
             if self.at_cursor_tab_shown() {
                 tabs.push((PanelTab::AtCursor, "AT CURSOR".to_owned()));
             }
+            if self.tree_search_tab_shown() {
+                tabs.push((PanelTab::TreeSearch, "TREE SEARCH".to_owned()));
+            }
             if self.live_tab_shown() {
                 tabs.push((PanelTab::Live, "LIVE".to_owned()));
             }
@@ -509,6 +512,7 @@ impl CodeApp {
             }
             PanelTab::PageConsole => self.page_console(ui),
             PanelTab::Live => self.live_panel(ui),
+            PanelTab::TreeSearch => self.tree_search_panel(ui),
             PanelTab::AtCursor => self.at_cursor_panel(ui),
             PanelTab::Coverage => self.coverage_panel(ui),
             PanelTab::StackTrace => self.stack_trace_panel(ui),

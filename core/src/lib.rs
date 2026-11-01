@@ -51,6 +51,8 @@ pub mod table;
 pub mod termfind;
 pub mod testing;
 pub mod theme;
+pub mod tree_edit;
+pub mod tree_rules;
 pub mod trust;
 pub mod unicode;
 pub mod vim;

@@ -15,6 +15,7 @@ use super::lsp_extra::Hierarchy;
 use super::outline::FoldAction;
 use super::{CodeApp, PanelTab, SidebarView};
 use rust_code_core::structure::TextObject;
+use rust_code_core::tree_edit;
 
 impl CodeApp {
     /// Applies a text edit to the active document and moves its selection.
@@ -388,6 +389,18 @@ impl CodeApp {
             }
             Command::PickColor => self.pick_color(),
             Command::ShowLive => self.show_live(),
+            Command::TreeSlurp => self.tree_move(tree_edit::Move::SlurpForward),
+            Command::TreeSlurpBack => self.tree_move(tree_edit::Move::SlurpBackward),
+            Command::TreeBarf => self.tree_move(tree_edit::Move::BarfForward),
+            Command::TreeBarfBack => self.tree_move(tree_edit::Move::BarfBackward),
+            Command::TreeRaise => self.tree_move(tree_edit::Move::Raise),
+            Command::TreeSplice => self.tree_move(tree_edit::Move::Splice),
+            Command::TreeWrapParens => self.tree_wrap("(", ")"),
+            Command::TreeWrapBrackets => self.tree_wrap("[", "]"),
+            Command::TreeWrapBraces => self.tree_wrap("{", "}"),
+            Command::ShowTreeSearch => self.show_tree_search(),
+            Command::RulesCheckProject => self.rules_check_project(ctx),
+            Command::RulesFixFile => self.rules_fix_file(),
             Command::ShowCursorInfo => self.show_at_cursor(),
             Command::CursorInfoPause => self.at_cursor_toggle_pause(),
             Command::CursorInfoPin => self.at_cursor_pin(),

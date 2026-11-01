@@ -36,6 +36,7 @@ mod split;
 mod tables;
 mod test_panel;
 mod traces;
+mod tree_tools;
 mod web;
 mod window;
 mod workbench;
@@ -85,6 +86,8 @@ enum PanelTab {
     PageConsole,
     /// A running system.
     Live,
+    /// Searching by syntax tree.
+    TreeSearch,
     /// What's known where the cursor is.
     AtCursor,
     /// Files by how much of them ran.
@@ -168,6 +171,7 @@ pub struct CodeApp {
     md_preview: md_preview::MdPreview,
     web: web::Web,
     live: live::Live,
+    tree_tools: tree_tools::TreeTools,
     at_cursor: at_cursor::AtCursor,
     coverage: coverage::Coverage,
     bytes: bytes_view::BytesState,
@@ -296,6 +300,7 @@ impl CodeApp {
             md_preview: Default::default(),
             web: Default::default(),
             live: Default::default(),
+            tree_tools: Default::default(),
             at_cursor: Default::default(),
             coverage: Default::default(),
             bytes: Default::default(),
@@ -395,6 +400,7 @@ impl eframe::App for CodeApp {
         self.refresh_cargo_project(&ctx);
         self.pump_tests(&ctx);
         self.pump_live();
+        self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
         self.pump_coverage(&ctx);
         self.periodic_backup(&ctx);
