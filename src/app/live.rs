@@ -7,7 +7,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{self, Color32, RichText, TextEdit};
-use rust_code_core::live::{self, Eval, Identity, InspectRow, LiveEvent, Nrepl, Session};
+use rust_code_core::live::{self, Eval, Identity, InspectRow, LiveEvent, Session};
+use rust_code_core::live_adapters::{self, ConnectOptions, LiveKind};
+use rust_code_core::repl;
 
 use super::{CodeApp, PanelTab, repaint};
 use crate::inspector;
@@ -32,13 +34,15 @@ struct InEditor {
     uid: u64,
     line: usize,
     line_text: String,
+    answered: bool,
 }
 
 #[derive(Default)]
 pub(super) struct Live {
     session: Option<Box<dyn Session>>,
     /// A connection on its way: a dead port can take seconds to say so.
-    connecting: Option<Receiver<Result<Nrepl, String>>>,
+    connecting: Option<Receiver<Result<Box<dyn Session>, String>>>,
+    kind: LiveKind,
     identity: Option<Identity>,
     address: String,
     namespace: String,
@@ -71,10 +75,6 @@ fn add_text(transcript: &mut Vec<(Kind, String)>, kind: Kind, text: &str) {
     }
 }
 
-fn is_clojure(extension: &str) -> bool {
-    matches!(extension, "clj" | "cljs" | "cljc" | "edn" | "bb")
-}
-
 impl CodeApp {
     pub(super) fn live_tab_shown(&self) -> bool {
         self.live.used
@@ -82,8 +82,15 @@ impl CodeApp {
 
     /// `Live: Show Session`.
     pub(super) fn show_live(&mut self) {
+        // The panel starts on what suits the file, the first time.
+        if !self.live.used
+            && let Some(kind) = self.docs.get(self.active).and_then(|d| LiveKind::for_extension(&d.extension()))
+        {
+            self.live.kind = kind;
+        }
         self.live.used = true;
         if self.live.address.is_empty()
+            && self.live.kind == LiveKind::Nrepl
             && let Some(root) = &self.explorer.root
         {
             self.live.address = live::nrepl_port_file(root).unwrap_or_default();
@@ -102,22 +109,34 @@ impl CodeApp {
             return;
         }
         add_text(&mut self.live.transcript, Kind::Note, &format!("Connecting to {address}"));
+        let kind = self.live.kind;
+        let options = ConnectOptions {
+            python: self.python_env().map(|e| e.python.clone()),
+            cwd: self.explorer.root.clone(),
+            env: self.environment_variables(),
+        };
         let (tx, rx) = mpsc::channel();
         let (wake, done) = (repaint(ctx), ctx.clone());
         std::thread::spawn(move || {
-            let _ = tx.send(Nrepl::connect(&address, wake));
+            let _ = tx.send(live_adapters::connect(kind, &address, &options, wake));
             done.request_repaint();
         });
         self.live.connecting = Some(rx);
     }
 
     fn live_disconnect(&mut self) {
+        let stays = self.live.session.as_ref().is_none_or(|s| s.leaves_running());
+        for place in std::mem::take(&mut self.live.in_editor).into_values().filter(|p| !p.answered) {
+            self.repls.clear_answer(place.uid, place.line);
+        }
         self.live.session = None;
         self.live.identity = None;
         self.live.running.clear();
         self.live.retry = None;
         self.live.awaiting_input = false;
-        add_text(&mut self.live.transcript, Kind::Note, "Disconnected. The server keeps running.");
+        let note =
+            if stays { "Disconnected. The server keeps running." } else { "Disconnected. The kernel ended with it." };
+        add_text(&mut self.live.transcript, Kind::Note, note);
     }
 
     pub(super) fn pump_live(&mut self, ctx: &egui::Context) {
@@ -144,7 +163,7 @@ impl CodeApp {
             self.live.connecting = None;
             match result {
                 Ok(session) => {
-                    self.live.session = Some(Box::new(session));
+                    self.live.session = Some(session);
                     self.live.rows.clear();
                     self.live.open.clear();
                     self.live.running.clear();
@@ -174,14 +193,16 @@ impl CodeApp {
                 }
                 LiveEvent::Value { id, text } => {
                     add_text(&mut state.transcript, Kind::Value, &text);
-                    if let Some(place) = state.in_editor.get(&id) {
+                    if let Some(place) = state.in_editor.get_mut(&id) {
+                        place.answered = true;
                         let answer = text.lines().next().unwrap_or_default().to_owned();
                         self.repls.set_answer(place.uid, place.line, place.line_text.clone(), answer);
                     }
                 }
                 LiveEvent::Failed { id, text } => {
                     add_text(&mut state.transcript, Kind::Error, &text);
-                    if let Some(place) = state.in_editor.get(&id) {
+                    if let Some(place) = state.in_editor.get_mut(&id) {
+                        place.answered = true;
                         self.repls.set_answer(place.uid, place.line, place.line_text.clone(), text);
                     }
                 }
@@ -192,7 +213,10 @@ impl CodeApp {
                 LiveEvent::Done { id, namespace } => {
                     state.awaiting_input = false;
                     state.running.retain(|r| *r != id);
-                    state.in_editor.remove(&id);
+                    // Code with no value, such as an assignment, has nothing to show there.
+                    if let Some(place) = state.in_editor.remove(&id).filter(|p| !p.answered) {
+                        self.repls.clear_answer(place.uid, place.line);
+                    }
                     if let Some(namespace) = namespace {
                         state.namespace = namespace;
                     }
@@ -209,13 +233,19 @@ impl CodeApp {
                 LiveEvent::Closed(why) => {
                     add_text(&mut state.transcript, Kind::Error, &why);
                     state.problem = Some(why);
+                    // Starting another kernel in its place would look like the same one.
+                    let again = state.identity.is_some() && state.session.as_ref().is_some_and(|s| s.leaves_running());
                     state.session = None;
                     state.identity = None;
                     state.running.clear();
-                    state.in_editor.clear();
+                    for place in std::mem::take(&mut state.in_editor).into_values().filter(|p| !p.answered) {
+                        self.repls.clear_answer(place.uid, place.line);
+                    }
                     state.awaiting_input = false;
-                    state.retry = Some((0, ctx.input(|i| i.time) + RETRY_SECONDS));
-                    ctx.request_repaint_after(std::time::Duration::from_secs_f64(RETRY_SECONDS));
+                    if again {
+                        state.retry = Some((0, ctx.input(|i| i.time) + RETRY_SECONDS));
+                        ctx.request_repaint_after(std::time::Duration::from_secs_f64(RETRY_SECONDS));
+                    }
                     return;
                 }
             }
@@ -231,7 +261,7 @@ impl CodeApp {
             self.live.refresh_later = true;
             return;
         }
-        if !self.live.identity.as_ref().is_some_and(Identity::speaks_clojure) {
+        if self.live.identity.is_none() || !self.live.session.as_ref().is_some_and(|s| s.inspects()) {
             return;
         }
         let mut queries: Vec<Option<String>> = vec![None];
@@ -251,20 +281,22 @@ impl CodeApp {
 
     /// Sends code from the editor if there's a session for it. Says whether it did.
     pub(super) fn send_to_live(&mut self) -> bool {
-        if self.live.session.is_none() {
-            return false;
-        }
         let Some(doc) = self.docs.get(self.active) else { return false };
-        if !is_clojure(&doc.extension()) {
-            return false;
-        }
+        let Some(session) = self.live.session.as_ref().filter(|s| s.handles(&doc.extension())) else { return false };
+        let forms = session.sends_forms();
         let text = doc.text();
         let primary = doc.buffer.primary();
         let rope = doc.buffer.rope();
         let head_line = rope.char_to_line(primary.head);
-        // The selection; else the top-level form around the cursor; else the line.
+        // The selection; else the top-level form or cell around the cursor; else the line.
         let (code, first, last) = if primary.is_empty() {
-            match live::top_level_form(&text, head_line) {
+            let around = if forms {
+                live::top_level_form(&text, head_line)
+            } else {
+                repl::cell_at(&text, head_line)
+                    .map(|cell| (cell.start, repl::last_code_line(&text, cell.start, cell.end)))
+            };
+            match around {
                 Some((first, last)) => {
                     let end = doc.buffer.line_end(last);
                     (doc.buffer.slice_string(doc.buffer.line_start(first), end), first, last)
@@ -278,12 +310,12 @@ impl CodeApp {
         if code.trim().is_empty() {
             return true;
         }
-        let place = InEditor { uid: doc.uid, line: last, line_text: doc.buffer.line_text(last) };
+        let place = InEditor { uid: doc.uid, line: last, line_text: doc.buffer.line_text(last), answered: false };
         let request = Eval {
             code: code.clone(),
             file: doc.path.clone(),
             line: Some(first as u32 + 1),
-            namespace: if live::defines_namespace(&code) { None } else { live::namespace_of(&text) },
+            namespace: if live::defines_namespace(&code) { None } else { session.namespace_for(&text) },
         };
         self.repls.set_answer(place.uid, place.line, place.line_text.clone(), "…".to_owned());
         self.live_send(request, Some(place));
@@ -385,9 +417,14 @@ impl CodeApp {
                     ui.label(RichText::new("Connecting…").color(pal.text_dim));
                 }
                 None => {
+                    egui::ComboBox::from_id_salt("live_kind").selected_text(self.live.kind.name()).show_ui(ui, |ui| {
+                        for kind in LiveKind::ALL {
+                            ui.selectable_value(&mut self.live.kind, kind, kind.name());
+                        }
+                    });
                     let edit = TextEdit::singleline(&mut self.live.address)
-                        .hint_text("nREPL host:port on this computer")
-                        .desired_width(240.0);
+                        .hint_text(self.live.kind.hint())
+                        .desired_width(300.0);
                     ui.add(edit);
                     connect = ui.button("Connect").clicked();
                 }
@@ -457,10 +494,8 @@ impl CodeApp {
                 }
                 let mut toggle = None;
                 egui::ScrollArea::both().id_salt("live_inspect").auto_shrink([false, false]).show(ui, |ui| {
-                    if self.live.identity.as_ref().is_some_and(|i| !i.speaks_clojure()) {
-                        ui.label(
-                            RichText::new("Listing values is only written for Clojure so far.").color(pal.text_dim),
-                        );
+                    if self.live.identity.is_some() && !self.live.session.as_ref().is_some_and(|s| s.inspects()) {
+                        ui.label(RichText::new("This system's values can't be listed yet.").color(pal.text_dim));
                     } else if connected {
                         Self::inspector_rows(ui, &self.live, None, 0, &mono, &mut toggle);
                     }

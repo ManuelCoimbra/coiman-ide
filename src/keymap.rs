@@ -294,7 +294,9 @@ impl Keymap {
         }
         for &i in &self.order {
             let b = &self.bindings[i];
-            if applies(b) && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[0])) {
+            // Alt held isn't that shortcut: Ctrl+Alt is how some keyboards type @ and {.
+            let alt_differs = !b.keys[0].modifiers.alt && ctx.input(|i| i.modifiers.alt);
+            if applies(b) && !alt_differs && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[0])) {
                 if b.keys.len() == 1 {
                     // Alt combinations can also produce text (Shift+Alt+F types "F" on
                     // Windows); it must not reach the editor.

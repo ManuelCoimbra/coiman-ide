@@ -49,11 +49,18 @@ impl Repls {
         results.retain(|(l, _, _)| *l != line);
         results.push((line, line_text, answer));
     }
+
+    pub(super) fn clear_answer(&mut self, uid: u64, line: usize) {
+        if let Some(results) = self.results.get_mut(&uid) {
+            results.retain(|(l, _, _)| *l != line);
+        }
+    }
 }
 
 impl CodeApp {
     /// Ctrl+Enter: sends the selection, else the cell or line, then moves on.
     pub(super) fn send_to_repl(&mut self, ctx: &egui::Context) {
+        // A live session for this kind of file takes it, whichever kind that is.
         if self.send_to_live() {
             return;
         }

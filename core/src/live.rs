@@ -105,6 +105,24 @@ pub trait Session: Send {
     fn inspect(&mut self, query: Option<&str>, namespace: Option<&str>) -> u64;
     /// What's come in since last time.
     fn poll(&mut self) -> Vec<LiveEvent>;
+    /// Whether it can list what's inside the system.
+    fn inspects(&self) -> bool {
+        true
+    }
+    /// Whether code in files of this kind goes to it.
+    fn handles(&self, extension: &str) -> bool;
+    /// Whether a bare cursor sends the top-level form around it, rather than its line or cell.
+    fn sends_forms(&self) -> bool {
+        false
+    }
+    /// The namespace code from this text belongs in, if the language has them.
+    fn namespace_for(&self, _text: &str) -> Option<String> {
+        None
+    }
+    /// Whether what it's attached to goes on without this connection.
+    fn leaves_running(&self) -> bool {
+        true
+    }
 }
 
 // ----- bencode ---------------------------------------------------------------------
@@ -392,6 +410,8 @@ pub struct Nrepl {
     waiting: Vec<(Purpose, u64, Fields)>,
     current: Option<String>,
     interruptible: bool,
+    /// What the inspector's queries are written in.
+    clojure: bool,
     closed: bool,
     /// The namespace the running request last reported.
     last_namespace: Option<String>,
@@ -431,6 +451,7 @@ impl Nrepl {
             waiting: Vec::new(),
             current: None,
             interruptible: false,
+            clojure: true,
             closed: false,
             last_namespace: None,
         };
@@ -519,6 +540,7 @@ impl Nrepl {
                 if map.contains_key("ops") {
                     let identity = Self::identify(map);
                     self.interruptible = identity.can("interrupt");
+                    self.clojure = identity.speaks_clojure();
                     events.push(LiveEvent::Connected(identity));
                 }
             }
@@ -624,6 +646,22 @@ impl Session for Nrepl {
         }
         self.send(Purpose::Inspect, id, fields);
         id
+    }
+
+    fn inspects(&self) -> bool {
+        self.clojure
+    }
+
+    fn handles(&self, extension: &str) -> bool {
+        crate::live_adapters::LiveKind::for_extension(extension) == Some(crate::live_adapters::LiveKind::Nrepl)
+    }
+
+    fn sends_forms(&self) -> bool {
+        true
+    }
+
+    fn namespace_for(&self, text: &str) -> Option<String> {
+        namespace_of(text)
     }
 
     fn poll(&mut self) -> Vec<LiveEvent> {

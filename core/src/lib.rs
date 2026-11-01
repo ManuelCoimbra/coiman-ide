@@ -30,6 +30,7 @@ pub mod highlight;
 pub mod history;
 pub mod languages;
 pub mod live;
+pub mod live_adapters;
 pub mod logfile;
 pub mod lsp;
 pub mod markdown;
