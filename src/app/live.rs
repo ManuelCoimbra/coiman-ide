@@ -203,7 +203,8 @@ impl CodeApp {
                     add_text(&mut state.transcript, Kind::Error, &text);
                     if let Some(place) = state.in_editor.get_mut(&id) {
                         place.answered = true;
-                        self.repls.set_answer(place.uid, place.line, place.line_text.clone(), text);
+                        let answer = text.lines().next().unwrap_or_default().to_owned();
+                        self.repls.set_answer(place.uid, place.line, place.line_text.clone(), answer);
                     }
                 }
                 LiveEvent::NeedInput { .. } => {

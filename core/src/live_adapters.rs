@@ -17,7 +17,8 @@ use crate::live::{Eval, Identity, LiveEvent, Nrepl, Session, parse_rows};
 use crate::lsp::discovery::{kill_tree, quiet_command};
 use crate::lsp::servers::{is_local_address, which};
 
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+// Windows takes about two seconds to say a port is refused.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(4);
 const MAX_FRAME: usize = 64 * 1024 * 1024;
 
 const KERNEL_BRIDGE: &str = include_str!("../data/kernel_bridge.py");
@@ -402,6 +403,26 @@ fn lisp_string(text: &str) -> String {
     format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Runs every form in the text, with input coming from here. Swank alone would read one
+/// form, and read input from the Lisp's own console. Its names stay in Swank's package.
+fn swank_eval(code: &str) -> String {
+    format!(
+        r#"(let* ((swank::rc-read (lambda ()
+         (let ((swank::rc-tag (random 1000000000)))
+           (swank::send-to-emacs (list :read-string (swank::current-thread-id) swank::rc-tag))
+           (third (swank::wait-for-event (list :emacs-return-string swank::rc-tag 'swank::value))))))
+       (*standard-input* (swank/backend:make-input-stream swank::rc-read))
+       (*query-io* (make-two-way-stream *standard-input* *standard-output*))
+       (swank::rc-last nil))
+  (with-input-from-string (swank::rc-in {})
+    (loop for swank::rc-form = (read swank::rc-in nil swank::rc-in)
+          until (eq swank::rc-form swank::rc-in)
+          do (setf swank::rc-last (multiple-value-list (eval swank::rc-form)))))
+  (values-list swank::rc-last))"#,
+        lisp_string(code)
+    )
+}
+
 /// Lists a package's values, or what's in a list, printed as inspector rows.
 fn swank_inspect(query: Option<&str>) -> String {
     const SHOW: &str = r##"(show (name child value)
@@ -590,7 +611,7 @@ impl Session for Swank {
             self.package = package;
         }
         let package = self.package.clone();
-        let id = self.rex(&request.code, &package);
+        let id = self.rex(&swank_eval(&request.code), &package);
         self.evals.insert(id, true);
         self.current = id;
         id
@@ -598,7 +619,8 @@ impl Session for Swank {
 
     fn stdin(&mut self, text: &str) {
         if let Some((thread, tag)) = self.waiting_read.take() {
-            self.send(&format!("(:emacs-return-string {thread} {tag} {})", lisp_string(text)));
+            let line = format!("{}\n", text.trim_end_matches(['\r', '\n']));
+            self.send(&format!("(:emacs-return-string {thread} {tag} {})", lisp_string(&line)));
         }
     }
 
@@ -937,7 +959,7 @@ mod tests {
             );
             // One that prints and returns, after being pinged.
             let first = hear(&mut stream);
-            assert!(first.contains(r#"eval-and-grab-output "(+ 1 2)""#), "{first}");
+            assert!(first.contains("eval-and-grab-output") && first.contains("(+ 1 2)"), "{first}");
             say(&mut stream, "(:ping 5 9)");
             assert_eq!(hear(&mut stream), "(:emacs-pong 5 9)");
             say(&mut stream, r#"(:write-string "live ")"#);
@@ -945,7 +967,7 @@ mod tests {
             // One that reads, then fails in the debugger.
             hear(&mut stream);
             say(&mut stream, "(:read-string 7 1)");
-            assert_eq!(hear(&mut stream), r#"(:emacs-return-string 7 1 "bob")"#);
+            assert_eq!(hear(&mut stream), "(:emacs-return-string 7 1 \"bob\n\")");
             say(&mut stream, r#"(:debug 7 1 ("division by zero" "ARITHMETIC-ERROR") () () nil)"#);
             assert!(hear(&mut stream).contains("swank:throw-to-toplevel"));
             say(&mut stream, "(:return (:abort nil) 4)");
