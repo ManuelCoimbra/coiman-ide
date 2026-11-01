@@ -20,6 +20,7 @@ pub mod editorconfig;
 pub mod emmet;
 pub mod encoding;
 pub mod environment;
+pub mod file_icons;
 pub mod find;
 pub mod finder;
 pub mod fonts;

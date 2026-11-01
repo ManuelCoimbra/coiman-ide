@@ -723,7 +723,10 @@ impl CodeApp {
                                     let color =
                                         if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
                                     let icon_size = ui.text_style_height(&egui::TextStyle::Body);
-                                    icons::show_file(ui, &doc.title(), icon_size);
+                                    let inside = doc.path.as_deref().zip(self.explorer.root.as_deref());
+                                    let place = inside.and_then(|(p, r)| p.strip_prefix(r).ok());
+                                    let place = place.map_or_else(|| doc.title(), |p| p.to_string_lossy().into_owned());
+                                    icons::show_file(ui, &place, icon_size);
                                     ui.add_space(4.0);
                                     let label = ui.add(
                                         egui::Label::new(RichText::new(doc.title()).color(color))

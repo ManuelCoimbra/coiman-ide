@@ -247,7 +247,7 @@ impl Palette {
                             let resp = ui.horizontal(|ui| {
                                 if matches!(outcome, PaletteResult::OpenFile(_)) {
                                     let size = ui.text_style_height(&egui::TextStyle::Body);
-                                    crate::icons::show_file(ui, label, size);
+                                    crate::icons::show_file(ui, &format!("{detail}/{label}"), size);
                                 }
                                 let text = highlight_label(ui, label, hl);
                                 let r = ui.add(egui::Button::selectable(selected, text).truncate());

@@ -81,7 +81,9 @@ impl Explorer {
         for (path, name, is_dir) in entries {
             let expanded = self.expanded.contains(&path);
             let selected = active_file == Some(path.as_path());
-            let response = row(ui, depth, &name, selected, is_dir.then_some(expanded));
+            let inside = self.root.as_deref().and_then(|r| path.strip_prefix(r).ok()).unwrap_or(&path);
+            let place = inside.to_string_lossy().into_owned();
+            let response = row(ui, depth, &name, &place, selected, is_dir.then_some(expanded));
             response.context_menu(|ui| {
                 // New items go in the folder, or next to the file.
                 let dir_of = if is_dir { path.clone() } else { path.parent().unwrap_or(&path).to_path_buf() };
@@ -123,7 +125,14 @@ impl Explorer {
 
 /// A full-width clickable row with indentation, hover/selection highlight and
 /// an icon (`folder`: `Some(expanded)` for folders, `None` for files).
-fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool, folder: Option<bool>) -> egui::Response {
+fn row(
+    ui: &mut egui::Ui,
+    depth: usize,
+    text: &str,
+    place: &str,
+    selected: bool,
+    folder: Option<bool>,
+) -> egui::Response {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let height = (font.size * 1.7).round();
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
@@ -144,7 +153,7 @@ fn row(ui: &mut egui::Ui, depth: usize, text: &str, selected: bool, folder: Opti
             let folder = if expanded { Icon::FolderOpen } else { Icon::Folder };
             icons::paint(ui.painter(), icon_box(x + size), folder, Color32::from_rgb(0xC0, 0x9A, 0x53));
         }
-        None => icons::paint_file(ui.painter(), icon_box(x + size), text),
+        None => icons::paint_file(ui.painter(), icon_box(x + size), place),
     }
     let pos = egui::pos2(x + 2.0 * size + 6.0, rect.center().y);
     ui.painter().text(pos, egui::Align2::LEFT_CENTER, text, font, theme::colors().text);

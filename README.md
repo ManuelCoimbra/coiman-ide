@@ -391,6 +391,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Find References | `Shift+F12`, results in the References panel |
 | Rename Symbol | `F2`; files that aren't open are opened with the changes unsaved, so you can review and undo |
 | Code actions | `Ctrl+.` (quick fixes, refactors) |
+| File icons | Every file type gets its own icon, from [Material Icon Theme](https://github.com/material-extensions/vscode-material-icon-theme) (MIT, license in `core/data/file_icons_LICENSE.txt`; `scripts/build_file_icons.py` builds the pack). Language logos remain their owners' trademarks. Test files get a flask on their icon |
 | Other tabs | Log views (several at once, kept across restarts), the byte view and images each get a tab beside the files, and go on existing behind other tabs |
 | Word colors | COBOL, Lean, Agda, Coq and APL have no grammar here, so they're colored by reading their comments, strings, numbers and keywords |
 | SVG | `Preview: Constant Preview` on an `.svg` draws it beside its text, following edits. It reads only the text: no files or addresses the picture names |
