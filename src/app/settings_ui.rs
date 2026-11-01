@@ -131,6 +131,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "workbench",
+                "nest_files",
+                "Nest files",
+                "In the Explorer, show a file's tests, styles and what's built from it under it.",
+                Kind::Toggle,
+            ),
+            row(
+                "workbench",
                 "compact_folders",
                 "Compact packages",
                 "In the Explorer, show packages holding only one package as one row, like org.example.",

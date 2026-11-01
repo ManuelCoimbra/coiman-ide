@@ -30,8 +30,28 @@ pub fn kind_glyph(kind: Option<CompletionItemKind>) -> (&'static str, Color32) {
         CompletionItemKind::MODULE => ("M", GRAY),
         CompletionItemKind::KEYWORD => ("k", GRAY),
         CompletionItemKind::SNIPPET => ("s", GRAY),
+        CompletionItemKind::VALUE => ("=", BLUE),
+        CompletionItemKind::UNIT => ("u", BLUE),
+        CompletionItemKind::COLOR => ("c", ORANGE),
+        CompletionItemKind::FILE => ("f", GRAY),
+        CompletionItemKind::FOLDER => ("D", GRAY),
+        CompletionItemKind::REFERENCE => ("r", GRAY),
+        CompletionItemKind::EVENT => ("!", ORANGE),
+        CompletionItemKind::OPERATOR => ("o", GRAY),
         _ => ("·", GRAY),
     }
+}
+
+/// The color a completion of that kind stands for, from its documentation or its name.
+pub fn completion_color(item: &rust_code_core::lsp::types::CompletionItem) -> Option<Color32> {
+    if item.kind != Some(CompletionItemKind::COLOR) {
+        return None;
+    }
+    let documented = serde_json::to_string(&item.documentation).unwrap_or_default();
+    let found =
+        rust_code_core::css::colors(&documented).into_iter().chain(rust_code_core::css::colors(&item.label)).next()?;
+    let [r, g, b, a] = found.color.srgb8();
+    Some(Color32::from_rgba_unmultiplied(r, g, b, a))
 }
 
 /// A small painted icon for a problem severity (the fonts lack these symbols):

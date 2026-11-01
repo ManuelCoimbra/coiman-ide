@@ -40,6 +40,10 @@ pub struct Explorer {
     reads_left: u32,
     /// Show a chain of packages holding only each other as one row.
     pub compact: bool,
+    /// Show a file's tests, styles and what's built from it under it.
+    pub nest: bool,
+    /// The open folder's `package.json`, as far as asked for.
+    manifest: Option<String>,
     /// Bring this row into view when it's next drawn.
     scroll_to: Option<PathBuf>,
 }
@@ -56,6 +60,7 @@ impl Explorer {
     pub fn set_root(&mut self, root: PathBuf) {
         self.cache.clear();
         self.roles.clear();
+        self.manifest = None;
         self.expanded.clear();
         self.expanded.insert(root.clone());
         self.root = Some(root);
@@ -64,6 +69,7 @@ impl Explorer {
     pub fn refresh(&mut self) {
         self.cache.clear();
         self.roles.clear();
+        self.manifest = None;
     }
 
     pub fn collapse_all(&mut self) {
@@ -78,6 +84,10 @@ impl Explorer {
         }
         for folder in file.ancestors().skip(1).take_while(|f| f.starts_with(&root)) {
             self.expanded.insert(folder.to_path_buf());
+        }
+        if let (Some(dir), Some(name)) = (file.parent(), file.file_name()) {
+            let top = self.nested_in(dir).remove(name.to_string_lossy().as_ref());
+            self.expanded.extend(top.map(|top| dir.join(top)));
         }
         self.scroll_to = Some(file.to_path_buf());
     }
@@ -95,7 +105,9 @@ impl Explorer {
         let relative = relative_of(folder);
         let names = self.children_of(folder);
         let children: Vec<(&str, bool)> = names.iter().map(|(n, d)| (n.as_str(), *d)).collect();
-        let kind = project_tree::folder_kind(&relative, &children);
+        let beside_manifest =
+            folder.parent().is_some_and(|up| self.listing(up).iter().any(|e| e.name == "package.json"));
+        let kind = project_tree::folder_kind_beside(&relative, &children, beside_manifest);
         let mut module = children.iter().any(|(child, dir)| !dir && project_tree::is_module_file(child));
         while self.compact && project_tree::is_root_package(&relative_of(&end)) {
             let (path, name) = match self.listing(&end) {
@@ -108,6 +120,16 @@ impl Explorer {
         }
         let expanded = self.expanded.contains(&end);
         (end, label, FolderLook { expanded, kind, module })
+    }
+
+    /// Which files of a folder go under which.
+    fn nested_in(&mut self, dir: &Path) -> HashMap<String, String> {
+        if !self.nest {
+            return HashMap::new();
+        }
+        let entries = self.listing(dir);
+        let names: Vec<&str> = entries.iter().filter(|e| !e.is_dir).map(|e| e.name.as_str()).collect();
+        project_tree::nested_files(&names)
     }
 
     fn children_of(&mut self, dir: &Path) -> Vec<(String, bool)> {
@@ -146,14 +168,24 @@ impl Explorer {
         ui.separator();
         let seen: HashSet<String> =
             self.cache.values().flatten().filter_map(|e| e.name.rsplit_once('.').map(|n| n.1.to_lowercase())).collect();
-        let mut order: Vec<usize> = (0..project_tree::TEMPLATES.len()).collect();
-        order.sort_by_key(|&t| !seen.contains(project_tree::TEMPLATES[t].extension));
+        let manifest = self.manifest.get_or_insert_with(|| {
+            let file = self.root.as_ref().map(|r| r.join("package.json"));
+            file.and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default()
+        });
+        let listed = |t: &project_tree::Template| t.needs.is_empty() || manifest.contains(&format!("\"{}\"", t.needs));
+        let mut order: Vec<usize> =
+            (0..project_tree::TEMPLATES.len()).filter(|&t| listed(&project_tree::TEMPLATES[t])).collect();
+        order.sort_by_key(|&t| {
+            let template = &project_tree::TEMPLATES[t];
+            (template.needs.is_empty(), !seen.contains(template.extension))
+        });
         egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
             for template in order {
                 let t = &project_tree::TEMPLATES[template];
                 let picked = ui.horizontal(|ui| {
                     let size = ui.text_style_height(&egui::TextStyle::Body);
-                    icons::show_file(ui, &format!("x.{}", t.extension), size);
+                    let sample = t.fixed_name().map_or_else(|| format!("x.{}", t.extension), str::to_owned);
+                    icons::show_file(ui, &sample, size);
                     ui.button(t.label).clicked()
                 });
                 if picked.inner {
@@ -211,66 +243,98 @@ impl Explorer {
         // Collect what we need so `self` can be borrowed mutably while recursing.
         let entries: Vec<(PathBuf, String, bool)> =
             self.listing(dir).iter().map(|e| (e.path.clone(), e.name.clone(), e.is_dir)).collect();
+        let nested = self.nested_in(dir);
+        for (path, name, is_dir) in &entries {
+            if nested.contains_key(name) {
+                continue;
+            }
+            let under: Vec<(PathBuf, String)> = entries
+                .iter()
+                .filter(|(_, child, _)| nested.get(child) == Some(name))
+                .map(|(path, child, _)| (path.clone(), child.clone()))
+                .collect();
+            self.entry_ui(ui, (path.clone(), name.clone(), *is_dir), &under, depth, active_file, clicked);
+        }
+    }
 
-        for (path, name, is_dir) in entries {
-            // A compact row stands for its last folder.
-            let (path, name, look) = if is_dir {
-                let (end, label, look) = self.folder_row(&path, &name);
-                (end, label, Some(look))
-            } else {
-                (path, name, None)
-            };
-            let expanded = look.is_some_and(|l| l.expanded);
-            let selected = active_file == Some(path.as_path());
-            let inside = self.root.as_deref().and_then(|r| path.strip_prefix(r).ok()).unwrap_or(&path);
-            let place = inside.to_string_lossy().into_owned();
-            let response = match look {
-                Some(look) => row(ui, depth, &name, "", selected, Row::Folder(look)),
-                None => {
-                    let role = self.role_in_tree(ui.ctx(), &path, &place);
-                    // A type goes by its name, as it does in the language.
-                    let shown = role
-                        .class
-                        .filter(|_| project_tree::hides_extension(&name))
-                        .map_or(name.as_str(), |_| name.rsplit_once('.').map_or(name.as_str(), |n| n.0));
-                    row(ui, depth, shown, "", selected, Row::File(&place, role))
-                }
-            };
-            if self.scroll_to.as_deref() == Some(path.as_path()) {
-                response.scroll_to_me(Some(egui::Align::Center));
-                self.scroll_to = None;
+    /// A row, and whatever is open under it.
+    fn entry_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        (path, name, is_dir): (PathBuf, String, bool),
+        under: &[(PathBuf, String)],
+        depth: usize,
+        active_file: Option<&Path>,
+        clicked: &mut Option<PathBuf>,
+    ) {
+        // A compact row stands for its last folder.
+        let (path, name, look) = if is_dir {
+            let (end, label, look) = self.folder_row(&path, &name);
+            (end, label, Some(look))
+        } else {
+            (path, name, None)
+        };
+        let expanded = match look {
+            Some(look) => look.expanded,
+            None => !under.is_empty() && self.expanded.contains(&path),
+        };
+        let selected = active_file == Some(path.as_path());
+        let inside = self.root.as_deref().and_then(|r| path.strip_prefix(r).ok()).unwrap_or(&path);
+        let place = inside.to_string_lossy().into_owned();
+        let response = match look {
+            Some(look) => row(ui, depth, &name, "", selected, Row::Folder(look)),
+            None => {
+                let role = self.role_in_tree(ui.ctx(), &path, &place);
+                // A type goes by its name, as it does in the language.
+                let named = role.class.is_some() && project_tree::hides_extension(&name);
+                let shown = if named { name.rsplit_once('.').map_or(name.as_str(), |n| n.0) } else { name.as_str() };
+                let parent = (!under.is_empty()).then_some(expanded);
+                row(ui, depth, shown, "", selected, Row::File(&place, role, parent))
             }
-            let response = match look.and_then(|l| l.kind.label()) {
-                Some(label) => response.on_hover_text(label),
-                None => response,
-            };
-            response.context_menu(|ui| {
-                // New items go in the folder, or next to the file.
-                let dir_of = if is_dir { path.clone() } else { path.parent().unwrap_or(&path).to_path_buf() };
-                ui.menu_button("New", |ui| self.new_menu(ui, Some(dir_of)));
-                ui.separator();
-                if ui.button("Rename...").clicked() {
-                    self.action = Some(ExplorerAction::Rename(path.clone()));
-                    ui.close();
-                }
-                if ui.button("Delete").clicked() {
-                    self.action = Some(ExplorerAction::Delete(path.clone()));
-                    ui.close();
-                }
-            });
-            if response.clicked() {
-                if is_dir {
-                    if expanded {
-                        self.expanded.remove(&path);
-                    } else {
-                        self.expanded.insert(path.clone());
-                    }
+        };
+        if self.scroll_to.as_deref() == Some(path.as_path()) {
+            response.scroll_to_me(Some(egui::Align::Center));
+            self.scroll_to = None;
+        }
+        let tip = look.and_then(|l| l.kind.label());
+        let on_chevron = response.interact_pointer_pos().is_some_and(|at| {
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            at.x < response.rect.left() + 4.0 + depth as f32 * INDENT + (font.size * 1.1).round()
+        });
+        let response = match tip {
+            Some(label) => response.on_hover_text(label),
+            None => response,
+        };
+        response.context_menu(|ui| {
+            // New items go in the folder, or next to the file.
+            let dir_of = if is_dir { path.clone() } else { path.parent().unwrap_or(&path).to_path_buf() };
+            ui.menu_button("New", |ui| self.new_menu(ui, Some(dir_of)));
+            ui.separator();
+            if ui.button("Rename...").clicked() {
+                self.action = Some(ExplorerAction::Rename(path.clone()));
+                ui.close();
+            }
+            if ui.button("Delete").clicked() {
+                self.action = Some(ExplorerAction::Delete(path.clone()));
+                ui.close();
+            }
+        });
+        if response.clicked() {
+            if is_dir || (!under.is_empty() && on_chevron) {
+                if expanded {
+                    self.expanded.remove(&path);
                 } else {
-                    *clicked = Some(path.clone());
+                    self.expanded.insert(path.clone());
                 }
+            } else {
+                *clicked = Some(path.clone());
             }
-            if is_dir && expanded {
-                self.dir_ui(ui, &path, depth + 1, active_file, clicked);
+        }
+        if is_dir && expanded {
+            self.dir_ui(ui, &path, depth + 1, active_file, clicked);
+        } else if expanded {
+            for (child, name) in under {
+                self.entry_ui(ui, (child.clone(), name.clone(), false), &[], depth + 1, active_file, clicked);
             }
         }
     }
@@ -279,8 +343,8 @@ impl Explorer {
 /// What a row shows beside its name.
 enum Row<'a> {
     Folder(FolderLook),
-    /// Its path in the project, and what it is.
-    File(&'a str, FileRole),
+    /// Its path in the project, what it is, and whether what's under it is open.
+    File(&'a str, FileRole, Option<bool>),
 }
 
 /// A full-width clickable row with indentation, hover/selection highlight, an icon and
@@ -326,7 +390,13 @@ fn row(ui: &mut egui::Ui, depth: usize, text: &str, hint: &str, selected: bool, 
                 painter.rect_filled(mark, 1.0, SOURCE_BLUE);
             }
         }
-        Row::File(place, role) => icons::paint_source(&painter, icon_box(x + size), place, role),
+        Row::File(place, role, parent) => {
+            if let Some(open) = parent {
+                let chevron = if open { Icon::ChevronDown } else { Icon::ChevronRight };
+                icons::paint(&painter, icon_box(x).shrink(size * 0.1), chevron, dim);
+            }
+            icons::paint_source(&painter, icon_box(x + size), place, role);
+        }
     }
     let pos = egui::pos2(x + 2.0 * size + 6.0, rect.center().y);
     let name = painter.text(pos, egui::Align2::LEFT_CENTER, text, font.clone(), color);
@@ -363,7 +433,10 @@ fn home_relative(path: &Path) -> String {
 fn read_role(path: &Path, place: &str) -> FileRole {
     use std::io::Read;
     const ENOUGH: u64 = 128 * 1024;
-    let code = path.extension().is_some_and(|e| file_icons::is_code(&e.to_string_lossy()));
+    let code = path.extension().is_some_and(|e| {
+        let extension = e.to_string_lossy();
+        file_icons::is_code(&extension) || matches!(extension.to_lowercase().as_str(), "html" | "htm")
+    });
     let mut bytes = Vec::new();
     let read = code && std::fs::File::open(path).is_ok_and(|f| f.take(ENOUGH).read_to_end(&mut bytes).is_ok());
     if read { FileRole::of(place, &String::from_utf8_lossy(&bytes)) } else { FileRole::of_name(place) }

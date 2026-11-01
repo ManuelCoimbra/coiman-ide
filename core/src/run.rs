@@ -286,6 +286,52 @@ fn java_package(source: &str) -> String {
 
 /// A test id meaning: not a test, run the program.
 pub const RUN_PROGRAM: &str = "\0program";
+/// A test id meaning: run this `package.json` script.
+pub const RUN_SCRIPT: &str = "\0script:";
+/// A test id meaning: open this address on the project's dev server.
+pub const RUN_PAGE: &str = "\0page:";
+
+/// The lines under `"scripts"` of a `package.json`, as (0-based line, script).
+fn package_script_lines(source: &str) -> Vec<(usize, String)> {
+    let mut lines = source.lines().enumerate();
+    if !lines.any(|(_, l)| l.trim_start().starts_with("\"scripts\"")) {
+        return Vec::new();
+    }
+    lines
+        .map_while(|(at, l)| {
+            let l = l.trim_start();
+            (!l.starts_with('}')).then_some((at, l))
+        })
+        .filter_map(|(at, l)| Some((at, l.strip_prefix('"')?.split_once('"')?.0.to_owned())))
+        .collect()
+}
+
+/// Play buttons of web projects, with ids for [`RUN_SCRIPT`] and [`RUN_PAGE`]. `relative`
+/// is the file's path in the project.
+pub fn web_lines(file: &Path, relative: &str, source: &str) -> Vec<(usize, String)> {
+    if name_of(file) == "package.json" {
+        let found = package_script_lines(source).into_iter();
+        return found.map(|(at, script)| (at, format!("{RUN_SCRIPT}{script}"))).collect();
+    }
+    let Some((_, Some(route))) = crate::project_tree::web_page(relative) else { return Vec::new() };
+    let line = source.lines().position(|l| l.starts_with("export ")).unwrap_or(0);
+    vec![(line, format!("{RUN_PAGE}{route}"))]
+}
+
+/// The address a dev server says it's listening at, the latest if it moved.
+pub fn server_url(lines: &[String]) -> Option<String> {
+    const HOSTS: &[&str] = &["localhost", "127.0.0.1", "0.0.0.0", "[::1]"];
+    let at_host = |word: &str| {
+        let rest = word.strip_prefix("http://").or_else(|| word.strip_prefix("https://"))?;
+        HOSTS.iter().any(|h| rest.strip_prefix(h).is_some_and(|r| r.starts_with(':'))).then_some(())
+    };
+    let found = lines.iter().rev().flat_map(|l| l.split_whitespace()).find_map(|word| {
+        let start = word.find("http")?;
+        let url = word[start..].trim_end_matches(|c: char| !c.is_alphanumeric() && c != '/');
+        at_host(url).map(|()| url.replace("0.0.0.0", "localhost"))
+    });
+    found.map(|url| url.trim_end_matches('/').to_owned())
+}
 
 /// The lines a program starts at, going by the text: a `main`, and the type holding it
 /// where a language has one; a script's `#!` line or its "run as a program" check. A script
@@ -301,7 +347,10 @@ pub fn program_lines(file: &Path, source: &str) -> Vec<usize> {
         "rs" => starts(line, &["fn main(", "pub fn main(", "async fn main(", "pub async fn main("]),
         "go" => starts(line, &["func main("]),
         "py" | "pyw" => starts(line, &["if __name__ == '__main__'", "if __name__ == \"__main__\""]),
-        "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" => holds(line, &["require.main === module", "import.meta.main"]),
+        "js" | "mjs" | "cjs" | "ts" | "mts" | "cts" => {
+            holds(line, &["require.main === module", "import.meta.main", ".listen(", "Bun.serve(", "Deno.serve("])
+        }
+        "html" | "htm" => starts(line, &["<html", "<script"]),
         "kt" => starts(line, &["fun main(", "suspend fun main("]),
         "scala" => holds(line, &["def main(", "@main"]),
         "cs" => holds(line, &["static void Main(", "static int Main(", "static async Task Main(", "static Task Main("]),
@@ -699,7 +748,7 @@ fn js_tests(source: &str) -> Vec<(usize, String)> {
         .enumerate()
         .filter_map(|(i, line)| {
             let body = line.trim_start();
-            let args = body.strip_prefix("test(").or_else(|| body.strip_prefix("it("))?;
+            let args = ["test(", "it(", "describe("].iter().find_map(|mark| body.strip_prefix(mark))?;
             let quote = args.chars().next().filter(|c| matches!(c, '"' | '\'' | '`'))?;
             let (name, _) = args[1..].split_once(quote)?;
             Some((i, name.to_owned()))
@@ -939,14 +988,37 @@ fn dotnet(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
 // ----- files that describe a project -----------------------------------------------------
 
 /// The scripts of a `package.json`, for the package manager its lockfile names.
+fn package_tool(dir: &Path) -> &'static str {
+    [("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"), ("bun.lock", "bun")]
+        .iter()
+        .find(|(lock, _)| dir.join(lock).exists())
+        .map_or("npm", |(_, tool)| *tool)
+}
+
+/// How to run one script of a `package.json`.
+pub fn package_script_plan(file: &Path, script: &str) -> Result<RunPlan, String> {
+    let dir = file.parent().unwrap_or(file).to_path_buf();
+    let tool = package_tool(&dir);
+    need(tool, "This package")?;
+    Ok(RunPlan { title: format!("{tool} run {script}"), command: format!("{tool} run {}", quote(script)), cwd: dir })
+}
+
+/// How to start the dev server of the project a file is in.
+pub fn dev_script_plan(file: &Path, root: Option<&Path>) -> Result<RunPlan, String> {
+    let dir = find_up(file, root, "package.json").ok_or("No package.json here to start a dev server from")?;
+    let manifest = dir.join("package.json");
+    let text = std::fs::read_to_string(&manifest).unwrap_or_default();
+    let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    let script = ["dev", "start", "serve"].into_iter().find(|s| json["scripts"][*s].is_string());
+    let script = script.ok_or("package.json has no dev, start or serve script")?;
+    package_script_plan(&manifest, script)
+}
+
 fn package_scripts(file: &Path) -> Result<Outcome, String> {
     let text = std::fs::read_to_string(file).unwrap_or_default();
     let dir = file.parent().unwrap_or(file).to_path_buf();
     let json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-    let tool = [("pnpm-lock.yaml", "pnpm"), ("yarn.lock", "yarn"), ("bun.lockb", "bun"), ("bun.lock", "bun")]
-        .iter()
-        .find(|(lock, _)| dir.join(lock).exists())
-        .map_or("npm", |(_, tool)| *tool);
+    let tool = package_tool(&dir);
     let plans = json["scripts"]
         .as_object()
         .into_iter()
@@ -1201,6 +1273,32 @@ mod program_line_tests {
     use super::*;
 
     #[test]
+    fn web_play_buttons() {
+        let manifest = "{\n  \"name\": \"x\",\n  \"scripts\": {\n    \"dev\": \"vite\",\n    \"test\": \"vitest\"\n  },\n  \"main\": \"a\"\n}\n";
+        let found = web_lines(Path::new("package.json"), "package.json", manifest);
+        assert_eq!(found, [(3, format!("{RUN_SCRIPT}dev")), (4, format!("{RUN_SCRIPT}test"))]);
+        let page = "import a from 'a';\nexport default function P() {}\n";
+        assert_eq!(web_lines(Path::new("page.tsx"), "app/x/page.tsx", page), [(1, format!("{RUN_PAGE}/x"))]);
+        assert!(web_lines(Path::new("a.ts"), "src/a.ts", page).is_empty());
+        assert_eq!(program_lines(Path::new("a.html"), "<!doctype html>\n<html>\n<script src=a></script>"), [1, 2]);
+        assert_eq!(program_lines(Path::new("s.js"), "app.listen(3000);"), [0]);
+        assert!(program_lines(Path::new("a.css"), "<html>").is_empty());
+        assert_eq!(test_lines(Path::new("a.test.ts"), "describe('d', () => {\n  it('i', f);\n});").len(), 2);
+    }
+
+    #[test]
+    fn finds_what_dev_servers_print() {
+        let of = |text: &str| server_url(&[text.to_owned()]);
+        assert_eq!(of("  ➜  Local:   http://localhost:5173/"), Some("http://localhost:5173".into()));
+        assert_eq!(of("ready on http://0.0.0.0:3000."), Some("http://localhost:3000".into()));
+        assert_eq!(of("listening at https://127.0.0.1:8443/app"), Some("https://127.0.0.1:8443/app".into()));
+        assert_eq!(of("see http://example.com:80 and more"), None);
+        assert_eq!(of("nothing"), None);
+        let moved = ["http://localhost:3000".to_owned(), "http://localhost:3001".to_owned()];
+        assert_eq!(server_url(&moved), Some("http://localhost:3001".into()));
+    }
+
+    #[test]
     fn marks_the_type_and_main_as_those_ides_do() {
         let java = "package a;\n\npublic class Main {\n    public static void main(String[] args) {}\n}\n";
         assert_eq!(program_lines(Path::new("Main.java"), java), [2, 3]);
@@ -1321,8 +1419,8 @@ mod tests {
         assert_eq!(ids(lines("x_test.py", "def test_a(): pass\n")), ["test_a"]);
         assert!(lines("x.py", py).is_empty());
         let js = "describe('d', () => {\n  it('adds up', () => {});\n});\ntest(\"two\", () => {});\nconst test2 = 1;\ntest(name, () => {});\n";
-        assert_eq!(ids(lines("a.test.js", js)), ["adds up", "two"]);
-        assert_eq!(ids(lines("a.spec.ts", js)), ["adds up", "two"]);
+        assert_eq!(ids(lines("a.test.js", js)), ["d", "adds up", "two"]);
+        assert_eq!(ids(lines("a.spec.ts", js)), ["d", "adds up", "two"]);
         assert!(lines("a.js", js).is_empty());
     }
 

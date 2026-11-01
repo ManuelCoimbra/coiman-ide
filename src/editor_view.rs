@@ -137,6 +137,8 @@ pub struct Decorations {
     pub dim_columns: Vec<(usize, usize)>,
     /// Lines with a runnable test, and its last result (gutter run buttons).
     pub runnables: Vec<(usize, Option<crate::icons::Icon>, Color32)>,
+    /// Lines with a color written on them, and it.
+    pub color_marks: Vec<(usize, Color32)>,
     /// The line offering quick fixes, and the light bulb's color.
     pub bulb: Option<(usize, Color32)>,
 }
@@ -1461,6 +1463,18 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 crate::icons::Icon::Play,
                 Color32::from_rgb(0xFF, 0xCC, 0x00),
             );
+        }
+        if row.first
+            && breakpoint.is_none()
+            && let Some((_, color)) = deco.color_marks.iter().find(|c| c.0 == row.line)
+        {
+            let size = (m.row_h * 0.6).min(RUN_ZONE);
+            let at = Rect::from_center_size(
+                Pos2::new(text_rect.left() - m.gutter_w + RUN_ZONE / 2.0 + 1.0, y + m.row_h / 2.0),
+                Vec2::splat(size),
+            );
+            painter.rect_filled(at, 2.0, *color);
+            painter.rect_stroke(at, 2.0, Stroke::new(1.0, Color32::from_gray(0x80)), egui::StrokeKind::Outside);
         }
         // Test run button (with the last result's icon and color).
         if row.first

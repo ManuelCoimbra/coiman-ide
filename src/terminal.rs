@@ -74,6 +74,8 @@ pub struct ScanOutput<'a> {
     pub cwd: &'a Path,
     pub matcher: Option<&'a rust_code_core::matchers::Regex>,
     pub lines: Vec<String>,
+    /// The program has ended.
+    pub ended: bool,
 }
 
 impl Tab {
@@ -343,7 +345,7 @@ impl Terminals {
             scan.done = ended;
             let lines = output_lines(&tab.session);
             let Some(scan) = tab.scan.as_ref() else { continue };
-            outputs.push(ScanOutput { id: tab.id, cwd: &scan.cwd, matcher: scan.matcher.as_ref(), lines });
+            outputs.push(ScanOutput { id: tab.id, cwd: &scan.cwd, matcher: scan.matcher.as_ref(), lines, ended });
         }
         (outputs, live)
     }

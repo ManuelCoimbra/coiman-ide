@@ -83,6 +83,11 @@ const OUTPUT: &[&str] = &[
     ".mypy_cache",
     ".tox",
     ".next",
+    ".nuxt",
+    ".svelte-kit",
+    ".output",
+    ".turbo",
+    ".parcel-cache",
     ".settings",
     "coverage",
     "cmake-build-debug",
@@ -104,6 +109,21 @@ fn language_root(parts: &[&str]) -> Option<usize> {
 pub fn is_root_package(relative: &str) -> bool {
     let parts: Vec<&str> = relative.split(['/', '\\']).filter(|p| !p.is_empty()).collect();
     language_root(&parts).is_some_and(|at| at + 1 < parts.len())
+}
+
+/// A folder's kind, knowing whether a `package.json` sits beside it: then these names say
+/// more than they would elsewhere.
+pub fn folder_kind_beside(relative: &str, children: &[(&str, bool)], beside_manifest: bool) -> FolderKind {
+    let kind = folder_kind(relative, children);
+    if kind != FolderKind::Plain || !beside_manifest {
+        return kind;
+    }
+    let name = relative.rsplit(['/', '\\']).next().unwrap_or(relative).to_lowercase();
+    match name.as_str() {
+        "app" | "pages" | "components" | "lib" | "routes" => FolderKind::Source,
+        "public" | "static" | "assets" => FolderKind::Resources,
+        _ => kind,
+    }
 }
 
 /// A folder's kind. `relative` is its path in the project, with either kind of slash;
@@ -165,6 +185,14 @@ pub enum ClassKind {
     Annotation,
     Object,
     Trait,
+    /// A web component: `Button.tsx`, `.vue`, `.svelte`, `.astro`.
+    Component,
+    /// A React or Vue `useThing`.
+    Hook,
+    /// What a framework serves at an address.
+    Page,
+    Route,
+    CssModule,
 }
 
 /// What a source file is, for its icon.
@@ -180,7 +208,9 @@ pub struct FileRole {
 impl FileRole {
     /// What the path alone says.
     pub fn of_name(relative: &str) -> Self {
-        Self { test: crate::file_icons::is_test_file(relative), ..Self::default() }
+        let page = web_page(relative);
+        let test = crate::file_icons::is_test_file(relative);
+        Self { class: web_kind(relative), runs: !test && page.is_some_and(|p| p.1.is_some()), test }
     }
 
     /// What the path and the text say.
@@ -189,12 +219,110 @@ impl FileRole {
         let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
         let extension = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
         let test = crate::file_icons::is_test_file(relative) || has_test_marks(&extension, source);
-        Self {
-            class: class_kind(&extension, &stem, source),
-            runs: !test && !crate::run::program_lines(path, source).is_empty(),
-            test,
-        }
+        let class = web_kind(relative).or_else(|| class_kind(&extension, &stem, source));
+        let starts = !crate::run::program_lines(path, source).is_empty();
+        let served = web_page(relative).is_some_and(|p| p.1.is_some());
+        Self { class, runs: !test && (starts || served), test }
     }
+}
+
+/// What a web framework makes of a file by where it is, and the address it's served at,
+/// unless that takes values to fill in. Next and Nuxt `app/` and `pages/`, SvelteKit `routes/`.
+pub fn web_page(relative: &str) -> Option<(ClassKind, Option<String>)> {
+    let parts: Vec<&str> = relative.split(['/', '\\']).filter(|p| !p.is_empty()).collect();
+    let (&file, above) = parts.split_last()?;
+    let (stem, extension) = file.rsplit_once('.')?;
+    if !matches!(extension, "tsx" | "jsx" | "ts" | "js" | "vue" | "svelte" | "astro" | "mdx") {
+        return None;
+    }
+    let at = above.iter().rposition(|p| matches!(*p, "app" | "pages" | "routes"))?;
+    let mut route: Vec<&str> = above[at + 1..].iter().copied().filter(|p| !p.starts_with('(')).collect();
+    let kind = match above[at] {
+        "app" if stem == "page" => ClassKind::Page,
+        "app" if stem == "route" => ClassKind::Route,
+        "routes" if stem == "+page" => ClassKind::Page,
+        "routes" if stem == "+server" => ClassKind::Route,
+        "pages" if !stem.starts_with('_') && !stem.contains('.') => {
+            if stem != "index" {
+                route.push(stem);
+            }
+            if route.first() == Some(&"api") { ClassKind::Route } else { ClassKind::Page }
+        }
+        _ => return None,
+    };
+    let filled = !route.iter().any(|p| p.contains('[') || p.starts_with(':'));
+    Some((kind, filled.then(|| format!("/{}", route.join("/")))))
+}
+
+/// What a file is on the web, from its path alone.
+fn web_kind(relative: &str) -> Option<ClassKind> {
+    if let Some((kind, _)) = web_page(relative) {
+        return Some(kind);
+    }
+    let name = relative.rsplit(['/', '\\']).next().unwrap_or(relative);
+    let (stem, extension) = name.rsplit_once('.')?;
+    let capital = stem.chars().next().is_some_and(char::is_uppercase) && !stem.contains('.');
+    let hook = stem.strip_prefix("use").and_then(|r| r.chars().next()).is_some_and(char::is_uppercase);
+    match extension {
+        "css" | "scss" | "sass" | "less" if stem.ends_with(".module") => Some(ClassKind::CssModule),
+        "vue" | "svelte" | "astro" => Some(ClassKind::Component),
+        "tsx" | "jsx" if capital => Some(ClassKind::Component),
+        "ts" | "js" | "tsx" | "jsx" if hook && !stem.contains('.') => Some(ClassKind::Hook),
+        _ => None,
+    }
+}
+
+/// Files that belong under another of the same folder, as (file, the one above it): what's
+/// built from it, its tests, its styles.
+pub fn nested_files(names: &[&str]) -> std::collections::HashMap<String, String> {
+    const VIEWS: &[&str] = &["tsx", "jsx", "vue", "svelte", "ts", "js", "html"];
+    let above = |name: &str| -> Option<String> {
+        let (stem, extension) = name.rsplit_once('.')?;
+        let mut tries: Vec<String> = Vec::new();
+        if extension == "map" {
+            tries.push(stem.to_owned());
+        }
+        for mark in [".test", ".spec", ".min"] {
+            if let Some(base) = stem.strip_suffix(mark) {
+                tries.push(format!("{base}.{extension}"));
+                match extension {
+                    "ts" => tries.push(format!("{base}.tsx")),
+                    "js" => tries.push(format!("{base}.jsx")),
+                    _ => {}
+                }
+            }
+        }
+        match extension {
+            "ts" => {
+                if let Some(base) = stem.strip_suffix(".d") {
+                    tries.push(format!("{base}.ts"));
+                    tries.push(format!("{base}.js"));
+                }
+            }
+            "js" => tries.extend(["ts", "tsx"].map(|e| format!("{stem}.{e}"))),
+            "jsx" => tries.push(format!("{stem}.tsx")),
+            "css" => tries.extend(["scss", "sass", "less"].map(|e| format!("{stem}.{e}"))),
+            _ => {}
+        }
+        if matches!(extension, "css" | "scss" | "sass" | "less") {
+            let base = stem.strip_suffix(".module").unwrap_or(stem);
+            tries.extend(VIEWS.iter().map(|e| format!("{base}.{e}")));
+        }
+        tries.into_iter().find(|t| t != name && names.contains(&t.as_str()))
+    };
+    let mut nested = std::collections::HashMap::new();
+    for name in names {
+        let Some(mut top) = above(name) else { continue };
+        // `a.js.map` under `a.js`, itself under `a.ts`.
+        for _ in 0..4 {
+            match above(&top) {
+                Some(next) if next != *name => top = next,
+                _ => break,
+            }
+        }
+        nested.insert((*name).to_owned(), top);
+    }
+    nested
 }
 
 fn has_test_marks(extension: &str, source: &str) -> bool {
@@ -289,47 +417,98 @@ pub fn hides_extension(name: &str) -> bool {
 pub struct Template {
     pub label: &'static str,
     pub extension: &'static str,
+    /// A dependency the project must list for this to be offered; empty: always.
+    pub needs: &'static str,
     /// With `{name}`, `{folder}` and `{package}`, a whole `package x;` line or nothing.
     body: &'static str,
 }
 
 pub const TEMPLATES: &[Template] = &[
-    Template { label: "Java Class", extension: "java", body: "{package}public class {name} {\n}\n" },
-    Template { label: "Kotlin Class", extension: "kt", body: "{package}class {name} {\n}\n" },
-    Template { label: "Scala Class", extension: "scala", body: "{package}class {name} {\n}\n" },
-    Template { label: "Groovy Class", extension: "groovy", body: "{package}class {name} {\n}\n" },
-    Template { label: "C# Class", extension: "cs", body: "class {name}\n{\n}\n" },
-    Template { label: "Python File", extension: "py", body: "" },
-    Template { label: "Rust File", extension: "rs", body: "" },
-    Template { label: "Go File", extension: "go", body: "package {folder}\n" },
-    Template { label: "C File", extension: "c", body: "" },
-    Template { label: "C Header", extension: "h", body: "#pragma once\n" },
-    Template { label: "C++ File", extension: "cpp", body: "" },
-    Template { label: "C++ Header", extension: "hpp", body: "#pragma once\n" },
-    Template { label: "JavaScript File", extension: "js", body: "" },
-    Template { label: "TypeScript File", extension: "ts", body: "" },
+    Template { label: "Java Class", needs: "", extension: "java", body: "{package}public class {name} {\n}\n" },
+    Template { label: "Kotlin Class", needs: "", extension: "kt", body: "{package}class {name} {\n}\n" },
+    Template { label: "Scala Class", needs: "", extension: "scala", body: "{package}class {name} {\n}\n" },
+    Template { label: "Groovy Class", needs: "", extension: "groovy", body: "{package}class {name} {\n}\n" },
+    Template { label: "C# Class", needs: "", extension: "cs", body: "class {name}\n{\n}\n" },
+    Template { label: "Python File", needs: "", extension: "py", body: "" },
+    Template { label: "Rust File", needs: "", extension: "rs", body: "" },
+    Template { label: "Go File", needs: "", extension: "go", body: "package {folder}\n" },
+    Template { label: "C File", needs: "", extension: "c", body: "" },
+    Template { label: "C Header", needs: "", extension: "h", body: "#pragma once\n" },
+    Template { label: "C++ File", needs: "", extension: "cpp", body: "" },
+    Template { label: "C++ Header", needs: "", extension: "hpp", body: "#pragma once\n" },
+    Template { label: "JavaScript File", needs: "", extension: "js", body: "" },
+    Template { label: "TypeScript File", needs: "", extension: "ts", body: "" },
     Template {
         label: "HTML File",
+        needs: "",
         extension: "html",
         body: "<!doctype html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <title>{name}</title>\n</head>\n<body>\n</body>\n</html>\n",
     },
-    Template { label: "Stylesheet", extension: "css", body: "" },
-    Template { label: "PHP File", extension: "php", body: "<?php\n" },
-    Template { label: "Ruby File", extension: "rb", body: "" },
-    Template { label: "Swift File", extension: "swift", body: "" },
-    Template { label: "Dart File", extension: "dart", body: "" },
-    Template { label: "Lua File", extension: "lua", body: "" },
-    Template { label: "Zig File", extension: "zig", body: "" },
-    Template { label: "Elixir File", extension: "ex", body: "" },
-    Template { label: "Haskell File", extension: "hs", body: "module {name} where\n" },
-    Template { label: "Shell Script", extension: "sh", body: "#!/bin/sh\n" },
-    Template { label: "Markdown File", extension: "md", body: "" },
-    Template { label: "JSON File", extension: "json", body: "{}\n" },
-    Template { label: "YAML File", extension: "yaml", body: "" },
-    Template { label: "TOML File", extension: "toml", body: "" },
+    Template { label: "Stylesheet", needs: "", extension: "css", body: "" },
+    Template { label: "PHP File", needs: "", extension: "php", body: "<?php\n" },
+    Template { label: "Ruby File", needs: "", extension: "rb", body: "" },
+    Template { label: "Swift File", needs: "", extension: "swift", body: "" },
+    Template { label: "Dart File", needs: "", extension: "dart", body: "" },
+    Template { label: "Lua File", needs: "", extension: "lua", body: "" },
+    Template { label: "Zig File", needs: "", extension: "zig", body: "" },
+    Template { label: "Elixir File", needs: "", extension: "ex", body: "" },
+    Template { label: "Haskell File", needs: "", extension: "hs", body: "module {name} where\n" },
+    Template { label: "Shell Script", needs: "", extension: "sh", body: "#!/bin/sh\n" },
+    Template { label: "Markdown File", needs: "", extension: "md", body: "" },
+    Template { label: "JSON File", needs: "", extension: "json", body: "{}\n" },
+    Template { label: "YAML File", needs: "", extension: "yaml", body: "" },
+    Template { label: "TOML File", needs: "", extension: "toml", body: "" },
+    Template {
+        label: "React Component",
+        needs: "react",
+        extension: "tsx",
+        body: "export default function {name}() {\n  return <div></div>;\n}\n",
+    },
+    Template {
+        label: "Vue Component",
+        needs: "vue",
+        extension: "vue",
+        body: "<script setup lang=\"ts\">\n</script>\n\n<template>\n  <div></div>\n</template>\n",
+    },
+    Template {
+        label: "Svelte Component",
+        needs: "svelte",
+        extension: "svelte",
+        body: "<script lang=\"ts\">\n</script>\n\n<div></div>\n",
+    },
+    Template { label: "Astro Component", needs: "astro", extension: "astro", body: "---\n---\n\n<div></div>\n" },
+    Template { label: "CSS Module", needs: "", extension: "module.css", body: "" },
+    Template {
+        label: "Vitest Test",
+        needs: "vitest",
+        extension: "test.ts",
+        body: "import { describe, expect, it } from 'vitest';\n\ndescribe('{name}', () => {\n  it('works', () => {\n    expect(true).toBe(true);\n  });\n});\n",
+    },
+    Template {
+        label: "Jest Test",
+        needs: "jest",
+        extension: "test.ts",
+        body: "describe('{name}', () => {\n  it('works', () => {\n    expect(true).toBe(true);\n  });\n});\n",
+    },
+    Template {
+        label: "package.json",
+        needs: "",
+        extension: "json",
+        body: "{\n  \"name\": \"{folder}\",\n  \"version\": \"0.1.0\",\n  \"private\": true,\n  \"scripts\": {}\n}\n",
+    },
 ];
 
 impl Template {
+    /// The name this kind of file always has, so there's nothing to ask.
+    pub fn fixed_name(&self) -> Option<&'static str> {
+        (self.label == "package.json").then_some("package.json")
+    }
+
+    /// A file's name without what this kind of file adds.
+    pub fn stem_of<'a>(&self, file_name: &'a str) -> &'a str {
+        file_name.strip_suffix(&format!(".{}", self.extension)).unwrap_or(file_name)
+    }
+
     /// The file a typed name means.
     pub fn file_name(&self, typed: &str) -> String {
         let suffix = format!(".{}", self.extension);
@@ -539,6 +718,101 @@ mod tests {
         assert!(FileRole::of("checks.ex", "  use ExUnit.Case").test);
         assert!(FileRole::of("Checks.swift", "class C: XCTestCase {").test);
         assert!(!FileRole::of("checks.py", "# not unittest.TestCase").test);
+    }
+
+    #[test]
+    fn web_folders_beside_a_manifest() {
+        assert_eq!(folder_kind_beside("components", &[], true), Source);
+        assert_eq!(folder_kind_beside("web/pages", &[], true), Source);
+        assert_eq!(folder_kind_beside("public", &[], true), Resources);
+        assert_eq!(folder_kind_beside("public", &[], false), Plain);
+        assert_eq!(folder_kind_beside("dist", &[], true), Excluded);
+        assert_eq!(folder_kind_beside(".next", &[], false), Excluded);
+    }
+
+    #[test]
+    fn web_files_by_what_they_are() {
+        let kind = |p: &str| FileRole::of_name(p).class;
+        assert_eq!(kind("src/Button.tsx"), Some(ClassKind::Component));
+        assert_eq!(kind("Card.vue"), Some(ClassKind::Component));
+        assert_eq!(kind("card.svelte"), Some(ClassKind::Component));
+        assert_eq!(kind("useAuth.ts"), Some(ClassKind::Hook));
+        assert_eq!(kind("user.ts"), None);
+        assert_eq!(kind("button.tsx"), None);
+        assert_eq!(kind("Button.test.tsx"), None);
+        assert_eq!(kind("a.module.css"), Some(ClassKind::CssModule));
+        assert_eq!(kind("a.css"), None);
+    }
+
+    #[test]
+    fn pages_and_their_addresses() {
+        use ClassKind::{Page, Route};
+        let at = |p: &str| web_page(p);
+        assert_eq!(at("app/page.tsx"), Some((Page, Some("/".into()))));
+        assert_eq!(at("src/app/blog/(x)/page.tsx"), Some((Page, Some("/blog".into()))));
+        assert_eq!(at("app/api/a/route.ts"), Some((Route, Some("/api/a".into()))));
+        assert_eq!(at("pages/index.vue"), Some((Page, Some("/".into()))));
+        assert_eq!(at("pages/about.tsx"), Some((Page, Some("/about".into()))));
+        assert_eq!(at("pages/api/a.ts"), Some((Route, Some("/api/a".into()))));
+        assert_eq!(at("src/routes/x/+page.svelte"), Some((Page, Some("/x".into()))));
+        assert_eq!(at("src/routes/x/+server.ts"), Some((Route, Some("/x".into()))));
+        assert_eq!(at("app/blog/[id]/page.tsx"), Some((Page, None)));
+        assert_eq!(at("pages/_app.tsx"), None);
+        assert_eq!(at("app/layout.tsx"), None);
+        assert_eq!(at("pages/About.java"), None);
+        assert!(FileRole::of_name("pages/about.vue").runs);
+        assert!(!FileRole::of_name("app/blog/[id]/page.tsx").runs);
+        assert!(FileRole::of("server.js", "app.listen(3000);").runs);
+        assert!(FileRole::of("page.html", "<html>").runs);
+    }
+
+    #[test]
+    fn nests_what_belongs_under_a_file() {
+        let names = [
+            "app.ts",
+            "app.js",
+            "app.js.map",
+            "app.test.ts",
+            "app.d.ts",
+            "Button.tsx",
+            "Button.module.css",
+            "Button.test.tsx",
+            "a.scss",
+            "a.css",
+            "a.css.map",
+            "lib.min.js",
+            "lib.js",
+            "alone.css",
+            "other.ts",
+        ];
+        let nested = nested_files(&names);
+        let top = |n: &str| nested.get(n).map(String::as_str);
+        assert_eq!(top("app.js"), Some("app.ts"));
+        assert_eq!(top("app.js.map"), Some("app.ts"));
+        assert_eq!(top("app.test.ts"), Some("app.ts"));
+        assert_eq!(top("app.d.ts"), Some("app.ts"));
+        assert_eq!(top("Button.module.css"), Some("Button.tsx"));
+        assert_eq!(top("Button.test.tsx"), Some("Button.tsx"));
+        assert_eq!(top("a.css"), Some("a.scss"));
+        assert_eq!(top("a.css.map"), Some("a.scss"));
+        assert_eq!(top("lib.min.js"), Some("lib.js"));
+        for alone in ["app.ts", "Button.tsx", "alone.css", "other.ts", "lib.js", "a.scss"] {
+            assert_eq!(top(alone), None, "{alone}");
+        }
+    }
+
+    #[test]
+    fn web_templates() {
+        let of = |label: &str| TEMPLATES.iter().find(|t| t.label == label).unwrap();
+        assert_eq!(
+            of("React Component").text("Card", ""),
+            "export default function Card() {\n  return <div></div>;\n}\n"
+        );
+        assert_eq!(of("Vitest Test").file_name("a"), "a.test.ts");
+        assert_eq!(of("Vitest Test").stem_of("a.test.ts"), "a");
+        assert_eq!(of("CSS Module").file_name("a"), "a.module.css");
+        assert_eq!(of("package.json").fixed_name(), Some("package.json"));
+        assert!(of("package.json").text("x", "web").contains("\"name\": \"web\""));
     }
 
     #[test]

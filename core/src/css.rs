@@ -260,6 +260,25 @@ pub struct Color {
     pub format: Format,
 }
 
+/// The first color on each line of a text, as (0-based line, RGBA).
+pub fn color_lines(text: &str) -> Vec<(usize, [u8; 4])> {
+    let mut found = colors(text);
+    found.sort_by_key(|c| c.start);
+    let mut out: Vec<(usize, [u8; 4])> = Vec::new();
+    let (mut line, mut at) = (0, 0);
+    let mut chars = text.chars();
+    for color in found {
+        for c in chars.by_ref().take(color.start - at) {
+            line += usize::from(c == '\n');
+        }
+        at = color.start;
+        if out.last().is_none_or(|l| l.0 != line) {
+            out.push((line, color.color.srgb8()));
+        }
+    }
+    out
+}
+
 /// A color in a text, by char offsets.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoundColor {

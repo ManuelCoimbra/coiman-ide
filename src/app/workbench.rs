@@ -669,6 +669,7 @@ impl CodeApp {
                 }
                 self.delete_prompt(ui);
                 self.explorer.compact = self.settings.workbench.compact_folders;
+                self.explorer.nest = self.settings.workbench.nest_files;
                 if let Some(path) = self.explorer.ui(ui, active_path.as_deref()) {
                     self.open_file(&path);
                 }
@@ -1236,6 +1237,14 @@ impl CodeApp {
                         .clicked()
                 {
                     status_cmd = Some(Command::ChoosePython);
+                }
+                if let Some(url) = self.dev_url()
+                    && ui
+                        .add(egui::Label::new(white(format!("Open {url}"))).sense(Sense::click()).selectable(false))
+                        .on_hover_text("Open the dev server in your browser")
+                        .clicked()
+                {
+                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                 }
                 if self.preview_running()
                     && ui

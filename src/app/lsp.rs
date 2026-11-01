@@ -1982,12 +1982,17 @@ impl CodeApp {
                                 let p = ui.painter();
                                 let ring = font.size * 1.15;
                                 let at = rect.left_center() + egui::vec2(4.0 + ring / 2.0, 0.0);
-                                crate::icons::paint_ring(
-                                    p,
-                                    egui::Rect::from_center_size(at, egui::Vec2::splat(ring)),
-                                    glyph,
-                                    color,
-                                );
+                                match lsp_ui::completion_color(&e.item) {
+                                    Some(swatch) => {
+                                        p.circle_filled(at, ring * 0.46, swatch);
+                                    }
+                                    None => crate::icons::paint_ring(
+                                        p,
+                                        egui::Rect::from_center_size(at, egui::Vec2::splat(ring)),
+                                        glyph,
+                                        color,
+                                    ),
+                                }
                                 p.text(
                                     egui::pos2(rect.left() + 24.0, y),
                                     egui::Align2::LEFT_CENTER,

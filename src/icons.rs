@@ -337,6 +337,11 @@ fn paint_class(painter: &egui::Painter, rect: Rect, kind: ClassKind) {
         ClassKind::Annotation => ("@", Color32::from_rgb(0xC7, 0x7D, 0xBB)),
         ClassKind::Object => ("O", Color32::from_rgb(0xD0, 0x8F, 0x3E)),
         ClassKind::Trait => ("T", Color32::from_rgb(0x57, 0x96, 0x5C)),
+        ClassKind::Component => ("<>", Color32::from_rgb(0x3F, 0xB5, 0xC4)),
+        ClassKind::Hook => ("H", Color32::from_rgb(0xC9, 0xA0, 0x3C)),
+        ClassKind::Page => ("P", Color32::from_rgb(0x57, 0xB0, 0x6A)),
+        ClassKind::Route => ("R", Color32::from_rgb(0xD0, 0x8F, 0x3E)),
+        ClassKind::CssModule => ("M", Color32::from_rgb(0x9C, 0x6F, 0xD0)),
     };
     paint_ring(painter, rect, letter, color);
 }
@@ -345,8 +350,14 @@ fn paint_class(painter: &egui::Painter, rect: Rect, kind: ClassKind) {
 pub fn paint_ring(painter: &egui::Painter, rect: Rect, letter: &str, color: Color32) {
     let radius = rect.width() * 0.46;
     painter.circle(rect.center(), radius, color.gamma_multiply(0.18), Stroke::new(1.2, color));
-    let font = egui::FontId::proportional(rect.width() * 0.7);
-    painter.text(rect.center(), egui::Align2::CENTER_CENTER, letter, font, color.lerp_to_gamma(Color32::WHITE, 0.45));
+    let font = egui::FontId::proportional(rect.width() * if letter.len() > 1 { 0.5 } else { 0.7 });
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        letter,
+        font,
+        color.lerp_to_gamma(crate::theme::colors().text, 0.45),
+    );
 }
 
 fn paint_theme_icon(painter: &egui::Painter, rect: Rect, path: &str) {

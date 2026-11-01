@@ -107,6 +107,12 @@ pub(super) struct CargoState {
     packages: Vec<cargo::CargoPackage>,
     /// The tests of the active file, when not Rust: (doc uid, version, line and id).
     other_tests: Option<OtherTests>,
+    /// The colors written in the active stylesheet: (doc uid, version, line and color).
+    gutter_colors: Option<GutterColors>,
+    /// What dev servers in Run's tabs said their address was, by tab.
+    dev_urls: std::collections::BTreeMap<u64, String>,
+    /// An address to open once a dev server just started says where it is.
+    pending_route: Option<String>,
     /// What Run would do for a tab: (doc uid, buffer version, answer), worked
     /// out away from the UI because it can ask Cargo or walk a project.
     run_preview: Option<RunPreview>,
@@ -158,6 +164,9 @@ impl Default for CargoState {
             run_targets: Vec::new(),
             packages: Vec::new(),
             other_tests: None,
+            gutter_colors: None,
+            dev_urls: Default::default(),
+            pending_route: None,
             run_preview: None,
             run_preview_at: 0.0,
             run_preview_job: None,
@@ -211,6 +220,9 @@ pub(super) fn shell(command: &str) -> (String, Vec<String>) {
         ("sh".into(), vec!["-c".into(), command.into()])
     }
 }
+
+/// Colors written in a stylesheet: (doc uid, version, line and color).
+type GutterColors = (u64, u64, Vec<(usize, Color32)>);
 
 /// The choice that makes Run follow the active file.
 const CURRENT_FILE: &str = "Current File";
@@ -374,12 +386,22 @@ impl CodeApp {
         if self.cargo.other_tests.as_ref().is_some_and(|(u, v, _)| (*u, *v) == (uid, version)) {
             return;
         }
+        let text = doc.text();
+        let root = self.explorer.root.as_deref();
         let found = doc.path.as_deref().map_or_else(Vec::new, |p| {
-            let text = doc.text();
+            let relative = root.and_then(|r| p.strip_prefix(r).ok()).unwrap_or(p).to_string_lossy().into_owned();
             let mut found = run::test_lines(p, &text);
             found.extend(run::program_lines(p, &text).into_iter().map(|line| (line, run::RUN_PROGRAM.to_owned())));
+            found.extend(run::web_lines(p, &relative, &text));
             found
         });
+        let stylesheet =
+            doc.path.as_deref().and_then(|p| p.extension()).is_some_and(|e| {
+                matches!(e.to_string_lossy().to_lowercase().as_str(), "css" | "scss" | "sass" | "less")
+            });
+        let colors = if stylesheet { rust_code_core::css::color_lines(&text) } else { Vec::new() };
+        let colors = colors.into_iter().map(|(line, [r, g, b, a])| (line, Color32::from_rgba_unmultiplied(r, g, b, a)));
+        self.cargo.gutter_colors = Some((uid, version, colors.collect()));
         self.cargo.other_tests = Some((uid, version, found));
     }
 
@@ -710,7 +732,8 @@ impl CodeApp {
                 return;
             }
             let file = self.docs[self.active].path.clone();
-            if file.is_some_and(|f| self.run_one_test(ctx, &f, &id, line)) {
+            let web = id.starts_with(run::RUN_SCRIPT) || id.starts_with(run::RUN_PAGE);
+            if !web && file.is_some_and(|f| self.run_one_test(ctx, &f, &id, line)) {
                 return;
             }
             for i in 0..self.docs.len() {
@@ -722,6 +745,24 @@ impl CodeApp {
             }
             let doc = &self.docs[self.active];
             let Some(file) = doc.path.clone() else { return };
+            if let Some(script) = id.strip_prefix(run::RUN_SCRIPT) {
+                match run::package_script_plan(&file, script) {
+                    Ok(plan) => self.start_run(ctx, &plan),
+                    Err(why) => self.refuse_run(ctx, why),
+                }
+                return;
+            }
+            if let Some(route) = id.strip_prefix(run::RUN_PAGE) {
+                match (self.dev_url(), run::dev_script_plan(&file, self.explorer.root.as_deref())) {
+                    (Some(url), _) => ctx.open_url(egui::OpenUrl::new_tab(format!("{url}{route}"))),
+                    (None, Ok(plan)) => {
+                        self.cargo.pending_route = Some(route.to_owned());
+                        self.start_run(ctx, &plan);
+                    }
+                    (None, Err(why)) => self.refuse_run(ctx, why),
+                }
+                return;
+            }
             match run::test_plan(&file, &doc.text(), &id, self.explorer.root.as_deref()) {
                 Ok(plan) => self.start_run(ctx, &plan),
                 Err(why) => self.refuse_run(ctx, why),
@@ -736,10 +777,20 @@ impl CodeApp {
         }
     }
 
+    /// Where the latest dev server running in a tab is.
+    pub(super) fn dev_url(&self) -> Option<String> {
+        self.cargo.dev_urls.values().next_back().cloned()
+    }
+
     /// Gutter run buttons for document `i`.
     pub(super) fn cargo_decorate(&self, i: usize, deco: &mut crate::editor_view::Decorations) {
         if i != self.active {
             return;
+        }
+        if let Some((uid, _, colors)) = &self.cargo.gutter_colors
+            && self.docs.get(i).is_some_and(|d| d.uid == *uid)
+        {
+            deco.color_marks.clone_from(colors);
         }
         if let Some((uid, _, found)) = &self.cargo.other_tests
             && self.docs.get(i).is_some_and(|d| d.uid == *uid)
@@ -1131,6 +1182,14 @@ impl CodeApp {
         self.cargo.next_problem_scan = now + PROBLEM_SCAN_SECONDS;
         let (outputs, live) = self.terminal.scan_outputs();
         for output in outputs {
+            match run::server_url(&output.lines).filter(|_| !output.ended) {
+                Some(url) => {
+                    self.cargo.dev_urls.insert(output.id, url);
+                }
+                None => {
+                    self.cargo.dev_urls.remove(&output.id);
+                }
+            }
             let found = match output.matcher {
                 Some(pattern) => matchers::scan_custom(pattern, &output.lines),
                 None => matchers::scan(&output.lines),
@@ -1143,6 +1202,12 @@ impl CodeApp {
             self.cargo.tab_problems.insert(output.id, placed);
         }
         self.cargo.tab_problems.retain(|id, _| live.contains(id));
+        self.cargo.dev_urls.retain(|id, _| live.contains(id));
+        if let Some(url) = self.dev_url()
+            && let Some(route) = self.cargo.pending_route.take()
+        {
+            ctx.open_url(egui::OpenUrl::new_tab(format!("{url}{route}")));
+        }
     }
 
     /// What running programs reported about `file` (by [`key`]).
