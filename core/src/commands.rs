@@ -5,6 +5,8 @@
 pub enum Command {
     CommandPalette,
     QuickOpen,
+    OpenLog,
+    OpenCrashLog,
     SearchEverywhere,
     NewFile,
     OpenFile,
@@ -231,6 +233,8 @@ pub enum Command {
 
 pub const COMMANDS: &[(Command, &str)] = &[
     (Command::SearchEverywhere, "Search Everywhere"),
+    (Command::OpenLog, "Developer: Open Log"),
+    (Command::OpenCrashLog, "Developer: Open Crash Log"),
     (Command::NewFile, "File: New Untitled File"),
     (Command::OpenFile, "File: Open File..."),
     (Command::OpenFolder, "File: Open Folder..."),
@@ -446,6 +450,8 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::CommandPalette, "workbench.action.showCommands"),
     (Command::QuickOpen, "workbench.action.quickOpen"),
     (Command::SearchEverywhere, "rustCode.searchEverywhere"),
+    (Command::OpenLog, "rustCode.openLog"),
+    (Command::OpenCrashLog, "rustCode.openCrashLog"),
     (Command::NewFile, "workbench.action.files.newUntitledFile"),
     (Command::OpenFile, "workbench.action.files.openFile"),
     (Command::OpenFolder, "workbench.action.files.openFolder"),

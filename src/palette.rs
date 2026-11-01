@@ -239,6 +239,20 @@ impl Palette {
         self.setting_rows = settings;
     }
 
+    /// In a word or two, for the log: what's showing. Never what's typed.
+    pub fn describe(&self) -> String {
+        if !self.open {
+            return "closed".to_owned();
+        }
+        match (&self.picker, self.input, self.everywhere_tab()) {
+            (Some(picker), ..) => format!("picker {:?}", picker.kind),
+            (_, Some((kind, _)), _) => format!("input {kind:?}"),
+            (_, _, Some(tab)) => format!("everywhere {tab:?}"),
+            _ if self.query.starts_with('>') => "commands".to_owned(),
+            _ => "quick open".to_owned(),
+        }
+    }
+
     /// Search Everywhere's tab, unless a prefix has taken the query over.
     fn everywhere_tab(&self) -> Option<EverywhereTab> {
         self.everywhere.filter(|_| !self.query.starts_with(['>', '#', ':']))

@@ -1,6 +1,7 @@
 //! Main application state and the per-frame loop. The behaviour is split by
 //! area into submodules that each add methods to [`CodeApp`].
 
+mod app_log;
 mod at_cursor;
 mod autosave;
 mod bookmarks;
@@ -69,7 +70,7 @@ const DEFAULT_FONT_SIZE: f32 = 14.0;
 /// Seconds between crash-recovery session backups.
 const BACKUP_INTERVAL: f64 = 1.0;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum SidebarView {
     Explorer,
     Search,
@@ -80,7 +81,7 @@ enum SidebarView {
 }
 
 /// Tabs of the bottom panel.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum PanelTab {
     Problems,
     References,
@@ -154,6 +155,9 @@ pub struct CodeApp {
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
     double_shift: crate::palette::DoubleShift,
+    /// What the log last said about what's on screen, and last status.
+    logged_ui: String,
+    logged_status: Option<String>,
     /// Bottom panel (Problems, References, Terminal).
     panel_visible: bool,
     panel_tab: PanelTab,
@@ -300,6 +304,8 @@ impl CodeApp {
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
             double_shift: Default::default(),
+            logged_ui: String::new(),
+            logged_status: None,
             panel_visible: false,
             panel_tab: PanelTab::Terminal,
             font_size: DEFAULT_FONT_SIZE,
@@ -461,6 +467,7 @@ impl eframe::App for CodeApp {
         let zen = self.zen_mode;
         self.window_resize_edges(&ctx);
         self.place_tools();
+        self.log_what_changed(&ctx);
         // What islands stand on.
         ui.painter().rect_filled(ui.max_rect(), 0.0, theme::colors().activity_bg);
         // The title bar stays in Zen mode: it holds the window buttons.

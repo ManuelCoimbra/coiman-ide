@@ -44,7 +44,21 @@ impl CodeApp {
     }
 
     pub(super) fn run_command(&mut self, ctx: &egui::Context, cmd: Command) {
+        rust_code_core::applog::info(&format!("command {cmd:?}"));
         match cmd {
+            Command::OpenLog | Command::OpenCrashLog => {
+                let Some(dir) = rust_code_core::applog::dir() else { return };
+                let path = if cmd == Command::OpenLog {
+                    rust_code_core::applog::log_path(&dir)
+                } else {
+                    rust_code_core::applog::crash_path(&dir)
+                };
+                if path.exists() {
+                    self.open_file(&path);
+                } else {
+                    self.status = Some("Nothing has been written there yet: no crash so far".to_owned());
+                }
+            }
             Command::CommandPalette => self.open_palette(">"),
             Command::QuickOpen => self.open_palette(""),
             Command::SearchEverywhere => self.open_everywhere(),
@@ -640,6 +654,7 @@ impl CodeApp {
             (mods.shift, pressed || mods.ctrl || mods.alt || mods.command, i.time)
         });
         if self.double_shift.update(shift, other, now) && self.settings.workbench.double_shift {
+            rust_code_core::applog::info("double Shift");
             self.open_everywhere();
         }
         if self.zen_mode

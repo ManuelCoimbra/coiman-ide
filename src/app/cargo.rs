@@ -1385,6 +1385,8 @@ impl CodeApp {
 
     /// Runs a plan in its own terminal tab.
     pub(super) fn start_run(&mut self, ctx: &egui::Context, plan: &run::RunPlan) {
+        // The title only: a command line can hold a secret.
+        rust_code_core::applog::info(&format!("run {} in {}", plan.title, plan.cwd.display()));
         if !self.allowed_to_run(&plan.cwd) {
             return;
         }

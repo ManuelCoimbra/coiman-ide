@@ -164,6 +164,7 @@ impl CodeApp {
     }
 
     pub(super) fn open_file(&mut self, path: &Path) {
+        rust_code_core::applog::info(&format!("open file {}", path.display()));
         self.hide_view_tabs();
         if self.open_image_file(path) {
             return;

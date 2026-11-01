@@ -2,6 +2,7 @@
 //! settings, themes, sessions and workspace services. No UI dependencies, so
 //! everything here can be tested and benchmarked headlessly.
 
+pub mod applog;
 pub mod baseline;
 pub mod bookmarks;
 pub mod buffer;

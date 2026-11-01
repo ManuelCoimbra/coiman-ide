@@ -12,7 +12,7 @@ use crate::theme;
 
 use super::{CodeApp, PanelTab, SidebarView};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum RailTool {
     Side(SidebarView),
     Panel(PanelTab),
@@ -101,6 +101,8 @@ impl CodeApp {
     }
 
     fn move_tool(&mut self, tool: RailTool, to_right: bool) {
+        let side = if to_right { "right" } else { "left" };
+        rust_code_core::applog::info(&format!("moved {tool:?} to the {side} rail"));
         match tool {
             RailTool::Panel(_) => self.rails.panel_right = to_right,
             RailTool::Side(view) if to_right => {
