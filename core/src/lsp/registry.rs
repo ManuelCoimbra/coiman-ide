@@ -102,12 +102,6 @@ fn assume_it_does() -> bool {
     true
 }
 
-#[derive(Deserialize)]
-struct LanguagesFile {
-    #[serde(default)]
-    language: Vec<LanguageEntry>,
-}
-
 fn leak(text: String) -> &'static str {
     Box::leak(text.into_boxed_str())
 }
@@ -140,18 +134,29 @@ fn into_language(entry: LanguageEntry, from_user: bool) -> &'static Language {
 }
 
 /// Reads a languages file, saying what's wrong with it.
-fn parse(text: &str, from_user: bool) -> Result<Vec<&'static Language>, String> {
-    let file: LanguagesFile = toml::from_str(text).map_err(|e| format!("languages.toml: {}", e.message()))?;
+///
+/// One entry that's wrong doesn't take the others with it: they're kept, and it's
+/// reported. Only text that isn't TOML at all gives nothing.
+fn parse(text: &str, from_user: bool) -> (Vec<&'static Language>, Option<String>) {
+    let table: toml::Table = match toml::from_str(text) {
+        Ok(table) => table,
+        Err(e) => return (Vec::new(), Some(format!("languages.toml: {}", e.message()))),
+    };
     let mut problems = Vec::new();
     let mut found = Vec::new();
-    for entry in file.language {
-        if entry.extensions.is_empty() {
-            problems.push(format!("languages.toml: {} names no extensions", entry.name));
-        } else {
-            found.push(into_language(entry, from_user));
+    let entries = table.get("language").and_then(toml::Value::as_array).cloned().unwrap_or_default();
+    for (at, value) in entries.into_iter().enumerate() {
+        let named = value.get("name").and_then(toml::Value::as_str).map(str::to_owned);
+        let name = named.unwrap_or_else(|| format!("entry {}", at + 1));
+        match value.try_into::<LanguageEntry>() {
+            Ok(entry) if entry.extensions.is_empty() => {
+                problems.push(format!("languages.toml: {name} names no extensions"));
+            }
+            Ok(entry) => found.push(into_language(entry, from_user)),
+            Err(e) => problems.push(format!("languages.toml: {name}: {}", e.message())),
         }
     }
-    if problems.is_empty() { Ok(found) } else { Err(problems.join("; ")) }
+    (found, (!problems.is_empty()).then(|| problems.join("; ")))
 }
 
 /// Every language: the user's first, so they win.
@@ -166,7 +171,7 @@ fn with_languages<T>(read: impl FnOnce(&[&'static Language]) -> T) -> T {
     }
     let mut list = LANGUAGES.write().unwrap_or_else(|e| e.into_inner());
     if list.is_empty() {
-        *list = parse(SHIPPED, false).expect("shipped languages parse");
+        *list = parse(SHIPPED, false).0;
     }
     read(&list)
 }
@@ -207,13 +212,10 @@ pub fn user_file_template() -> String {
 /// languages changed in a way that running servers should restart for.
 pub fn reload() -> (Option<String>, bool) {
     let text = user_file().and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default();
-    let (mine, problem) = match parse(&text, true) {
-        Ok(mine) => (mine, None),
-        Err(why) => (Vec::new(), Some(why)),
-    };
+    let (mine, problem) = parse(&text, true);
     let mut list = LANGUAGES.write().unwrap_or_else(|e| e.into_inner());
     if list.is_empty() {
-        *list = parse(SHIPPED, false).expect("shipped languages parse");
+        *list = parse(SHIPPED, false).0;
     }
     let before: Vec<&'static Language> = list.iter().filter(|l| l.from_user).copied().collect();
     let changed = before.len() != mine.len() || before.iter().zip(&mine).any(|(a, b)| a != b);
@@ -244,7 +246,8 @@ mod tests {
 
     #[test]
     fn shipped_entries_are_sound() {
-        let all = parse(SHIPPED, false).unwrap();
+        let (all, problem) = parse(SHIPPED, false);
+        assert_eq!(problem, None);
         assert!(all.len() >= 10);
         for language in &all {
             assert!(!language.extensions.is_empty(), "{}", language.name);
@@ -259,7 +262,7 @@ mod tests {
     #[test]
     fn entries_read_with_defaults() {
         let text = "[[language]]\nname = \"My Lang\"\nextensions = [\".ML\"]\nserver = \"mls --stdio\"\n";
-        let found = parse(text, true).unwrap();
+        let found = parse(text, true).0;
         assert_eq!(found[0].language_id, "my-lang");
         assert_eq!(found[0].extensions, ["ml"]);
         assert!(found[0].runs_project_code, "assumed until told otherwise");
@@ -268,17 +271,27 @@ mod tests {
 
     #[test]
     fn mistakes_are_reported() {
-        assert!(parse("[[language]]\nname = \"x\"\nextensions = []\n", true).unwrap_err().contains("no extensions"));
-        assert!(parse("[[language]]\nname = \"x\"\n", true).is_err());
+        let problem = |text: &str| parse(text, true).1.unwrap_or_default();
+        assert!(problem("[[language]]\nname = \"x\"\nextensions = []\n").contains("no extensions"));
+        assert!(problem("[[language]]\nname = \"x\"\n").contains("x:"));
         assert!(
-            parse("[[language]]\nname=\"x\"\nextensions=[\"x\"]\nservr=\"y\"\n", true).is_err(),
+            problem("[[language]]\nname=\"x\"\nextensions=[\"x\"]\nservr=\"y\"\n").contains("servr"),
             "typos are caught"
         );
-        assert!(parse("not toml =", true).is_err());
+        assert!(!problem("not toml =").is_empty());
+    }
+
+    #[test]
+    fn a_mistake_keeps_the_other_entries() {
+        let text = "[[language]]\nname=\"bad\"\nextensions=[\"b\"]\nservr=\"y\"\n\n[[language]]\nname=\"good\"\nextensions=[\"g\"]\n";
+        let (found, problem) = parse(text, true);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].name, "good");
+        assert!(problem.unwrap().contains("bad"));
     }
 
     #[test]
     fn the_template_is_only_comments() {
-        assert!(parse(&user_file_template(), true).unwrap().is_empty());
+        assert!(parse(&user_file_template(), true).0.is_empty());
     }
 }

@@ -1283,7 +1283,7 @@ impl CodeApp {
             }
         };
         // Each run replaces the last one's finished tab, and its problems.
-        self.terminal.close_finished(&config.name);
+        self.terminal.close_finished_named(&config.name);
         let task =
             Task { title: &config.name, program: &program, args: &args, env: &env, cwd: &cwd, scan: Some(matcher) };
         match self.terminal.run_task(ctx, task, scrollback) {

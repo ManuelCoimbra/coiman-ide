@@ -72,6 +72,10 @@ fn virtual_dir() -> Option<PathBuf> {
     crate::settings::config_dir().map(|d| d.join("virtual"))
 }
 
+pub fn virtual_folder() -> Option<PathBuf> {
+    virtual_dir()
+}
+
 /// Whether a file is a server-supplied document, which stays read-only.
 pub fn is_virtual_path(path: &Path) -> bool {
     virtual_dir().is_some_and(|dir| path.starts_with(dir))

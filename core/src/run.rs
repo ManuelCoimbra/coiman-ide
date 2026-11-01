@@ -408,6 +408,10 @@ fn c_family(file: &Path, source: &str, root: Option<&Path>, cpp: bool) -> Result
             let title = if has_main { "make run" } else { "make run (project)" }.to_owned();
             return Ok(Outcome::Run(RunPlan { title, command: "make run".to_owned(), cwd: dir }));
         }
+        // No `run`, and this file can't stand alone: the Makefile says what there is.
+        if !has_main {
+            return make_plans(&dir.join("Makefile"));
+        }
     }
     if !has_main {
         return Err(format!("{} has no main function", name_of(file)));
@@ -810,6 +814,13 @@ fn solution_plans(solution: &Path) -> Result<Outcome, String> {
     Ok(outcome)
 }
 
+/// Whether a C# file holds the program's start: `Main`, or top-level statements by
+/// the name .NET's templates give them.
+fn cs_is_entry(file: &Path) -> bool {
+    let named = file.file_name().is_some_and(|n| n.eq_ignore_ascii_case("Program.cs"));
+    named || std::fs::read_to_string(file).is_ok_and(|text| text.contains("static") && text.contains(" Main("))
+}
+
 fn dotnet(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
     let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     if matches!(ext.as_str(), "sln" | "slnx") {
@@ -826,7 +837,9 @@ fn dotnet(file: &Path, root: Option<&Path>) -> Result<Outcome, String> {
     let project = find_ext_up(file, root, "csproj");
     if let Some(project) = project.as_ref().filter(|p| project_is_program(p)) {
         need("dotnet", "C#")?;
-        return Ok(Outcome::Run(dotnet_plan(project, format!("{} (project)", stem_of(project)))));
+        // The file with the entry point is the program, not a part of it.
+        let title = if cs_is_entry(file) { stem_of(project) } else { format!("{} (project)", stem_of(project)) };
+        return Ok(Outcome::Run(dotnet_plan(project, title)));
     }
     // A library, or no project: its solution may hold a program.
     let solution = find_ext_up(file, root, "sln").or_else(|| find_ext_up(file, root, "slnx"));

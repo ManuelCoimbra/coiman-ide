@@ -182,7 +182,7 @@ impl CodeApp {
             self.doctor.search = None;
         }
         let (name, rows) = self.doctor_rows();
-        let mut open = true;
+        let mut open = !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         let (mut again, mut edit) = (false, false);
         egui::Window::new(format!("Language Doctor: {name}"))
             .open(&mut open)

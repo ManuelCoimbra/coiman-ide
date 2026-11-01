@@ -249,6 +249,21 @@ impl Terminals {
         self.active = self.active.min(self.tabs.len().saturating_sub(1));
     }
 
+    /// Closes the finished tab with exactly this title, and no other.
+    pub fn close_finished_named(&mut self, title: &str) {
+        let keep = |t: &Tab| !(t.exited.is_some() && t.title.as_deref() == Some(title));
+        self.tabs.retain(keep);
+        self.active = self.active.min(self.tabs.len().saturating_sub(1));
+    }
+
+    /// Ends the tab with this title, running or not. Says whether there was one.
+    pub fn stop_named(&mut self, title: &str) -> bool {
+        let before = self.tabs.len();
+        self.tabs.retain(|t| t.title.as_deref() != Some(title));
+        self.active = self.active.min(self.tabs.len().saturating_sub(1));
+        self.tabs.len() != before
+    }
+
     fn push(&mut self, session: Session, title: Option<String>, task: bool) {
         self.tabs.push(Tab { id: self.next_id, session, title, scroll_rest: 0.0, task, exited: None, scan: None });
         self.next_id += 1;

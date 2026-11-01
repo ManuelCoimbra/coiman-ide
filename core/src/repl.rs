@@ -112,6 +112,29 @@ pub fn next_code_line(source: &str, line: usize) -> Option<usize> {
     source.lines().enumerate().skip(line + 1).find(|(_, l)| !l.trim().is_empty()).map(|(i, _)| i)
 }
 
+/// Removes what's directly in `dir` that hasn't changed for `age`: files, or folders
+/// going by their contents' folder time. Anything in use is left to fail quietly.
+pub fn remove_older_than(dir: &std::path::Path, age: std::time::Duration) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let Ok(info) = entry.metadata() else { continue };
+        let old = info.modified().ok().and_then(|m| m.elapsed().ok()).is_some_and(|e| e > age);
+        if old {
+            let path = entry.path();
+            let _ = if info.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
+        }
+    }
+}
+
+/// Clears up after earlier sessions: code sent to REPLs, and documents servers supplied.
+pub fn clean_old_files() {
+    const DAY: u64 = 24 * 60 * 60;
+    remove_older_than(&std::env::temp_dir().join("rust-code-repl"), std::time::Duration::from_secs(DAY));
+    if let Some(dir) = crate::lsp::convert::virtual_folder() {
+        remove_older_than(&dir, std::time::Duration::from_secs(30 * DAY));
+    }
+}
+
 fn temp_file(ext: &str) -> std::io::Result<PathBuf> {
     let dir = std::env::temp_dir().join("rust-code-repl");
     std::fs::create_dir_all(&dir)?;

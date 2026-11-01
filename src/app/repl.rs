@@ -145,7 +145,7 @@ impl CodeApp {
         let tab = match existing {
             Some(tab) => tab,
             None => {
-                self.terminal.close_finished(&title);
+                self.terminal.close_finished_named(&title);
                 let (program, args) = super::cargo::shell(&repl.command);
                 let scrollback = self.settings.terminal.scrollback;
                 let task = Task { title: &title, program: &program, args: &args, env: &env, cwd: &cwd, scan: None };
@@ -196,8 +196,31 @@ impl CodeApp {
         }
     }
 
+    /// `REPL: Restart`: ends the active file's REPL, and what it said with it. The next
+    /// code sent starts a new one.
+    pub(super) fn restart_repl(&mut self) {
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let Some(repl) = repl::for_extension(&doc.extension()) else {
+            self.status = Some("No REPL for this file".to_owned());
+            return;
+        };
+        self.repls.waiting = None;
+        self.repls.results.clear();
+        let stopped = self.terminal.stop_named(&format!("REPL: {}", repl.title));
+        let name = repl.title;
+        self.status = Some(if stopped {
+            format!("{name} REPL ended: the next code you send starts a new one")
+        } else {
+            format!("No {name} REPL was running")
+        });
+    }
+
     /// Picks up the answer once the REPL is done, and keeps cells current.
     pub(super) fn pump_repl(&mut self, ctx: &egui::Context) {
+        static CLEANED: std::sync::Once = std::sync::Once::new();
+        CLEANED.call_once(|| {
+            std::thread::spawn(repl::clean_old_files);
+        });
         if let Some(doc) = self.docs.get(self.active) {
             let (uid, version) = (doc.uid, doc.buffer.version());
             if self.repls.cells.as_ref().is_none_or(|(u, v, _)| (*u, *v) != (uid, version)) {

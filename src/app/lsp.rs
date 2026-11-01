@@ -170,6 +170,8 @@ pub(super) struct LocationItem {
 pub(super) struct LspState {
     /// Each kind of server's state; absent means not looked for yet.
     pub(super) setups: HashMap<ServerKind, Setup>,
+    /// Recent stops of each kind of server: how many, and when the last was.
+    exits: HashMap<ServerKind, (u32, f64)>,
     /// Servers whose install offer was dismissed for this session.
     offer_dismissed: HashSet<ServerKind>,
     pub(super) clients: Vec<Client>,
@@ -203,6 +205,10 @@ pub(super) struct LspState {
     /// Show the problems under the cursor after the next editor frame (F8).
     show_problem_at_cursor: bool,
 }
+
+/// A server stopping this many times, each within the window of the last, stays off.
+const SERVER_CRASH_LIMIT: u32 = 3;
+const SERVER_CRASH_WINDOW: f64 = 60.0;
 
 /// Path, LSP language id and server of a document a server should handle.
 pub(super) fn lsp_target(doc: &Document) -> Option<(PathBuf, &'static str, ServerKind)> {
@@ -328,7 +334,12 @@ impl CodeApp {
         for (kind, root, ev) in batch {
             self.handle_event(kind, &root, ev);
         }
+        let gone: Vec<(ServerKind, PathBuf)> =
+            self.lsp.clients.iter().filter(|c| c.has_exited()).map(|c| (c.kind, c.root.clone())).collect();
         self.lsp.clients.retain(|c| !c.has_exited());
+        for (kind, root) in gone {
+            self.on_server_gone(kind, &root, ctx.input(|i| i.time));
+        }
         if let Some(url) = self.lsp.open_url.take() {
             ctx.open_url(egui::OpenUrl::new_tab(url));
         }
@@ -344,6 +355,27 @@ impl CodeApp {
             } else {
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
+        }
+    }
+
+    /// A server stopped: what it said no longer stands. It's started again when a file
+    /// needs it, unless it keeps stopping, which would otherwise go on for ever.
+    fn on_server_gone(&mut self, kind: ServerKind, root: &Path, now: f64) {
+        if !self.lsp.clients.iter().any(|c| c.root == root) {
+            self.lsp.diagnostics.retain(|_, (path, _)| !path.starts_with(root));
+            self.lsp.pulled_diagnostics.retain(|_, (path, _)| !path.starts_with(root));
+        }
+        self.lsp.progress.clear();
+        let (count, last) = self.lsp.exits.entry(kind).or_insert((0, now));
+        *count = if now - *last < SERVER_CRASH_WINDOW { *count + 1 } else { 1 };
+        *last = now;
+        if *count >= SERVER_CRASH_LIMIT {
+            self.lsp.setups.insert(kind, Setup::Off);
+            self.lsp.exits.remove(&kind);
+            self.status =
+                Some(format!("{} keeps stopping, so it was left off: Language: Doctor can retry", kind.name()));
+        } else {
+            self.status = Some(format!("{} stopped: starting it again", kind.name()));
         }
     }
 
@@ -571,7 +603,6 @@ impl CodeApp {
                 self.status = Some(format!("{} stopped. Click its name here for details.", kind.name()));
                 self.lsp.pending.retain(|(k, r, _), _| !(*k == kind && r == root));
                 self.lsp.progress.clear();
-                self.lsp.setups.insert(kind, Setup::Off);
             }
         }
     }
@@ -1662,6 +1693,12 @@ impl CodeApp {
                 }
             });
         });
+        // The banner took the keyboard for its button: it goes back to the code.
+        if choice.is_some()
+            && let Some(doc) = self.docs.get_mut(self.active)
+        {
+            doc.request_focus = true;
+        }
         match (choice, installer) {
             (Some(0), Some(installer)) => {
                 let (tx, rx) = mpsc::channel();
