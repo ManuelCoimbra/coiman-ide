@@ -24,8 +24,11 @@ fn main() -> eframe::Result {
     let started = std::time::Instant::now();
     rust_code_core::applog::start();
     // Proves the crash log in the real app.
-    let test_panic = std::env::var_os("RUST_CODE_TEST_PANIC").is_some();
-    if test_panic {
+    let test_panic = std::env::var("RUST_CODE_TEST_PANIC").ok();
+    if test_panic.as_deref() == Some("main") {
+        panic!("RUST_CODE_TEST_PANIC was set to main");
+    }
+    if test_panic.is_some() {
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(2));
             panic!("RUST_CODE_TEST_PANIC was set");

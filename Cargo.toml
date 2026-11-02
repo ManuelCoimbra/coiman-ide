@@ -22,7 +22,14 @@ ropey = { version = "=1.6.1", default-features = false, features = ["simd"] }
 
 [profile.release]
 lto = "thin"
-strip = true
+# Crash reports need these: function names for everything, lines for our own code.
+strip = false
+
+[profile.release.package.rust-code]
+debug = "line-tables-only"
+
+[profile.release.package.rust-code-core]
+debug = "line-tables-only"
 
 # Debug builds stay small: line numbers for our code, nothing for dependencies.
 [profile.dev]
