@@ -1217,7 +1217,8 @@ pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, S
 }
 
 /// How to run all the tests that cover a file, for a file that's no program itself.
-fn tests_of(file: &Path, source: &str, root: Option<&Path>) -> Option<RunPlan> {
+/// How to run all the tests of a file.
+pub fn tests_of(file: &Path, source: &str, root: Option<&Path>) -> Option<RunPlan> {
     let ext = file.extension().and_then(|e| e.to_str()).unwrap_or_default();
     let dir = file.parent().unwrap_or(file).to_path_buf();
     let title = format!("{} tests", stem_of(file));

@@ -15,6 +15,7 @@ mod debug;
 mod dispatch;
 mod doctor;
 mod environment;
+mod file_buttons;
 mod files;
 mod git;
 mod hidden;
@@ -183,6 +184,7 @@ pub struct CodeApp {
     environment: environment::Environment,
     snippets_ui: snippets_ui::SnippetsUi,
     md_preview: md_preview::MdPreview,
+    data_tree: file_buttons::DataTree,
     web: web::Web,
     live: live::Live,
     constant: constant::Constant,
@@ -325,6 +327,7 @@ impl CodeApp {
             environment: Default::default(),
             snippets_ui: Default::default(),
             md_preview: Default::default(),
+            data_tree: Default::default(),
             web: Default::default(),
             live: Default::default(),
             constant: Default::default(),
@@ -652,6 +655,7 @@ impl eframe::App for CodeApp {
                 return;
             }
             self.markdown_preview(ui);
+            self.data_tree_ui(ui);
             self.svg_preview_ui(ui);
             self.at_cursor_side(ui);
             let (active_rect, other_rect) = self.split_rects(ui);

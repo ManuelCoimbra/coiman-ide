@@ -53,6 +53,10 @@ fn draw(text: &str) -> Drawn {
 
 impl CodeApp {
     /// Shows the active SVG beside its text, or stops showing it.
+    pub(super) fn svg_preview_open(&self) -> bool {
+        self.svg_preview.uid.is_some() && self.svg_preview.uid == self.docs.get(self.active).map(|d| d.uid)
+    }
+
     pub(super) fn toggle_svg_preview(&mut self) {
         let uid = self.docs.get(self.active).map(|d| d.uid);
         let preview = &mut self.svg_preview;

@@ -152,7 +152,7 @@ impl CodeApp {
             Command::RenameSymbol => self.start_rename(),
             Command::QuickFix => self.request_code_actions(),
             Command::FormatDocument => {
-                if !self.request_format(ctx, self.active, false) {
+                if !self.request_format(ctx, self.active, false) && !self.format_json_active() {
                     self.status = Some("No formatter available for this file".to_owned());
                 }
             }
@@ -222,7 +222,25 @@ impl CodeApp {
             Command::OpenRunConfigs => self.open_run_configs(),
             Command::ShowTesting => self.show_testing(ctx),
             Command::TestAtCursor => self.test_at_cursor(ctx),
-            Command::TestCurrentFile => self.test_current_file(ctx),
+            Command::TestCurrentFile => {
+                // Cargo's own view knows Rust's; the rest run in a terminal.
+                let doc = self.docs.get(self.active);
+                let other = doc.and_then(|d| d.path.clone().filter(|_| d.extension() != "rs").map(|p| (p, d.text())));
+                let plan = other.and_then(|(file, text)| {
+                    rust_code_core::run::tests_of(&file, &text, self.explorer.root.as_deref())
+                });
+                match plan {
+                    Some(plan) => {
+                        for i in 0..self.docs.len() {
+                            if self.docs[i].is_dirty() && self.docs[i].path.is_some() {
+                                self.save_doc(i);
+                            }
+                        }
+                        self.start_run(ctx, &plan);
+                    }
+                    None => self.test_current_file(ctx),
+                }
+            }
             Command::TestAll => self.test_all(ctx),
             Command::CancelTests => self.cancel_job(),
             Command::CargoCheck => self.run_cargo_check(ctx, "check"),
@@ -404,6 +422,8 @@ impl CodeApp {
             Command::GitStash => self.git_stash(ctx),
             Command::GitShowHistory => self.git_show_history(),
             Command::MarkdownPreview => self.toggle_markdown_preview(),
+            Command::ToggleSvgPreview => self.toggle_svg_preview(),
+            Command::ToggleDataTree => self.data_tree.open = !self.data_tree.open,
             Command::EmmetExpand => {
                 self.expand_emmet(false);
             }

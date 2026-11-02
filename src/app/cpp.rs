@@ -191,7 +191,10 @@ impl CodeApp {
         let report = self.cpp_report().cloned();
         let mut open = true;
         let mut action = None;
-        let window = egui::Window::new(format!("C/C++: {name}")).open(&mut open);
+        let window = egui::Window::new(format!("C/C++: {name}"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_pos(crate::theme::window_spot(ctx, 520.0));
         // Paths are long: they wrap, rather than the window growing past the screen.
         window.default_width(620.0).max_width(620.0).show(ctx, |ui| {
             let Some(report) = &report else {

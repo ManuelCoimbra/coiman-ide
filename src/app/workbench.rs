@@ -839,8 +839,11 @@ impl CodeApp {
         let view_tabs = self.view_tabs();
         let view_showing = view_tabs.iter().any(|t| t.2);
         let (mut view_select, mut view_close) = (None, None);
+        let bar_height = ui.spacing().interact_size.y.max(ui.text_style_height(&egui::TextStyle::Body)) + 14.0;
+        let buttons_width = if view_showing { 0.0 } else { self.file_buttons_ui(ui, bar_height) };
         egui::ScrollArea::horizontal()
             .id_salt("tabs")
+            .max_width((ui.available_width() - buttons_width).max(80.0))
             .auto_shrink([false, true])
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
             .show(ui, |ui| {

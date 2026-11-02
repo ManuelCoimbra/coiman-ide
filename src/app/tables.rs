@@ -103,6 +103,10 @@ impl GridSource for Source<'_> {
 }
 
 impl CodeApp {
+    pub(super) fn table_showing(&self, uid: u64) -> bool {
+        self.tables.showing.contains(&uid)
+    }
+
     pub(super) fn toggle_table_view(&mut self) {
         let Some(doc) = self.docs.get(self.active).filter(|d| table::is_table_file(&d.extension())) else {
             self.status = Some("Open a CSV or TSV file to see it as a table".to_owned());
