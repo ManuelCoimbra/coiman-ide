@@ -61,7 +61,9 @@ impl CodeApp {
         if !self.keys_ui.open {
             return;
         }
-        let mut open = true;
+        // While a key is being captured, Esc cancels that instead.
+        let mut open = self.keys_ui.capture.is_some()
+            || !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         let mut action = None;
         let keymap = &self.keymap;
         let state = &mut self.keys_ui;

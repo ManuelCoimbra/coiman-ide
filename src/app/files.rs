@@ -338,6 +338,10 @@ impl CodeApp {
     /// Asks before moving a file or folder to the Recycle Bin.
     pub(super) fn delete_prompt(&mut self, ui: &mut egui::Ui) {
         let Some(path) = self.delete_pending.clone() else { return };
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
+            self.delete_pending = None;
+            return;
+        }
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         let unsaved = self.docs.iter().any(|d| d.is_dirty() && d.path.as_ref().is_some_and(|p| p.starts_with(&path)));
         let mut choice = None;

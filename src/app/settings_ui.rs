@@ -488,7 +488,7 @@ impl CodeApp {
         if !workspace_allowed {
             self.settings_ui.workspace = false;
         }
-        let mut open = true;
+        let mut open = !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         let mut action = None;
         let state = &mut self.settings_ui;
         if !state.fonts_loaded {

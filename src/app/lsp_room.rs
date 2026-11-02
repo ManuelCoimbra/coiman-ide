@@ -216,7 +216,7 @@ impl CodeApp {
         self.pump_room_memory(ctx.input(|i| i.time));
         self.pump_room_sizes(ctx.input(|i| i.time));
         ctx.request_repaint_after(std::time::Duration::from_secs(1));
-        let mut open = true;
+        let mut open = !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
         let mut action = None;
         let window = egui::Window::new("Language Servers").open(&mut open).collapsible(false).default_width(480.0);
         window.default_pos(theme::window_spot(ctx, 480.0)).show(ctx, |ui| {
