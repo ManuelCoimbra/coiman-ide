@@ -45,6 +45,7 @@ mod tool_rails;
 mod traces;
 mod tree_tools;
 mod view_tabs;
+mod vscode_import;
 mod web;
 mod window;
 mod workbench;

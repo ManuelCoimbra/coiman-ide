@@ -824,6 +824,9 @@ impl CodeApp {
                 if icons::button(ui, Icon::FolderOpen, "Install from Folder…").clicked() {
                     self.install_plugin_from_folder(&ctx);
                 }
+                if icons::button(ui, Icon::ArrowDown, "Import from VS Code: themes, snippets, languages").clicked() {
+                    self.import_from_vscode();
+                }
             });
         });
         if !self.settings.plugins.enabled {

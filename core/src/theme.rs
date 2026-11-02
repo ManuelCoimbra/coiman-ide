@@ -366,7 +366,7 @@ pub fn syntect_theme(theme: &Theme) -> syntect::highlighting::Theme {
 // ----- VS Code theme files -----------------------------------------------------------
 
 /// Removes `//` and `/* */` comments and trailing commas, outside strings.
-fn strip_jsonc(src: &str) -> String {
+pub(crate) fn strip_jsonc(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let chars: Vec<char> = src.chars().collect();
     let mut i = 0;

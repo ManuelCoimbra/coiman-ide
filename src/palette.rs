@@ -65,6 +65,7 @@ pub enum PickerKind {
     History,
     DebugTarget,
     RunTarget,
+    VsCodeImport,
 }
 
 struct Picker {

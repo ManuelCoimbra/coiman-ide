@@ -5,6 +5,7 @@
 pub enum Command {
     CommandPalette,
     QuickOpen,
+    ImportFromVsCode,
     ToggleDataTree,
     ToggleSvgPreview,
     OpenLog,
@@ -443,6 +444,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ManageWorkspaceTrust, "Workspaces: Trust or Restrict This Folder"),
     (Command::ShowExtensions, "View: Show Extensions"),
     (Command::CheckPluginUpdates, "Plugins: Check Registry for Plugins and Updates"),
+    (Command::ImportFromVsCode, "Extensions: Import from VS Code..."),
     (Command::OpenLog, "Developer: Open Log"),
     (Command::OpenCrashLog, "Developer: Open Crash Log"),
     (Command::InstallPluginFromFolder, "Plugins: Install from Folder..."),
@@ -454,6 +456,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::CommandPalette, "workbench.action.showCommands"),
     (Command::QuickOpen, "workbench.action.quickOpen"),
     (Command::SearchEverywhere, "rustCode.searchEverywhere"),
+    (Command::ImportFromVsCode, "rustCode.importFromVsCode"),
     (Command::ToggleSvgPreview, "rustCode.toggleSvgPreview"),
     (Command::ToggleDataTree, "rustCode.toggleDataTree"),
     (Command::OpenLog, "rustCode.openLog"),

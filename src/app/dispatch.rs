@@ -423,6 +423,7 @@ impl CodeApp {
             Command::GitShowHistory => self.git_show_history(),
             Command::MarkdownPreview => self.toggle_markdown_preview(),
             Command::ToggleSvgPreview => self.toggle_svg_preview(),
+            Command::ImportFromVsCode => self.import_from_vscode(),
             Command::ToggleDataTree => self.data_tree.open = !self.data_tree.open,
             Command::EmmetExpand => {
                 self.expand_emmet(false);
@@ -608,6 +609,7 @@ impl CodeApp {
             PickerKind::RunTarget => self.picked_run_target(ctx, label),
             PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
             PickerKind::RecentFolder => self.open_folder(label.into()),
+            PickerKind::VsCodeImport => self.picked_vscode_import(ctx, label),
             PickerKind::Indentation => {
                 let size = label.strip_prefix("Spaces: ").and_then(|n| n.parse().ok());
                 let mut docs = std::mem::take(&mut self.docs);
