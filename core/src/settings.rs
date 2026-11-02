@@ -342,7 +342,7 @@ impl Default for WorkbenchSettings {
             preview_port: 0,
             color_theme: "Dark Modern".to_owned(),
             background_image: String::new(),
-            background_opacity: 0.12,
+            background_opacity: 0.1,
             background_area: "window".to_owned(),
             background_interval: 0,
             theme_schedule: String::new(),

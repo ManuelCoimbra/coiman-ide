@@ -18,6 +18,10 @@ enum Kind {
     Decimal(f64, f64),
     Choice(&'static [(&'static str, &'static str)]),
     Text(&'static str),
+    /// A path to type, or to choose with these commands, as (label, command).
+    Path(&'static str, &'static [(&'static str, Command)]),
+    /// Nothing to set: a button that runs a command.
+    Button(&'static str, Command),
     Font,
 }
 
@@ -123,6 +127,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
         &[
             row(
                 "workbench",
+                "import_vscode",
+                "Import from VS Code",
+                "Themes, snippets and language names from an extension. Its code doesn't come across.",
+                Kind::Button("Import...", Command::ImportFromVsCode),
+            ),
+            row(
+                "workbench",
                 "theme_schedule",
                 "Theme schedule",
                 "Themes by time of day, by their names: 07:00 Light Modern; 19:00 Dark Modern",
@@ -132,8 +143,11 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "workbench",
                 "background_image",
                 "Background image",
-                "A picture or a folder of them, by its full path, or use Background: Choose Image.",
-                Kind::Text("C:\\Pictures\\backdrop.png"),
+                "A picture, or a folder of them to go through.",
+                Kind::Path(
+                    "C:\\Pictures\\backdrop.png",
+                    &[("File...", Command::ChooseBackgroundImage), ("Folder...", Command::ChooseBackgroundFolder)],
+                ),
             ),
             row("workbench", "background_opacity", "Background strength", "From 0 to 1.", Kind::Decimal(0.0, 1.0)),
             row(
@@ -391,6 +405,7 @@ enum Action {
     Set(&'static str, &'static str, String),
     Reset(&'static str, &'static str),
     Theme,
+    Run(Command),
     OpenFile,
     KeyboardShortcuts,
 }
@@ -424,7 +439,20 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
                 }
             });
         }
-        Kind::Text(hint) => {
+        Kind::Button(label, command) => {
+            if ui.button(label).clicked() {
+                *out = Some(Action::Run(command));
+            }
+        }
+        Kind::Text(hint) | Kind::Path(hint, _) => {
+            // Laid out from the right: these end up after the path.
+            if let Kind::Path(_, choosers) = &row.kind {
+                for (label, command) in choosers.iter().rev() {
+                    if ui.button(*label).clicked() {
+                        *out = Some(Action::Run(*command));
+                    }
+                }
+            }
             let saved = value.and_then(Value::as_str).unwrap_or("");
             let text = state.texts.entry(key).or_insert_with(|| saved.to_owned());
             let edit = ui.add(egui::TextEdit::singleline(text).hint_text(hint).desired_width(260.0));
@@ -635,6 +663,10 @@ impl CodeApp {
         let result = match action {
             Some(Action::Set(table, key, value)) => self.change_setting(ctx, workspace, table, key, Some(&value)),
             Some(Action::Reset(table, key)) => self.change_setting(ctx, workspace, table, key, None),
+            Some(Action::Run(command)) => {
+                self.run_command(ctx, command);
+                Ok(())
+            }
             Some(Action::Theme) => {
                 self.run_command(ctx, Command::SelectTheme);
                 Ok(())
