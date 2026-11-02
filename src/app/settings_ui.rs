@@ -123,6 +123,35 @@ const SECTIONS: &[(&str, &[Row])] = &[
         &[
             row(
                 "workbench",
+                "theme_schedule",
+                "Theme schedule",
+                "Themes by time of day, by their names: 07:00 Light Modern; 19:00 Dark Modern",
+                Kind::Text("07:00 Light Modern; 19:00 Dark Modern"),
+            ),
+            row(
+                "workbench",
+                "background_image",
+                "Background image",
+                "A picture or a folder of them, by its full path, or use Background: Choose Image.",
+                Kind::Text("C:\\Pictures\\backdrop.png"),
+            ),
+            row("workbench", "background_opacity", "Background strength", "From 0 to 1.", Kind::Decimal(0.0, 1.0)),
+            row(
+                "workbench",
+                "background_area",
+                "Background covers",
+                "The whole window, or only the editor.",
+                Kind::Choice(&[("window", "Window"), ("editor", "Editor")]),
+            ),
+            row(
+                "workbench",
+                "background_interval",
+                "Background rotation",
+                "Seconds between the pictures of a folder. 0 keeps the first.",
+                Kind::Whole(0, 86_400),
+            ),
+            row(
+                "workbench",
                 "reduced_motion",
                 "Reduced motion",
                 "Panels, tabs and popups change at once instead of moving.",

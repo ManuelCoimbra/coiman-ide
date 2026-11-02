@@ -122,6 +122,16 @@ pub struct WorkbenchSettings {
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
+    /// A picture, or a folder of them, laid faintly over the window. Empty: none.
+    pub background_image: String,
+    /// How strongly it shows, from 0 to 1.
+    pub background_opacity: f32,
+    /// Over the "window", or only the "editor".
+    pub background_area: String,
+    /// Seconds between pictures of a folder; 0 keeps the first.
+    pub background_interval: u32,
+    /// Themes by time of day: `07:00 Light Modern; 19:00 Dark Modern`.
+    pub theme_schedule: String,
     /// Panels, tabs and popups change at once instead of moving.
     pub reduced_motion: bool,
     /// Pressing Shift twice opens Search Everywhere.
@@ -331,6 +341,11 @@ impl Default for WorkbenchSettings {
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
             color_theme: "Dark Modern".to_owned(),
+            background_image: String::new(),
+            background_opacity: 0.12,
+            background_area: "window".to_owned(),
+            background_interval: 0,
+            theme_schedule: String::new(),
             reduced_motion: false,
             double_shift: true,
             ui: "islands".to_owned(),

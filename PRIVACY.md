@@ -75,6 +75,7 @@ from where:
 | Files and folders you open | yes | when you save | editing |
 | `<config>\logs\rust-code.log`, `crash.log` | when you open them | as the app runs, and when it crashes; they go nowhere | what the app did and why it stopped: commands, file paths, clicks, what's on screen, run titles. Never text you type, or run command lines |
 | `~\.vscode\extensions`, a `.vsix` or folder you choose | when you use **Extensions: Import from VS Code** | copies to `<config>\themes`, `snippets.toml`, `languages.toml` | themes, snippets and language names only. An extension's code is never run, and nothing is downloaded |
+| A picture or folder named by `workbench.background_image` | when set | no | a faint backdrop. Local files only, never a web address |
 | `<config>\settings.toml`, `keybindings.toml` | yes | when you edit them, pick a theme, or choose "Don't Ask Again" | your settings |
 | `<config>\session.json` | yes | every second while editing | hot exit: restores tabs and unsaved text |
 | `<config>\themes\*.json` | yes | never | your extra color themes |

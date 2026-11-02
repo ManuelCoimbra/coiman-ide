@@ -424,6 +424,18 @@ impl CodeApp {
             Command::MarkdownPreview => self.toggle_markdown_preview(),
             Command::ToggleSvgPreview => self.toggle_svg_preview(),
             Command::ImportFromVsCode => self.import_from_vscode(),
+            Command::ChooseBackgroundImage => {
+                let filter = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
+                if let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &filter).pick_file() {
+                    self.set_background(ctx, &file.to_string_lossy());
+                }
+            }
+            Command::ChooseBackgroundFolder => {
+                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                    self.set_background(ctx, &folder.to_string_lossy());
+                }
+            }
+            Command::ClearBackground => self.set_background(ctx, ""),
             Command::ToggleDataTree => self.data_tree.open = !self.data_tree.open,
             Command::EmmetExpand => {
                 self.expand_emmet(false);

@@ -25,6 +25,7 @@ mod light_colors;
 mod likely;
 mod live;
 mod logs;
+mod look;
 mod lsp;
 mod lsp_extra;
 mod lsp_room;
@@ -157,6 +158,7 @@ pub struct CodeApp {
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
     double_shift: crate::palette::DoubleShift,
+    look: look::Look,
     /// What the log last said about what's on screen, and last status.
     logged_ui: String,
     logged_status: Option<String>,
@@ -307,6 +309,7 @@ impl CodeApp {
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
             double_shift: Default::default(),
+            look: Default::default(),
             logged_ui: String::new(),
             logged_status: None,
             panel_visible: false,
@@ -472,6 +475,8 @@ impl eframe::App for CodeApp {
         let zen = self.zen_mode;
         self.window_resize_edges(&ctx);
         self.place_tools();
+        self.pump_theme_schedule(&ctx);
+        self.pump_background(&ctx);
         self.log_what_changed(&ctx);
         // What islands stand on.
         ui.painter().rect_filled(ui.max_rect(), 0.0, theme::colors().activity_bg);
@@ -722,6 +727,7 @@ impl eframe::App for CodeApp {
                 self.other_pane(ui, rect, opts);
             }
         });
+        self.paint_background(&ctx, central.response.rect - gaps);
         if !classic {
             islands.push(central.response.rect - gaps);
             theme::round_island_corners(&ctx, &islands);

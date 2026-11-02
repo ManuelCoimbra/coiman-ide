@@ -304,6 +304,14 @@ impl CodeApp {
         Ok(())
     }
 
+    /// Saves the background image into the user settings file and applies it.
+    pub(super) fn set_background(&mut self, ctx: &egui::Context, source: &str) {
+        let value = toml::Value::String(source.to_owned()).to_string();
+        if let Err(e) = self.write_user_setting(ctx, "workbench", "background_image", &value) {
+            self.status = Some(e);
+        }
+    }
+
     /// Saves the picked theme into the user settings file and applies it.
     pub(super) fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
         let value = toml::Value::String(label.to_owned()).to_string();
