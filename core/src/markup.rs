@@ -7,16 +7,12 @@
 
 use tree_sitter::{Node, Parser};
 
-use crate::html_attributes::{self, Verdict};
+use crate::html_attributes::{self, VOID, Verdict};
 
 /// Larger files aren't worth holding up for.
 const MAX_SIZE: usize = 2 * 1024 * 1024;
 /// Past this many, more problems only bury the first ones.
 const MAX_PROBLEMS: usize = 200;
-
-/// Elements that never have content or an end tag.
-const VOID: &[&str] =
-    &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
 
 /// Elements whose end tag HTML lets you leave out: the next one, or the parent's end, closes them.
 const OPTIONAL_END: &[&str] = &[

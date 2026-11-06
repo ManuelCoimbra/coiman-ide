@@ -19,9 +19,7 @@ pub enum IndentRules {
     Plain,
 }
 
-/// Elements that never have content.
-const VOID: &[&str] =
-    &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
+use crate::html_attributes::VOID;
 
 fn first_word(line: &str) -> &str {
     line.split(|c: char| !c.is_alphanumeric() && c != '_').next().unwrap_or("")

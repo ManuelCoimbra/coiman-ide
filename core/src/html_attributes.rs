@@ -1,8 +1,22 @@
 //! Which attributes each HTML element takes, from the WHATWG HTML standard's index of
 //! attributes, and the old ones it lists as obsolete.
 
-/// Attributes every element takes.
+/// Elements that never have content or an end tag.
+pub const VOID: &[&str] =
+    &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
+
+/// Attributes every element takes, with RDFa's, which Open Graph's `<meta property>` uses.
 const GLOBAL: &[&str] = &[
+    "about",
+    "datatype",
+    "exportparts",
+    "inlist",
+    "part",
+    "prefix",
+    "property",
+    "resource",
+    "typeof",
+    "vocab",
     "accesskey",
     "autocapitalize",
     "autocorrect",
@@ -289,6 +303,8 @@ const ELEMENTS: &[(&str, &[&str])] = &[
     (
         "video",
         &[
+            "disablepictureinpicture",
+            "disableremoteplayback",
             "src",
             "crossorigin",
             "poster",
@@ -398,5 +414,7 @@ mod tests {
         assert_eq!(verdict("img", "width"), Verdict::Fine);
         assert_eq!(verdict("my-widget", "anything"), Verdict::Fine);
         assert_eq!(verdict("path", "d"), Verdict::Fine);
+        assert_eq!(verdict("meta", "property"), Verdict::Fine, "Open Graph");
+        assert_eq!(verdict("span", "part"), Verdict::Fine);
     }
 }

@@ -920,9 +920,10 @@ impl Buffer {
                 let tags = rules == IndentRules::Markup
                     && indent_rules::open_tag(trimmed).is_some()
                     && after.trim_start().starts_with("</");
+                // A `*` line only goes on inside a `/*` comment, not `*ptr = 1;`.
                 let comment = matches!(rules, IndentRules::Brackets)
                     && ((code.starts_with("/*") && !code.contains("*/"))
-                        || (code.starts_with('*') && !code.starts_with("*/")));
+                        || (code.starts_with('*') && !code.starts_with("*/") && self.in_block_comment(line)));
                 let inner = if comment {
                     if code.starts_with("/*") { format!("{indent} * ") } else { format!("{indent}* ") }
                 } else if rules.opens(trimmed) {
@@ -949,6 +950,24 @@ impl Buffer {
             })
             .collect();
         self.apply_changes(changes, false);
+    }
+
+    /// Whether `line`, starting with `*`, carries on a `/*` comment from the lines above.
+    fn in_block_comment(&self, line: usize) -> bool {
+        for above in (line.saturating_sub(500)..line).rev() {
+            let text = self.line_text(above);
+            let code = text.trim();
+            if code.contains("*/") {
+                return false;
+            }
+            if code.starts_with("/*") {
+                return true;
+            }
+            if !code.starts_with('*') {
+                return false;
+            }
+        }
+        false
     }
 
     /// The indentation of the line holding the bracket that `closer` at `pos` closes.
@@ -1007,8 +1026,9 @@ impl Buffer {
         } else if c == '/' && rules == IndentRules::Markup && before.trim_start() == "<" {
             Some(self.indent.outdented(&lead))
         } else if after.trim().is_empty() && {
-            // Python's line is whole with its `:`; a word, once something that isn't part of it follows.
-            let word_ended = !(c.is_alphanumeric() || c == '_');
+            // Python's line is whole with its `:`; a word, once a space or `;` ends it.
+            // Not on a bracket or quote, which would then lose its pair.
+            let word_ended = c.is_whitespace() || c == ';';
             let finished = if rules.dedents_on_colon() {
                 format!("{}{c}", before.trim())
             } else if word_ended {
@@ -1565,7 +1585,9 @@ mod tests {
             (IndentRules::Yaml, "server:|", "server:\n    |"),
             (IndentRules::Brackets, "    call(|)", "    call(\n        |\n    )"),
             (IndentRules::Brackets, "/**|", "/**\n * |"),
-            (IndentRules::Brackets, "    * text|", "    * text\n    * |"),
+            (IndentRules::Brackets, "/*\n    * text|", "/*\n    * text\n    * |"),
+            (IndentRules::Brackets, "    *ptr = 1;|", "    *ptr = 1;\n    |"),
+            (IndentRules::Brackets, "/* a */\n*p = 1;|", "/* a */\n*p = 1;\n|"),
             (IndentRules::Brackets, "let x = 1;|", "let x = 1;\n|"),
         ];
         for (rules, before, after) in cases {

@@ -33,6 +33,10 @@ pub(super) struct MdPreview {
     code: HashMap<u64, Option<Vec<Vec<rust_code_core::highlight::Span>>>>,
     /// A heading to bring into view, by its anchor.
     scroll_to: Option<String>,
+    /// Heights of the top-level blocks as last drawn, and what for: (doc uid,
+    /// version, width). Blocks out of view take their height without being laid out.
+    heights: Vec<f32>,
+    heights_for: (u64, u64, i32),
 }
 
 fn is_markdown(doc: &crate::document::Document) -> bool {
@@ -44,6 +48,10 @@ struct Draw<'a> {
     size: f32,
     /// The Markdown file's folder, which relative paths start from.
     dir: Option<&'a Path>,
+    /// The open folder, which paths starting with `/` start from, as on GitHub.
+    root: Option<&'a Path>,
+    /// The longest side a texture can have here.
+    max_side: usize,
     pictures: &'a mut HashMap<PathBuf, Picture>,
     code: &'a mut HashMap<u64, Option<Vec<Vec<rust_code_core::highlight::Span>>>>,
     scroll_to: &'a mut Option<String>,
@@ -153,7 +161,10 @@ fn is_remote(url: &str) -> bool {
 }
 
 /// A path written in a link, with `%20` and the like decoded and any `#part` dropped.
-fn local_path(dir: Option<&Path>, url: &str) -> Option<PathBuf> {
+/// `/x` starts from the open folder, as GitHub reads it. Network paths (`//host/share`)
+/// are refused: reading one would connect to that host, and Windows would send it the
+/// user's credentials.
+fn local_path(dir: Option<&Path>, root: Option<&Path>, url: &str) -> Option<PathBuf> {
     let url = url.split(['#', '?']).next().unwrap_or("");
     if url.is_empty() || url.starts_with("data:") {
         return None;
@@ -173,13 +184,30 @@ fn local_path(dir: Option<&Path>, url: &str) -> Option<PathBuf> {
         bytes.push(raw[i]);
         i += 1;
     }
-    let path = PathBuf::from(String::from_utf8_lossy(&bytes).into_owned());
-    let path = if path.is_absolute() { path } else { dir?.join(path) };
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    if text.starts_with("//") || text.starts_with("\\\\") {
+        return None;
+    }
+    let path = PathBuf::from(&text);
+    let path = if path.is_absolute() {
+        path
+    } else if let Some(inside) = text.strip_prefix(['/', '\\']) {
+        root.or(dir)?.join(inside)
+    } else {
+        dir?.join(path)
+    };
+    let network = matches!(
+        path.components().next(),
+        Some(std::path::Component::Prefix(p)) if matches!(
+            p.kind(),
+            std::path::Prefix::UNC(..) | std::path::Prefix::VerbatimUNC(..) | std::path::Prefix::DeviceNS(..)
+        )
+    );
     // One kind of separator, the system's.
-    Some(path.components().collect())
+    (!network).then(|| path.components().collect())
 }
 
-fn load_picture(ctx: &egui::Context, path: PathBuf) -> Picture {
+fn load_picture(ctx: &egui::Context, path: PathBuf, max_side: usize) -> Picture {
     if std::fs::metadata(&path).is_ok_and(|m| m.len() > MAX_PICTURE_BYTES) {
         return Picture::Failed("too large to show".to_owned());
     }
@@ -196,7 +224,8 @@ fn load_picture(ctx: &egui::Context, path: PathBuf) -> Picture {
                     (egui::ColorImage::from_rgba_premultiplied(size, &pixels), egui::vec2(w, h))
                 })
         } else {
-            super::image_view::decode(&path).map(|d| {
+            super::image_view::decode(&path, max_side).map(|d| {
+                // Shown at most at the size it was fitted to.
                 let natural = egui::vec2(d.size[0] as f32, d.size[1] as f32);
                 (egui::ColorImage::from_rgba_unmultiplied(d.size, &d.rgba), natural)
             })
@@ -226,12 +255,13 @@ fn picture(ui: &mut egui::Ui, d: &mut Draw, alt: &str, url: &str, link: Option<&
         note(ui, d, format!("[{name}: a picture on the web, not downloaded]"), Some(url.to_owned()));
         return;
     }
-    let Some(path) = local_path(d.dir, url) else {
+    let Some(path) = local_path(d.dir, d.root, url) else {
         note(ui, d, format!("[{name}]"), None);
         return;
     };
     let ctx = ui.ctx().clone();
-    let entry = d.pictures.entry(path.clone()).or_insert_with(|| load_picture(&ctx, path.clone()));
+    let max_side = d.max_side;
+    let entry = d.pictures.entry(path.clone()).or_insert_with(|| load_picture(&ctx, path.clone(), max_side));
     if let Picture::Loading(rx) = entry
         && let Ok(result) = rx.try_recv()
     {
@@ -448,50 +478,55 @@ fn list(ui: &mut egui::Ui, d: &mut Draw, start: Option<u64>, items: &[Item], dep
 }
 
 fn blocks(ui: &mut egui::Ui, d: &mut Draw, all: &[Block], depth: usize, salt: usize) {
-    let pal = theme::colors();
     for (i, block) in all.iter().enumerate() {
-        let salt = salt * 131 + i;
-        match block {
-            Block::Heading { level, text, anchor } => {
-                ui.add_space(if i == 0 { 0.0 } else { d.size * 0.6 });
-                let scale = [2.0, 1.6, 1.3, 1.15, 1.05, 1.0][usize::from(level.saturating_sub(1)).min(5)];
-                let response = paragraph(ui, d, text, d.size * scale, true);
-                if d.scroll_to.as_deref() == Some(anchor.as_str()) {
-                    response.scroll_to_me(Some(Align::TOP));
-                    *d.scroll_to = None;
-                }
-                if *level <= 2 {
-                    ui.separator();
-                }
+        one_block(ui, d, block, i, depth, salt);
+    }
+}
+
+/// Block `i` of a list of blocks.
+fn one_block(ui: &mut egui::Ui, d: &mut Draw, block: &Block, i: usize, depth: usize, salt: usize) {
+    let pal = theme::colors();
+    let salt = salt * 131 + i;
+    match block {
+        Block::Heading { level, text, anchor } => {
+            ui.add_space(if i == 0 { 0.0 } else { d.size * 0.6 });
+            let scale = [2.0, 1.6, 1.3, 1.15, 1.05, 1.0][usize::from(level.saturating_sub(1)).min(5)];
+            let response = paragraph(ui, d, text, d.size * scale, true);
+            if d.scroll_to.as_deref() == Some(anchor.as_str()) {
+                response.scroll_to_me(Some(Align::TOP));
+                *d.scroll_to = None;
             }
-            Block::Paragraph(text) => {
-                inlines(ui, d, text);
-                ui.add_space(4.0);
-            }
-            Block::List { start, items } => {
-                list(ui, d, *start, items, depth, salt);
-                ui.add_space(4.0);
-            }
-            Block::Quote(inner) => {
-                let response =
-                    egui::Frame::new().inner_margin(egui::Margin { left: 14, ..Default::default() }).show(ui, |ui| {
-                        blocks(ui, d, inner, depth, salt);
-                    });
-                let r = response.response.rect;
-                ui.painter().vline(r.left() + 3.0, r.y_range(), Stroke::new(3.0, pal.border));
-                ui.add_space(4.0);
-            }
-            Block::Code { lang, text } => {
-                code_block(ui, d, lang, text, salt);
-                ui.add_space(6.0);
-            }
-            Block::Rule => {
+            if *level <= 2 {
                 ui.separator();
             }
-            Block::Table { align, header, rows } => {
-                table(ui, d, align, header, rows, salt);
-                ui.add_space(6.0);
-            }
+        }
+        Block::Paragraph(text) => {
+            inlines(ui, d, text);
+            ui.add_space(4.0);
+        }
+        Block::List { start, items } => {
+            list(ui, d, *start, items, depth, salt);
+            ui.add_space(4.0);
+        }
+        Block::Quote(inner) => {
+            let response =
+                egui::Frame::new().inner_margin(egui::Margin { left: 14, ..Default::default() }).show(ui, |ui| {
+                    blocks(ui, d, inner, depth, salt);
+                });
+            let r = response.response.rect;
+            ui.painter().vline(r.left() + 3.0, r.y_range(), Stroke::new(3.0, pal.border));
+            ui.add_space(4.0);
+        }
+        Block::Code { lang, text } => {
+            code_block(ui, d, lang, text, salt);
+            ui.add_space(6.0);
+        }
+        Block::Rule => {
+            ui.separator();
+        }
+        Block::Table { align, header, rows } => {
+            table(ui, d, align, header, rows, salt);
+            ui.add_space(6.0);
         }
     }
 }
@@ -517,6 +552,10 @@ impl CodeApp {
         let doc = &self.docs[self.active];
         let (uid, version) = (doc.uid, doc.buffer.version());
         if self.md_preview.parsed.as_ref().is_none_or(|p| (p.0, p.1) != (uid, version)) {
+            // Another file's pictures aren't kept: they can be large.
+            if self.md_preview.parsed.as_ref().is_some_and(|p| p.0 != uid) {
+                self.md_preview.pictures.clear();
+            }
             let blocks = if doc.large { Vec::new() } else { markdown::parse(&doc.text()) };
             self.md_preview.parsed = Some((uid, version, blocks));
         }
@@ -526,43 +565,67 @@ impl CodeApp {
         let half = ui.available_width() / 2.0;
         let parsed = self.md_preview.parsed.take();
         let preview = &mut self.md_preview;
+        let root = self.explorer.root.clone();
+        let max_side = ui.ctx().input(|i| i.max_texture_side).max(1024);
         let mut d = Draw {
             size,
             dir: dir.as_deref(),
+            root: root.as_deref(),
+            max_side,
             pictures: &mut preview.pictures,
             code: &mut preview.code,
             scroll_to: &mut preview.scroll_to,
             clicked: None,
         };
+        let heights = &mut preview.heights;
+        let heights_for = &mut preview.heights_for;
         egui::Panel::right("markdown_preview")
             .resizable(true)
             .default_size(half)
             .size_range(200.0..=(half * 2.0 - 200.0).max(200.0))
             .frame(egui::Frame::new().fill(theme::colors().editor_bg).inner_margin(14.0))
             .show(ui, |ui| {
-                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show_viewport(ui, |ui, viewport| {
                     if large {
                         ui.label("This file is too large to preview.");
                     }
                     let shown = parsed.as_ref().map_or(&[][..], |p| p.2.as_slice());
-                    blocks(ui, &mut d, shown, 0, 0);
+                    // Heights are known for this text at this width: blocks out of view only take their room.
+                    let key = (uid, version, ui.available_width().round() as i32);
+                    let known = *heights_for == key && heights.len() == shown.len() && d.scroll_to.is_none();
+                    heights.resize(shown.len(), 0.0);
+                    let top = ui.cursor().top();
+                    let margin = viewport.height();
+                    for (i, block) in shown.iter().enumerate() {
+                        let y = ui.cursor().top() - top;
+                        let away = y + heights[i] < viewport.top() - margin || y > viewport.bottom() + margin;
+                        if known && away {
+                            ui.add_space(heights[i]);
+                        } else {
+                            let before = ui.cursor().top();
+                            one_block(ui, &mut d, block, i, 0, 0);
+                            heights[i] = ui.cursor().top() - before;
+                        }
+                    }
+                    *heights_for = key;
                 });
             });
         let clicked = d.clicked.take();
         self.md_preview.parsed = parsed;
         if let Some(url) = clicked {
-            self.follow_markdown_link(ui.ctx(), &url, dir.as_deref());
+            let root = self.explorer.root.clone();
+            self.follow_markdown_link(ui.ctx(), &url, dir.as_deref(), root.as_deref());
         }
     }
 
     /// A web address opens in the browser, `#part` scrolls the preview, and a file opens here.
-    fn follow_markdown_link(&mut self, ctx: &egui::Context, url: &str, dir: Option<&Path>) {
+    fn follow_markdown_link(&mut self, ctx: &egui::Context, url: &str, dir: Option<&Path>, root: Option<&Path>) {
         rust_code_core::applog::info(&format!("markdown link {url}"));
         if is_remote(url) {
             ctx.open_url(egui::OpenUrl::new_tab(url));
         } else if let Some(anchor) = url.strip_prefix('#') {
             self.md_preview.scroll_to = Some(anchor.to_lowercase());
-        } else if let Some(path) = local_path(dir, url) {
+        } else if let Some(path) = local_path(dir, root, url) {
             if path.is_file() {
                 self.open_file(&path);
             } else if path.is_dir() {
@@ -592,10 +655,17 @@ mod tests {
     #[test]
     fn link_paths_are_decoded_and_relative_to_the_file() {
         let dir = Path::new("/docs");
-        assert_eq!(local_path(Some(dir), "a%20b.md#part"), Some(PathBuf::from("/docs/a b.md")));
-        assert_eq!(local_path(Some(dir), "#only"), None);
-        assert_eq!(local_path(None, "x.md"), None);
-        assert_eq!(local_path(Some(dir), "data:image/png;base64,AAA"), None);
+        let root = Path::new("/repo");
+        assert_eq!(local_path(Some(dir), None, "a%20b.md#part"), Some(PathBuf::from("/docs/a b.md")));
+        assert_eq!(local_path(Some(dir), None, "#only"), None);
+        assert_eq!(local_path(None, None, "x.md"), None);
+        assert_eq!(local_path(Some(dir), None, "data:image/png;base64,AAA"), None);
+        // Starting with `/`: from the open folder, as on GitHub.
+        assert_eq!(local_path(Some(dir), Some(root), "/guide/a.md"), Some(PathBuf::from("/repo/guide/a.md")));
+        // Network paths would connect to another computer: never.
+        for network in ["//attacker.example/share/a.png", "\\\\attacker\\share\\a.png", "%2F%2Fhost/share/a.png"] {
+            assert_eq!(local_path(Some(dir), Some(root), network), None, "{network}");
+        }
         assert!(is_remote("HTTPS://x"));
         assert!(!is_remote("img/a.png"));
     }

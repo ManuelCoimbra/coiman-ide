@@ -171,17 +171,22 @@ pub fn rank<'a>(labels: impl IntoIterator<Item = &'a str>, query: &str) -> Vec<(
     if query.is_empty() {
         return labels.into_iter().enumerate().map(|(i, _)| (i, Vec::new())).collect();
     }
-    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
-    let mut matcher = Matcher::new(Config::DEFAULT);
-    let (mut buf, mut found) = (Vec::new(), Vec::new());
-    for (i, label) in labels.into_iter().enumerate() {
-        let mut indices = Vec::new();
-        if let Some(score) = pattern.indices(Utf32Str::new(label, &mut buf), &mut matcher, &mut indices) {
-            indices.sort_unstable();
-            indices.dedup();
-            found.push((score, i, indices.into_iter().map(|c| c as usize).collect()));
-        }
+    thread_local! {
+        // A matcher holds a sizeable scratch space: one per thread, not one per call.
+        static MATCHER: std::cell::RefCell<Matcher> = std::cell::RefCell::new(Matcher::new(Config::DEFAULT));
     }
+    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+    let (mut buf, mut found) = (Vec::new(), Vec::new());
+    MATCHER.with_borrow_mut(|matcher| {
+        for (i, label) in labels.into_iter().enumerate() {
+            let mut indices = Vec::new();
+            if let Some(score) = pattern.indices(Utf32Str::new(label, &mut buf), matcher, &mut indices) {
+                indices.sort_unstable();
+                indices.dedup();
+                found.push((score, i, indices.into_iter().map(|c| c as usize).collect()));
+            }
+        }
+    });
     found.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
     found.into_iter().map(|(_, i, indices)| (i, indices)).collect()
 }

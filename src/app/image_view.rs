@@ -56,9 +56,10 @@ fn decode_still(path: &Path) -> Result<DynamicImage, String> {
     Ok(picture)
 }
 
-/// A picture's first frame, upright, as RGBA: for the Markdown preview.
-pub(super) fn decode(path: &Path) -> Result<Decoded, String> {
-    let picture = decode_still(path)?.into_rgba8();
+/// A picture's first frame, upright, as RGBA no larger than `max_side` a side: for
+/// the Markdown preview.
+pub(super) fn decode(path: &Path, max_side: usize) -> Result<Decoded, String> {
+    let picture = fit_texture(decode_still(path)?.into_rgba8(), max_side, &mut None);
     Ok(Decoded { size: [picture.width() as usize, picture.height() as usize], rgba: picture.into_raw() })
 }
 
@@ -129,11 +130,14 @@ fn load(path: &Path, max_side: usize) -> Result<Loaded, String> {
     let format = image::ImageFormat::from_path(path).ok();
     let animated = match format {
         Some(image::ImageFormat::Gif) => {
-            let decoder = image::codecs::gif::GifDecoder::new(open()?).map_err(|e| e.to_string())?;
+            let mut decoder = image::codecs::gif::GifDecoder::new(open()?).map_err(|e| e.to_string())?;
+            // Made with no limits: a frame's declared size would be allocated as it says.
+            decoder.set_limits(limits()).map_err(|e| e.to_string())?;
             Some(frames_of(decoder, max_side, &mut note)?)
         }
         Some(image::ImageFormat::WebP) => {
-            let decoder = image::codecs::webp::WebPDecoder::new(open()?).map_err(|e| e.to_string())?;
+            let mut decoder = image::codecs::webp::WebPDecoder::new(open()?).map_err(|e| e.to_string())?;
+            decoder.set_limits(limits()).map_err(|e| e.to_string())?;
             if decoder.has_animation() { Some(frames_of(decoder, max_side, &mut note)?) } else { None }
         }
         _ => None,
