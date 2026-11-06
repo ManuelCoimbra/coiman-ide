@@ -470,7 +470,7 @@ impl CodeApp {
             Command::OpenLogView => self.log_view_command(ctx),
             Command::ShowLogView => self.show_log_view(),
             Command::ToggleTableView => self.toggle_table_view(),
-            Command::InsertSymbol => self.pick_glyph(ctx),
+            Command::InsertSymbol => self.pick_glyph(),
             Command::GoToInclude => self.open_include(),
             Command::AnalyzeStackTrace => self.analyze_stack_trace(),
             Command::ShowCompileInfo => self.show_compile_info(),

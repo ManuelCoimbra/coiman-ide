@@ -1112,11 +1112,16 @@ fn char_class(c: char) -> u8 {
 
 /// Display width of `c` at visual column `col` (tabs jump to the next stop).
 pub fn char_width(c: char, col: usize) -> usize {
+    use unicode_width::UnicodeWidthChar;
     if c == '\t' {
         let width = tab_width();
         width - col % width
-    } else {
+    } else if crate::unicode::always(c).is_some() {
+        // Shown with a mark of its own, so it keeps a cell.
         1
+    } else {
+        // Chinese, Japanese and Korean take two cells; combining marks sit on the one before.
+        c.width().unwrap_or(1)
     }
 }
 
@@ -1332,6 +1337,22 @@ mod tests {
         assert_eq!(b.selections().len(), 3);
         b.insert("x");
         assert_eq!(b.text(), "x bar x baz x");
+    }
+
+    #[test]
+    fn wide_and_combining_characters_take_their_cells() {
+        assert_eq!(char_width('a', 0), 1);
+        assert_eq!(char_width('日', 0), 2);
+        assert_eq!(char_width('\u{301}', 0), 0);
+        assert_eq!(char_width('├', 0), 1);
+        // Invisible characters keep the cell their mark is drawn in.
+        assert_eq!(char_width('\u{200B}', 0), 1);
+        assert_eq!(visual_width("日本 x".chars()), 6);
+        let b = Buffer::new("日本語x");
+        assert_eq!(b.visual_col(2), 4);
+        // Inside a wide char, the nearer side.
+        assert_eq!(b.pos_at_visual_col(0, 5), 3);
+        assert_eq!(b.pos_at_visual_col(0, 4), 2);
     }
 
     #[test]

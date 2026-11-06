@@ -20,7 +20,7 @@ impl Kind {
 }
 
 /// What `c` is, whatever surrounds it.
-fn always(c: char) -> Option<Kind> {
+pub(crate) fn always(c: char) -> Option<Kind> {
     match c {
         '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' => Some(Kind::Bidi),
         '\u{034F}'

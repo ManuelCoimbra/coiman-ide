@@ -155,17 +155,17 @@ impl CodeApp {
 
     pub(super) fn install_fonts(&self, ctx: &egui::Context) {
         const EDITOR: &str = "editor font";
-        const SYMBOLS: &str = "symbol font";
         let mut fonts = egui::FontDefinitions::default();
         if let Some(font) = &self.editor_font {
             fonts.font_data.insert(EDITOR.to_owned(), font.clone());
             // The built-in fonts stay behind it for characters it lacks.
             fonts.families.entry(egui::FontFamily::Monospace).or_default().insert(0, EDITOR.to_owned());
         }
-        if let Some(font) = &self.symbol_font {
-            fonts.font_data.insert(SYMBOLS.to_owned(), font.clone());
+        // Last, for what neither the code font nor the built-in ones have.
+        for (name, font) in &self.fallback_fonts {
+            fonts.font_data.insert(name.clone(), font.clone());
             for family in [egui::FontFamily::Monospace, egui::FontFamily::Proportional] {
-                fonts.families.entry(family).or_default().push(SYMBOLS.to_owned());
+                fonts.families.entry(family).or_default().push(name.clone());
             }
         }
         ctx.set_fonts(fonts);

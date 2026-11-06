@@ -10,7 +10,8 @@ exclude = ["examples/plugins", "core/tests/fixtures"]
 [dependencies]
 rust-code-core = { path = "core" }
 eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "links", "glow"] }
-egui = "0.37.0"
+# Emoji fonts are their own feature since 0.37.
+egui = { version = "0.37.0", features = ["monochrome_emoji_fonts"] }
 rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.8"

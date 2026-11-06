@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use ignore::{WalkBuilder, WalkState};
-use nucleo::pattern::{CaseMatching, Normalization};
+use nucleo::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo::{Config, Matcher, Nucleo, Utf32Str};
 
 use crate::workspace::IGNORED_DIRS;
@@ -164,10 +164,45 @@ impl FileFinder {
     }
 }
 
+/// Labels that match `query`, best first, each with the indices of its matched chars.
+/// Words match in any order. Equal scores keep the labels' order.
+pub fn rank<'a>(labels: impl IntoIterator<Item = &'a str>, query: &str) -> Vec<(usize, Vec<usize>)> {
+    let query = query.trim();
+    if query.is_empty() {
+        return labels.into_iter().enumerate().map(|(i, _)| (i, Vec::new())).collect();
+    }
+    let pattern = Pattern::parse(query, CaseMatching::Ignore, Normalization::Smart);
+    let mut matcher = Matcher::new(Config::DEFAULT);
+    let (mut buf, mut found) = (Vec::new(), Vec::new());
+    for (i, label) in labels.into_iter().enumerate() {
+        let mut indices = Vec::new();
+        if let Some(score) = pattern.indices(Utf32Str::new(label, &mut buf), &mut matcher, &mut indices) {
+            indices.sort_unstable();
+            indices.dedup();
+            found.push((score, i, indices.into_iter().map(|c| c as usize).collect()));
+        }
+    }
+    found.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    found.into_iter().map(|(_, i, indices)| (i, indices)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn ranks_the_closest_label_first() {
+        let labels = ["Change Indentation", "Go to Definition", "Git: Commit", "Git: Push", "View: Toggle Terminal"];
+        let order: Vec<usize> = rank(labels, "git").into_iter().map(|(i, _)| i).collect();
+        assert_eq!(&order[..2], [2, 3], "{order:?}");
+        let words = rank(labels, "terminal toggle");
+        assert_eq!(words.len(), 1);
+        assert_eq!(words[0].0, 4);
+        assert!(rank(labels, "zzz").is_empty());
+        assert_eq!(rank(labels, " ").len(), labels.len());
+        assert_eq!(rank(["Git: Commit"], "gc")[0].1, [0, 5]);
+    }
 
     #[test]
     fn indexes_folder_respecting_gitignore_and_ranks_matches() {

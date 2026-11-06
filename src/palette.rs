@@ -7,7 +7,7 @@ use egui::{Key, RichText};
 use rust_code_core::search::{Msg, Query, SearchHandle};
 
 use crate::commands::{COMMANDS, Command};
-use crate::finder::FileFinder;
+use crate::finder::{FileFinder, rank};
 use crate::keymap::Keymap;
 use crate::theme;
 
@@ -304,13 +304,9 @@ impl Palette {
         let mut items: Vec<(String, String, PaletteResult, Vec<usize>)> = Vec::new();
         let mut empty_text = "No matching results";
         if let Some(picker) = &self.picker {
-            let q = self.query.trim();
-            let mut matching: Vec<&String> = picker.items.iter().filter(|t| fuzzy_match(t, q)).collect();
-            // Long labels match nearly anything fuzzily: the text itself comes first.
-            let lower = q.to_lowercase();
-            matching.sort_by_key(|t| t.to_lowercase().find(&lower).unwrap_or(usize::MAX));
-            for t in matching {
-                items.push((t.clone(), String::new(), PaletteResult::Picked(picker.kind, t.clone()), Vec::new()));
+            for (i, hl) in rank(picker.items.iter().map(String::as_str), &self.query) {
+                let t = &picker.items[i];
+                items.push((t.clone(), String::new(), PaletteResult::Picked(picker.kind, t.clone()), hl));
             }
         } else if let Some(tab) = self.everywhere_tab() {
             let q = self.query.trim().to_owned();
@@ -341,18 +337,21 @@ impl Palette {
                 }
             }
             if wanted(EverywhereTab::Commands) && (!all || !q.is_empty()) {
-                let shown = COMMANDS.iter().filter(|(cmd, name)| {
-                    !self.hidden_commands.contains(cmd)
-                        && if all { words_match(name, &q) } else { fuzzy_match(name, &q) }
-                });
-                for (cmd, name) in shown.take(cap(6, 500)) {
-                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), Vec::new()));
+                let commands: Vec<&(Command, &str)> = COMMANDS
+                    .iter()
+                    .filter(|(cmd, name)| !self.hidden_commands.contains(cmd) && (!all || words_match(name, &q)))
+                    .collect();
+                for (i, hl) in rank(commands.iter().map(|(_, name)| *name), &q).into_iter().take(cap(6, 500)) {
+                    let (cmd, name) = commands[i];
+                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), hl));
                 }
             }
             if wanted(EverywhereTab::Settings) && (!all || !q.is_empty()) {
-                let shown = self.setting_rows.iter().filter(|(label, _)| words_match(label, &q));
-                for (label, section) in shown.take(cap(4, 200)) {
-                    items.push((label.clone(), section.clone(), PaletteResult::OpenSetting(label.clone()), Vec::new()));
+                let rows: Vec<&(String, String)> =
+                    self.setting_rows.iter().filter(|(label, _)| words_match(label, &q)).collect();
+                for (i, hl) in rank(rows.iter().map(|(label, _)| label.as_str()), &q).into_iter().take(cap(4, 200)) {
+                    let (label, section) = rows[i];
+                    items.push((label.clone(), section.clone(), PaletteResult::OpenSetting(label.clone()), hl));
                 }
             }
             if wanted(EverywhereTab::Text) {
@@ -365,15 +364,21 @@ impl Palette {
                 }
             }
         } else if let Some(q) = self.query.strip_prefix('>') {
-            let q = q.trim();
-            for (cmd, name) in COMMANDS {
-                if fuzzy_match(name, q) && !self.hidden_commands.contains(cmd) {
-                    items.push((name.to_string(), keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd), Vec::new()));
-                }
-            }
-            for (title, key) in &self.plugin_commands {
-                if fuzzy_match(title, q) {
-                    items.push((title.clone(), "plugin".to_owned(), PaletteResult::RunPlugin(key.clone()), Vec::new()));
+            // Built-in and plugin commands, ranked together.
+            let commands: Vec<(&str, String, PaletteResult)> =
+                COMMANDS
+                    .iter()
+                    .filter(|(cmd, _)| !self.hidden_commands.contains(cmd))
+                    .map(|(cmd, name)| (*name, keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd)))
+                    .chain(self.plugin_commands.iter().map(|(title, key)| {
+                        (title.as_str(), "plugin".to_owned(), PaletteResult::RunPlugin(key.clone()))
+                    }))
+                    .collect();
+            let order = rank(commands.iter().map(|c| c.0), q);
+            let mut commands: Vec<Option<(&str, String, PaletteResult)>> = commands.into_iter().map(Some).collect();
+            for (i, hl) in order {
+                if let Some((name, detail, outcome)) = commands[i].take() {
+                    items.push((name.to_owned(), detail, outcome, hl));
                 }
             }
         } else if self.query.starts_with('#') {
@@ -492,7 +497,8 @@ impl Palette {
                     // Room for every item up to the cap (the list otherwise keeps its first, smaller size).
                     let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
                     let wanted = (items.len().max(1) as f32 * row_h).min(360.0);
-                    egui::ScrollArea::vertical().max_height(360.0).min_scrolled_height(wanted).show(ui, |ui| {
+                    let list = egui::ScrollArea::vertical().auto_shrink([false, true]);
+                    list.max_height(360.0).min_scrolled_height(wanted).show(ui, |ui| {
                         let mut group = "";
                         for (i, (label, detail, outcome, hl)) in items.iter().enumerate() {
                             if shown_tab == Some(EverywhereTab::All) && group_name(outcome) != group {
@@ -500,7 +506,10 @@ impl Palette {
                                 ui.label(RichText::new(group).small().strong().color(theme::colors().text_dim));
                             }
                             let selected = i == self.selected;
+                            // The whole row is one target, with its background painted under it.
+                            let background = ui.painter().add(egui::Shape::Noop);
                             let resp = ui.horizontal(|ui| {
+                                ui.set_min_width(ui.available_width());
                                 let size = ui.text_style_height(&egui::TextStyle::Body);
                                 match outcome {
                                     PaletteResult::OpenFile(_) => {
@@ -516,14 +525,21 @@ impl Palette {
                                     _ => {}
                                 }
                                 let text = highlight_label(ui, label, hl);
-                                let r = ui.add(egui::Button::selectable(selected, text).truncate());
+                                ui.add(egui::Label::new(text).truncate().selectable(false));
                                 ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
-                                r
                             });
-                            if selected && (up || down) {
-                                resp.inner.scroll_to_me(None);
+                            let row = resp.response.rect.expand2(egui::vec2(0.0, ui.spacing().item_spacing.y / 2.0));
+                            let row = ui.interact(row, ui.scope_id().with(("palette_row", i)), egui::Sense::click());
+                            let pal = theme::colors();
+                            let fill =
+                                if selected { Some(pal.selection) } else { row.hovered().then_some(pal.hover_bg) };
+                            if let Some(fill) = fill {
+                                ui.painter().set(background, egui::Shape::rect_filled(row.rect, 3.0, fill));
                             }
-                            if resp.inner.clicked() {
+                            if selected && (up || down) {
+                                row.scroll_to_me(None);
+                            }
+                            if row.clicked() {
                                 self.selected = i;
                                 result = Some(i);
                             }
@@ -624,12 +640,6 @@ fn words_match(text: &str, query: &str) -> bool {
     query.to_lowercase().split_whitespace().all(|word| text.contains(word))
 }
 
-/// Case-insensitive subsequence match ("mnrs" matches "main.rs").
-fn fuzzy_match(text: &str, query: &str) -> bool {
-    let mut chars = text.chars().flat_map(char::to_lowercase);
-    query.chars().filter(|c| !c.is_whitespace()).flat_map(char::to_lowercase).all(|q| chars.any(|c| c == q))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,6 +691,5 @@ mod tests {
     fn words_in_any_order() {
         assert!(words_match("View: Toggle Terminal", "terminal toggle"));
         assert!(!words_match("View: Toggle Terminal", "tgl"));
-        assert!(fuzzy_match("View: Toggle Terminal", "tgl"));
     }
 }

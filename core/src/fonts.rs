@@ -135,24 +135,56 @@ pub fn installed() -> Vec<Face> {
     faces
 }
 
-/// A font with the math and APL symbols the built-in one lacks, if this system
-/// has one where these usually are.
-pub fn load_symbol_font() -> Option<(Vec<u8>, u32)> {
-    let windows = std::env::var_os("WINDIR").map(PathBuf::from).map(|w| w.join("Fonts"));
-    let mut places = Vec::new();
-    if let Some(fonts) = windows {
-        places.push(fonts.join("seguisym.ttf"));
-    }
-    places.extend(
-        [
+/// What the built-in fonts lack, and where systems usually keep a font for it.
+const FALLBACKS: &[(&str, &[&str])] = &[
+    // Math and APL symbols, arrows, and box drawing for UI text.
+    (
+        "symbols",
+        &[
+            "%WINDIR%/Fonts/seguisym.ttf",
             "/System/Library/Fonts/Apple Symbols.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-            "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
-            "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
-        ]
-        .map(PathBuf::from),
-    );
-    places.into_iter().find_map(|p| std::fs::read(p).ok()).map(|bytes| (bytes, 0))
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
+        ],
+    ),
+    // Chinese and Japanese.
+    (
+        "cjk",
+        &[
+            "%WINDIR%/Fonts/YuGothM.ttc",
+            "%WINDIR%/Fonts/msyh.ttc",
+            "%WINDIR%/Fonts/msgothic.ttc",
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",
+            "/System/Library/Fonts/PingFang.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        ],
+    ),
+    // Korean, which the Japanese fonts above don't have.
+    ("hangul", &["%WINDIR%/Fonts/malgun.ttf", "/System/Library/Fonts/AppleSDGothicNeo.ttc"]),
+];
+
+/// A system font: what it covers, its bytes, and which face in its file.
+pub type Fallback = (&'static str, Vec<u8>, u32);
+
+/// Fonts this system has for what the built-in ones lack, by the name of what they
+/// cover, with their bytes and face index. Reads tens of megabytes: call it off the UI thread.
+pub fn load_fallback_fonts() -> Vec<Fallback> {
+    let windir = std::env::var("WINDIR").unwrap_or_default();
+    FALLBACKS
+        .iter()
+        .filter_map(|(name, places)| {
+            places.iter().find_map(|place| {
+                if place.starts_with("%WINDIR%") && windir.is_empty() {
+                    return None;
+                }
+                let bytes = std::fs::read(place.replace("%WINDIR%", &windir)).ok()?;
+                Some((*name, bytes, 0))
+            })
+        })
+        .collect()
 }
 
 /// Sorted family names of the fixed-width fonts, the only ones code lines up in.

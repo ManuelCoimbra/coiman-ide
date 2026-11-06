@@ -33,6 +33,7 @@ similar = "2"
 streaming-iterator = "0.1"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 toml = "1.1.8"
+unicode-width = "0.2"
 tree-sitter = "0.27.1"
 tree-sitter-bash = "0.25"
 tree-sitter-c = "0.24"

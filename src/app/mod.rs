@@ -214,8 +214,10 @@ pub struct CodeApp {
     /// The chosen font for code, behind which the built-in fonts stay.
     editor_font: Option<std::sync::Arc<egui::FontData>>,
     /// Behind them all, for symbols, once a file has called for it.
-    symbol_font: Option<std::sync::Arc<egui::FontData>>,
-    symbol_font_tried: bool,
+    /// System fonts behind the built-in ones, by what they cover.
+    fallback_fonts: Vec<(String, std::sync::Arc<egui::FontData>)>,
+    fallback_load: Option<std::sync::mpsc::Receiver<Vec<rust_code_core::fonts::Fallback>>>,
+    fallback_started: bool,
     settings_ui: settings_ui::SettingsUi,
     keys_ui: keys_ui::KeysUi,
     window: Option<rust_code_core::session::WindowState>,
@@ -353,8 +355,9 @@ impl CodeApp {
             auto_save: Default::default(),
             font_load: None,
             editor_font: None,
-            symbol_font: None,
-            symbol_font_tried: false,
+            fallback_fonts: Vec::new(),
+            fallback_load: None,
+            fallback_started: false,
             settings_ui: Default::default(),
             keys_ui: Default::default(),
             window: None,

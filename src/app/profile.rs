@@ -24,31 +24,34 @@ impl CodeApp {
         deco.dim_columns = profile.map(|p| p.dim_columns.clone()).unwrap_or_default();
     }
 
-    /// Symbols need a font that has them, which the built-in one mostly doesn't.
-    /// Loaded when first needed: it's a large file few files call for.
+    /// Symbols, box drawing, Chinese, Japanese and Korean need system fonts: the built-in
+    /// ones have none of them for UI text. Read once, off to the side, at start.
     pub(super) fn pump_symbol_font(&mut self, ctx: &egui::Context) {
-        if self.symbol_font_tried {
-            return;
+        if !std::mem::replace(&mut self.fallback_started, true) {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let wake = super::repaint(ctx);
+            std::thread::spawn(move || {
+                let _ = tx.send(fonts::load_fallback_fonts());
+                wake();
+            });
+            self.fallback_load = Some(rx);
         }
-        let wanted = self.profile_of(self.active).is_some_and(|p| p.abbreviations || p.glyphs.is_some());
-        if wanted {
-            self.load_symbol_font(ctx);
+        let Some(found) = self.fallback_load.as_ref().and_then(|rx| rx.try_recv().ok()) else { return };
+        self.fallback_load = None;
+        if !found.iter().any(|(name, ..)| *name == "symbols") {
+            self.status = Some("No font with symbols found: some may show as boxes".to_owned());
         }
-    }
-
-    fn load_symbol_font(&mut self, ctx: &egui::Context) {
-        if std::mem::replace(&mut self.symbol_font_tried, true) {
-            return;
-        }
-        match fonts::load_symbol_font() {
-            Some((bytes, index)) => {
+        let names: Vec<&str> = found.iter().map(|(name, ..)| *name).collect();
+        rust_code_core::applog::info(&format!("fallback fonts: {}", names.join(", ")));
+        self.fallback_fonts = found
+            .into_iter()
+            .map(|(name, bytes, index)| {
                 let mut font = egui::FontData::from_owned(bytes);
                 font.index = index;
-                self.symbol_font = Some(std::sync::Arc::new(font));
-                self.install_fonts(ctx);
-            }
-            None => self.status = Some("No font with math symbols found: some may show as boxes".to_owned()),
-        }
+                (format!("{name} fallback"), std::sync::Arc::new(font))
+            })
+            .collect();
+        self.install_fonts(ctx);
     }
 
     fn replace_before_cursor(&mut self, back: usize, length: usize, symbol: &str) {
@@ -112,8 +115,7 @@ impl CodeApp {
     }
 
     /// `Insert Symbol`: every symbol, searchable by name.
-    pub(super) fn pick_glyph(&mut self, ctx: &egui::Context) {
-        self.load_symbol_font(ctx);
+    pub(super) fn pick_glyph(&mut self) {
         let items = symbols::all(&self.settings.symbols)
             .into_iter()
             .map(|(symbol, names)| format!("{symbol}  \\{}", names.join("  \\")))

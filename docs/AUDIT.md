@@ -1,0 +1,157 @@
+# Coiman IDE: audit against the quality review
+
+Audit of the code as it stood at commit `f23397a` (still named Rust Code), against
+`Coiman IDE.md`. Each claim says how it was found:
+
+- **app**: reproduced in the running release build, with a screenshot and the app log
+- **code**: read in the source, not run
+- **grep**: searched for and not found
+
+Date: 2026-11-06.
+
+## 1. Confirmed bugs
+
+| # | Area | Problem | How found | Cause |
+|---|------|---------|-----------|-------|
+| B1 | Command palette (§13) | Typing `git` lists *Change Indentation*, *Go to Definition* and others before *Git: Commit* | app | `palette.rs` `fuzzy_match` is a yes/no subsequence test with no score. Results stay in declaration order. Nucleo is already a dependency, used only for Quick Open. |
+| B2 | Palette mouse (§13, §15) | A click on a row to the right of its label does nothing. The list is narrower than the popup, with its scroll bar in the middle | app | Only the `Button::selectable` label is clickable, not the row. The `ScrollArea` is as wide as its widest row, not the popup. |
+| B3 | Markdown preview (§3) | Emoji and CJK show as boxes | app | Font fallback: see B6 |
+| B4 | Markdown preview (§3) | Images show as `[image: Logo]` | app, code | `core/src/markdown.rs` never loads images, by design |
+| B5 | Markdown preview (§3) | Relative links (`docs/other.md`) can't be clicked | app, code | `md_preview.rs` only opens `http`, `https` and `mailto` |
+| B5b | Markdown preview (§3) | `**bold with `code` and a [link](…)**` shows its raw backticks and brackets | app | The hand-made parser has no nested spans |
+| B5c | Markdown preview (§3) | Table columns are a few characters wide. Text wraps a word a line and spills under the next row | app | `egui::Grid` with wrapping labels and no column widths |
+| B5d | Markdown preview (§3) | A blockquote holding a list and two paragraphs comes out as one line | app | `Block::Quote` holds one paragraph of spans |
+| B5e | Markdown preview (§3) | Code blocks have no highlighting. `<details>` and other HTML show as text | code | The parser keeps the language name but nothing uses it |
+| B6 | Unicode (§18) | Box drawing, emoji and CJK show as empty boxes in the Markdown preview and other UI text. Emoji and CJK show as boxes in the editor too. Box drawing in the editor and terminal is correct: it uses Hack's glyphs, which fill the line height so they join. | app (`b_md.png`, `a_tree.png`) | Three causes, see 1a |
+| B6b | Unicode (§18) | CJK takes one cell instead of two, so its glyphs overlap. Combining marks take a cell of their own. | code | `buffer.rs:1114` `char_width` returns 1 for every character except tab. The editor squeezes each glyph into `char_width` cells (`editor_view.rs:1643`). |
+| B7 | HTML diagnostics (§14) | `<li>` left open, `<div><span></div></span>` and an unclosed `<p>` give no problems | app | Nothing checks markup when no HTML language server is installed |
+| B8 | Explorer keys (§8) | Delete and F2 do nothing in the explorer. Delete and Rename are only in the context menu | code, grep | `explorer.rs` reads no keys |
+| B9 | Image viewer (§10) | No wheel zoom or drag to pan, only Fit and 100%. `.tiff`, `.svg` and `.avif` don't open in it, though `tif` does. No EXIF orientation. A GIF shows its first frame. Downscaled pictures use `NEAREST` and look jagged | code | `web.rs` `ImageView`. A 17000×400 PNG did open (app). |
+| B10 | Image viewer and status bar | With an image showing, the explorer still selects the previous file and the status bar names its language | app | The image is drawn over a document, not as its own tab |
+| B11 | Recent (§7) | Only folders. No way to remove one, clear them, or see recent files. Missing folders aren't flagged | code | `core/src/recent.rs` is a 10-entry list with only `add` |
+
+### 1a. Deeper causes (2026-11-06)
+
+**Fonts.** The coverage of each font was read from its `cmap` table (script `cmap.py` in the session scratchpad):
+
+| Font | Box drawing | Emoji | CJK |
+|------|-------------|-------|-----|
+| Hack (built in, monospace) | yes | no | no |
+| Ubuntu-Light (built in, UI text) | no | no | no |
+| NotoEmoji, emoji-icon-font (in `epaint_default_fonts`) | no | yes | no |
+| Segoe UI Symbol | yes | yes | no |
+| Segoe UI Emoji | no | yes (colour) | no |
+| Yu Gothic, Microsoft YaHei | yes | no | yes |
+
+1. egui 0.37 moved its emoji fonts behind the `monochrome_emoji_fonts` feature. `Cargo.toml` turns on only `default_fonts`, so the app has no emoji font at all.
+2. `install_fonts` adds Segoe UI Symbol only when `pump_symbol_font` loads it (`profile.rs:28`). That happens only for symbol-typing language profiles and *Insert Symbol*. Everywhere else, UI text falls from Ubuntu-Light straight to egui's icon font.
+3. No CJK font is ever added.
+
+Fix with fonts already on this computer, no download. Colour emoji would need epaint's `color_fonts` feature. Its `vello_cpu` crate is already in `Cargo.lock`.
+
+**Markdown parser.** Running `markdown::parse` on a test file (`core/examples/md_probe.rs`) also shows these failures:
+
+- A list item's lazy continuation line becomes a separate paragraph.
+- Setext headings (`===`) stay as text.
+- Indented code blocks become paragraphs.
+- Hard line breaks (two trailing spaces) are lost.
+- Reference links (`[x][r]` with `[r]: url`) stay as text.
+- A `|` inside a code span in a table splits the cell.
+- Nested emphasis, code and links (B5b) aren't parsed.
+
+JSON and YAML fences do keep their text: that part of §3 works. These are the CommonMark gaps a hand-written parser accumulates. `pulldown-cmark` passes the CommonMark spec tests.
+
+**HTML.** `tree-sitter-html` is already a dependency, used for highlighting. Its tree for the test file (`core/examples/html_tree_probe.rs`) holds every needed signal:
+
+- `erroneous_end_tag` for the stray `</span>`
+- `element` nodes with a `start_tag` and no `end_tag` for `<span>` and `<b>`
+- the same for `<li>` and `<p>`, which HTML closes implicitly, so these should be hints rather than errors
+- an `ERROR` node for the unterminated `class="x>`
+
+A checker can be a tree walk with HTML's lists of void elements and optional end tags. That needs no new dependency and no Node.
+
+## 2. Missing features
+
+| # | Section | Feature | Notes |
+|---|---------|---------|-------|
+| M1 | §13, §11 | Git: Clone | grep: no command |
+| M2 | §11 | Git author check (`user.name`, `user.email`) and a form to set them | `core/src/git.rs` reads them only for commits |
+| M3 | §2 | HTML auto close tag, and `=""` after an attribute name | Emmet exists. Auto-close covers only brackets and quotes. |
+| M4 | §2 | Java and C# getters, setters, constructor and `toString` | grep: none. A Java or C# language server's code actions give these when one is installed. |
+| M5 | §2 | C and C++ null-check hints | Only a rule in `likely.rs`. clang-tidy through clangd gives more. |
+| M6 | §4 | Maven: run goals, refresh, dependencies | Only detection of `pom.xml`, for run, test and icons |
+| M7 | §6 | CSS font-family preview | grep: none |
+| M8 | §17 | Frame-rate limit setting | grep: none. egui repaints on demand already, so idle use should be low. Not measured yet. |
+| M9 | §9 | Running VS Code extensions | There's no extension host. Only data is imported (themes, snippets, grammars). Code extensions need Node.js and the `vscode` API: see §9 below. |
+| M10 | §12 | Guided introduction | There's a Welcome page, but no tour |
+| M11 | §23 | Coiman IDE name and icon | Everything still says Rust Code |
+
+## 3. Partly done
+
+| # | Section | What exists | What's missing |
+|---|---------|-------------|----------------|
+| P1 | §21 Run | One path, `run_program`, runs the active file through `run::plan` and saves first. Ctrl+F5 runs the chosen configuration. | When a configuration is pinned, Shift+F10 runs it instead of the file. The tab button and the run marker both call `run_program`, so they do the same. Not yet reproduced: which file the user saw fail. |
+| P2 | §16 Rainbow brackets | On by default (`editor.bracket_pair_colorization`), in Settings | Only for languages with a tree-sitter grammar. Files highlighted with syntect get none. That's probably why it seems missing. |
+| P3 | §2 Indentation | `insert_newline` keeps indentation and splits braces. Tabs or spaces follow the file and `.editorconfig`. | Language-specific indent after `:` (Python) and outdent on `}` and `</tag>`: not checked |
+| P4 | §15 Completion | Click, arrows, Page Up and Down. It scrolls to the selection. | No hover highlight. Rows are painted, not widgets. Not reproduced with a language server yet. |
+| P5 | §5 Colours | Swatches in completion (`completion_color`). Light colours (`light_colors.rs`). | Text drawn on the colour's own background, readable either way |
+| P6 | §19 IntelliSense | Hover, signature, rename, references, code actions, call hierarchy | Auto import depends on the server. Not re-tested in this audit. |
+| P7 | §8 Shortcuts | Keymap with a Keyboard Shortcuts editor and conflict list | Explorer keys (B8). Ctrl+Y redo not checked. |
+| P8 | §22 Explorer | IntelliJ-like tree, nesting, compact folders, file watcher | Name search inside the tree, a remembered folder per file dialog |
+
+## 4. Working (seen in the app this session or earlier)
+
+- Quick Open by file name (nucleo, ranked)
+- Opening a 17000×400 PNG
+- Markdown preview: headings, paragraphs, lists nested to 3 levels, rules, code blocks with JSON and YAML text visible, https links
+- Islands layout, tool rails, Search Everywhere, Settings, logs, theme schedule and backgrounds: commits `90cae26` to `f23397a`
+
+## 5. Dependencies and decisions
+
+| Item | Needs |
+|------|-------|
+| Markdown rework (B3–B5e) | A real parser: `pulldown-cmark` (crates.io, pure Rust, no network code). Highlighting can reuse `syntect`, which is already in. Needs your OK to download. |
+| CJK and emoji (B6) | Fonts already installed (see 1a). `unicode-width` 0.2.2 is already in `Cargo.lock`, for B6b. |
+| HTML diagnostics (B7) | `tree-sitter-html`, already in (see 1a). No download. |
+| Maven (M6) | `mvn` or the project's `mvnw` on PATH. jdtls for Java code actions. Installing either is a download that needs your OK each time. |
+| VS Code extensions (M9) | A real extension host is Node.js plus a large share of the `vscode` API. That's a separate product. Proposal: keep importing data, list unsupported extensions by reason (`main` entry with no data parts), and use language servers instead. |
+| GitHub repo (§26) | `gh` login. It publishes the code: done last, with your confirmation. |
+| Rename (§23) | The config folder, binary and crate names change. Settings need copying from `rust-code` to the new folder. |
+| §28 usage | No usage figure is visible to this session, so the 95% rule can't be checked. No release will be claimed from it. |
+
+## 6. Complexity and order
+
+S: under a day. M: one to three days. L: more.
+
+**Phase 1, in this order:**
+
+1. B1 and B2, palette ranking and clicks: S
+2. B6, font fallback: S
+3. B3–B5e, Markdown on `pulldown-cmark`: M
+4. B7, HTML checker: M
+5. P4, completion mouse: S
+6. B9 and B10, image viewer: M
+7. P1, run: S. Needs the failing case.
+8. P3, indentation: S
+
+**Phase 2:** M3 and P5 (S), B8 and P7 (S), B11 (S), M7 (S), P2 (M), P8 (M).
+
+**Phase 3:** M1 and M2 (M), M6 (L), M4 and M5 (M), M9 compatibility report (M).
+
+**Phase 4:** M10 (M), top-bar search (S), M8 (S), M11 rename and icon (M), §26 GitHub.
+
+**Order changes and why:**
+
+- Fonts move before Markdown, because the preview's emoji depend on them.
+- The palette goes first: it's critical and small.
+
+## 7. Checklist
+
+Each row is a reported problem: its cause, what changed, the tests and the result.
+
+| Item | Cause | Files | Change | Tests | Result | Left |
+|------|-------|-------|--------|-------|--------|------|
+| B1 palette ranking | Yes/no subsequence filter, so results stayed in declaration order | `core/src/finder.rs` (`rank`), `src/palette.rs` | Commands, plugin commands, pickers and settings are ranked by nucleo's score. Words match in any order, and matched letters are highlighted. | unit test `ranks_the_closest_label_first`; app: `>git` lists the 13 Git commands first | fixed | |
+| B2 palette clicks | Only the label was clickable. The list was as wide as its widest row. | `src/palette.rs` | The whole row is one click target, with hover and selection painted behind it. The list fills the popup. | app: a click in the empty right part of a row ran it (`GitShowHistory`), and so did one after scrolling (`CloseSplit`) | fixed | |
+| B6 fonts | No emoji feature. Symbol font only for symbol profiles. No CJK font. | `Cargo.toml`, `core/src/fonts.rs`, `src/app/profile.rs`, `src/app/config.rs`, `src/app/mod.rs` | egui's `monochrome_emoji_fonts`. Segoe UI Symbol, Yu Gothic and Malgun Gothic (or the macOS and Linux equivalents) are read off the UI thread at start and put behind both font families. | app: box drawing, emoji and 日本語 drawn in the preview, editor, outline and breadcrumbs (log: `fallback fonts: symbols, cjk, hangul`) | fixed | Emoji are one colour. `⚠️` shows a dotted circle for U+FE0F. CJK sits a little high. About 30 MB more memory. |
+| B6b widths | `char_width` was 1 for everything | `core/src/buffer.rs`, `core/src/unicode.rs` | Widths from `unicode-width`. Invisible and bidi characters keep a cell for their mark. | unit test `wide_and_combining_characters_take_their_cells`; app: `日本語` takes 6 cells | fixed | Combining marks not yet tried in the app |
