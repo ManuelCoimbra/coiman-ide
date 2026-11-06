@@ -106,6 +106,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("editor", "emmet", "Emmet", "Tab grows abbreviations in HTML and CSS.", Kind::Toggle),
             row(
                 "editor",
+                "auto_close_tags",
+                "Close tags as you type",
+                "In HTML, XML and JSX: > adds the end tag, and </ finishes the open one.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
+                "auto_create_quotes",
+                "Quotes after =",
+                "In HTML and XML: = after an attribute's name adds \"\".",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "markup_problems",
                 "Check HTML and XML",
                 "Tags left open, closed in the wrong order or broken, while you type.",

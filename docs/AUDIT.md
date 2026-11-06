@@ -182,3 +182,9 @@ After the fixes:
 - `scripts/check.ps1` passes: 453 core tests and 27 app tests.
 - The Markdown, HTML, image, indentation and palette app scripts ran again with the same results as before.
 
+## 9. Phase 2
+
+| Item | Cause | Files | Change | Tests | Result | Left |
+|------|-------|-------|--------|-------|--------|------|
+| M3 tags and quotes | Typing in markup only paired brackets and quotes | `core/src/auto_tags.rs` (new), `core/src/buffer.rs`, `core/src/settings.rs`, `src/app/files.rs`, `src/app/settings_ui.rs` | `>` adds the end tag, `</` finishes the innermost open element's, and `=` adds `""` after an attribute name. Modes: HTML (void elements, script and style left alone), XML (every element) and JSX (only where an expression can start; fragments). Two settings turn them off. | 5 unit tests (start tags, void and self-closing, comments, quoted `>`, script code, JSX type arguments and arrows, `</` with comments and script, `=` cases, modes), and one buffer test typing a whole tag. App, by keystrokes, compared with the saved files: HTML `<div class=box">` gave `<div class="box">`, then `</div>` and the Enter split, a closed `<p>` and an open `<br>`; XML `</` became `</root>` and moved back; TSX left `Array<string>` alone and closed `<Card>`. | fixed | No completion of attribute names or values; that needs the HTML language server or Phase 2's IntelliSense work. Vue's `<template>` follows HTML rules, not JSX. |
+

@@ -76,6 +76,10 @@ pub struct EditorSettings {
     pub likely_problems: bool,
     /// Check HTML and XML for tags left open, misnested or broken.
     pub markup_problems: bool,
+    /// Type a tag's end for it in HTML, XML and JSX (`html.autoClosingTags`).
+    pub auto_close_tags: bool,
+    /// `=` after an attribute's name adds `""` (`html.autoCreateQuotes`).
+    pub auto_create_quotes: bool,
     /// Columns per indent level (`.editorconfig` and detection take priority).
     pub tab_size: usize,
     /// Indent with spaces rather than tabs.
@@ -324,6 +328,8 @@ impl Default for EditorSettings {
             format_on_save: false,
             likely_problems: true,
             markup_problems: true,
+            auto_close_tags: true,
+            auto_create_quotes: true,
             tab_size: 4,
             insert_spaces: true,
             detect_indentation: true,

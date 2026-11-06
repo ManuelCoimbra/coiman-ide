@@ -231,6 +231,23 @@ Other behaviour:
 - Backspace in indentation made of spaces goes back to the tab stop before.
 - Tabs or spaces, and their width, follow `.editorconfig`, then the file itself, then the settings.
 
+### Tags and quotes
+
+In HTML, XML and JSX, typing does part of the tag for you, as VS Code's `html.autoClosingTags`
+and `html.autoCreateQuotes` do:
+
+- `>` at the end of a start tag adds its end tag, with the cursor between them, and Enter there
+  splits them onto three lines. Not after a void element such as `<br>`, a self-closing tag, a
+  comment or `<!doctype>`.
+- `</` finishes the end tag of the innermost element still open, and moves the line back if
+  that's all it holds.
+- `=` after an attribute's name adds `""` with the cursor inside, in HTML and XML. The closing
+  quote is stepped over when you type it.
+
+In JSX and TSX a tag only starts where an expression can, so `Array<string>` and
+`useState<number>` are left alone. Nothing is completed inside `<script>` or `<style>`.
+`editor.auto_close_tags` and `editor.auto_create_quotes` turn these off.
+
 ### Run Program
 
 The green button in the title bar (or `Shift+F10`, or the Run menu) saves your files and runs

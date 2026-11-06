@@ -7,6 +7,7 @@
 use ropey::Rope;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use crate::auto_tags::{self, TagMode};
 use crate::edit_ops::{Edit, Sel};
 use crate::indent_rules::{self, IndentRules};
 use tree_sitter::{InputEdit, Point};
@@ -151,6 +152,10 @@ pub struct Buffer {
     pub pair_single_quote: bool,
     /// What opens and closes a level for Enter and typing, by language.
     pub indent_rules: IndentRules,
+    /// Which markup gets its end tags typed for it.
+    pub auto_tags: TagMode,
+    /// Whether `=` after an attribute's name adds `""`.
+    pub auto_quotes: bool,
     rope: Rope,
     selections: Vec<Selection>,
     primary: usize,
@@ -182,6 +187,8 @@ impl Buffer {
             read_only: false,
             pair_single_quote: true,
             indent_rules: IndentRules::default(),
+            auto_tags: TagMode::Off,
+            auto_quotes: false,
             rope: Rope::from_str(text),
             selections: vec![Selection::cursor(0)],
             primary: 0,
@@ -1002,6 +1009,37 @@ impl Buffer {
         Some(if self.indent_rules.opens(above.trim_end()) { indent } else { self.indent.outdented(&indent) })
     }
 
+    /// `>`, `</` and `=` in markup: the end tag, the rest of the end tag, or `""`.
+    /// Says whether it typed `c`.
+    fn type_tag(&mut self, c: char) -> bool {
+        if self.auto_tags == TagMode::Off || !matches!(c, '>' | '/' | '=') {
+            return false;
+        }
+        let [s] = self.selections.as_slice() else { return false };
+        if !s.is_empty() {
+            return false;
+        }
+        let head = s.head;
+        let before = self.rope.slice(head.saturating_sub(65_536)..head).to_string();
+        let after = self.rope.slice(head..(head + 256).min(self.len_chars())).to_string();
+        let Some(typed) = auto_tags::on_type(self.auto_tags, c, &before, &after, self.auto_quotes) else {
+            return false;
+        };
+        // `</` alone on its line also moves it back a level, as `/` there does without this.
+        let line_start = self.line_start(self.char_to_line(head));
+        let line_before = self.rope.slice(line_start..head).to_string();
+        let (start, prefix) = if c == '/' && self.indent_rules == IndentRules::Markup && line_before.trim_start() == "<"
+        {
+            (line_start, format!("{}<", self.indent.outdented(&leading_whitespace(&line_before))))
+        } else {
+            (head, String::new())
+        };
+        let cursor = prefix.chars().count() + typed.cursor;
+        let text = format!("{prefix}{}", typed.text);
+        self.apply_changes(vec![Change { start, end: head, text, cursor_offset: Some(cursor) }], true);
+        true
+    }
+
     /// Typing that moves its line back a level: a closing bracket or `</` alone on a
     /// line, or a word like `else:`, `end` or `fi` that ends a block. Says whether it typed `c`.
     fn type_outdenting(&mut self, c: char) -> bool {
@@ -1079,7 +1117,7 @@ impl Buffer {
     /// surrounded, and a pair only opens where it can't swallow following text.
     pub fn type_text(&mut self, text: &str) {
         if let (Some(c), 1) = (text.chars().next(), text.chars().count())
-            && self.type_outdenting(c)
+            && (self.type_tag(c) || self.type_outdenting(c))
         {
             return;
         }
@@ -1648,6 +1686,27 @@ mod tests {
         let mut b = at("if x\n    y\n    else|", IndentRules::Ruby);
         b.insert_newline();
         assert_eq!(shown(&b), "if x\n    y\nelse\n    |");
+    }
+
+    #[test]
+    fn typing_a_tag_closes_it_and_quotes_its_values() {
+        let mut b = at("|", IndentRules::Markup);
+        b.auto_tags = TagMode::Html;
+        b.auto_quotes = true;
+        // `=` adds the quotes; the closing one is stepped over.
+        for c in "<div class=a\">".chars() {
+            b.type_text(&c.to_string());
+        }
+        assert_eq!(shown(&b), "<div class=\"a\">|</div>");
+        b.insert_newline();
+        assert_eq!(shown(&b), "<div class=\"a\">\n    |\n</div>");
+        // `</` finishes the open element, moving its line back.
+        let mut b = at("<ul>\n    <li>a</li>\n    |", IndentRules::Markup);
+        b.auto_tags = TagMode::Html;
+        for c in "</".chars() {
+            b.type_text(&c.to_string());
+        }
+        assert_eq!(shown(&b), "<ul>\n    <li>a</li>\n</ul>|");
     }
 
     #[test]

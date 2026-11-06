@@ -3,6 +3,7 @@
 //! everything here can be tested and benchmarked headlessly.
 
 pub mod applog;
+pub mod auto_tags;
 pub mod baseline;
 pub mod bookmarks;
 pub mod buffer;
