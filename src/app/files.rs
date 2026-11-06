@@ -128,6 +128,7 @@ impl CodeApp {
         let size = config.indent_size.or(detected.map(|d| d.1)).unwrap_or(editor.tab_size.max(1));
         doc.buffer.indent = Indent { use_tabs, size };
         doc.buffer.auto_close = editor.auto_close_brackets;
+        doc.buffer.indent_rules = rust_code_core::indent_rules::IndentRules::for_extension(&doc.extension());
         // `'` starts Rust lifetimes and is an apostrophe in prose.
         doc.buffer.pair_single_quote = !matches!(doc.extension().as_str(), "rs" | "md" | "markdown" | "txt");
         doc.trim_trailing_whitespace = config.trim_trailing_whitespace.unwrap_or(editor.trim_trailing_whitespace);

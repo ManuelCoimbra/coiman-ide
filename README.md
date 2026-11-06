@@ -202,6 +202,35 @@ push). All git work runs in the background.
   warnings in Problems and the editor. `cargo.check_command = "clippy"` makes rust-analyzer
   run clippy instead of check on every save.
 
+### Indentation
+
+Enter keeps the line's indentation and goes a level in after what opens a block in the file's
+language:
+
+- **Brackets:** `{`, `(` and `[` in C-like languages, CSS and JSON. `{|}` splits onto three lines.
+- **Python:** `:`.
+- **HTML and XML:** a start tag. `<p>|</p>` splits onto three lines.
+- **Ruby:** `do`, `def`, `if` and the like.
+- **Lua and shell:** `then` and `do`.
+- **Elixir:** `do`.
+- **YAML:** a key ending in `:`.
+
+In Python, the line after `return`, `pass`, `break`, `continue` or `raise` comes out a level.
+
+Typing these moves the line back to where it belongs:
+
+- a closing bracket alone on its line, back to its opener's level
+- `</` in markup
+- Python's `else:`, `elif …:`, `except …:` and `finally:`
+- Ruby's, Lua's, shell's and Elixir's `end`, `else`, `fi`, `done` and the like, once the word is finished or on Enter, so `ending` stays
+
+Other behaviour:
+
+- `/**` comments go on with ` * `.
+- A line left blank keeps no spaces.
+- Backspace in indentation made of spaces goes back to the tab stop before.
+- Tabs or spaces, and their width, follow `.editorconfig`, then the file itself, then the settings.
+
 ### Run Program
 
 The green button in the title bar (or `Shift+F10`, or the Run menu) saves your files and runs

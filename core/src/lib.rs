@@ -34,6 +34,7 @@ pub mod hexdata;
 pub mod highlight;
 pub mod history;
 pub mod html_attributes;
+pub mod indent_rules;
 pub mod languages;
 pub mod light_syntax;
 pub mod likely;

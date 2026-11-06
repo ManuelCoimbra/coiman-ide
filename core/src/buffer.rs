@@ -8,6 +8,7 @@ use ropey::Rope;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::edit_ops::{Edit, Sel};
+use crate::indent_rules::{self, IndentRules};
 use tree_sitter::{InputEdit, Point};
 
 pub const TAB_WIDTH: usize = 4;
@@ -106,6 +107,24 @@ impl Indent {
     pub fn unit(self) -> String {
         if self.use_tabs { "\t".to_owned() } else { " ".repeat(self.size) }
     }
+
+    /// `indent` one level shallower: a tab, or spaces back to the tab stop before.
+    pub fn outdented(self, indent: &str) -> String {
+        if let Some(rest) = indent.strip_suffix('\t') {
+            return rest.to_owned();
+        }
+        let spaces = indent.len() - indent.trim_end_matches(' ').len();
+        let size = self.size.max(1);
+        let drop = match spaces % size {
+            0 => size.min(spaces),
+            partial => partial,
+        };
+        indent[..indent.len() - drop].to_owned()
+    }
+}
+
+fn leading_whitespace(line: &str) -> String {
+    line.chars().take_while(|c| *c == ' ' || *c == '\t').collect()
 }
 
 /// Typed characters that get a partner.
@@ -130,6 +149,8 @@ pub struct Buffer {
     pub auto_close: bool,
     /// Whether `'` pairs too (not in Rust, where it starts lifetimes).
     pub pair_single_quote: bool,
+    /// What opens and closes a level for Enter and typing, by language.
+    pub indent_rules: IndentRules,
     rope: Rope,
     selections: Vec<Selection>,
     primary: usize,
@@ -160,6 +181,7 @@ impl Buffer {
             auto_close: true,
             read_only: false,
             pair_single_quote: true,
+            indent_rules: IndentRules::default(),
             rope: Rope::from_str(text),
             selections: vec![Selection::cursor(0)],
             primary: 0,
@@ -858,32 +880,160 @@ impl Buffer {
         self.apply_changes(changes, false);
     }
 
-    /// Enter: new line keeping the current indentation, indenting after an
-    /// opening bracket and splitting `{|}` onto three lines.
+    /// Enter: new line keeping the current indentation, a level in after what opens one
+    /// in the file's language (`{`, Python's `:`, an HTML tag, Ruby's `do`), a level out
+    /// after Python's `return`, splitting `{|}` and `<p>|</p>` onto three lines, and
+    /// going on with a `/** */` comment. A line left blank keeps no spaces.
     pub fn insert_newline(&mut self) {
         let nl = self.line_ending;
+        let rules = self.indent_rules;
         let changes = self
             .selections
             .iter()
             .map(|s| {
                 let line = self.char_to_line(s.start());
-                let indent: String = self.line_text(line).chars().take_while(|c| *c == ' ' || *c == '\t').collect();
-                let before = (s.start() > 0).then(|| self.rope.char(s.start() - 1));
-                let after = (s.end() < self.len_chars()).then(|| self.rope.char(s.end()));
-                let opens = matches!(before, Some('{' | '(' | '['));
-                let closes =
-                    matches!((before, after), (Some('{'), Some('}')) | (Some('('), Some(')')) | (Some('['), Some(']')));
-                let inner = if opens { format!("{indent}{}", self.indent.unit()) } else { indent.clone() };
-                let mut text = format!("{nl}{inner}");
-                let cursor = text.chars().count();
-                if closes {
-                    text.push_str(nl);
-                    text.push_str(&indent);
+                let line_start = self.line_start(line);
+                let text = self.line_text(line);
+                let before: String = text.chars().take(s.start() - line_start).collect();
+                let end_line = self.char_to_line(s.end());
+                let after: String =
+                    self.line_text(end_line).chars().skip(s.end() - self.line_start(end_line)).collect();
+                // Enter inside the indentation keeps only what's before the cursor.
+                let blank_before = before.trim().is_empty();
+                let mut indent = if blank_before { before.clone() } else { leading_whitespace(&text) };
+                // Enter after `end` or `fi` finishes the word: its line moves back first.
+                let mut moved_back = None;
+                if !rules.dedents_on_colon()
+                    && rules.dedents(before.trim())
+                    && after.trim().is_empty()
+                    && let Some(target) = self.block_end_indent(line)
+                    && crate::buffer::visual_width(target.chars()) < crate::buffer::visual_width(indent.chars())
+                {
+                    moved_back = Some(format!("{target}{}", before.trim()));
+                    indent = target;
                 }
-                Change { start: s.start(), end: s.end(), text, cursor_offset: Some(cursor) }
+                let trimmed = before.trim_end();
+                let code = trimmed.trim_start();
+                let (prev, next) = (trimmed.chars().last(), after.chars().next());
+                let brackets =
+                    matches!((prev, next), (Some('{'), Some('}')) | (Some('('), Some(')')) | (Some('['), Some(']')));
+                let tags = rules == IndentRules::Markup
+                    && indent_rules::open_tag(trimmed).is_some()
+                    && after.trim_start().starts_with("</");
+                let comment = matches!(rules, IndentRules::Brackets)
+                    && ((code.starts_with("/*") && !code.contains("*/"))
+                        || (code.starts_with('*') && !code.starts_with("*/")));
+                let inner = if comment {
+                    if code.starts_with("/*") { format!("{indent} * ") } else { format!("{indent}* ") }
+                } else if rules.opens(trimmed) {
+                    format!("{indent}{}", self.indent.unit())
+                } else if rules.ends_block(trimmed) {
+                    self.indent.outdented(&indent)
+                } else {
+                    indent.clone()
+                };
+                let mut new = format!("{nl}{inner}");
+                // A line with only spaces before the cursor and nothing after keeps none.
+                let mut start =
+                    if blank_before && after.trim().is_empty() && s.is_empty() { line_start } else { s.start() };
+                if let Some(line) = moved_back {
+                    new = format!("{line}{new}");
+                    start = line_start;
+                }
+                let cursor = new.chars().count();
+                if brackets || tags {
+                    new.push_str(nl);
+                    new.push_str(&indent);
+                }
+                Change { start, end: s.end(), text: new, cursor_offset: Some(cursor) }
             })
             .collect();
         self.apply_changes(changes, false);
+    }
+
+    /// The indentation of the line holding the bracket that `closer` at `pos` closes.
+    fn opener_indent(&self, closer: char, pos: usize) -> Option<String> {
+        let opener = match closer {
+            ')' => '(',
+            ']' => '[',
+            '}' => '{',
+            _ => return None,
+        };
+        let mut depth = 0usize;
+        let first = pos.saturating_sub(200_000);
+        for at in (first..pos).rev() {
+            let c = self.rope.char(at);
+            if c == closer {
+                depth += 1;
+            } else if c == opener {
+                if depth == 0 {
+                    return Some(leading_whitespace(&self.line_text(self.char_to_line(at))));
+                }
+                depth -= 1;
+            }
+        }
+        None
+    }
+
+    /// Where a line that ends a block (`else:`, `end`) belongs: a level out from the line
+    /// above, or level with it when that line opened the block.
+    fn block_end_indent(&self, line: usize) -> Option<String> {
+        let above = (0..line).rev().map(|l| self.line_text(l)).find(|l| !l.trim().is_empty())?;
+        let indent = leading_whitespace(&above);
+        Some(if self.indent_rules.opens(above.trim_end()) { indent } else { self.indent.outdented(&indent) })
+    }
+
+    /// Typing that moves its line back a level: a closing bracket or `</` alone on a
+    /// line, or a word like `else:`, `end` or `fi` that ends a block. Says whether it typed `c`.
+    fn type_outdenting(&mut self, c: char) -> bool {
+        let [s] = self.selections.as_slice() else { return false };
+        if !s.is_empty() {
+            return false;
+        }
+        let head = s.head;
+        let line = self.char_to_line(head);
+        let line_start = self.line_start(line);
+        let text = self.line_text(line);
+        let before: String = text.chars().take(head - line_start).collect();
+        let after: String = text.chars().skip(head - line_start).collect();
+        let lead = leading_whitespace(&text);
+        let rules = self.indent_rules;
+        let target = if matches!(c, ')' | ']' | '}') && before.trim().is_empty() {
+            // Stepping over a closer already there isn't typing one.
+            if self.auto_close && after.starts_with(c) {
+                return false;
+            }
+            self.opener_indent(c, head)
+        } else if c == '/' && rules == IndentRules::Markup && before.trim_start() == "<" {
+            Some(self.indent.outdented(&lead))
+        } else if after.trim().is_empty() && {
+            // Python's line is whole with its `:`; a word, once something that isn't part of it follows.
+            let word_ended = !(c.is_alphanumeric() || c == '_');
+            let finished = if rules.dedents_on_colon() {
+                format!("{}{c}", before.trim())
+            } else if word_ended {
+                before.trim().to_owned()
+            } else {
+                String::new()
+            };
+            !finished.is_empty() && rules.dedents(&finished)
+        } {
+            self.block_end_indent(line)
+        } else {
+            None
+        };
+        let Some(target) = target else { return false };
+        let width = |s: &str| crate::buffer::visual_width(s.chars());
+        // Only ever back: never deeper than it was.
+        if width(&target) >= width(&lead) || !before.starts_with(&lead) {
+            return false;
+        }
+        let rest = &before[lead.len()..];
+        let text = format!("{target}{rest}{c}");
+        let cursor = text.chars().count();
+        let change = Change { start: line_start, end: head, text, cursor_offset: Some(cursor) };
+        self.apply_changes(vec![change], true);
+        true
     }
 
     /// Tab: spaces up to the next tab stop at each cursor.
@@ -908,6 +1058,11 @@ impl Buffer {
     /// Typing a closer that is already next steps over it, a selection gets
     /// surrounded, and a pair only opens where it can't swallow following text.
     pub fn type_text(&mut self, text: &str) {
+        if let (Some(c), 1) = (text.chars().next(), text.chars().count())
+            && self.type_outdenting(c)
+        {
+            return;
+        }
         let mut chars = text.chars();
         let (Some(c), None, true) = (chars.next(), chars.next(), self.auto_close) else {
             self.insert(text);
@@ -973,6 +1128,17 @@ impl Buffer {
                             text: String::new(),
                             cursor_offset: None,
                         });
+                    }
+                }
+                // In spaces that indent, back to the tab stop before, a level at a time.
+                if !word && !self.indent.use_tabs {
+                    let line_start = self.line_start(self.char_to_line(s.head));
+                    let before = self.rope.slice(line_start..s.head);
+                    let size = self.indent.size.max(1);
+                    if before.len_chars() > 1 && before.chars().all(|c| c == ' ') {
+                        let col = before.len_chars();
+                        let start = line_start + (col - 1) / size * size;
+                        return Some(Change { start, end: s.head, text: String::new(), cursor_offset: None });
                     }
                 }
                 let start = if word { self.prev_word_boundary(s.head) } else { self.skip_cr(s.head - 1, false) };
@@ -1362,6 +1528,120 @@ mod tests {
         b.insert_newline();
         assert_eq!(b.text(), "    fn a() {\n        \n    }");
         assert_eq!(b.primary().head, 21);
+    }
+
+    /// A buffer of `text` with the cursor at `|`, in a language's rules, indented by 4 spaces.
+    fn at(text: &str, rules: IndentRules) -> Buffer {
+        // The last `|`, so that Ruby's `|item|` can be written too.
+        let cursor = text.rfind('|').expect("a cursor");
+        let mut b = Buffer::new(&format!("{}{}", &text[..cursor], &text[cursor + 1..]));
+        b.indent_rules = rules;
+        b.indent = Indent { use_tabs: false, size: 4 };
+        b.set_single(Selection::cursor(text[..cursor].chars().count()));
+        b
+    }
+
+    /// The text with `|` where the cursor is.
+    fn shown(b: &Buffer) -> String {
+        let mut text = b.text();
+        let at = text.char_indices().nth(b.primary().head).map_or(text.len(), |(i, _)| i);
+        text.insert(at, '|');
+        text
+    }
+
+    #[test]
+    fn enter_follows_each_languages_blocks() {
+        let cases = [
+            (IndentRules::Python, "def f(x):|", "def f(x):\n    |"),
+            (IndentRules::Python, "    if x:  # yes|", "    if x:  # yes\n        |"),
+            (IndentRules::Python, "    return x|", "    return x\n|"),
+            (IndentRules::Python, "        pass|", "        pass\n    |"),
+            (IndentRules::Markup, "<ul>|", "<ul>\n    |"),
+            (IndentRules::Markup, "  <div class=\"a\">|</div>", "  <div class=\"a\">\n      |\n  </div>"),
+            (IndentRules::Markup, "<br>|", "<br>\n|"),
+            (IndentRules::Ruby, "  items.each do |item||", "  items.each do |item|\n      |"),
+            (IndentRules::Lua, "if x then|", "if x then\n    |"),
+            (IndentRules::Shell, "for f in *; do|", "for f in *; do\n    |"),
+            (IndentRules::Yaml, "server:|", "server:\n    |"),
+            (IndentRules::Brackets, "    call(|)", "    call(\n        |\n    )"),
+            (IndentRules::Brackets, "/**|", "/**\n * |"),
+            (IndentRules::Brackets, "    * text|", "    * text\n    * |"),
+            (IndentRules::Brackets, "let x = 1;|", "let x = 1;\n|"),
+        ];
+        for (rules, before, after) in cases {
+            let mut b = at(before, rules);
+            b.insert_newline();
+            assert_eq!(shown(&b), after, "{rules:?} {before:?}");
+        }
+    }
+
+    #[test]
+    fn a_line_left_blank_keeps_no_spaces() {
+        let mut b = at("{\n    |\n}", IndentRules::Brackets);
+        b.insert_newline();
+        assert_eq!(shown(&b), "{\n\n    |\n}");
+        // Enter inside the indentation doesn't double it.
+        let mut b = at("  |  x", IndentRules::Brackets);
+        b.insert_newline();
+        assert_eq!(shown(&b), "  \n  |  x");
+    }
+
+    #[test]
+    fn tabs_files_indent_with_tabs() {
+        let mut b = at("\tif (x) {|}", IndentRules::Brackets);
+        b.indent = Indent { use_tabs: true, size: 4 };
+        b.insert_newline();
+        assert_eq!(shown(&b), "\tif (x) {\n\t\t|\n\t}");
+    }
+
+    #[test]
+    fn typing_a_closer_or_end_word_moves_its_line_back() {
+        let typed = |text: &str, rules, typing: &str| {
+            let mut b = at(text, rules);
+            b.auto_close = false;
+            for c in typing.chars() {
+                b.type_text(&c.to_string());
+            }
+            shown(&b)
+        };
+        assert_eq!(typed("fn a() {\n    x();\n    |", IndentRules::Brackets, "}"), "fn a() {\n    x();\n}|");
+        assert_eq!(typed("  call(\n      a,\n      |", IndentRules::Brackets, ")"), "  call(\n      a,\n  )|");
+        assert_eq!(typed("if x:\n    a()\n    |", IndentRules::Python, "else:"), "if x:\n    a()\nelse:|");
+        assert_eq!(typed("if x:\n    a()\n|", IndentRules::Python, "else:"), "if x:\n    a()\nelse:|", "already out");
+        assert_eq!(typed("def a\n  b\n  |", IndentRules::Ruby, "end "), "def a\n  b\nend |");
+        assert_eq!(typed("if [ x ]; then\n    y\n    |", IndentRules::Shell, "fi;"), "if [ x ]; then\n    y\nfi;|");
+        assert_eq!(typed("<ul>\n    <li>a</li>\n    |", IndentRules::Markup, "</"), "<ul>\n    <li>a</li>\n</|");
+        // Words that only start like one, and closers after text, stay.
+        assert_eq!(typed("def a\n  |", IndentRules::Ruby, "ending"), "def a\n  ending|");
+        assert_eq!(typed("    x|", IndentRules::Brackets, "}"), "    x}|");
+        // Never deeper than it was.
+        assert_eq!(typed("{\n}\n|", IndentRules::Brackets, "}"), "{\n}\n}|");
+    }
+
+    #[test]
+    fn enter_finishes_an_end_word() {
+        let mut b = at("def a\n    b\n    end|", IndentRules::Ruby);
+        b.insert_newline();
+        assert_eq!(shown(&b), "def a\n    b\nend\n|");
+        let mut b = at("if x\n    y\n    else|", IndentRules::Ruby);
+        b.insert_newline();
+        assert_eq!(shown(&b), "if x\n    y\nelse\n    |");
+    }
+
+    #[test]
+    fn backspace_in_indentation_goes_to_the_tab_stop() {
+        let mut b = at("        |x", IndentRules::Brackets);
+        b.delete_backward(false);
+        assert_eq!(shown(&b), "    |x");
+        let mut b = at("      |x", IndentRules::Brackets);
+        b.delete_backward(false);
+        assert_eq!(shown(&b), "    |x");
+        // After text, one character at a time.
+        let mut b = at("a   |", IndentRules::Brackets);
+        b.delete_backward(false);
+        assert_eq!(shown(&b), "a  |");
+        assert_eq!(Indent { use_tabs: false, size: 4 }.outdented("      "), "    ");
+        assert_eq!(Indent { use_tabs: true, size: 4 }.outdented("\t\t"), "\t");
     }
 
     #[test]
