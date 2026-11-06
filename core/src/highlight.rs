@@ -21,6 +21,7 @@ const MAX_LINE_CHARS: usize = 5_000;
 /// Cached highlighted lines are dropped past this count to bound memory.
 const MAX_CACHED_LINES: usize = 20_000;
 
+#[derive(Clone, Debug)]
 pub struct Span {
     pub len: usize,
     pub color: Color,
@@ -167,6 +168,19 @@ fn highlight_line(
             })
         })
         .collect()
+}
+
+/// A code block's lines as highlighted spans, by its language's name or file extension.
+/// `None` when no grammar knows the language.
+pub fn snippet(language: &str, text: &str) -> Option<Vec<Vec<Span>>> {
+    let mut highlighter = Highlighter::new(&language.to_lowercase(), true);
+    highlighter.syntax_name.as_ref()?;
+    let buf = Buffer::new(text);
+    Some(
+        (0..buf.len_lines())
+            .map(|line| highlighter.spans(&buf, line).map(<[Span]>::to_vec).unwrap_or_default())
+            .collect(),
+    )
 }
 
 #[cfg(test)]

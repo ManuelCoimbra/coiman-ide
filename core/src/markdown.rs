@@ -1,328 +1,596 @@
-//! A small Markdown reader for the preview: the common parts of CommonMark and
-//! GitHub's tables. It never fetches anything: images show as their alt text.
+//! Markdown for the preview, read by pulldown-cmark: CommonMark with GitHub's tables,
+//! strikethrough and task lists. It never fetches anything: what images and links name
+//! is left to whoever shows them.
+
+use std::collections::HashMap;
+
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, Options, Parser, Tag, TagEnd};
+
+/// How a run of text looks.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Style {
+    pub bold: bool,
+    pub italic: bool,
+    pub strike: bool,
+    pub code: bool,
+    /// Where it leads, when it's (part of) a link.
+    pub link: Option<String>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Inline {
-    Text(String),
-    Bold(String),
-    Italic(String),
-    Strike(String),
-    Code(String),
-    Link { text: String, url: String },
+    Text(String, Style),
+    Image {
+        alt: String,
+        url: String,
+        link: Option<String>,
+    },
+    /// A line break inside a paragraph.
+    Break,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Align {
+    None,
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Item {
+    /// `Some(done)` for a task list item.
+    pub task: Option<bool>,
+    pub blocks: Vec<Block>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Block {
-    Heading(u8, Vec<Inline>),
+    /// `anchor` is what `#anchor` links to it with, as GitHub makes them.
+    Heading {
+        level: u8,
+        text: Vec<Inline>,
+        anchor: String,
+    },
     Paragraph(Vec<Inline>),
     Code {
         lang: String,
         text: String,
     },
-    /// `marker` is what to draw: a bullet, `3.`, `[x]` or `[ ]`.
-    Item {
-        depth: usize,
-        marker: String,
-        text: Vec<Inline>,
+    /// `start` is the first number of a numbered list.
+    List {
+        start: Option<u64>,
+        items: Vec<Item>,
     },
-    Quote(Vec<Inline>),
+    Quote(Vec<Block>),
     Rule,
     Table {
+        align: Vec<Align>,
         header: Vec<Vec<Inline>>,
         rows: Vec<Vec<Vec<Inline>>>,
     },
 }
 
-/// Builds an emphasis span.
-type MakeInline = fn(String) -> Inline;
+enum Kind {
+    Root,
+    Quote,
+    List(Option<u64>, Vec<Item>),
+    Item(Option<bool>),
+}
 
-/// Finds `close` at or after `from`, skipping backslash escapes.
-fn find_close(chars: &[char], from: usize, close: &[char]) -> Option<usize> {
-    let mut i = from;
-    while i + close.len() <= chars.len() {
-        if chars[i] == '\\' {
-            i += 2;
-            continue;
+struct Container {
+    kind: Kind,
+    blocks: Vec<Block>,
+}
+
+#[derive(Default)]
+struct Table {
+    align: Vec<Align>,
+    header: Vec<Vec<Inline>>,
+    rows: Vec<Vec<Vec<Inline>>>,
+    row: Vec<Vec<Inline>>,
+}
+
+struct Builder {
+    containers: Vec<Container>,
+    inlines: Vec<Inline>,
+    bold: u32,
+    italic: u32,
+    strike: u32,
+    code: u32,
+    links: Vec<String>,
+    /// An image being read: its address, and its alt text so far.
+    image: Option<(String, String)>,
+    /// A code block being read: its language and text.
+    code_block: Option<(String, String)>,
+    html: Option<String>,
+    table: Option<Table>,
+    anchors: HashMap<String, usize>,
+}
+
+impl Builder {
+    fn style(&self) -> Style {
+        Style {
+            bold: self.bold > 0,
+            italic: self.italic > 0,
+            strike: self.strike > 0,
+            code: self.code > 0,
+            link: self.links.last().cloned(),
         }
-        if chars[i..i + close.len()] == *close {
-            return Some(i);
-        }
-        i += 1;
     }
-    None
-}
 
-fn collect(chars: &[char]) -> String {
-    chars.iter().collect()
-}
+    fn text(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let style = self.style();
+        if let Some(Inline::Text(last, last_style)) = self.inlines.last_mut()
+            && *last_style == style
+        {
+            last.push_str(text);
+            return;
+        }
+        self.inlines.push(Inline::Text(text.to_owned(), style));
+    }
 
-/// Spans of one block of text.
-pub fn parse_inlines(text: &str) -> Vec<Inline> {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = Vec::new();
-    let mut plain = String::new();
-    let mut i = 0;
-    let push = |plain: &mut String, out: &mut Vec<Inline>, inline: Inline| {
-        if !plain.is_empty() {
-            out.push(Inline::Text(std::mem::take(plain)));
+    fn line_break(&mut self) {
+        if !self.inlines.is_empty() && !matches!(self.inlines.last(), Some(Inline::Break)) {
+            self.inlines.push(Inline::Break);
         }
-        out.push(inline);
-    };
-    while i < chars.len() {
-        let c = chars[i];
-        let next = chars.get(i + 1).copied();
-        if c == '\\' && next.is_some_and(|n| n.is_ascii_punctuation()) {
-            plain.extend(next);
-            i += 2;
-            continue;
+    }
+
+    fn top(&mut self) -> &mut Container {
+        self.containers.last_mut().expect("the root is never popped")
+    }
+
+    /// What's been read since the last block, as a paragraph.
+    fn flush(&mut self) {
+        while matches!(self.inlines.last(), Some(Inline::Break)) {
+            self.inlines.pop();
         }
-        if c == '`'
-            && let Some(end) = find_close(&chars, i + 1, &['`'])
-        {
-            push(&mut plain, &mut out, Inline::Code(collect(&chars[i + 1..end])));
-            i = end + 1;
-            continue;
+        if self.inlines.is_empty() {
+            return;
         }
-        // ![alt](url) and [text](url).
-        let image = c == '!' && next == Some('[');
-        if c == '[' || image {
-            let open = if image { i + 1 } else { i };
-            if let Some(close) = find_close(&chars, open + 1, &[']'])
-                && chars.get(close + 1) == Some(&'(')
-                && let Some(end) = find_close(&chars, close + 2, &[')'])
-            {
-                let (label, url) = (collect(&chars[open + 1..close]), collect(&chars[close + 2..end]));
-                if image {
-                    plain.push_str(&format!("[image: {label}]"));
-                } else {
-                    // A title after the address isn't part of it.
-                    let url = url.split_whitespace().next().unwrap_or("").to_owned();
-                    push(&mut plain, &mut out, Inline::Link { text: label, url });
-                }
-                i = end + 1;
-                continue;
-            }
-        }
-        if c == '<'
-            && let Some(end) = find_close(&chars, i + 1, &['>'])
-        {
-            let url = collect(&chars[i + 1..end]);
-            if url.starts_with("http://") || url.starts_with("https://") {
-                push(&mut plain, &mut out, Inline::Link { text: url.clone(), url });
-                i = end + 1;
-                continue;
-            }
-        }
-        let spans: [(&[char], MakeInline); 5] = [
-            (&['*', '*'], Inline::Bold),
-            (&['_', '_'], Inline::Bold),
-            (&['~', '~'], Inline::Strike),
-            (&['*'], Inline::Italic),
-            (&['_'], Inline::Italic),
-        ];
-        let mut matched = false;
-        for (mark, make) in spans {
-            if chars[i..].starts_with(mark) {
-                let inner = i + mark.len();
-                // `snake_case` and `2 * 3` aren't emphasis.
-                let inside_word = c == '_' && i > 0 && chars[i - 1].is_alphanumeric();
-                let opens = chars.get(inner).is_some_and(|n| !n.is_whitespace());
-                if !inside_word
-                    && opens
-                    && let Some(end) = find_close(&chars, inner, mark)
-                {
-                    let closes_word = c == '_' && chars.get(end + mark.len()).is_some_and(|n| n.is_alphanumeric());
-                    if end > inner && !closes_word && !chars[end - 1].is_whitespace() {
-                        push(&mut plain, &mut out, make(collect(&chars[inner..end])));
-                        i = end + mark.len();
-                        matched = true;
-                        break;
+        let inlines = std::mem::take(&mut self.inlines);
+        self.top().blocks.push(Block::Paragraph(inlines));
+    }
+
+    fn block(&mut self, block: Block) {
+        self.flush();
+        self.top().blocks.push(block);
+    }
+
+    fn anchor(&mut self, text: &[Inline]) -> String {
+        let mut slug = String::new();
+        for inline in text {
+            if let Inline::Text(t, _) = inline {
+                for c in t.chars().flat_map(char::to_lowercase) {
+                    if c.is_alphanumeric() || c == '-' || c == '_' {
+                        slug.push(c);
+                    } else if c == ' ' {
+                        slug.push('-');
                     }
                 }
             }
         }
-        if !matched {
-            plain.push(c);
-            i += 1;
+        let seen = self.anchors.entry(slug.clone()).or_insert(0);
+        *seen += 1;
+        if *seen == 1 { slug } else { format!("{slug}-{}", *seen - 1) }
+    }
+
+    /// A tag of HTML inside Markdown: the common ones that change how text looks.
+    fn html_tag(&mut self, tag: &str) {
+        let inner = tag.trim_start_matches('<').trim_end_matches('>').trim_end_matches('/');
+        if inner.starts_with('!') || inner.starts_with('?') {
+            return;
+        }
+        let closing = inner.starts_with('/');
+        let inner = inner.trim_start_matches('/');
+        let name_end = inner.find(|c: char| c.is_whitespace()).unwrap_or(inner.len());
+        let name = inner[..name_end].to_ascii_lowercase();
+        let attrs = &inner[name_end..];
+        let count = |n: &mut u32| {
+            if closing {
+                *n = n.saturating_sub(1);
+            } else {
+                *n += 1;
+            }
+        };
+        match name.as_str() {
+            "b" | "strong" | "summary" => {
+                count(&mut self.bold);
+                if name == "summary" && closing {
+                    self.line_break();
+                }
+            }
+            "i" | "em" | "cite" => count(&mut self.italic),
+            "s" | "del" | "strike" => count(&mut self.strike),
+            "code" | "kbd" | "samp" | "tt" => count(&mut self.code),
+            "a" if closing => {
+                self.links.pop();
+            }
+            "a" => self.links.push(attribute(attrs, "href").unwrap_or_default()),
+            "br" => self.line_break(),
+            "img" => {
+                let url = attribute(attrs, "src").unwrap_or_default();
+                let alt = attribute(attrs, "alt").unwrap_or_default();
+                self.inlines.push(Inline::Image { alt, url, link: self.links.last().cloned() });
+            }
+            "p" | "div" | "details" | "li" | "tr" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote" | "pre"
+            | "table" | "ul" | "ol" | "hr" => self.line_break(),
+            _ => {}
         }
     }
-    if !plain.is_empty() {
-        out.push(Inline::Text(plain));
+
+    /// A block of raw HTML, as text with the tags above applied.
+    fn html_block(&mut self, html: &str) {
+        let mut rest = html;
+        while !rest.is_empty() {
+            if let Some(comment) = rest.strip_prefix("<!--") {
+                rest = comment.find("-->").map_or("", |end| &comment[end + 3..]);
+            } else if rest.starts_with('<')
+                && let Some(end) = rest.find('>')
+            {
+                self.html_tag(&rest[..=end]);
+                rest = &rest[end + 1..];
+            } else {
+                let end = rest[1..].find('<').map_or(rest.len(), |i| i + 1);
+                let words: Vec<&str> = rest[..end].split_whitespace().collect();
+                if !words.is_empty() {
+                    let lead = rest[..end].starts_with(char::is_whitespace) && !self.inlines.is_empty();
+                    let trail = rest[..end].ends_with(char::is_whitespace);
+                    let text =
+                        format!("{}{}{}", if lead { " " } else { "" }, words.join(" "), if trail { " " } else { "" });
+                    self.text(&unescape(&text));
+                }
+                rest = &rest[end..];
+            }
+        }
+        // Whatever the HTML left open ends with it.
+        (self.bold, self.italic, self.strike, self.code) = (0, 0, 0, 0);
+        self.links.clear();
+        self.flush();
     }
-    out
+
+    fn start(&mut self, tag: Tag) {
+        match tag {
+            Tag::Paragraph | Tag::Heading { .. } => self.flush(),
+            Tag::BlockQuote(_) => {
+                self.flush();
+                self.containers.push(Container { kind: Kind::Quote, blocks: Vec::new() });
+            }
+            Tag::CodeBlock(kind) => {
+                self.flush();
+                let lang = match kind {
+                    CodeBlockKind::Fenced(info) => info.split([' ', ',', '{']).next().unwrap_or("").to_owned(),
+                    CodeBlockKind::Indented => String::new(),
+                };
+                self.code_block = Some((lang, String::new()));
+            }
+            Tag::HtmlBlock => {
+                self.flush();
+                self.html = Some(String::new());
+            }
+            Tag::List(start) => {
+                self.flush();
+                self.containers.push(Container { kind: Kind::List(start, Vec::new()), blocks: Vec::new() });
+            }
+            Tag::Item => self.containers.push(Container { kind: Kind::Item(None), blocks: Vec::new() }),
+            Tag::Table(align) => {
+                self.flush();
+                let align = align
+                    .into_iter()
+                    .map(|a| match a {
+                        Alignment::None => Align::None,
+                        Alignment::Left => Align::Left,
+                        Alignment::Center => Align::Center,
+                        Alignment::Right => Align::Right,
+                    })
+                    .collect();
+                self.table = Some(Table { align, ..Default::default() });
+            }
+            Tag::Emphasis => self.italic += 1,
+            Tag::Strong => self.bold += 1,
+            Tag::Strikethrough => self.strike += 1,
+            Tag::Link { dest_url, .. } => self.links.push(dest_url.into_string()),
+            Tag::Image { dest_url, .. } => self.image = Some((dest_url.into_string(), String::new())),
+            _ => {}
+        }
+    }
+
+    fn end(&mut self, tag: TagEnd) {
+        match tag {
+            TagEnd::Paragraph => self.flush(),
+            TagEnd::Heading(level) => {
+                let text = std::mem::take(&mut self.inlines);
+                let anchor = self.anchor(&text);
+                self.block(Block::Heading { level: level as u8, text, anchor });
+            }
+            TagEnd::BlockQuote(_) => {
+                self.flush();
+                if self.containers.len() > 1 {
+                    let quote = self.containers.pop().map(|c| c.blocks).unwrap_or_default();
+                    self.block(Block::Quote(quote));
+                }
+            }
+            TagEnd::CodeBlock => {
+                if let Some((lang, mut text)) = self.code_block.take() {
+                    if text.ends_with('\n') {
+                        text.pop();
+                    }
+                    self.block(Block::Code { lang, text });
+                }
+            }
+            TagEnd::HtmlBlock => {
+                if let Some(html) = self.html.take() {
+                    self.html_block(&html);
+                }
+            }
+            TagEnd::Item => {
+                self.flush();
+                if let Some(Container { kind: Kind::Item(task), blocks }) = self.containers.pop()
+                    && let Some(Container { kind: Kind::List(_, items), .. }) = self.containers.last_mut()
+                {
+                    items.push(Item { task, blocks });
+                }
+            }
+            TagEnd::List(_) => {
+                self.flush();
+                if let Some(Container { kind: Kind::List(start, items), .. }) = self.containers.pop() {
+                    self.block(Block::List { start, items });
+                }
+            }
+            TagEnd::TableCell => {
+                let cell = std::mem::take(&mut self.inlines);
+                if let Some(table) = &mut self.table {
+                    table.row.push(cell);
+                }
+            }
+            TagEnd::TableHead => {
+                if let Some(table) = &mut self.table {
+                    table.header = std::mem::take(&mut table.row);
+                }
+            }
+            TagEnd::TableRow => {
+                if let Some(table) = &mut self.table {
+                    let row = std::mem::take(&mut table.row);
+                    table.rows.push(row);
+                }
+            }
+            TagEnd::Table => {
+                if let Some(Table { align, header, rows, .. }) = self.table.take() {
+                    self.block(Block::Table { align, header, rows });
+                }
+            }
+            TagEnd::Emphasis => self.italic = self.italic.saturating_sub(1),
+            TagEnd::Strong => self.bold = self.bold.saturating_sub(1),
+            TagEnd::Strikethrough => self.strike = self.strike.saturating_sub(1),
+            TagEnd::Link => {
+                self.links.pop();
+            }
+            TagEnd::Image => {
+                if let Some((url, alt)) = self.image.take() {
+                    let link = self.links.last().cloned();
+                    self.inlines.push(Inline::Image { alt, url, link });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn event(&mut self, event: Event) {
+        match event {
+            Event::Start(tag) => self.start(tag),
+            Event::End(tag) => self.end(tag),
+            Event::Text(text) | Event::InlineMath(text) | Event::DisplayMath(text) => {
+                if let Some((_, code)) = &mut self.code_block {
+                    code.push_str(&text);
+                } else if let Some((_, alt)) = &mut self.image {
+                    alt.push_str(&text);
+                } else {
+                    self.text(&text);
+                }
+            }
+            Event::Code(text) => {
+                if let Some((_, alt)) = &mut self.image {
+                    alt.push_str(&text);
+                } else {
+                    self.code += 1;
+                    self.text(&text);
+                    self.code -= 1;
+                }
+            }
+            Event::Html(html) => match &mut self.html {
+                Some(block) => block.push_str(&html),
+                None => self.html_block(&html),
+            },
+            Event::InlineHtml(html) => self.html_tag(&html),
+            Event::SoftBreak => self.text(" "),
+            Event::HardBreak => self.inlines.push(Inline::Break),
+            Event::Rule => self.block(Block::Rule),
+            Event::FootnoteReference(label) => self.text(&format!("[{label}]")),
+            Event::TaskListMarker(done) => {
+                if let Some(Container { kind: Kind::Item(task), .. }) = self.containers.last_mut() {
+                    *task = Some(done);
+                }
+            }
+        }
+    }
 }
 
-fn table_cells(line: &str) -> Vec<String> {
-    let line = line.trim();
-    let line = line.strip_prefix('|').unwrap_or(line);
-    let line = line.strip_suffix('|').unwrap_or(line);
-    line.split('|').map(|c| c.trim().to_owned()).collect()
+/// An attribute's value in the inside of an HTML tag.
+fn attribute(attrs: &str, name: &str) -> Option<String> {
+    let lower = attrs.to_ascii_lowercase();
+    let mut from = 0;
+    while let Some(found) = lower[from..].find(name) {
+        let at = from + found;
+        from = at + name.len();
+        let before_ok = at == 0 || lower.as_bytes()[at - 1].is_ascii_whitespace();
+        let rest = attrs[from..].trim_start();
+        if !before_ok || !rest.starts_with('=') {
+            continue;
+        }
+        let value = rest[1..].trim_start();
+        let text = match value.chars().next() {
+            Some(q @ ('"' | '\'')) => value[1..].split(q).next().unwrap_or(""),
+            _ => value.split(|c: char| c.is_whitespace() || c == '>').next().unwrap_or(""),
+        };
+        return Some(unescape(text));
+    }
+    None
 }
 
-fn is_table_divider(line: &str) -> bool {
-    line.contains('-') && line.contains('|') && line.chars().all(|c| matches!(c, '|' | '-' | ':' | ' ' | '\t'))
-}
-
-fn list_item(line: &str) -> Option<(usize, String, &str)> {
-    let indent = line.len() - line.trim_start().len();
-    let rest = line.trim_start();
-    let (marker, body) = if let Some(body) = ["- ", "* ", "+ "].iter().find_map(|m| rest.strip_prefix(m)) {
-        ("•".to_owned(), body)
-    } else {
-        let digits = rest.chars().take_while(char::is_ascii_digit).count();
-        let body =
-            rest.get(digits..).filter(|_| digits > 0).and_then(|r| r.strip_prefix(". ").or(r.strip_prefix(") ")))?;
-        (format!("{}.", &rest[..digits]), body)
-    };
-    let (marker, body) = match body.get(..4) {
-        Some("[ ] ") => ("[ ]".to_owned(), &body[4..]),
-        Some("[x] " | "[X] ") => ("[x]".to_owned(), &body[4..]),
-        _ => (marker, body),
-    };
-    Some((indent / 2, marker, body))
-}
-
-fn is_rule(line: &str) -> bool {
-    let t: String = line.chars().filter(|c| !c.is_whitespace()).collect();
-    t.len() >= 3 && ["-", "*", "_"].iter().any(|m| t.chars().all(|c| m.starts_with(c)))
-}
-
-fn heading(line: &str) -> Option<(u8, &str)> {
-    let t = line.trim_start();
-    let level = t.chars().take_while(|c| *c == '#').count();
-    let rest = t.get(level..)?;
-    ((1..=6).contains(&level) && (rest.is_empty() || rest.starts_with(' ')))
-        .then(|| (level as u8, rest.trim().trim_end_matches('#').trim_end()))
-}
-
-fn starts_block(line: &str) -> bool {
-    let t = line.trim_start();
-    heading(line).is_some()
-        || t.starts_with("```")
-        || t.starts_with("~~~")
-        || t.starts_with('>')
-        || is_rule(line)
-        || list_item(line).is_some()
+fn unescape(text: &str) -> String {
+    text.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&nbsp;", "\u{a0}")
+        .replace("&amp;", "&")
 }
 
 /// A Markdown document as blocks.
 pub fn parse(text: &str) -> Vec<Block> {
-    let lines: Vec<&str> = text.lines().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i];
-        let t = line.trim_start();
-        if t.is_empty() {
-            i += 1;
-        } else if let Some(fence) = ["```", "~~~"].iter().find(|f| t.starts_with(**f)) {
-            let lang = t[3..].trim().to_owned();
-            let end = lines[i + 1..]
-                .iter()
-                .position(|l| l.trim_start().starts_with(fence))
-                .map_or(lines.len(), |p| i + 1 + p);
-            out.push(Block::Code { lang, text: lines[i + 1..end].join("\n") });
-            i = end + 1;
-        } else if let Some((level, title)) = heading(line) {
-            out.push(Block::Heading(level, parse_inlines(title)));
-            i += 1;
-        } else if is_rule(line) {
-            out.push(Block::Rule);
-            i += 1;
-        } else if t.starts_with('>') {
-            let start = i;
-            while i < lines.len() && lines[i].trim_start().starts_with('>') {
-                i += 1;
-            }
-            let body: Vec<&str> =
-                lines[start..i].iter().map(|l| l.trim_start().trim_start_matches('>').trim()).collect();
-            out.push(Block::Quote(parse_inlines(&body.join(" "))));
-        } else if let Some((depth, marker, body)) = list_item(line) {
-            out.push(Block::Item { depth, marker, text: parse_inlines(body) });
-            i += 1;
-        } else if line.contains('|') && lines.get(i + 1).is_some_and(|l| is_table_divider(l)) {
-            let cells = |l: &str| table_cells(l).iter().map(|c| parse_inlines(c)).collect::<Vec<_>>();
-            let header = cells(line);
-            i += 2;
-            let mut rows = Vec::new();
-            while i < lines.len() && lines[i].contains('|') && !lines[i].trim().is_empty() {
-                rows.push(cells(lines[i]));
-                i += 1;
-            }
-            out.push(Block::Table { header, rows });
-        } else {
-            let start = i;
-            i += 1;
-            while i < lines.len() && !lines[i].trim().is_empty() && !starts_block(lines[i]) {
-                i += 1;
-            }
-            let body: Vec<&str> = lines[start..i].iter().map(|l| l.trim()).collect();
-            out.push(Block::Paragraph(parse_inlines(&body.join(" "))));
-        }
+    let options = Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_FOOTNOTES
+        | Options::ENABLE_GFM;
+    let mut builder = Builder {
+        containers: vec![Container { kind: Kind::Root, blocks: Vec::new() }],
+        inlines: Vec::new(),
+        bold: 0,
+        italic: 0,
+        strike: 0,
+        code: 0,
+        links: Vec::new(),
+        image: None,
+        code_block: None,
+        html: None,
+        table: None,
+        anchors: HashMap::new(),
+    };
+    for event in Parser::new_ext(text, options) {
+        builder.event(event);
     }
-    out
+    builder.flush();
+    // Anything left open (it can't be, but a parser bug shouldn't lose text) joins the root.
+    while builder.containers.len() > 1 {
+        let blocks = builder.containers.pop().map(|c| c.blocks).unwrap_or_default();
+        builder.top().blocks.extend(blocks);
+    }
+    builder.containers.pop().map(|c| c.blocks).unwrap_or_default()
+}
+
+/// The plain text of some inlines, as a heading's or a cell's.
+pub fn plain(inlines: &[Inline]) -> String {
+    inlines
+        .iter()
+        .map(|i| match i {
+            Inline::Text(t, _) => t.as_str(),
+            Inline::Image { alt, .. } => alt.as_str(),
+            Inline::Break => " ",
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Inline::*;
     use super::*;
 
     fn text(s: &str) -> Inline {
-        Text(s.to_owned())
+        Inline::Text(s.to_owned(), Style::default())
+    }
+
+    fn styled(s: &str, f: impl FnOnce(&mut Style)) -> Inline {
+        let mut style = Style::default();
+        f(&mut style);
+        Inline::Text(s.to_owned(), style)
     }
 
     #[test]
-    fn reads_spans() {
+    fn nested_spans_keep_every_style() {
+        let blocks = parse("a **b `c` [d *e*](http://x)** f");
+        let Block::Paragraph(spans) = &blocks[0] else { panic!("{blocks:?}") };
         assert_eq!(
-            parse_inlines("a **b** *c* `d*e` ~~f~~ [g](http://h \"t\")"),
-            vec![
+            spans,
+            &[
                 text("a "),
-                Bold("b".into()),
-                text(" "),
-                Italic("c".into()),
-                text(" "),
-                Code("d*e".into()),
-                text(" "),
-                Strike("f".into()),
-                text(" "),
-                Link { text: "g".into(), url: "http://h".into() },
+                styled("b ", |s| s.bold = true),
+                styled("c", |s| (s.bold, s.code) = (true, true)),
+                styled(" ", |s| s.bold = true),
+                styled("d ", |s| (s.bold, s.link) = (true, Some("http://x".into()))),
+                styled("e", |s| (s.bold, s.italic, s.link) = (true, true, Some("http://x".into()))),
+                text(" f"),
             ]
         );
-        assert_eq!(parse_inlines("snake_case_name and 2 * 3 * 4"), vec![text("snake_case_name and 2 * 3 * 4")]);
-        assert_eq!(parse_inlines(r"\*not\* it"), vec![text("*not* it")]);
-        assert_eq!(parse_inlines("![logo](x.png)"), vec![text("[image: logo]")]);
-        assert_eq!(parse_inlines("unclosed **bold and `code"), vec![text("unclosed **bold and `code")]);
+    }
+
+    #[test]
+    fn the_commonmark_cases_the_old_reader_missed() {
+        let doc = "Setext\n===\n\n    indented code\n\nhard  \nbreak\n\n[ref][r]\n\n[r]: https://r.example\n\n- item *a\n  lazy* line\n";
+        let blocks = parse(doc);
+        assert!(matches!(&blocks[0], Block::Heading { level: 1, anchor, .. } if anchor == "setext"));
+        assert_eq!(blocks[1], Block::Code { lang: String::new(), text: "indented code".into() });
+        assert_eq!(blocks[2], Block::Paragraph(vec![text("hard"), Inline::Break, text("break")]));
+        assert_eq!(blocks[3], Block::Paragraph(vec![styled("ref", |s| s.link = Some("https://r.example".into()))]));
+        let Block::List { items, .. } = &blocks[4] else { panic!("{:?}", blocks[4]) };
         assert_eq!(
-            parse_inlines("<https://a.b> <div>")[0],
-            Link { text: "https://a.b".into(), url: "https://a.b".into() }
+            items[0].blocks,
+            [Block::Paragraph(vec![text("item "), styled("a lazy", |s| s.italic = true), text(" line")])]
         );
     }
 
     #[test]
-    fn reads_blocks() {
-        let doc = "# Title #\n\nOne\ntwo\n\n- a\n  - [x] b\n3. c\n\n> quote\n> more\n\n```rust\nlet x = 1;\n\n# not a heading\n```\n---\n| A | B |\n|---|:-:|\n| 1 | **2** |\n\nend";
+    fn lists_nest_and_quotes_hold_blocks() {
+        let blocks = parse("1. one\n   - two\n     - [x] three\n3. four\n\n> quote\n> - in a list\n>\n> second\n");
+        let Block::List { start: Some(1), items } = &blocks[0] else { panic!("{:?}", blocks[0]) };
+        assert_eq!(items.len(), 2);
+        let Block::List { start: None, items: inner } = &items[0].blocks[1] else { panic!() };
+        let Block::List { items: innermost, .. } = &inner[0].blocks[1] else { panic!() };
+        assert_eq!(innermost[0].task, Some(true));
+        let Block::Quote(quote) = &blocks[1] else { panic!("{:?}", blocks[1]) };
+        assert_eq!(quote.len(), 3);
+        assert!(matches!(quote[1], Block::List { .. }));
+    }
+
+    #[test]
+    fn tables_images_code_and_html() {
+        // GitHub splits a cell at `|` even inside code, unless it's escaped.
+        let doc = "| a | `x\\|y` |\n|:--|--:|\n| 1 | 2 |\n\n![logo](img/a.png)\n\n```json title\n{}\n```\n\n<details><summary>More</summary>Hidden <b>HTML</b> &amp; text</details>\n";
         let blocks = parse(doc);
-        assert_eq!(blocks[0], Block::Heading(1, vec![text("Title")]));
-        assert_eq!(blocks[1], Block::Paragraph(vec![text("One two")]));
-        assert_eq!(blocks[2], Block::Item { depth: 0, marker: "•".into(), text: vec![text("a")] });
-        assert_eq!(blocks[3], Block::Item { depth: 1, marker: "[x]".into(), text: vec![text("b")] });
-        assert_eq!(blocks[4], Block::Item { depth: 0, marker: "3.".into(), text: vec![text("c")] });
-        assert_eq!(blocks[5], Block::Quote(vec![text("quote more")]));
-        assert_eq!(blocks[6], Block::Code { lang: "rust".into(), text: "let x = 1;\n\n# not a heading".into() });
-        assert_eq!(blocks[7], Block::Rule);
+        let Block::Table { align, header, rows } = &blocks[0] else { panic!("{:?}", blocks[0]) };
+        assert_eq!(align, &[Align::Left, Align::Right]);
+        assert_eq!(plain(&header[1]), "x|y");
+        assert_eq!(rows.len(), 1);
         assert_eq!(
-            blocks[8],
-            Block::Table {
-                header: vec![vec![text("A")], vec![text("B")]],
-                rows: vec![vec![vec![text("1")], vec![Bold("2".into())]]],
-            }
+            blocks[1],
+            Block::Paragraph(vec![Inline::Image { alt: "logo".into(), url: "img/a.png".into(), link: None }])
         );
-        assert_eq!(blocks[9], Block::Paragraph(vec![text("end")]));
-        // An unclosed fence runs to the end; odd input doesn't panic.
-        assert_eq!(parse("```\nx"), vec![Block::Code { lang: String::new(), text: "x".into() }]);
-        assert_eq!(parse("#hashtag")[0], Block::Paragraph(vec![text("#hashtag")]));
-        for odd in ["", "#", "- ", "|", "|\n|-|", "```", ">", "1.", "é - è", "[a](", "![", "*", "**", "`"] {
+        assert_eq!(blocks[2], Block::Code { lang: "json".into(), text: "{}".into() });
+        let Block::Paragraph(html) = &blocks[3] else { panic!("{:?}", blocks[3]) };
+        assert_eq!(plain(html), "More Hidden HTML & text");
+        assert!(html.contains(&styled("More", |s| s.bold = true)));
+        assert!(html.contains(&styled("HTML", |s| s.bold = true)));
+    }
+
+    #[test]
+    fn anchors_are_like_githubs() {
+        let blocks = parse("# Hello, World!\n# Hello, World!\n## Café 🚀\n");
+        let anchors: Vec<&str> = blocks
+            .iter()
+            .map(|b| match b {
+                Block::Heading { anchor, .. } => anchor.as_str(),
+                _ => "",
+            })
+            .collect();
+        assert_eq!(anchors, ["hello-world", "hello-world-1", "café-"]);
+    }
+
+    #[test]
+    fn odd_input_does_not_panic() {
+        for odd in ["", "#", "- ", "|", "|\n|-|", "```", ">", "1.", "é - è", "[a](", "![", "*", "**", "`", "<a", "<b>x"]
+        {
             let _ = parse(odd);
         }
     }

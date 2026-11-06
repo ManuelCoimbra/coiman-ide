@@ -53,6 +53,7 @@ tree-sitter-typescript = "0.23"
 tree-sitter-yaml = "0.7.2"
 url = "2"
 wasmtime = { version = "50", default-features = false, features = ["runtime", "cranelift", "component-model", "std"] }
+pulldown-cmark = { version = "0.13.6", default-features = false }
 
 
 

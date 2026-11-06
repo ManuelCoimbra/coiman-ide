@@ -27,9 +27,9 @@ pub(super) fn is_image(path: &Path) -> bool {
     path.extension().is_some_and(|e| IMAGE_EXTENSIONS.iter().any(|i| e.eq_ignore_ascii_case(i)))
 }
 
-struct Decoded {
-    size: [usize; 2],
-    rgba: Vec<u8>,
+pub(super) struct Decoded {
+    pub(super) size: [usize; 2],
+    pub(super) rgba: Vec<u8>,
 }
 
 enum ImageState {
@@ -80,7 +80,7 @@ pub(super) struct Web {
     checked: HashMap<PathBuf, Checked>,
 }
 
-fn decode(path: &Path) -> Result<Decoded, String> {
+pub(super) fn decode(path: &Path) -> Result<Decoded, String> {
     let image = image::ImageReader::open(path)
         .map_err(|e| e.to_string())?
         .with_guessed_format()

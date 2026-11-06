@@ -83,7 +83,7 @@ is read and written on your machine.
   stop is selected; there is no tabbing between stops yet
 - Terminal search (`Ctrl+F` in a terminal): scrollback included, across wrapped lines, with match
   case; `Enter` and `Shift+Enter` move through matches
-- Markdown preview (`Ctrl+K V`, **View > Markdown Preview**) beside the editor, updating as you type.
+- Markdown preview (`Ctrl+K V`, **View > Markdown Preview**) beside the editor, updating as you type. It reads CommonMark with GitHub's tables, task lists, strikethrough and footnotes ([pulldown-cmark](https://crates.io/crates/pulldown-cmark)). Code blocks are highlighted, and the common HTML tags (`<b>`, `<i>`, `<code>`, `<kbd>`, `<a>`, `<img>`, `<details>`) are shown. Pictures beside the file (PNG, JPEG, GIF, WebP, BMP, SVG) are drawn. Pictures on the web aren't downloaded: they show as a link. Links open in the browser, open the file they name here, or scroll to a `#heading`.
   Links open only when clicked, and images show as their alt text: nothing is fetched
 - Auto save (`files.auto_save`): after a delay, or on leaving the file or window. Saves after a
   delay don't each add a local history entry, and files changed on disk wait for you

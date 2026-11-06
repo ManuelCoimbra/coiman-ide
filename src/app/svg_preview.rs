@@ -15,7 +15,7 @@ const REST: f64 = 0.25;
 /// The longest side drawn, so a huge declared size can't take all the memory.
 const MAX_SIDE: f32 = 2048.0;
 
-type Drawn = Result<([usize; 2], Vec<u8>, [f32; 2]), String>;
+pub(super) type Drawn = Result<([usize; 2], Vec<u8>, [f32; 2]), String>;
 
 #[derive(Default)]
 pub(super) struct SvgPreview {
@@ -40,7 +40,7 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
 }
 
 /// Draws SVG text. It reads nothing else: no files or addresses it names.
-fn draw(text: &str) -> Drawn {
+pub(super) fn draw(text: &str) -> Drawn {
     let options = usvg::Options { fontdb: fonts(), resources_dir: None, ..Default::default() };
     let tree = usvg::Tree::from_str(text, &options).map_err(|e| e.to_string())?;
     let size = tree.size();
