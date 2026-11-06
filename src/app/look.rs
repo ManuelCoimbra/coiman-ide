@@ -1,4 +1,4 @@
-//! Themes by time of day, and an image over the window.
+//! Themes by time of day, and pictures over the window or each part of it.
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
@@ -15,19 +15,34 @@ const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 /// Larger pictures are scaled down: it's a faint backdrop.
 const LARGEST_SIDE: u32 = 2560;
 
+/// A picture or folder of them, on its way to the screen.
+#[derive(Default)]
+struct Backdrop {
+    /// The setting last read, and the pictures it means.
+    source: String,
+    pictures: Vec<PathBuf>,
+    /// The last one shown.
+    at: Option<usize>,
+    next_picture: f64,
+    loading: Option<Receiver<Result<egui::ColorImage, String>>>,
+    texture: Option<egui::TextureHandle>,
+}
+
+/// Where each part of the window is this frame.
+pub(super) struct Places {
+    pub(super) editor: egui::Rect,
+    pub(super) sides: Vec<egui::Rect>,
+    pub(super) panels: Vec<egui::Rect>,
+}
+
 #[derive(Default)]
 pub(super) struct Look {
     /// The schedule last read, and the theme it last set.
     schedule: String,
     scheduled: Option<String>,
     next_check: f64,
-    /// The image setting last read, and the pictures it means.
-    source: String,
-    pictures: Vec<PathBuf>,
-    at: usize,
-    next_picture: f64,
-    loading: Option<Receiver<Result<egui::ColorImage, String>>>,
-    texture: Option<egui::TextureHandle>,
+    /// The main picture, then the editor's, the side bars' and the panel's own.
+    backdrops: [Backdrop; 4],
 }
 
 /// The pictures a setting means: a file, or the images in a folder, in order.
@@ -70,21 +85,100 @@ fn cover_uv(picture: egui::Vec2, space: egui::Vec2) -> egui::Rect {
     egui::Rect::from_center_size(egui::pos2(0.5, 0.5), egui::vec2(width, height))
 }
 
+/// Which picture comes next: the following one, or with `random` any but the current one.
+/// `seed` is any changing number.
+fn next_index(current: Option<usize>, count: usize, random: bool, seed: u64) -> usize {
+    match current {
+        None if !random => 0,
+        Some(at) if !random => (at + 1) % count,
+        Some(at) if count > 1 => {
+            // Multiplying spreads out seeds that are close together, as clocks are.
+            let step = seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32;
+            (at + 1 + step as usize % (count - 1)) % count
+        }
+        _ => (seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) as usize % count,
+    }
+}
+
+impl Backdrop {
+    /// Follows its setting, and loads the next picture when it's time. Returns a problem to tell.
+    fn pump(&mut self, ctx: &egui::Context, source: &str, interval: f64, random: bool) -> Option<String> {
+        let now = ctx.input(|i| i.time);
+        let mut problem = None;
+        if source != self.source {
+            *self = Self { source: source.to_owned(), ..Self::default() };
+            self.pictures = if source.is_empty() { Vec::new() } else { pictures_of(source) };
+            if !source.is_empty() && self.pictures.is_empty() {
+                problem = Some(format!("Background image: no picture found at {source}"));
+            }
+        }
+        if let Some(rx) = &self.loading
+            && let Ok(result) = rx.try_recv()
+        {
+            self.loading = None;
+            match result {
+                Ok(picture) => {
+                    let name = format!("background_{source}");
+                    self.texture = Some(ctx.load_texture(name, picture, egui::TextureOptions::LINEAR));
+                }
+                Err(why) => problem = Some(format!("Background image: {why}")),
+            }
+        }
+        if self.pictures.is_empty() || self.loading.is_some() || now < self.next_picture {
+            return problem;
+        }
+        let rotates = interval > 0.0 && self.pictures.len() > 1;
+        // Once it's loaded, a single picture needs nothing more.
+        if self.texture.is_some() && !rotates {
+            return problem;
+        }
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(now.to_bits(), |d| d.as_nanos() as u64);
+        let at = next_index(self.at, self.pictures.len(), random, seed);
+        self.at = Some(at);
+        let path = self.pictures[at].clone();
+        applog::info(&format!("background image {}", path.display()));
+        self.next_picture = if rotates { now + interval } else { f64::INFINITY };
+        if rotates {
+            ctx.request_repaint_after(Duration::from_secs_f64(interval));
+        }
+        let (tx, rx) = mpsc::channel();
+        let wake = ctx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(decode(&path));
+            wake.request_repaint();
+        });
+        self.loading = Some(rx);
+        problem
+    }
+
+    fn paint(&self, ctx: &egui::Context, rect: egui::Rect, radius: f32, opacity: f32) {
+        let Some(texture) = &self.texture else { return };
+        let layer = egui::LayerId::new(egui::Order::Background, egui::Id::unique("background_image"));
+        let tint = egui::Color32::WHITE.gamma_multiply(opacity.clamp(0.0, 1.0));
+        let shape = egui::epaint::RectShape::filled(rect, radius, tint)
+            .with_texture(texture.id(), cover_uv(texture.size_vec2(), rect.size()));
+        ctx.layer_painter(layer).add(shape);
+    }
+}
+
 impl CodeApp {
     /// Follows the schedule: a theme chosen by hand stays until the next time on it.
     pub(super) fn pump_theme_schedule(&mut self, ctx: &egui::Context) {
         let text = &self.settings.workbench.theme_schedule;
         let now = ctx.input(|i| i.time);
-        if *text != self.look.schedule {
-            self.look.schedule.clone_from(text);
+        let settings_text = format!("{text}|{}", self.settings.workbench.theme_location);
+        if settings_text != self.look.schedule {
             self.look.next_check = 0.0;
             if text.trim().is_empty() && self.look.scheduled.take().is_some() {
                 // Back to the theme the settings name.
                 let (back, _) = theme::resolve(&self.settings.workbench.color_theme, &self.themes);
                 theme::set(ctx, back);
             }
+            self.look.schedule = settings_text;
         }
-        if self.look.schedule.trim().is_empty() {
+        if self.settings.workbench.theme_schedule.trim().is_empty() {
             return;
         }
         ctx.request_repaint_after(Duration::from_secs_f64(CLOCK_SECONDS));
@@ -92,7 +186,10 @@ impl CodeApp {
             return;
         }
         self.look.next_check = now + CLOCK_SECONDS;
-        let list = match theme_schedule::parse(&self.look.schedule) {
+        let parsed = theme_schedule::parse_location(&self.settings.workbench.theme_location).and_then(|location| {
+            theme_schedule::parse(&self.settings.workbench.theme_schedule, theme_schedule::sun_today(location))
+        });
+        let list = match parsed {
             Ok(list) => list,
             Err(why) => {
                 self.status = Some(why);
@@ -118,69 +215,41 @@ impl CodeApp {
         }
     }
 
-    /// Follows the image setting, and loads the next picture when it's time.
+    /// Follows the image settings, and loads the next pictures when it's time.
     pub(super) fn pump_background(&mut self, ctx: &egui::Context) {
-        let source = self.settings.workbench.background_image.trim().to_owned();
-        let now = ctx.input(|i| i.time);
-        if source != self.look.source {
-            self.look.source.clone_from(&source);
-            self.look.pictures = if source.is_empty() { Vec::new() } else { pictures_of(&source) };
-            self.look.at = 0;
-            self.look.texture = None;
-            self.look.next_picture = 0.0;
-            if !source.is_empty() && self.look.pictures.is_empty() {
-                self.status = Some(format!("Background image: no picture found at {source}"));
+        let settings = &self.settings.workbench;
+        let sources = [
+            settings.background_image.trim().to_owned(),
+            settings.background_editor.trim().to_owned(),
+            settings.background_sidebar.trim().to_owned(),
+            settings.background_panel.trim().to_owned(),
+        ];
+        let (interval, random) = (f64::from(settings.background_interval), settings.background_random);
+        for (backdrop, source) in self.look.backdrops.iter_mut().zip(&sources) {
+            if let Some(problem) = backdrop.pump(ctx, source, interval, random) {
+                self.status = Some(problem);
             }
         }
-        if let Some(rx) = &self.look.loading
-            && let Ok(result) = rx.try_recv()
-        {
-            self.look.loading = None;
-            match result {
-                Ok(picture) => {
-                    let options = egui::TextureOptions::LINEAR;
-                    self.look.texture = Some(ctx.load_texture("background_image", picture, options));
-                }
-                Err(why) => self.status = Some(format!("Background image: {why}")),
-            }
-        }
-        if self.look.pictures.is_empty() || self.look.loading.is_some() || now < self.look.next_picture {
-            return;
-        }
-        let interval = f64::from(self.settings.workbench.background_interval);
-        let rotates = interval > 0.0 && self.look.pictures.len() > 1;
-        // Once it's loaded, a single picture needs nothing more.
-        if self.look.texture.is_some() && !rotates {
-            return;
-        }
-        let path = self.look.pictures[self.look.at % self.look.pictures.len()].clone();
-        applog::info(&format!("background image {}", path.display()));
-        self.look.at += 1;
-        self.look.next_picture = if rotates { now + interval } else { f64::INFINITY };
-        if rotates {
-            ctx.request_repaint_after(Duration::from_secs_f64(interval));
-        }
-        let (tx, rx) = mpsc::channel();
-        let wake = ctx.clone();
-        std::thread::spawn(move || {
-            let _ = tx.send(decode(&path));
-            wake.request_repaint();
-        });
-        self.look.loading = Some(rx);
     }
 
-    /// Lays the picture faintly over what's been drawn, under windows and popups.
-    pub(super) fn paint_background(&self, ctx: &egui::Context, editor: egui::Rect) {
-        let Some(texture) = &self.look.texture else { return };
+    /// Lays the pictures faintly over what's been drawn, under windows and popups.
+    pub(super) fn paint_background(&self, ctx: &egui::Context, places: &Places) {
         let settings = &self.settings.workbench;
-        let whole = settings.background_area == "window";
-        let rect = if whole { ctx.content_rect() } else { editor };
-        let layer = egui::LayerId::new(egui::Order::Background, egui::Id::unique("background_image"));
-        let tint = egui::Color32::WHITE.gamma_multiply(settings.background_opacity.clamp(0.0, 1.0));
-        let radius = if whole || !theme::islands() { 0.0 } else { 10.0 };
-        let shape = egui::epaint::RectShape::filled(rect, radius, tint)
-            .with_texture(texture.id(), cover_uv(texture.size_vec2(), rect.size()));
-        ctx.layer_painter(layer).add(shape);
+        let opacity = settings.background_opacity;
+        let radius = if theme::islands() { 10.0 } else { 0.0 };
+        let [main, editor, side, panel] = &self.look.backdrops;
+        if settings.background_area == "window" {
+            main.paint(ctx, ctx.content_rect(), 0.0, opacity);
+        } else {
+            main.paint(ctx, places.editor, radius, opacity);
+        }
+        editor.paint(ctx, places.editor, radius, opacity);
+        for rect in &places.sides {
+            side.paint(ctx, *rect, radius, opacity);
+        }
+        for rect in &places.panels {
+            panel.paint(ctx, *rect, radius, opacity);
+        }
     }
 }
 
@@ -212,5 +281,21 @@ mod tests {
         assert_eq!(pictures_of(&dir.join("a.jpg").to_string_lossy()).len(), 1);
         assert!(pictures_of(&dir.join("none").to_string_lossy()).is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn pictures_go_in_order_or_at_random_without_repeating() {
+        assert_eq!(next_index(None, 3, false, 99), 0);
+        assert_eq!(next_index(Some(0), 3, false, 99), 1);
+        assert_eq!(next_index(Some(2), 3, false, 99), 0);
+        let mut seen = std::collections::HashSet::new();
+        for seed in 0..200 {
+            let next = next_index(Some(1), 4, true, seed);
+            assert!(next != 1 && next < 4, "{next}");
+            seen.insert(next);
+            assert!(next_index(None, 4, true, seed) < 4);
+        }
+        assert_eq!(seen.len(), 3, "reaches all the others");
+        assert_eq!(next_index(Some(0), 1, true, 5), 0);
     }
 }

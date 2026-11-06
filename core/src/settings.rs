@@ -124,13 +124,21 @@ pub struct WorkbenchSettings {
     pub color_theme: String,
     /// A picture, or a folder of them, laid faintly over the window. Empty: none.
     pub background_image: String,
+    /// Pictures for one part of the window, over the main one.
+    pub background_editor: String,
+    pub background_sidebar: String,
+    pub background_panel: String,
+    /// Go through a folder in no order.
+    pub background_random: bool,
     /// How strongly it shows, from 0 to 1.
     pub background_opacity: f32,
     /// Over the "window", or only the "editor".
     pub background_area: String,
     /// Seconds between pictures of a folder; 0 keeps the first.
     pub background_interval: u32,
-    /// Themes by time of day: `07:00 Light Modern; 19:00 Dark Modern`.
+    /// Where this computer is, `38.7, -9.1`, for sunrise and sunset in the schedule.
+    pub theme_location: String,
+    /// Themes by time of day: `07:00 Light Modern; sunset Dark Modern`.
     pub theme_schedule: String,
     /// Panels, tabs and popups change at once instead of moving.
     pub reduced_motion: bool,
@@ -342,6 +350,11 @@ impl Default for WorkbenchSettings {
             preview_port: 0,
             color_theme: "Dark Modern".to_owned(),
             background_image: String::new(),
+            background_editor: String::new(),
+            background_sidebar: String::new(),
+            background_panel: String::new(),
+            background_random: false,
+            theme_location: String::new(),
             background_opacity: 0.1,
             background_area: "window".to_owned(),
             background_interval: 0,

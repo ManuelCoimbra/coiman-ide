@@ -15,7 +15,10 @@ impl CodeApp {
                 }
             }
         });
-        if let Some(text) = applog::take_last_crash() {
+        // Waits for an empty status line, so as not to hide a message set this frame.
+        if self.status.is_none()
+            && let Some(text) = applog::take_last_crash()
+        {
             self.status = Some(text);
         }
         if self.status != self.logged_status {

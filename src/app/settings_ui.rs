@@ -18,8 +18,8 @@ enum Kind {
     Decimal(f64, f64),
     Choice(&'static [(&'static str, &'static str)]),
     Text(&'static str),
-    /// A path to type, or to choose with these commands, as (label, command).
-    Path(&'static str, &'static [(&'static str, Command)]),
+    /// A picture's or folder's path, to type or to choose.
+    Picture(&'static str),
     /// Nothing to set: a button that runs a command.
     Button(&'static str, Command),
     Font,
@@ -136,18 +136,50 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "workbench",
                 "theme_schedule",
                 "Theme schedule",
-                "Themes by time of day, by their names: 07:00 Light Modern; 19:00 Dark Modern",
-                Kind::Text("07:00 Light Modern; 19:00 Dark Modern"),
+                "Themes by time of day, by their names. sunrise and sunset need a location.",
+                Kind::Text("07:00 Light Modern; sunset Dark Modern"),
+            ),
+            row(
+                "workbench",
+                "theme_location",
+                "Location for sunrise and sunset",
+                "Latitude, longitude, as you type it here. It's only used on this computer.",
+                Kind::Text("38.7, -9.1"),
             ),
             row(
                 "workbench",
                 "background_image",
                 "Background image",
                 "A picture, or a folder of them to go through.",
-                Kind::Path(
-                    "C:\\Pictures\\backdrop.png",
-                    &[("File...", Command::ChooseBackgroundImage), ("Folder...", Command::ChooseBackgroundFolder)],
-                ),
+                Kind::Picture("C:\\Pictures\\backdrop.png"),
+            ),
+            row(
+                "workbench",
+                "background_editor",
+                "Background of the editor",
+                "Its own picture, over the main one.",
+                Kind::Picture(""),
+            ),
+            row(
+                "workbench",
+                "background_sidebar",
+                "Background of the side bars",
+                "Their own picture, over the main one.",
+                Kind::Picture(""),
+            ),
+            row(
+                "workbench",
+                "background_panel",
+                "Background of the panel",
+                "Its own picture, over the main one.",
+                Kind::Picture(""),
+            ),
+            row(
+                "workbench",
+                "background_random",
+                "Background in random order",
+                "Go through a folder in no order.",
+                Kind::Toggle,
             ),
             row("workbench", "background_opacity", "Background strength", "From 0 to 1.", Kind::Decimal(0.0, 1.0)),
             row(
@@ -406,6 +438,8 @@ enum Action {
     Reset(&'static str, &'static str),
     Theme,
     Run(Command),
+    /// Choose a picture, or with `true` a folder, for this setting.
+    ChoosePath(&'static str, &'static str, bool),
     OpenFile,
     KeyboardShortcuts,
 }
@@ -444,13 +478,14 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
                 *out = Some(Action::Run(command));
             }
         }
-        Kind::Text(hint) | Kind::Path(hint, _) => {
+        Kind::Text(hint) | Kind::Picture(hint) => {
             // Laid out from the right: these end up after the path.
-            if let Kind::Path(_, choosers) = &row.kind {
-                for (label, command) in choosers.iter().rev() {
-                    if ui.button(*label).clicked() {
-                        *out = Some(Action::Run(*command));
-                    }
+            if matches!(row.kind, Kind::Picture(_)) {
+                if ui.button("Folder...").clicked() {
+                    *out = Some(Action::ChoosePath(table, key, true));
+                }
+                if ui.button("File...").clicked() {
+                    *out = Some(Action::ChoosePath(table, key, false));
                 }
             }
             let saved = value.and_then(Value::as_str).unwrap_or("");
@@ -663,6 +698,21 @@ impl CodeApp {
         let result = match action {
             Some(Action::Set(table, key, value)) => self.change_setting(ctx, workspace, table, key, Some(&value)),
             Some(Action::Reset(table, key)) => self.change_setting(ctx, workspace, table, key, None),
+            Some(Action::ChoosePath(table, key, folder)) => {
+                let dialog = rfd::FileDialog::new();
+                let chosen = if folder {
+                    dialog.pick_folder()
+                } else {
+                    dialog.add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp", "bmp"]).pick_file()
+                };
+                match chosen {
+                    Some(path) => {
+                        let value = literal(Value::String(path.to_string_lossy().into_owned()));
+                        self.change_setting(ctx, workspace, table, key, Some(&value))
+                    }
+                    None => Ok(()),
+                }
+            }
             Some(Action::Run(command)) => {
                 self.run_command(ctx, command);
                 Ok(())

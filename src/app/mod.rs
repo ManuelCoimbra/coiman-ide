@@ -524,6 +524,7 @@ impl eframe::App for CodeApp {
 
         let classic = !theme::islands();
         let mut islands: Vec<egui::Rect> = trust_island.into_iter().collect();
+        let (mut sides, mut panels) = (Vec::new(), Vec::new());
         let left_open = self.sidebar_visible && !zen;
         if !left_open {
             // Slides away, with what it was showing.
@@ -535,7 +536,9 @@ impl eframe::App for CodeApp {
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut false, |ui| self.sidebar(ui));
-            islands.extend(side.map(|side| side.response.rect - gaps));
+            let place = side.map(|side| side.response.rect - gaps);
+            sides.extend(place);
+            islands.extend(place);
         }
         if left_open {
             // Never let the side bar take more than half the window, whatever it contains.
@@ -549,7 +552,9 @@ impl eframe::App for CodeApp {
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut true, |ui| self.sidebar(ui));
-            islands.extend(side.map(|side| side.response.rect - gaps));
+            let place = side.map(|side| side.response.rect - gaps);
+            sides.extend(place);
+            islands.extend(place);
         }
 
         let right_view = self.rails.right_view.filter(|_| !zen && !classic);
@@ -571,7 +576,9 @@ impl eframe::App for CodeApp {
             if self.sidebar_view == view {
                 self.sidebar_view = shown;
             }
-            islands.extend(side.map(|side| side.response.rect - gaps));
+            let place = side.map(|side| side.response.rect - gaps);
+            sides.extend(place);
+            islands.extend(place);
         }
         let panel_right = self.rails.panel_right && !classic;
         // A terminal doesn't slide: each step would resize it, and the program in it would redraw.
@@ -587,7 +594,9 @@ impl eframe::App for CodeApp {
                 .show_separator_line(false)
                 .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
-            islands.extend(panel.map(|panel| panel.response.rect - gaps));
+            let place = panel.map(|panel| panel.response.rect - gaps);
+            panels.extend(place);
+            islands.extend(place);
         }
         if !panel_right && (panel_open || panel_slides) {
             let gaps = theme::island_gaps(false, true, true, true);
@@ -597,7 +606,9 @@ impl eframe::App for CodeApp {
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
-            islands.extend(panel.map(|panel| panel.response.rect - gaps));
+            let place = panel.map(|panel| panel.response.rect - gaps);
+            panels.extend(place);
+            islands.extend(place);
         }
 
         let gaps = theme::island_gaps(zen, true, false, !(self.panel_visible && !zen && !panel_right));
@@ -727,7 +738,8 @@ impl eframe::App for CodeApp {
                 self.other_pane(ui, rect, opts);
             }
         });
-        self.paint_background(&ctx, central.response.rect - gaps);
+        let places = look::Places { editor: central.response.rect - gaps, sides, panels };
+        self.paint_background(&ctx, &places);
         if !classic {
             islands.push(central.response.rect - gaps);
             theme::round_island_corners(&ctx, &islands);
