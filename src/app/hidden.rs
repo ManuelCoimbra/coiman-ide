@@ -51,6 +51,8 @@ fn scan(rope: &ropey::Rope, version: u64) -> Scan {
                 foreground: Some(Color32::WHITE),
                 background: Some(RED),
                 italic: false,
+                strike: false,
+                frame: None,
             });
             cols.entry(line).or_default().push(col);
         }

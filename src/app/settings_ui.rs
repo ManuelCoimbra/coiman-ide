@@ -106,6 +106,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("editor", "emmet", "Emmet", "Tab grows abbreviations in HTML and CSS.", Kind::Toggle),
             row(
                 "editor",
+                "color_decorators",
+                "Colors on themselves",
+                "Show #ff0000, rgb(...) and color names on their own color, in black or white text.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "auto_close_tags",
                 "Close tags as you type",
                 "In HTML, XML and JSX: > adds the end tag, and </ finishes the open one.",

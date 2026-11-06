@@ -87,6 +87,17 @@ pub struct Highlight {
     pub foreground: Option<Color32>,
     pub background: Option<Color32>,
     pub italic: bool,
+    /// Struck through, as deprecated code is.
+    pub strike: bool,
+    /// A thin line around the background, where it would vanish into the editor's.
+    pub frame: Option<Color32>,
+}
+
+/// How a run of text is set, besides its color.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct Look {
+    italic: bool,
+    strike: bool,
 }
 
 /// How a run of lines differs from the version in Git's index.
@@ -1307,11 +1318,11 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                 let (a, b) = ((line_start + h.start).max(row.start), (line_start + h.end).min(row.end));
                 if let (Some(color), true) = (h.background, b > a) {
                     let (xa, xb) = (x0 + col_x(buf, row.start, a, m), x0 + col_x(buf, row.start, b, m));
-                    text_painter.rect_filled(
-                        Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)),
-                        0.0,
-                        color,
-                    );
+                    let chip = Rect::from_min_max(Pos2::new(xa, y + 1.0), Pos2::new(xb, y + m.row_h - 1.0));
+                    text_painter.rect_filled(chip, 2.0, color);
+                    if let Some(frame) = h.frame {
+                        text_painter.rect_stroke(chip, 2.0, egui::Stroke::new(1.0, frame), egui::StrokeKind::Inside);
+                    }
                 }
             }
         }
@@ -1590,26 +1601,27 @@ fn indent_cols(buf: &Buffer, line: usize) -> usize {
 
 /// Builds the text for one row: syntax colors, tabs expanded to spaces.
 /// Syntax color runs with plugin colors on top.
-fn overlay_runs(runs: &[(usize, Color32, bool)], highlights: &[Highlight], len: usize) -> Vec<(usize, Color32, bool)> {
+fn overlay_runs(runs: &[(usize, Color32, Look)], highlights: &[Highlight], len: usize) -> Vec<(usize, Color32, Look)> {
     let mut styles = Vec::with_capacity(len);
-    for &(end, color, italic) in runs {
+    for &(end, color, look) in runs {
         let end = end.min(len);
         if end > styles.len() {
-            styles.resize(end, (color, italic));
+            styles.resize(end, (color, look));
         }
     }
-    styles.resize(len, (theme::colors().editor_fg, false));
+    styles.resize(len, (theme::colors().editor_fg, Look::default()));
     for h in highlights {
         for style in styles.iter_mut().take(h.end.min(len)).skip(h.start) {
             style.0 = h.foreground.unwrap_or(style.0);
-            style.1 |= h.italic;
+            style.1.italic |= h.italic;
+            style.1.strike |= h.strike;
         }
     }
-    let mut out: Vec<(usize, Color32, bool)> = Vec::new();
-    for (i, (color, italic)) in styles.into_iter().enumerate() {
+    let mut out: Vec<(usize, Color32, Look)> = Vec::new();
+    for (i, (color, look)) in styles.into_iter().enumerate() {
         match out.last_mut() {
-            Some(last) if last.1 == color && last.2 == italic => last.0 = i + 1,
-            _ => out.push((i + 1, color, italic)),
+            Some(last) if last.1 == color && last.2 == look => last.0 = i + 1,
+            _ => out.push((i + 1, color, look)),
         }
     }
     out
@@ -1677,8 +1689,8 @@ fn row_job(
     let width = col + visual_width(chars[seg_a..seg_b].iter().copied());
     view.max_cols_seen = view.max_cols_seen.max(width);
 
-    // (end char index within line, color, italic) runs.
-    let mut runs: Vec<(usize, Color32, bool)> = Vec::new();
+    // (end char index within line, color, look) runs.
+    let mut runs: Vec<(usize, Color32, Look)> = Vec::new();
     let spans = match &doc.ts {
         Some(ts) => ts.lines.get(&row.line).map(Vec::as_slice),
         None => doc.highlighter.spans(&doc.buffer, row.line),
@@ -1688,12 +1700,12 @@ fn row_job(
             let mut end = 0;
             for s in spans {
                 end += s.len;
-                runs.push((end, theme::c32(s.color), s.italic));
+                runs.push((end, theme::c32(s.color), Look { italic: s.italic, strike: false }));
             }
         }
-        None => runs.push((chars.len(), theme::colors().editor_fg, false)),
+        None => runs.push((chars.len(), theme::colors().editor_fg, Look::default())),
     }
-    if let Some(highlights) = highlights.filter(|h| h.iter().any(|x| x.foreground.is_some() || x.italic)) {
+    if let Some(highlights) = highlights.filter(|h| h.iter().any(|x| x.foreground.is_some() || x.italic || x.strike)) {
         runs = overlay_runs(&runs, highlights, chars.len());
     }
 
@@ -1710,11 +1722,11 @@ fn row_job(
         // Runs also end at hints, so hints land between pieces.
         let mut split = Vec::with_capacity(runs.len() + hints.len());
         let mut from = 0;
-        for &(end, color, italic) in &runs {
+        for &(end, color, look) in &runs {
             for (col, _) in hints.iter().filter(|(c, _)| *c > from && *c < end) {
-                split.push((*col, color, italic));
+                split.push((*col, color, look));
             }
-            split.push((end, color, italic));
+            split.push((end, color, look));
             from = end;
         }
         split.dedup_by_key(|r| r.0);
@@ -1723,7 +1735,7 @@ fn row_job(
     let hidden = m.hidden.as_ref().and_then(|h| h.get(&row.line));
     let mut hint_at = 0;
     let mut idx = seg_a;
-    for (end, color, italic) in runs {
+    for (end, color, look) in runs {
         if end <= idx {
             continue;
         }
@@ -1750,7 +1762,13 @@ fn row_job(
         job.append(
             &piece,
             0.0,
-            TextFormat { font_id: m.font_id.clone(), color, italics: italic, ..Default::default() },
+            TextFormat {
+                font_id: m.font_id.clone(),
+                color,
+                italics: look.italic,
+                strikethrough: if look.strike { egui::Stroke::new(1.0, color) } else { egui::Stroke::NONE },
+                ..Default::default()
+            },
         );
         idx = stop;
         if idx >= seg_b {

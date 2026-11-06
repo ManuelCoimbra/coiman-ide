@@ -146,6 +146,8 @@ impl CodeApp {
                                 foreground: Some(COLUMN_COLORS[n % COLUMN_COLORS.len()]),
                                 background: None,
                                 italic: false,
+                                strike: false,
+                                frame: None,
                             })
                             .collect();
                         (line, marks)

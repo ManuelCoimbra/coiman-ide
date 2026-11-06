@@ -269,6 +269,40 @@ Vue templates are checked like HTML with Vue's rules: any tag may close itself, 
 checked too, reading around `{#if}`, `{:else}`, `{/if}`, `{@html}` and `{expressions}`, with
 `on:`, `bind:` and `class:` attributes and `<script context>` allowed.
 
+### Colors
+
+Colors written in a file are shown on themselves: the text of `#e53935`, `rgb(...)`, `hsl(...)`,
+`oklch(...)` or `tomato` sits on that color, in black or white, whichever reads. That's white on
+red, blue or black, and black on yellow, lime or white. A color too close to the editor's
+background, such as black on a dark theme, gets a thin frame. A see-through color is shown as it
+would look over the editor.
+
+Where colors are found:
+
+- **Style sheets** (CSS, SCSS, Sass, Less, Stylus): everywhere, names included.
+- **Pages, Vue, Svelte and SVG:** in `<style>`, `style="..."`, color attributes such as `fill` and
+  `stroke`, and anything written as a color.
+- **Code** (JS, TS, JSON, YAML, TOML, Python, Go, Rust, C#, Java, Kotlin, Swift, Dart, Lua, Ruby):
+  inside strings only, so `#cafe` in a comment or `#[derive]` stays plain. Flutter's
+  `Color(0xFF42A5F5)` counts too.
+
+`editor.color_decorators = false` turns this off. It replaces the Color Preview extension that
+used to come with the app, which is removed if it was the bundled copy.
+
+With a language server's semantic colors, kinds of type each have their own:
+
+| Dark Modern | Kinds |
+|---|---|
+| Teal | Classes |
+| Green | Structs |
+| Pale green | Interfaces and traits, enums, type parameters |
+| Light blue | Constants, read-only variables, enum members |
+
+Deprecated code is struck through. Themes can set these themselves: a VS Code theme's
+`semanticTokenColors` (`class`, `interface`, `*.deprecated`, `variable.readonly`…) are read. A
+theme without them uses its TextMate colors for `entity.name.type.class`,
+`entity.name.type.interface` and the like, falling back to types in general.
+
 ### Run Program
 
 The green button in the title bar (or `Shift+F10`, or the Run menu) saves your files and runs
@@ -383,7 +417,6 @@ Plugins are WebAssembly components written against `core/wit/plugin.wit` and run
 - **Comment Highlights**: TODO, FIXME, BUG, HACK, XXX and NOTE tags, and comments starting with
   `!`, `?` or `*`.
 - **Trailing Spaces**: marks whitespace at line ends.
-- **Color Preview**: `#rgb`, `#rrggbb` and `rgb()` shown in their own color.
 - **SCS Units** (optional, not installed by default; **Plugins: Install from Folder...** on
   `extensions/scs-sii`): Euro Truck Simulator 2 and American Truck Simulator `.sii` files get colors, a
   **SII Units** list in the Explorer, and checks for unbalanced braces, unclosed strings, duplicate

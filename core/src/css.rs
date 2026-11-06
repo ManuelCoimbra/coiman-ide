@@ -672,6 +672,189 @@ fn written_colors(text: &str) -> Vec<FoundColor> {
     out
 }
 
+/// Black or white, whichever reads on `background` (sRGB, 0..=255): white on red,
+/// blue, black or grey, black on yellow, lime, cyan or white. Past a relative luminance
+/// of 0.36, as perceptual contrast (APCA) puts it, rather than WCAG 2's 0.18, which
+/// would put black on red.
+pub fn readable_on(background: [u8; 3]) -> [u8; 3] {
+    let linear = |c: u8| {
+        let c = f64::from(c) / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    let [r, g, b] = background.map(linear);
+    let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if luminance > 0.36 { [0, 0, 0] } else { [255, 255, 255] }
+}
+
+/// Style sheets, where every color is one, names included.
+fn is_style_sheet(extension: &str) -> bool {
+    matches!(extension, "css" | "scss" | "sass" | "less" | "styl" | "stylus" | "pcss" | "postcss")
+}
+
+/// Pages and components: colors in `<style>` and anywhere written as one, and names
+/// in `style="..."` attributes and SVG's color attributes.
+fn is_page(extension: &str) -> bool {
+    matches!(extension, "html" | "htm" | "xhtml" | "vue" | "svelte" | "svg" | "xml" | "astro" | "php")
+}
+
+/// Languages whose strings often hold colors: only inside quotes there.
+fn quotes_colors(extension: &str) -> bool {
+    matches!(
+        extension,
+        "js" | "mjs"
+            | "cjs"
+            | "jsx"
+            | "ts"
+            | "mts"
+            | "cts"
+            | "tsx"
+            | "json"
+            | "jsonc"
+            | "yaml"
+            | "yml"
+            | "toml"
+            | "py"
+            | "rb"
+            | "go"
+            | "rs"
+            | "cs"
+            | "java"
+            | "kt"
+            | "kts"
+            | "swift"
+            | "dart"
+            | "lua"
+            | "php"
+    )
+}
+
+/// Attributes whose whole value is a color, in pages and SVG.
+const COLOR_ATTRIBUTES: &[&str] =
+    &["fill", "stroke", "color", "stop-color", "flood-color", "lighting-color", "bgcolor", "background"];
+
+/// Every color written in a file of this type, where it means a color: anything in a
+/// style sheet; in pages, `<style>`, `style="..."`, SVG color attributes and values
+/// written as colors; in code, hex values, color functions and names inside strings,
+/// and Flutter's `Color(0xAARRGGBB)`.
+pub fn colors_for(extension: &str, text: &str) -> Vec<FoundColor> {
+    if is_style_sheet(extension) {
+        return colors(text);
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut found = Vec::new();
+    if is_page(extension) {
+        found = written_colors(text);
+        for (start, end) in style_blocks(&chars) {
+            named_colors_in(&chars[start..end], start, &mut found);
+        }
+        attribute_colors(&chars, &mut found);
+    } else if quotes_colors(extension) {
+        quoted_colors(&chars, &mut found);
+        if extension == "dart" {
+            flutter_colors(&chars, &mut found);
+        }
+    }
+    found.sort_by_key(|f| f.start);
+    found.dedup_by_key(|f| f.start);
+    found
+}
+
+/// Names in `style="..."` and in attributes that are a color, like `fill="red"`.
+fn attribute_colors(chars: &[char], out: &mut Vec<FoundColor>) {
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '=' || !matches!(chars.get(i + 1), Some('"' | '\'')) {
+            i += 1;
+            continue;
+        }
+        let quote = chars[i + 1];
+        let name_end = i;
+        let mut name_start = name_end;
+        while name_start > 0 && (chars[name_start - 1].is_alphanumeric() || chars[name_start - 1] == '-') {
+            name_start -= 1;
+        }
+        let name: String = chars[name_start..name_end].iter().collect::<String>().to_lowercase();
+        let start = i + 2;
+        let Some(len) = chars[start..].iter().position(|c| *c == quote) else { break };
+        let end = start + len;
+        if name == "style" {
+            // A declaration list, as in a rule.
+            let mut wrapped: Vec<char> = "a{".chars().collect();
+            wrapped.extend(&chars[start..end]);
+            wrapped.push('}');
+            let mut inside = Vec::new();
+            named_colors_in(&wrapped, 0, &mut inside);
+            out.extend(inside.into_iter().map(|f| FoundColor {
+                start: f.start - 2 + start,
+                end: f.end - 2 + start,
+                ..f
+            }));
+        } else if COLOR_ATTRIBUTES.contains(&name.as_str()) {
+            let value: String = chars[start..end].iter().collect::<String>();
+            let trimmed = value.trim();
+            if let Some(color) = named_color(&trimmed.to_lowercase()) {
+                let lead = value.len() - value.trim_start().len();
+                out.push(FoundColor { start: start + lead, end: start + lead + trimmed.chars().count(), color });
+            }
+        }
+        i = end + 1;
+    }
+}
+
+/// In code: colors inside string literals, the whole string or written as a color in it.
+fn quoted_colors(chars: &[char], out: &mut Vec<FoundColor>) {
+    let mut i = 0;
+    while i < chars.len() {
+        let quote = chars[i];
+        if !matches!(quote, '"' | '\'' | '`') {
+            i += 1;
+            continue;
+        }
+        // To the closing quote on the same line, past escapes.
+        let mut end = i + 1;
+        while end < chars.len() && chars[end] != quote && chars[end] != '\n' {
+            end += if chars[end] == '\\' { 2 } else { 1 };
+        }
+        if end >= chars.len() || chars[end] != quote {
+            i += 1;
+            continue;
+        }
+        let inside: String = chars[i + 1..end].iter().collect();
+        let base = i + 1;
+        let mut here = written_colors(&inside);
+        if here.is_empty()
+            && let Some(color) = named_color(&inside.to_lowercase())
+        {
+            here.push(FoundColor { start: 0, end: inside.chars().count(), color });
+        }
+        out.extend(here.into_iter().map(|f| FoundColor { start: f.start + base, end: f.end + base, ..f }));
+        i = end + 1;
+    }
+}
+
+/// Flutter's `Color(0xAARRGGBB)`.
+fn flutter_colors(chars: &[char], out: &mut Vec<FoundColor>) {
+    let text: String = chars.iter().collect();
+    let mut from = 0;
+    while let Some(at) = text[from..].find("Color(0x").map(|i| from + i) {
+        let digits_at = at + "Color(0x".len();
+        let digits: String = text[digits_at..].chars().take_while(char::is_ascii_hexdigit).collect();
+        if digits.len() == 8
+            && let Ok(v) = u32::from_str_radix(&digits, 16)
+        {
+            let [a, r, g, b] = v.to_be_bytes();
+            let start = text[..digits_at - 2].chars().count();
+            let color = Color {
+                rgb: [f64::from(r) / 255.0, f64::from(g) / 255.0, f64::from(b) / 255.0],
+                alpha: f64::from(a) / 255.0,
+                format: Format::Hex,
+            };
+            out.push(FoundColor { start, end: start + 10, color });
+        }
+        from = digits_at;
+    }
+}
+
 /// The color under char `pos`.
 pub fn color_at(text: &str, pos: usize) -> Option<FoundColor> {
     colors(text).into_iter().find(|f| f.start <= pos && pos <= f.end)
@@ -809,6 +992,51 @@ impl Color {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn readable_text_on_any_color() {
+        let white = [255, 255, 255];
+        let black = [0, 0, 0];
+        for (background, text) in [
+            ([255, 0, 0], white),
+            ([0, 0, 0], white),
+            ([0, 0, 255], white),
+            ([128, 128, 128], white),
+            ([255, 255, 0], black),
+            ([0, 255, 0], black),
+            ([0, 255, 255], black),
+            ([255, 255, 255], black),
+        ] {
+            assert_eq!(readable_on(background), text, "{background:?}");
+        }
+    }
+
+    #[test]
+    fn colors_where_each_kind_of_file_means_them() {
+        let spans = |ext: &str, text: &str| -> Vec<String> {
+            let chars: Vec<char> = text.chars().collect();
+            colors_for(ext, text).iter().map(|f| chars[f.start..f.end].iter().collect()).collect()
+        };
+        assert_eq!(spans("scss", "a { color: tomato; border: 1px solid #333 }"), ["tomato", "#333"]);
+        // Pages: <style>, style="", color attributes and written colors; not names in text.
+        let page = "<style>p { color: navy }</style>
+<p style=\"color: red; margin: 0\">red text</p>
+<svg><rect fill=\"gold\" stroke=\"#123456\"/></svg>";
+        assert_eq!(spans("html", page), ["navy", "red", "gold", "#123456"]);
+        // Code: inside strings only, whole names too.
+        assert_eq!(spans("ts", "const a = { bg: '#fff', fg: \"white\", n: red };"), ["#fff", "white"]);
+        assert_eq!(
+            spans(
+                "py",
+                "# cafe
+COLOR = 'rgb(1, 2, 3)'"
+            ),
+            ["rgb(1, 2, 3)"]
+        );
+        assert_eq!(spans("dart", "final c = Color(0xFF42A5F5);"), ["0xFF42A5F5"]);
+        assert!(spans("md", "# add a heading").is_empty());
+        assert!(spans("rs", "#[derive(Clone)] let red = 1;").is_empty());
+    }
 
     fn close(a: [f64; 3], b: [f64; 3]) -> bool {
         a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 0.002)

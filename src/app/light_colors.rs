@@ -52,6 +52,8 @@ impl CodeApp {
                 foreground: Some(foreground),
                 background: None,
                 italic,
+                strike: false,
+                frame: None,
             });
         }
         let lines = Arc::new(lines);

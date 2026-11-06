@@ -155,6 +155,8 @@ impl CodeApp {
         self.bookmarks_decorate(i, &mut deco);
         self.prints_decorate(i, &mut deco);
         self.repl_decorate(i, &mut deco);
+        // Colors on themselves, over the syntax's and the server's.
+        self.color_preview_decorate(i, &mut deco);
         // Over everything: these must stay visible.
         self.hidden_decorate(i, &mut deco);
         self.profile_decorate(i, &mut deco);

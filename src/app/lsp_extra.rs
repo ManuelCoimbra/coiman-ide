@@ -150,42 +150,76 @@ pub(super) struct LspExtra {
     symbols_query: Option<String>,
 }
 
-/// What a semantic token type looks like, as a highlight capture name.
-fn capture_of(token_type: &str) -> Option<&'static str> {
+/// What a semantic token type looks like, as a highlight capture name, when the theme
+/// has no semantic rule for it. Kinds of type each have their own, falling back to `type`.
+fn capture_of(token_type: &str, modifiers: &[&str]) -> Option<&'static str> {
+    let constant = modifiers.iter().any(|m| matches!(*m, "readonly" | "constant"));
+    let library = modifiers.contains(&"defaultLibrary");
     Some(match token_type {
+        "function" if library => "function.builtin",
         "function" => "function",
         "method" => "function.method",
         "macro" => "function.macro",
-        "type" | "struct" | "class" | "enum" | "interface" | "typeParameter" | "typeAlias" | "builtinType" => "type",
-        "enumMember" => "constructor",
+        "decorator" => "attribute",
+        "class" if library => "type.builtin",
+        "class" => "type.class",
+        "struct" => "type.struct",
+        "interface" => "type.interface",
+        "enum" => "type.enum",
+        "typeParameter" => "type.parameter",
+        "type" | "typeAlias" | "builtinType" => "type",
+        "enumMember" => "constant.enum",
+        "variable" | "property" if constant => "constant",
         "parameter" => "variable.parameter",
         "property" => "property",
+        "selfKeyword" | "selfTypeKeyword" => "variable.builtin",
         "namespace" => "module",
         "lifetime" | "label" => "label",
         _ => return None,
     })
 }
 
-fn decode_tokens(rope: &ropey::Rope, data: &[u32], legend: &[String]) -> HashMap<usize, Vec<Highlight>> {
+/// A semantic token as drawn: color (transparent for none), italic, struck through.
+type TokenLook = (Color32, bool, bool);
+
+fn decode_tokens(
+    rope: &ropey::Rope,
+    data: &[u32],
+    legend: &(Vec<String>, Vec<String>),
+) -> HashMap<usize, Vec<Highlight>> {
     let current = theme::current();
-    let colors: Vec<Option<Color32>> = legend
-        .iter()
-        .map(|t| {
-            let capture = capture_of(t)?;
-            theme::capture_style(&current, capture).map(|(c, _)| theme::c32(c))
+    let (types, modifier_names) = legend;
+    // By (type, modifier bits): what it looks like. Few combinations recur.
+    let mut looks: HashMap<(u32, u32), Option<TokenLook>> = HashMap::new();
+    let mut look = |kind: u32, bits: u32| {
+        *looks.entry((kind, bits)).or_insert_with(|| {
+            let token_type = types.get(kind as usize)?;
+            let modifiers: Vec<&str> = modifier_names
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| *i < 32 && bits & (1 << i) != 0)
+                .map(|(_, m)| m.as_str())
+                .collect();
+            let semantic = theme::semantic_style(&current, token_type, &modifiers);
+            let color = semantic.color.or_else(|| {
+                capture_of(token_type, &modifiers).and_then(|c| theme::capture_style(&current, c)).map(|(c, _)| c)
+            });
+            let (italic, strike) = (semantic.italic, semantic.strike);
+            (color.is_some() || italic || strike)
+                .then(|| (color.map_or(Color32::TRANSPARENT, theme::c32), italic, strike))
         })
-        .collect();
+    };
     let mut lines: HashMap<usize, Vec<Highlight>> = HashMap::new();
     let (mut line, mut start) = (0u32, 0u32);
     for token in data.as_chunks::<5>().0 {
-        let (delta_line, delta_start, length, kind) = (token[0], token[1], token[2], token[3]);
+        let (delta_line, delta_start, length, kind, bits) = (token[0], token[1], token[2], token[3], token[4]);
         if delta_line > 0 {
             line += delta_line;
             start = delta_start;
         } else {
             start += delta_start;
         }
-        let Some(color) = colors.get(kind as usize).copied().flatten() else { continue };
+        let Some((color, italic, strike)) = look(kind, bits) else { continue };
         let (a, b) = convert::chars_of(
             rope,
             lt::Range::new(lt::Position::new(line, start), lt::Position::new(line, start + length)),
@@ -194,20 +228,25 @@ fn decode_tokens(rope: &ropey::Rope, data: &[u32], legend: &[String]) -> HashMap
         lines.entry(line as usize).or_default().push(Highlight {
             start: a - line_start,
             end: b - line_start,
-            foreground: Some(color),
+            foreground: (color != Color32::TRANSPARENT).then_some(color),
             background: None,
-            italic: false,
+            italic,
+            strike,
+            frame: None,
         });
     }
     lines
 }
 
-fn legend_of(client: &Client) -> Option<Vec<String>> {
+/// The server's token types and modifiers, by index.
+fn legend_of(client: &Client) -> Option<(Vec<String>, Vec<String>)> {
     let legend = match client.capabilities()?.semantic_tokens_provider.as_ref()? {
         lt::SemanticTokensServerCapabilities::SemanticTokensOptions(o) => &o.legend,
         lt::SemanticTokensServerCapabilities::SemanticTokensRegistrationOptions(o) => &o.semantic_tokens_options.legend,
     };
-    Some(legend.token_types.iter().map(|t| t.as_str().to_owned()).collect())
+    let types = legend.token_types.iter().map(|t| t.as_str().to_owned()).collect();
+    let modifiers = legend.token_modifiers.iter().map(|m| m.as_str().to_owned()).collect();
+    Some((types, modifiers))
 }
 
 /// A title as drawn. A text-style selector after a symbol would show as a circle.
@@ -750,6 +789,8 @@ impl CodeApp {
                 foreground: None,
                 background: Some(color),
                 italic: false,
+                strike: false,
+                frame: None,
             });
         }
         self.lsp.extra.symbol_highlights = Some((uid, version, Arc::new(map)));

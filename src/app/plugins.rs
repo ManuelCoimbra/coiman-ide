@@ -31,7 +31,7 @@ use crate::theme;
 
 /// Extensions that ship with Rust Code: sandboxed plugins like any other, with
 /// no download. They can be turned off in the Extensions view.
-const BUILT_IN: [(&str, &[u8]); 3] = [
+const BUILT_IN: [(&str, &[u8]); 2] = [
     (
         include_str!("../../extensions/comment-highlights/plugin.toml"),
         include_bytes!("../../extensions/comment-highlights/plugin.wasm"),
@@ -40,15 +40,15 @@ const BUILT_IN: [(&str, &[u8]); 3] = [
         include_str!("../../extensions/trailing-spaces/plugin.toml"),
         include_bytes!("../../extensions/trailing-spaces/plugin.wasm"),
     ),
-    (
-        include_str!("../../extensions/color-preview/plugin.toml"),
-        include_bytes!("../../extensions/color-preview/plugin.wasm"),
-    ),
 ];
 
 /// Ids of those. An extension that used to ship with the app can be uninstalled.
-const BUILT_IN_IDS: [&str; 3] =
-    ["rust-code.comment-highlights", "rust-code.trailing-spaces", "rust-code.color-preview"];
+const BUILT_IN_IDS: [&str; 2] = ["rust-code.comment-highlights", "rust-code.trailing-spaces"];
+
+/// Extensions that used to ship with the app and are now part of it: Color Preview is
+/// `editor.color_decorators`. A copy that came with the app goes; one the user
+/// installed stays.
+const RETIRED: [&str; 1] = ["rust-code.color-preview"];
 
 /// `Locked::source` of a built-in extension.
 const BUILT_IN_SOURCE: &str = "built-in";
@@ -204,6 +204,13 @@ impl CodeApp {
     /// on/off choice and permissions are kept.
     fn install_built_ins(&mut self, dir: &Path) {
         let mut changed = false;
+        for id in RETIRED {
+            let bundled = self.plugins.lock.get(id).is_some_and(|l| l.source == BUILT_IN_SOURCE);
+            if bundled && store::uninstall(dir, &mut self.plugins.lock, id).is_ok() {
+                rust_code_core::applog::info(&format!("retired the built-in extension {id}: now part of the editor"));
+                changed = true;
+            }
+        }
         for (toml, wasm) in BUILT_IN {
             let Ok(manifest) = rust_code_core::plugin::manifest::parse(toml) else { continue };
             let wasm_hash = registry::sha256_hex(wasm);
@@ -279,6 +286,8 @@ impl CodeApp {
                     foreground: color(d.foreground),
                     background: color(d.background),
                     italic: d.italic,
+                    strike: false,
+                    frame: None,
                 });
             }
         }

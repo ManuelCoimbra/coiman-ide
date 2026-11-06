@@ -76,6 +76,8 @@ pub struct EditorSettings {
     pub likely_problems: bool,
     /// Check HTML and XML for tags left open, misnested or broken.
     pub markup_problems: bool,
+    /// Show colors written in a file on themselves (`editor.colorDecorators`).
+    pub color_decorators: bool,
     /// Type a tag's end for it in HTML, XML and JSX (`html.autoClosingTags`).
     pub auto_close_tags: bool,
     /// `=` after an attribute's name adds `""` (`html.autoCreateQuotes`).
@@ -328,6 +330,7 @@ impl Default for EditorSettings {
             format_on_save: false,
             likely_problems: true,
             markup_problems: true,
+            color_decorators: true,
             auto_close_tags: true,
             auto_create_quotes: true,
             tab_size: 4,

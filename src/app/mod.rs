@@ -7,6 +7,7 @@ mod autosave;
 mod bookmarks;
 mod bytes_view;
 mod cargo;
+mod color_preview;
 mod config;
 mod constant;
 mod coverage;
@@ -194,6 +195,7 @@ pub struct CodeApp {
     live: live::Live,
     constant: constant::Constant,
     likely: likely::Likely,
+    color_preview: color_preview::ColorPreview,
     images: image_view::Viewer,
     markup: markup::Markup,
     light_colors: light_colors::LightColors,
@@ -342,6 +344,7 @@ impl CodeApp {
             live: Default::default(),
             constant: Default::default(),
             likely: Default::default(),
+            color_preview: Default::default(),
             images: Default::default(),
             markup: Default::default(),
             light_colors: Default::default(),

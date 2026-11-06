@@ -193,6 +193,78 @@ pub struct Theme {
     pub palette: Palette,
     /// In file order; later rules win ties, as in VS Code.
     pub rules: Vec<TokenRule>,
+    /// VS Code's `semanticTokenColors`: selectors such as `class`, `*.deprecated` or
+    /// `variable.readonly`, with what they look like.
+    pub semantic: Vec<SemanticRule>,
+}
+
+/// One `semanticTokenColors` entry.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SemanticRule {
+    /// The token type, or `*` for any.
+    pub token_type: String,
+    /// Modifiers the token must all have.
+    pub modifiers: Vec<String>,
+    pub color: Option<Color>,
+    pub italic: Option<bool>,
+    pub strike: Option<bool>,
+}
+
+/// How a semantic token looks: color, italic and struck through.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct SemanticStyle {
+    pub color: Option<Color>,
+    pub italic: bool,
+    pub strike: bool,
+}
+
+impl SemanticRule {
+    /// From a selector like `class.declaration:typescript` and its value.
+    pub fn parse(selector: &str, value: &Value) -> Option<Self> {
+        let selector = selector.split(':').next()?.trim();
+        let mut parts = selector.split('.');
+        let token_type = parts.next()?.to_owned();
+        let modifiers = parts.map(str::to_owned).collect();
+        let (color, italic, strike) = match value {
+            Value::String(c) => (parse_color(c), None, None),
+            Value::Object(o) => {
+                let color = o.get("foreground").and_then(Value::as_str).and_then(parse_color);
+                let flag = |k: &str| o.get(k).and_then(Value::as_bool);
+                let style = o.get("fontStyle").and_then(Value::as_str);
+                let italic = flag("italic").or_else(|| style.map(|s| s.contains("italic")));
+                let strike = flag("strikethrough").or_else(|| style.map(|s| s.contains("strikethrough")));
+                (color, italic, strike)
+            }
+            _ => return None,
+        };
+        Some(Self { token_type, modifiers, color, italic, strike })
+    }
+}
+
+/// How a token of `token_type` with `modifiers` looks under the theme's semantic rules,
+/// VS Code's way: each of color, italic and strikethrough from the most specific rule
+/// that sets it (more modifiers, then a named type over `*`, then the later rule).
+pub fn semantic_style(theme: &Theme, token_type: &str, modifiers: &[&str]) -> SemanticStyle {
+    let mut best: [Option<(usize, usize)>; 3] = [None; 3];
+    for (i, rule) in theme.semantic.iter().enumerate() {
+        let type_ok = rule.token_type == "*" || rule.token_type == token_type;
+        if !type_ok || !rule.modifiers.iter().all(|m| modifiers.contains(&m.as_str())) {
+            continue;
+        }
+        let score = rule.modifiers.len() * 2 + usize::from(rule.token_type != "*");
+        let sets = [rule.color.is_some(), rule.italic.is_some(), rule.strike.is_some()];
+        for (slot, set) in best.iter_mut().zip(sets) {
+            if set && slot.is_none_or(|(s, _)| score >= s) {
+                *slot = Some((score, i));
+            }
+        }
+    }
+    let rule = |slot: Option<(usize, usize)>| slot.map(|(_, i)| &theme.semantic[i]);
+    SemanticStyle {
+        color: rule(best[0]).and_then(|r| r.color),
+        italic: rule(best[1]).and_then(|r| r.italic).unwrap_or(false),
+        strike: rule(best[2]).and_then(|r| r.strike).unwrap_or(false),
+    }
 }
 
 /// Dark+ token colors (the syntax colors behind "Dark Modern").
@@ -223,12 +295,37 @@ const BUILTIN_RULES: &[(&str, u32, bool)] = &[
     ("punctuation.definition.tag", 0x808080, false),
 ];
 
+/// Semantic colors behind "Dark Modern", as Visual Studio 2022 tells kinds of type apart:
+/// classes teal, structs green, interfaces, enums and type parameters pale green,
+/// constants and enum members light blue. Deprecated code is struck through everywhere.
+const BUILTIN_SEMANTIC: &[(&str, Option<u32>, bool)] = &[
+    ("class", Some(0x4ec9b0), false),
+    ("struct", Some(0x86c691), false),
+    ("interface", Some(0xb8d7a3), false),
+    ("enum", Some(0xb8d7a3), false),
+    ("typeParameter", Some(0xb8d7a3), false),
+    ("enumMember", Some(0x4fc1ff), false),
+    ("variable.readonly", Some(0x4fc1ff), false),
+    ("property.readonly", Some(0x4fc1ff), false),
+    ("*.deprecated", None, true),
+];
+
 pub fn builtin() -> Theme {
     let rules = BUILTIN_RULES
         .iter()
         .map(|&(scope, c, italic)| TokenRule { scope: scope.to_owned(), color: Some(rgb(c)), italic, bold: false })
         .collect();
-    Theme { name: "Dark Modern".to_owned(), palette: DARK, rules }
+    let semantic = BUILTIN_SEMANTIC
+        .iter()
+        .filter_map(|&(selector, color, strike)| {
+            let value = match color {
+                Some(c) => serde_json::json!({ "foreground": format!("#{c:06x}") }),
+                None => serde_json::json!({ "strikethrough": strike }),
+            };
+            SemanticRule::parse(selector, &value)
+        })
+        .collect();
+    Theme { name: "Dark Modern".to_owned(), palette: DARK, rules, semantic }
 }
 
 // ----- current theme -----------------------------------------------------------------
@@ -278,6 +375,13 @@ fn scopes_for_capture(capture: &str) -> &'static [&'static str] {
         "function" | "function.method" => &["entity.name.function", "support.function"],
         "function.macro" => &["entity.name.function.macro", "support.function", "entity.name.function"],
         "type" | "type.builtin" => &["entity.name.type", "support.type", "storage.type"],
+        // Kinds of type, each falling back to types in general.
+        "type.class" => &["entity.name.type.class", "support.class", "entity.name.class"],
+        "type.struct" => &["entity.name.type.struct", "storage.type.struct"],
+        "type.interface" => &["entity.name.type.interface", "entity.other.inherited-class"],
+        "type.enum" => &["entity.name.type.enum"],
+        "type.parameter" => &["entity.name.type.parameter"],
+        "constant.enum" => &["variable.other.enummember", "variable.other.constant", "constant"],
         "constructor" => &["entity.name.type", "entity.name.function"],
         "variable" => &["variable"],
         "variable.parameter" => &["variable.parameter", "variable"],
@@ -449,6 +553,7 @@ struct RawTheme {
     kind: Option<String>,
     colors: Map<String, Value>,
     token_colors: Vec<Value>,
+    semantic: Map<String, Value>,
 }
 
 fn read_theme_file(path: &Path, depth: usize) -> Result<RawTheme, String> {
@@ -474,6 +579,11 @@ fn read_theme_file(path: &Path, depth: usize) -> Result<RawTheme, String> {
     }
     if let Some(Value::Array(tokens)) = json.get("tokenColors") {
         raw.token_colors.extend(tokens.iter().cloned());
+    }
+    if let Some(Value::Object(semantic)) = json.get("semanticTokenColors") {
+        for (k, v) in semantic {
+            raw.semantic.insert(k.clone(), v.clone());
+        }
     }
     Ok(raw)
 }
@@ -540,7 +650,8 @@ pub fn load_vscode_theme(path: &Path, ui_theme: Option<&str>) -> Result<Theme, S
     }
     let name =
         raw.name.unwrap_or_else(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default());
-    Ok(Theme { name, palette, rules })
+    let semantic = raw.semantic.iter().filter_map(|(selector, value)| SemanticRule::parse(selector, value)).collect();
+    Ok(Theme { name, palette, rules, semantic })
 }
 
 /// A theme offered in the Color Theme picker.
@@ -648,6 +759,34 @@ pub fn resolve(name: &str, available: &[ThemeEntry]) -> (Theme, Option<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn semantic_rules_pick_the_most_specific() {
+        let rule = |selector: &str, value: serde_json::Value| SemanticRule::parse(selector, &value).unwrap();
+        let theme = Theme {
+            name: "t".into(),
+            palette: DARK,
+            rules: Vec::new(),
+            semantic: vec![
+                rule("*.deprecated", serde_json::json!({ "strikethrough": true })),
+                rule("class", serde_json::json!("#112233")),
+                rule("class.declaration:typescript", serde_json::json!({ "foreground": "#445566", "italic": true })),
+                rule("variable.readonly", serde_json::json!("#778899")),
+            ],
+        };
+        let class = semantic_style(&theme, "class", &[]);
+        assert_eq!(class.color, Some(rgb(0x112233)));
+        let declared = semantic_style(&theme, "class", &["declaration", "deprecated"]);
+        assert_eq!(declared.color, Some(rgb(0x445566)));
+        assert!(declared.italic && declared.strike);
+        assert_eq!(semantic_style(&theme, "variable", &["readonly"]).color, Some(rgb(0x778899)));
+        assert_eq!(semantic_style(&theme, "variable", &[]), SemanticStyle::default());
+        // Dark Modern tells kinds of type apart.
+        let builtin = builtin();
+        let interface = semantic_style(&builtin, "interface", &[]).color;
+        assert!(interface.is_some() && interface != semantic_style(&builtin, "class", &[]).color);
+        assert!(semantic_style(&builtin, "function", &["deprecated"]).strike);
+    }
 
     #[test]
     fn islands_stand_on_a_darker_canvas_in_any_theme() {
