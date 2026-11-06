@@ -6,7 +6,7 @@ pub const VOID: &[&str] =
     &["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"];
 
 /// Attributes every element takes, with RDFa's, which Open Graph's `<meta property>` uses.
-const GLOBAL: &[&str] = &[
+pub(crate) const GLOBAL: &[&str] = &[
     "about",
     "datatype",
     "exportparts",
@@ -51,7 +51,7 @@ const GLOBAL: &[&str] = &[
 ];
 
 /// Each element's own attributes. Elements here with none take only the global ones.
-const ELEMENTS: &[(&str, &[&str])] = &[
+pub(crate) const ELEMENTS: &[(&str, &[&str])] = &[
     ("a", &["href", "target", "download", "ping", "rel", "hreflang", "type", "referrerpolicy"]),
     ("abbr", &[]),
     ("address", &[]),

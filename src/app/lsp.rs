@@ -9,6 +9,7 @@ use std::sync::mpsc::{self, Receiver};
 
 use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
 use rust_code_core::buffer::minimal_edits;
+use rust_code_core::html_complete;
 use rust_code_core::lsp::servers::{self, Found, Installer, Launch, ServerKind};
 use rust_code_core::lsp::status::{Health, ServerStatus};
 use rust_code_core::lsp::types as lt;
@@ -1143,6 +1144,10 @@ impl CodeApp {
 
     /// Asks for completions at the cursor (`trigger`: the character typed).
     pub(super) fn request_completion(&mut self, trigger: Option<char>) {
+        if let Some(flavor) = self.markup_flavor_unserved() {
+            self.markup_completion(flavor);
+            return;
+        }
         let i = self.active;
         let Some(doc) = self.docs.get(i) else { return };
         let (uid, head) = (doc.uid, doc.buffer.primary().head);
@@ -1175,6 +1180,74 @@ impl CodeApp {
                 });
             }
         }
+    }
+
+    /// The active file's markup, when it's HTML or Vue and no ready server serves it.
+    fn markup_flavor_unserved(&self) -> Option<html_complete::Flavor> {
+        let doc = self.docs.get(self.active)?;
+        let flavor = match doc.extension().as_str() {
+            "vue" => html_complete::Flavor::Vue,
+            "html" | "htm" | "xhtml" | "svelte" | "jinja" | "jinja2" | "j2" | "njk" | "hbs" | "handlebars" | "ejs"
+            | "twig" | "liquid" | "php" => html_complete::Flavor::Html,
+            _ => return None,
+        };
+        let served = lsp_target(doc)
+            .is_some_and(|(path, _, kind)| self.lsp.clients.iter().any(|c| serves(c, kind, &path) && c.is_ready()));
+        (!served).then_some(flavor)
+    }
+
+    /// Suggestions from what the cursor is in: an element's name, its attributes, or a
+    /// value: after typing, or when asked for.
+    fn markup_completion(&mut self, flavor: html_complete::Flavor) {
+        let Some(doc) = self.docs.get(self.active) else { return };
+        let (uid, head) = (doc.uid, doc.buffer.primary().head);
+        let rope = doc.buffer.rope();
+        let before = rope.slice(head.saturating_sub(16_384)..head).to_string();
+        let Some(found) = html_complete::suggest(flavor, &before).filter(|s| !s.items.is_empty()) else {
+            self.lsp.completion = None;
+            return;
+        };
+        let start = head - found.back;
+        // Still the same word: the open list narrows. A word's first character can change
+        // the list: `@` in Vue turns attributes into events.
+        if found.back > 1 && self.lsp.completion.as_ref().is_some_and(|c| c.uid == uid && c.start == start) {
+            self.refilter_completion();
+            return;
+        }
+        let entries = found
+            .items
+            .into_iter()
+            .enumerate()
+            .map(|(n, s)| {
+                let kind = match s.kind {
+                    html_complete::Kind::Element => lt::CompletionItemKind::CLASS,
+                    html_complete::Kind::Attribute => lt::CompletionItemKind::PROPERTY,
+                    html_complete::Kind::Value => lt::CompletionItemKind::VALUE,
+                };
+                let item = lt::CompletionItem {
+                    label: s.label.clone(),
+                    kind: Some(kind),
+                    insert_text: Some(s.insert),
+                    insert_text_format: Some(lt::InsertTextFormat::SNIPPET),
+                    // The order given: an element's own attributes first.
+                    sort_text: Some(format!("{n:05}")),
+                    ..Default::default()
+                };
+                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item }
+            })
+            .collect();
+        self.lsp.completion = Some(Completion {
+            uid,
+            start,
+            entries,
+            shown: Vec::new(),
+            selected: 0,
+            incomplete: false,
+            waiting: false,
+            filtered_for: (u64::MAX, 0),
+            scroll_to_selected: true,
+        });
+        self.refilter_completion();
     }
 
     fn on_completion(&mut self, uid: u64, value: Value) {
@@ -1354,6 +1427,16 @@ impl CodeApp {
         let uid = doc.uid;
         if !focused || self.lsp.completion.as_ref().is_some_and(|c| c.uid != uid) {
             self.lsp.completion = None;
+        }
+        // HTML and Vue with no server get tags, attributes and values from here.
+        if focused && let Some(flavor) = self.markup_flavor_unserved() {
+            // Only typing looks again; otherwise the open list follows the cursor.
+            if typed.is_empty() {
+                self.refilter_completion();
+            } else {
+                self.markup_completion(flavor);
+            }
+            return;
         }
         let Some((ci, _)) = lsp_target(doc).and_then(|(p, _, k)| {
             self.lsp.clients.iter().position(|c| serves(c, k, &p) && c.is_ready()).map(|ci| (ci, p))

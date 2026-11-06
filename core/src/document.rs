@@ -402,6 +402,17 @@ fn built_in_language_name(ext: &str) -> &'static str {
         "xml" => "XML",
         "sql" => "SQL",
         "lua" => "Lua",
+        "vue" => "Vue",
+        "svelte" => "Svelte",
+        "svg" => "SVG",
+        "xaml" => "XAML",
+        "csproj" | "fsproj" | "vbproj" | "props" | "targets" => "MSBuild",
+        "jinja" | "jinja2" | "j2" => "Jinja",
+        "njk" => "Nunjucks",
+        "hbs" | "handlebars" => "Handlebars",
+        "ejs" => "EJS",
+        "twig" => "Twig",
+        "liquid" => "Liquid",
         _ => crate::languages::name(ext)
             .or_else(|| crate::lsp::registry::by_extension(ext, false).map(|l| l.name))
             .unwrap_or("Plain Text"),

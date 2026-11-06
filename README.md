@@ -248,6 +248,27 @@ In JSX and TSX a tag only starts where an expression can, so `Array<string>` and
 `useState<number>` are left alone. Nothing is completed inside `<script>` or `<style>`.
 `editor.auto_close_tags` and `editor.auto_create_quotes` turn these off.
 
+With no HTML language server, HTML, its templates and Vue still get suggestions as you type,
+or with `Ctrl+Space`:
+
+- element names after `<`
+- the element's own attributes first, then global ones and events; an attribute that takes a
+  value goes in as `name="|"`, and those already on the tag aren't offered
+- values for attributes with a fixed set: `type`, `target`, `rel` (one word at a time),
+  `method`, `loading`, `autocomplete`, `<meta name>` and others
+
+In Vue files, the suggestions also include:
+
+- Vue's directives (`v-if`, `v-for`, `v-model`…)
+- `:` for bound attributes and `@` for events
+- Vue's own components (`transition`, `keep-alive`…)
+- `<script setup>`, `<style scoped>` and the other block attributes
+
+Vue templates are checked like HTML with Vue's rules: any tag may close itself, `{{ }}` and
+`<script setup>` are fine, and a `lang="pug"` template is left alone. Svelte components are
+checked too, reading around `{#if}`, `{:else}`, `{/if}`, `{@html}` and `{expressions}`, with
+`on:`, `bind:` and `class:` attributes and `<script context>` allowed.
+
 ### Run Program
 
 The green button in the title bar (or `Shift+F10`, or the Run menu) saves your files and runs

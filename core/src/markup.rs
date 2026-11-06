@@ -50,7 +50,7 @@ pub struct Problem {
 }
 
 pub fn checks(extension: &str) -> bool {
-    HTML_EXTENSIONS.contains(&extension) || XML_EXTENSIONS.contains(&extension)
+    HTML_EXTENSIONS.contains(&extension) || XML_EXTENSIONS.contains(&extension) || matches!(extension, "vue" | "svelte")
 }
 
 pub fn check(extension: &str, source: &str) -> Vec<Problem> {
@@ -58,7 +58,13 @@ pub fn check(extension: &str, source: &str) -> Vec<Problem> {
         return Vec::new();
     }
     let mut found = if HTML_EXTENSIONS.contains(&extension) {
-        check_html(source)
+        check_html(source, Dialect::Html)
+    } else if extension == "vue" {
+        // A template in another language, such as Pug, isn't HTML to check.
+        let pug = source.contains("<template lang=\"pug\"") || source.contains("<template lang='pug'");
+        if pug { Vec::new() } else { check_html(source, Dialect::Vue) }
+    } else if extension == "svelte" {
+        check_html(source, Dialect::Svelte)
     } else if XML_EXTENSIONS.contains(&extension) {
         check_xml(source)
     } else {
@@ -74,6 +80,51 @@ fn utf16_col(source: &str, row: usize, byte_col: usize) -> u32 {
     let end = byte_col.min(line.len());
     let end = (0..=end).rev().find(|&i| line.is_char_boundary(i)).unwrap_or(0);
     line[..end].encode_utf16().count() as u32
+}
+
+/// Where the HTML comes from: a page, or a component's template.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Dialect {
+    Html,
+    Vue,
+    Svelte,
+}
+
+/// Svelte's `{...}`: blocks (`{#if}`, `{:else}`, `{/if}`), tags (`{@html}`) and
+/// expressions, in text or as attribute values, blanked like template tags.
+fn blank_svelte(source: &str) -> (String, bool) {
+    let mut bytes = source.as_bytes().to_vec();
+    let mut blocks = false;
+    let (mut depth, mut start, mut quote) = (0usize, 0usize, None);
+    for (i, c) in source.char_indices() {
+        match (depth, quote, c) {
+            (0, _, '{') => {
+                depth = 1;
+                start = i;
+                blocks |= source[i + 1..].starts_with(['#', ':', '/']);
+            }
+            (0, ..) => {}
+            (_, None, '"' | '\'' | '`') => quote = Some(c),
+            (_, Some(q), _) if c == q => quote = None,
+            (_, None, '{') => depth += 1,
+            (_, None, '}') => {
+                depth -= 1;
+                if depth == 0 {
+                    for b in &mut bytes[start..=i] {
+                        if *b != b'\n' {
+                            *b = b' ';
+                        }
+                    }
+                    // As an attribute's value it stays a value, quoted, so the tag still reads.
+                    if source[..start].ends_with('=') {
+                        (bytes[start], bytes[i]) = (b'"', b'"');
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    (String::from_utf8(bytes).unwrap_or_else(|_| source.to_owned()), blocks)
 }
 
 /// Template tags replaced by spaces, byte for byte, so positions stay where they were.
@@ -114,6 +165,8 @@ struct Html<'a> {
     text: &'a str,
     raw: &'a str,
     blocks: bool,
+    /// A Vue or Svelte component: any tag may close itself, and its blocks take the framework's attributes.
+    vue: bool,
     out: Vec<Problem>,
 }
 
@@ -192,7 +245,7 @@ impl Html<'_> {
         let Some(first) = children.first().copied() else { return };
         let Some(name) = self.tag_name(first) else { return };
         if first.kind() == "self_closing_tag" {
-            if !VOID.contains(&name.as_str()) && !name.contains('-') && !is_foreign(&name) {
+            if !self.vue && !VOID.contains(&name.as_str()) && !name.contains('-') && !is_foreign(&name) {
                 self.problem(
                     first,
                     format!(
@@ -236,7 +289,12 @@ impl Html<'_> {
             .collect();
         for name in names {
             let lower = self.text(name).to_ascii_lowercase();
-            match html_attributes::verdict(&element, &lower) {
+            let verdict = if self.vue && vue_block_attribute(&element, &lower) {
+                Verdict::Fine
+            } else {
+                html_attributes::verdict(&element, &lower)
+            };
+            match verdict {
                 Verdict::Fine => {}
                 Verdict::Obsolete => self.problem(
                     name,
@@ -333,14 +391,25 @@ fn is_foreign(name: &str) -> bool {
     )
 }
 
-fn check_html(source: &str) -> Vec<Problem> {
-    let (text, blocks) = blank_templates(source);
+/// Attributes of a Vue single-file component's blocks: `<script setup>`, `<style scoped>`.
+fn vue_block_attribute(element: &str, attribute: &str) -> bool {
+    match element {
+        "script" => matches!(attribute, "setup" | "lang" | "generic" | "src" | "context"),
+        "style" => matches!(attribute, "scoped" | "module" | "lang" | "src"),
+        "template" => matches!(attribute, "lang" | "functional" | "src"),
+        _ => false,
+    }
+}
+
+fn check_html(source: &str, dialect: Dialect) -> Vec<Problem> {
+    let (text, blocks) = if dialect == Dialect::Svelte { blank_svelte(source) } else { blank_templates(source) };
+    let vue = dialect != Dialect::Html;
     let mut parser = Parser::new();
     if parser.set_language(&tree_sitter_html::LANGUAGE.into()).is_err() {
         return Vec::new();
     }
     let Some(tree) = parser.parse(&text, None) else { return Vec::new() };
-    let mut page = Html { text: &text, raw: source, blocks, out: Vec::new() };
+    let mut page = Html { text: &text, raw: source, blocks, vue, out: Vec::new() };
     page.walk(tree.root_node());
     let mut out = page.out;
     out.sort_by_key(|p| (p.line, p.col));
@@ -525,6 +594,28 @@ mod tests {
         let wrong = "<p>{{ \"日本\" }} <b>x</p>\n";
         let open = check("html", wrong).into_iter().find(|p| p.message.contains("<b>")).expect("the open <b>");
         assert_eq!(open.col, 14);
+    }
+
+    #[test]
+    fn vue_templates_follow_vues_rules() {
+        let sfc = "<template>\n  <div :class=\"c\" @click=\"go\" v-if=\"ok\">\n    <MyCard title=\"t\" />\n    <span>{{ a > b ? 1 : 2 }}</span>\n    <div />\n  </div>\n</template>\n<script setup lang=\"ts\">\nconst a = 1 < 2\n</script>\n<style scoped>\np > a { color: red }\n</style>\n";
+        assert_eq!(found("vue", sfc), []);
+        // Its HTML is still checked.
+        let wrong = found("vue", "<template>\n  <div><span></div>\n  <img clas=\"x\">\n</template>\n");
+        assert!(wrong.iter().any(|(l, _, m)| *l == 2 && m.contains("`<span>` is never closed")), "{wrong:#?}");
+        assert!(wrong.iter().any(|(l, _, m)| *l == 3 && m.contains("no `clas`")), "{wrong:#?}");
+        // Pug isn't HTML.
+        assert_eq!(found("vue", "<template lang=\"pug\">\ndiv(class=\"a\")\n</template>\n"), []);
+        assert!(checks("vue"));
+    }
+
+    #[test]
+    fn svelte_blocks_and_expressions_are_read_around() {
+        let component = "<script context=\"module\">\n  export const x = 1;\n</script>\n<script>\n  let n = 0;\n</script>\n{#if n > 1}\n  <p class:big={n > 5} on:click={() => n++}>{n}</p>\n{:else}\n  <Card {n} />\n{/if}\n{@html raw}\n<style>\n  p { color: red }\n</style>\n";
+        assert_eq!(found("svelte", component), []);
+        let wrong = found("svelte", "{#each xs as x}\n  <li><b>{x}</li>\n{/each}\n");
+        assert!(wrong.iter().any(|(_, _, m)| m.contains("<b>")), "{wrong:#?}");
+        assert!(checks("svelte"));
     }
 
     #[test]
