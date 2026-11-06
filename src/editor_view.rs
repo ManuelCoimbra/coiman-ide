@@ -152,6 +152,81 @@ pub struct Decorations {
     pub color_marks: Vec<(usize, Color32)>,
     /// The line offering quick fixes, and the light bulb's color.
     pub bulb: Option<(usize, Color32)>,
+    /// Words drawn as pictures over their own characters, by line: font names in their
+    /// font. Not on the cursor's line, where the text is being edited.
+    pub word_images: Option<std::sync::Arc<std::collections::HashMap<usize, Vec<WordImage>>>>,
+}
+
+/// A word drawn as a picture in the cells its characters take.
+#[derive(Clone, Copy, Debug)]
+pub struct WordImage {
+    /// Char columns within the line.
+    pub start: usize,
+    pub end: usize,
+    pub texture: egui::TextureId,
+    /// The picture's size in points, drawn at the code font's size.
+    pub size: Vec2,
+    /// How far down the picture its text's baseline is, in points.
+    pub baseline: f32,
+}
+
+/// Room a word picture keeps after its text's ink, in points.
+pub const WORD_IMAGE_MARGIN: f32 = 2.0;
+
+/// Where a word drawn as a picture sits in a row: the cells its characters take, and
+/// where it was drawn instead, both in points from the row's text origin.
+#[derive(Clone, Copy, Debug)]
+struct WordShift {
+    cells: (f32, f32),
+    drawn: (f32, f32),
+}
+
+/// Where cell position `x` was drawn, in a row whose words were drawn as pictures.
+fn shifted(shifts: &[WordShift], x: f32) -> f32 {
+    let mut moved = 0.0;
+    for s in shifts {
+        if x < s.cells.0 {
+            return x - moved;
+        }
+        if x < s.cells.1 {
+            let into = (x - s.cells.0) / (s.cells.1 - s.cells.0).max(1.0);
+            return s.drawn.0 + into * (s.drawn.1 - s.drawn.0);
+        }
+        moved = s.cells.1 - s.drawn.1;
+    }
+    x - moved
+}
+
+/// The cell position under drawn position `x`, in a row whose words were drawn as pictures.
+fn unshift(shifts: &[WordShift], x: f32) -> f32 {
+    let mut moved = 0.0;
+    for s in shifts {
+        if x < s.drawn.0 {
+            return x + moved;
+        }
+        if x < s.drawn.1 {
+            let into = (x - s.drawn.0) / (s.drawn.1 - s.drawn.0).max(1.0);
+            return s.cells.0 + into * (s.cells.1 - s.cells.0);
+        }
+        moved = s.cells.1 - s.drawn.1;
+    }
+    x + moved
+}
+
+/// The syntax color of char `col` in `line`, before plugin coloring.
+fn syntax_color(doc: &mut Document, line: usize, col: usize) -> Color32 {
+    let spans = match &doc.ts {
+        Some(ts) => ts.lines.get(&line).map(Vec::as_slice),
+        None => doc.highlighter.spans(&doc.buffer, line),
+    };
+    let mut end = 0;
+    for s in spans.into_iter().flatten() {
+        end += s.len;
+        if col < end {
+            return theme::c32(s.color);
+        }
+    }
+    theme::colors().editor_fg
 }
 
 impl Decorations {
@@ -210,6 +285,8 @@ pub fn editor_id(uid: u64, pane: u8) -> egui::Id {
 pub struct ViewState {
     /// Scroll offset in points (x: horizontal, y: vertical).
     scroll: Vec2,
+    /// Rows whose words were drawn as pictures, by start char, so a click finds its char.
+    word_shifts: std::collections::HashMap<usize, Vec<WordShift>>,
     /// Widest line seen so far, in visual columns (for the horizontal scroll range).
     max_cols_seen: usize,
     /// Row layout when word wrap is on, rebuilt when the text or width changes.
@@ -627,7 +704,12 @@ fn inlay_cols(m: &Metrics, line: usize, from: usize, to: usize) -> usize {
 
 /// Document position under a screen point.
 fn pos_at(doc: &Document, view: &ViewState, layout: &Layout, m: &Metrics, text_rect: Rect, p: Pos2) -> usize {
-    let (row_start, row_end, line, col) = cell_at(doc, view, layout, m, text_rect, p);
+    let (mut row_start, mut row_end, mut line, mut col) = cell_at(doc, view, layout, m, text_rect, p);
+    if let Some(shifts) = view.word_shifts.get(&row_start) {
+        let drawn = p.x - text_rect.left() + view.scroll.x;
+        let cells = unshift(shifts, drawn);
+        (row_start, row_end, line, col) = cell_at(doc, view, layout, m, text_rect, Pos2::new(p.x + cells - drawn, p.y));
+    }
     doc.buffer.pos_at_visual_col(line, col).clamp(row_start, row_end)
 }
 
@@ -1261,6 +1343,14 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, pal.indent_guide));
         }
 
+        // Where words drawn as pictures moved this row's text when it was last painted, so
+        // selections, brackets and marks follow it. The cursor's line is drawn plain.
+        let row_shifts: Vec<WordShift> = if row.line == doc.buffer.char_to_line(doc.buffer.primary().head) {
+            Vec::new()
+        } else {
+            view.word_shifts.get(&row.start).cloned().unwrap_or_default()
+        };
+
         // Current line highlight.
         if row_idx == primary_row {
             text_painter.rect_stroke(
@@ -1279,8 +1369,8 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
             let a = s.start().max(row.start);
             let b = s.end().min(row.end);
-            let xa = x0 + col_x(buf, row.start, a, m);
-            let mut xb = x0 + col_x(buf, row.start, b, m);
+            let xa = x0 + shifted(&row_shifts, col_x(buf, row.start, a, m));
+            let mut xb = x0 + shifted(&row_shifts, col_x(buf, row.start, b, m));
             if s.end() > row.end && row.end == buf.line_end(row.line) {
                 xb += m.char_w * 0.6;
             }
@@ -1297,7 +1387,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         if let Some((open, close)) = bracket {
             for p in [open, close] {
                 if p >= row.start && p < row.end {
-                    let x = x0 + col_x(buf, row.start, p, m);
+                    let x = x0 + shifted(&row_shifts, col_x(buf, row.start, p, m));
                     text_painter.rect_stroke(
                         Rect::from_min_size(Pos2::new(x, y), Vec2::new(m.char_w, m.row_h)),
                         0.0,
@@ -1309,15 +1399,37 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         }
 
         // Plugin coloring: backgrounds under the text, the rest in the text itself.
-        let line_highlights: Vec<Highlight> =
+        let mut line_highlights: Vec<Highlight> =
             deco.highlights.iter().filter_map(|h| h.get(&row.line)).flatten().cloned().collect();
+        // Words drawn as pictures: their own characters are hidden under them.
+        let cursor_line = doc.buffer.char_to_line(doc.buffer.primary().head);
+        let word_images: &[WordImage] = deco
+            .word_images
+            .as_ref()
+            .filter(|_| row.line != cursor_line)
+            .and_then(|w| w.get(&row.line))
+            .map_or(&[], Vec::as_slice);
+        for image in word_images {
+            line_highlights.push(Highlight {
+                start: image.start,
+                end: image.end,
+                foreground: Some(Color32::TRANSPARENT),
+                background: None,
+                italic: false,
+                strike: false,
+                frame: None,
+            });
+        }
         if !line_highlights.is_empty() {
             let highlights = &line_highlights;
             let line_start = buf.line_start(row.line);
             for h in highlights {
                 let (a, b) = ((line_start + h.start).max(row.start), (line_start + h.end).min(row.end));
                 if let (Some(color), true) = (h.background, b > a) {
-                    let (xa, xb) = (x0 + col_x(buf, row.start, a, m), x0 + col_x(buf, row.start, b, m));
+                    let (xa, xb) = (
+                        x0 + shifted(&row_shifts, col_x(buf, row.start, a, m)),
+                        x0 + shifted(&row_shifts, col_x(buf, row.start, b, m)),
+                    );
                     let chip = Rect::from_min_max(Pos2::new(xa, y + 1.0), Pos2::new(xb, y + m.row_h - 1.0));
                     text_painter.rect_filled(chip, 2.0, color);
                     if let Some(frame) = h.frame {
@@ -1327,14 +1439,54 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
         }
 
+        // Each picture takes the color its first character would have, quote or letter.
+        let image_colors: Vec<Color32> = word_images.iter().map(|w| syntax_color(doc, row.line, w.start)).collect();
         // Text.
         let job = row_job(doc, view, &row, m, Some(&line_highlights).filter(|h| !h.is_empty()).map(|h| h.as_slice()));
         let galley = ui.fonts_mut(|f| {
             let job = fit_to_cells(job, m.char_w, f);
             f.layout_job(job)
         });
-        text_painter.galley(Pos2::new(x0, y), galley, theme::colors().text);
+        // The code's baseline, so the pictures' text sits on it.
+        let baseline = galley.rows.first().and_then(|r| r.glyphs.first().map(|g| y + r.pos.y + g.pos.y));
         let buf = &doc.buffer;
+        // Names take their own font's width, on the code's baseline, in their syntax color,
+        // and the rest of the row closes up behind them (or makes room), as text would.
+        let clip = text_painter.clip_rect();
+        let text_color = theme::colors().text;
+        let mut shifts = Vec::new();
+        let (mut from, mut shift) = (f32::NEG_INFINITY, 0.0);
+        for (image, color) in word_images.iter().zip(image_colors) {
+            let line_start = buf.line_start(row.line);
+            let (a, b) = ((line_start + image.start).max(row.start), (line_start + image.end).min(row.end));
+            if b <= a {
+                continue;
+            }
+            let (xa, xb) = (x0 + col_x(buf, row.start, a, m), x0 + col_x(buf, row.start, b, m));
+            // The text up to the name, moved left by what the names before it saved.
+            let before = Rect::from_x_y_ranges((from - shift).max(clip.left())..=(xa - shift), clip.y_range());
+            text_painter.with_clip_rect(before.intersect(clip)).galley(
+                Pos2::new(x0 - shift, y),
+                galley.clone(),
+                text_color,
+            );
+            let at = xa - shift;
+            let top = baseline.map_or(y + (m.row_h - image.size.y) / 2.0, |b| b - image.baseline);
+            let uv = Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0));
+            text_painter.image(image.texture, Rect::from_min_size(Pos2::new(at, top), image.size), uv, color);
+            // The picture is cropped a little past the ink; the name's own width ends there.
+            let width = (image.size.x - WORD_IMAGE_MARGIN).max(0.0);
+            shifts.push(WordShift { cells: (xa - x0, xb - x0), drawn: (at - x0, at + width - x0) });
+            shift += (xb - xa) - width;
+            from = xb;
+        }
+        let rest = Rect::from_x_y_ranges((from - shift).max(clip.left())..=clip.right(), clip.y_range());
+        text_painter.with_clip_rect(rest.intersect(clip)).galley(Pos2::new(x0 - shift, y), galley, text_color);
+        if shifts.is_empty() {
+            view.word_shifts.remove(&row.start);
+        } else {
+            view.word_shifts.insert(row.start, shifts);
+        }
         // Columns that don't count: laid over the text, so its colors fade evenly.
         if row.first {
             for (from, to) in &deco.dim_columns {
@@ -1361,8 +1513,8 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
             let a = mark.start.max(row.start);
             let b = mark.end.min(row.end);
-            let xa = x0 + col_x(buf, row.start, a, m);
-            let xb = if b > a { x0 + col_x(buf, row.start, b, m) } else { xa + m.char_w };
+            let xa = x0 + shifted(&row_shifts, col_x(buf, row.start, a, m));
+            let xb = if b > a { x0 + shifted(&row_shifts, col_x(buf, row.start, b, m)) } else { xa + m.char_w };
             squiggle(&text_painter, xa, xb, y + m.row_h - 2.0, severity_color(mark.severity));
         }
         let printed = deco.values.binary_search_by_key(&row.line, |v| v.0).ok().map(|at| &deco.values[at].1);
@@ -1370,19 +1522,19 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             && row.end == buf.line_end(row.line)
             && let Some(value) = printed
         {
-            let x = x0 + col_x(buf, row.start, row.end, m) + 3.0 * m.char_w;
+            let x = x0 + shifted(&row_shifts, col_x(buf, row.start, row.end, m)) + 3.0 * m.char_w;
             text_painter.text(Pos2::new(x, y), egui::Align2::LEFT_TOP, value, m.font_id.clone(), pal.accent);
         } else if inline.is_none()
             && row.end == buf.line_end(row.line)
             && let Some((_, blame)) = deco.blame.as_ref().filter(|(line, _)| *line == row.line)
         {
-            let x = x0 + col_x(buf, row.start, row.end, m) + 3.0 * m.char_w;
+            let x = x0 + shifted(&row_shifts, col_x(buf, row.start, row.end, m)) + 3.0 * m.char_w;
             text_painter.text(Pos2::new(x, y), egui::Align2::LEFT_TOP, blame, m.font_id.clone(), pal.text_dim);
         }
         if let Some(mark) = inline
             && row.end == buf.line_end(row.line)
         {
-            let x = x0 + col_x(buf, row.start, row.end, m) + 3.0 * m.char_w;
+            let x = x0 + shifted(&row_shifts, col_x(buf, row.start, row.end, m)) + 3.0 * m.char_w;
             let message = mark.message.lines().next().unwrap_or_default();
             text_painter.text(
                 Pos2::new(x, y),
@@ -1432,7 +1584,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
             if folded && row.end == buf.line_end(row.line) {
                 // "…" box after the line, like VS Code's folded-region marker.
-                let x = x0 + col_x(buf, row.start, row.end, m) + m.char_w;
+                let x = x0 + shifted(&row_shifts, col_x(buf, row.start, row.end, m)) + m.char_w;
                 let pill = Rect::from_min_size(Pos2::new(x, y + 2.0), Vec2::new(3.0 * m.char_w, m.row_h - 4.0));
                 text_painter.rect_filled(pill, 3.0, pal.hover_bg);
                 for k in 0..3 {
@@ -1813,7 +1965,22 @@ fn paint_scrollbars(ui: &mut egui::Ui, view: &ViewState, rect: Rect, text_rect: 
 
 #[cfg(test)]
 mod tests {
-    use super::wrap_segments;
+    use super::{WordShift, shifted, unshift, wrap_segments};
+
+    #[test]
+    fn words_drawn_narrower_close_up_the_row() {
+        // Cells 10..50 drawn in 25 points, then cells 60..80 drawn in 30.
+        let shifts = [
+            WordShift { cells: (10.0, 50.0), drawn: (10.0, 35.0) },
+            WordShift { cells: (60.0, 80.0), drawn: (45.0, 75.0) },
+        ];
+        for (cell, drawn) in
+            [(5.0, 5.0), (10.0, 10.0), (30.0, 22.5), (50.0, 35.0), (55.0, 40.0), (70.0, 60.0), (90.0, 85.0)]
+        {
+            assert_eq!(shifted(&shifts, cell), drawn, "cell {cell}");
+            assert_eq!(unshift(&shifts, drawn), cell, "drawn {drawn}");
+        }
+    }
 
     #[test]
     fn wraps_at_last_space_or_mid_word() {

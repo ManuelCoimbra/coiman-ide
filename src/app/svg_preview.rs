@@ -28,7 +28,7 @@ pub(super) struct SvgPreview {
     problem: Option<String>,
 }
 
-fn fonts() -> Arc<usvg::fontdb::Database> {
+pub(super) fn fonts() -> Arc<usvg::fontdb::Database> {
     static FONTS: OnceLock<Arc<usvg::fontdb::Database>> = OnceLock::new();
     FONTS
         .get_or_init(|| {

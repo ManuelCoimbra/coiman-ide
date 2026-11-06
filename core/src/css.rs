@@ -855,6 +855,254 @@ fn flutter_colors(chars: &[char], out: &mut Vec<FoundColor>) {
     }
 }
 
+/// A list of font families written in a file, by char offsets of its value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FontList {
+    pub start: usize,
+    pub end: usize,
+    /// In the order a browser tries them, unquoted.
+    pub families: Vec<String>,
+}
+
+/// CSS's generic families: always there, as whatever the system maps them to.
+pub const GENERIC_FAMILIES: &[&str] = &[
+    "serif",
+    "sans-serif",
+    "monospace",
+    "cursive",
+    "fantasy",
+    "system-ui",
+    "ui-serif",
+    "ui-sans-serif",
+    "ui-monospace",
+    "ui-rounded",
+    "emoji",
+    "math",
+    "fangsong",
+];
+
+/// The families in a `font-family` value, in order: quotes taken off, unquoted names
+/// of several words joined by single spaces, and `!important` and `var()` left out.
+pub fn parse_font_families(value: &str) -> Vec<String> {
+    let value = value.trim().trim_end_matches(';').trim();
+    let value = value.strip_suffix("!important").unwrap_or(value);
+    let mut families = Vec::new();
+    let (mut current, mut quote) = (String::new(), None);
+    for c in value.chars() {
+        match (quote, c) {
+            (None, '"' | '\'') => quote = Some(c),
+            (Some(q), _) if c == q => quote = None,
+            (None, ',') => families.push(std::mem::take(&mut current)),
+            _ => current.push(c),
+        }
+    }
+    families.push(current);
+    families
+        .into_iter()
+        .map(|f| f.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|f| !f.is_empty() && !f.starts_with("var(") && !f.contains(['{', '}', '$']))
+        .collect()
+}
+
+/// Sizes in the `font` shorthand: the families come after the size.
+fn is_font_size(token: &str) -> bool {
+    let token = token.split('/').next().unwrap_or("");
+    const KEYWORDS: &[&str] = &[
+        "xx-small",
+        "x-small",
+        "small",
+        "medium",
+        "large",
+        "x-large",
+        "xx-large",
+        "xxx-large",
+        "smaller",
+        "larger",
+        "math",
+    ];
+    KEYWORDS.contains(&token)
+        || token.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+            && ["px", "pt", "em", "rem", "%", "ex", "ch", "vw", "vh", "vmin", "vmax", "cm", "mm", "in", "pc", "q"]
+                .iter()
+                .any(|unit| token.ends_with(unit))
+}
+
+/// The families of a declaration's value, if its property names a font list:
+/// `font-family`, the `font` shorthand, or a variable named for fonts such as
+/// `--font-body` or `$font-stack`.
+fn families_of(property: &str, value: &str) -> Option<(usize, Vec<String>)> {
+    let property = property.to_lowercase();
+    let variable = property.starts_with("--") || property.starts_with('$') || property.starts_with('@');
+    let about_size = ["size", "weight", "style", "variant", "stretch", "feature", "display", "kerning", "synthesis"];
+    if property == "font-family"
+        || (variable && property.contains("font") && !about_size.iter().any(|w| property.contains(w)))
+    {
+        return Some((0, parse_font_families(value)));
+    }
+    if property == "font" {
+        // After the size and any `/line-height`.
+        let mut offset = 0;
+        let mut tokens = value.split_inclusive(char::is_whitespace).peekable();
+        while let Some(token) = tokens.next() {
+            offset += token.len();
+            if is_font_size(token.trim()) {
+                if tokens.peek().is_some_and(|t| t.trim_start().starts_with('/')) {
+                    offset += tokens.next().map_or(0, str::len);
+                }
+                let rest = &value[offset..];
+                let rest =
+                    rest.strip_prefix('/').map_or(rest, |r| r.split_once(char::is_whitespace).map_or("", |x| x.1));
+                return Some((value.len() - rest.len(), parse_font_families(rest)));
+            }
+        }
+    }
+    None
+}
+
+/// In a declaration list (a rule's body or a `style` attribute), the font list of the
+/// declaration that holds char `pos`, with offsets counted from `base`.
+fn font_list_in(chars: &[char], base: usize, pos: usize) -> Option<FontList> {
+    for segment in segments(chars) {
+        if segment.kind != SegmentKind::Declaration || !(segment.start..=segment.end).contains(&(pos - base)) {
+            continue;
+        }
+        let text: String = chars[segment.start..segment.end].iter().collect();
+        let (property, value) = text.split_once(':')?;
+        let value_start = base + segment.start + property.chars().count() + 1;
+        let (skip, families) = families_of(property.trim(), value)?;
+        let start = value_start + value[..skip].chars().count();
+        return (!families.is_empty()).then(|| FontList { start, end: base + segment.end, families });
+    }
+    None
+}
+
+/// Every family name written in a font list in the file, with its char offsets:
+/// `font-family`, `font` and font variables in style sheets, pages and `style="..."`,
+/// and `fontFamily` strings in code. Quotes are left out of the range.
+pub fn font_names(extension: &str, text: &str) -> Vec<(usize, usize, String)> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut lists = Vec::new();
+    let mut in_region = |region: &[char], base: usize| {
+        for segment in segments(region) {
+            if segment.kind != SegmentKind::Declaration {
+                continue;
+            }
+            let decl: String = region[segment.start..segment.end].iter().collect();
+            let Some((property, value)) = decl.split_once(':') else { continue };
+            let Some((skip, _)) = families_of(property.trim(), value) else { continue };
+            let value_start = base + segment.start + property.chars().count() + 1;
+            lists.push((value_start + value[..skip].chars().count(), value[skip..].to_owned()));
+        }
+    };
+    if is_style_sheet(extension) {
+        in_region(&chars, 0);
+    } else if is_page(extension) {
+        for (start, end) in style_blocks(&chars) {
+            in_region(&chars[start..end], start);
+        }
+        let mut at = 0;
+        while let Some(found) = text[at..].find("style=").map(|i| at + i) {
+            let quote_at = found + "style=".len();
+            let Some(quote) = text[quote_at..].chars().next().filter(|c| matches!(c, '"' | '\'')) else {
+                at = quote_at;
+                continue;
+            };
+            let Some(len) = text[quote_at + 1..].find(quote) else { break };
+            let body: Vec<char> = text[quote_at + 1..quote_at + 1 + len].chars().collect();
+            in_region(&body, text[..quote_at + 1].chars().count());
+            at = quote_at + 1 + len;
+        }
+    } else if quotes_colors(extension) {
+        let mut at = 0;
+        while let Some(key) = text[at..].find("fontFamily").map(|i| at + i) {
+            let rest = &text[key..];
+            let line_end = rest.find('\n').unwrap_or(rest.len());
+            let line = &rest[..line_end];
+            if let Some(open) = line.find(['\'', '"', '`'])
+                && let Some(close) = line[open + 1..].find(line[open..].chars().next().unwrap_or('"'))
+            {
+                let start = text[..key + open + 1].chars().count();
+                lists.push((start, line[open + 1..open + 1 + close].to_owned()));
+            }
+            at = key + line_end.max(1);
+        }
+    }
+    let mut out = Vec::new();
+    for (start, value) in lists {
+        // Each family between commas, without quotes or spaces around it.
+        let mut offset = 0;
+        for part in value.split(',') {
+            let leading = part.len() - part.trim_start().len();
+            let name = part.trim().trim_end_matches(';').trim_end();
+            let name = name.strip_suffix("!important").map_or(name, str::trim_end);
+            let quoted = name.starts_with(['"', '\'']) && name.len() >= 2;
+            let inner = if quoted { &name[1..name.len() - 1] } else { name };
+            let first = start + value[..offset + leading + usize::from(quoted)].chars().count();
+            let families = parse_font_families(inner);
+            if let [family] = families.as_slice() {
+                out.push((first, first + inner.chars().count(), family.clone()));
+            }
+            offset += part.len() + 1;
+        }
+    }
+    out
+}
+
+/// The font list under char `pos`: a `font-family` or `font` declaration (or a font
+/// variable) in a style sheet, a page's `<style>` or `style="..."`, or in code a string
+/// that is a `fontFamily` value.
+pub fn font_families_at(extension: &str, text: &str, pos: usize) -> Option<FontList> {
+    let chars: Vec<char> = text.chars().collect();
+    if pos > chars.len() {
+        return None;
+    }
+    if is_style_sheet(extension) {
+        return font_list_in(&chars, 0, pos);
+    }
+    if is_page(extension) {
+        for (start, end) in style_blocks(&chars) {
+            if (start..=end).contains(&pos) {
+                return font_list_in(&chars[start..end], start, pos);
+            }
+        }
+        // `style="..."`: the attribute holding `pos`.
+        let line_start = chars[..pos].iter().rposition(|c| *c == '\n').map_or(0, |i| i + 1);
+        let line: String = chars[line_start..].iter().take_while(|c| **c != '\n').collect();
+        let at = pos - line_start;
+        let mut from = 0;
+        while let Some(found) = line[from..].find("style=").map(|i| from + i) {
+            let quote_at = found + "style=".len();
+            let Some(quote) = line[quote_at..].chars().next().filter(|c| matches!(c, '"' | '\'')) else {
+                from = quote_at;
+                continue;
+            };
+            let open = line[..quote_at + 1].chars().count();
+            let close = line[quote_at + 1..].find(quote).map(|i| line[..quote_at + 1 + i].chars().count())?;
+            if (open..=close).contains(&at) {
+                let body: Vec<char> = line.chars().skip(open).take(close - open).collect();
+                return font_list_in(&body, line_start + open, pos);
+            }
+            from = quote_at + 1;
+        }
+        return None;
+    }
+    if quotes_colors(extension) {
+        // `fontFamily: '"Inter", sans-serif'` in a style object.
+        let line_start = chars[..pos].iter().rposition(|c| *c == '\n').map_or(0, |i| i + 1);
+        let line: String = chars[line_start..].iter().take_while(|c| **c != '\n').collect();
+        let key = line.find("fontFamily")?;
+        let rest = &line[key..];
+        let open = rest.find(['\'', '"', '`'])?;
+        let quote = rest[open..].chars().next()?;
+        let close = rest[open + 1..].rfind(quote)? + open + 1;
+        let start = line_start + line[..key + open + 1].chars().count();
+        let end = line_start + line[..key + close].chars().count();
+        let families = parse_font_families(&rest[open + 1..close]);
+        return ((start..=end).contains(&pos) && !families.is_empty()).then_some(FontList { start, end, families });
+    }
+    None
+}
+
 /// The color under char `pos`.
 pub fn color_at(text: &str, pos: usize) -> Option<FoundColor> {
     colors(text).into_iter().find(|f| f.start <= pos && pos <= f.end)
@@ -992,6 +1240,57 @@ impl Color {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn font_lists_under_the_cursor() {
+        let families = |ext: &str, text: &str| {
+            let pos = text.find('|').expect("a cursor");
+            let text = text.replacen('|', "", 1);
+            font_families_at(ext, &text, pos).map(|f| f.families)
+        };
+        let expect = |list: &[&str]| Some(list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>());
+        assert_eq!(
+            families("css", "body { font-family: \"Segoe UI\", Ro|boto, Helvetica Neue,  sans-serif !important; }"),
+            expect(&["Segoe UI", "Roboto", "Helvetica Neue", "sans-serif"])
+        );
+        assert_eq!(families("css", "p { font: italic bold 12px/1.5 Geor|gia, serif }"), expect(&["Georgia", "serif"]));
+        assert_eq!(families("css", "p { font: 1.2rem 'Fira Code', mono|space }"), expect(&["Fira Code", "monospace"]));
+        assert_eq!(families("css", ":root { --font-body: Inter, sys|tem-ui; }"), expect(&["Inter", "system-ui"]));
+        assert_eq!(families("scss", "$font-stack: Helvetica, s|ans-serif;"), expect(&["Helvetica", "sans-serif"]));
+        assert_eq!(families("css", "p { font-size: 1|2px }"), None);
+        assert_eq!(families("css", "p { color: r|ed }"), None);
+        assert_eq!(families("html", "<style>h1 { font-family: Arial, ser|if }</style>"), expect(&["Arial", "serif"]));
+        assert_eq!(
+            families("html", "<p style=\"margin: 0; font-family: Cour|ier New, monospace\">x</p>"),
+            expect(&["Courier New", "monospace"])
+        );
+        assert_eq!(
+            families("tsx", "const s = { fontFamily: '\"Inter\", sans-ser|if' };"),
+            expect(&["Inter", "sans-serif"])
+        );
+        assert_eq!(families("tsx", "const s = { color: 'r|ed' };"), None);
+    }
+
+    #[test]
+    fn font_names_and_where_they_are() {
+        let names = |ext: &str, text: &str| -> Vec<String> {
+            let chars: Vec<char> = text.chars().collect();
+            font_names(ext, text)
+                .into_iter()
+                .map(|(a, b, family)| {
+                    let written: String = chars[a..b].iter().collect();
+                    format!("{written}={family}")
+                })
+                .collect()
+        };
+        assert_eq!(
+            names("css", "body { font-family: \"Segoe UI\", Roboto,  sans-serif; }\nh1 { font: 2em/1 Georgia }"),
+            ["Segoe UI=Segoe UI", "Roboto=Roboto", "sans-serif=sans-serif", "Georgia=Georgia"]
+        );
+        assert_eq!(names("html", "<p style=\"font-family: 'Courier New'\">x</p>"), ["Courier New=Courier New"]);
+        assert_eq!(names("tsx", "const s = { fontFamily: \"Inter, serif\" };"), ["Inter=Inter", "serif=serif"]);
+        assert!(names("css", "p { font-size: 12px; color: red }").is_empty());
+    }
 
     #[test]
     fn readable_text_on_any_color() {

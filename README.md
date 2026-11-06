@@ -303,6 +303,23 @@ Deprecated code is struck through. Themes can set these themselves: a VS Code th
 theme without them uses its TextMate colors for `entity.name.type.class`,
 `entity.name.type.interface` and the like, falling back to types in general.
 
+### Fonts
+
+Font names in a font list are written in their own font: in `font-family: "Segoe UI", Georgia,
+serif`, "Segoe UI" shows in Segoe UI and Georgia in Georgia, quotes included, in the code's
+syntax color and size and on its baseline. Each name takes its own font's width and the rest of
+the line closes up behind it, as text set in that font would; clicks, selections and marks follow.
+A generic family shows in the font it
+stands for here, such as `serif` in Times New Roman. A font that isn't installed stays as written,
+so a name in plain code is one the page can't use on this machine. The line with the cursor shows
+plain text, for editing.
+
+Lists are found in style sheets, in `<style>` and `style="..."` in pages, Vue and Svelte, and in
+`fontFamily` strings in JS and TS. Resting the pointer on a list opens a card with a sample line in
+each font, marking the one a browser here would use and showing a missing one in its fallback.
+**CSS: Preview Font Family** opens the card for the list under the cursor. Both are under
+**Settings > Editor > Fonts in themselves**.
+
 ### Run Program
 
 The green button in the title bar (or `Shift+F10`, or the Run menu) saves your files and runs

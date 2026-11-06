@@ -211,6 +211,7 @@ impl CodeApp {
             Command::RunWithoutDebugging => self.run_selected_config(ctx),
             Command::RunProgram => self.run_program(ctx),
             Command::RunCurrentFile => self.run_current_file(ctx),
+            Command::PreviewFontFamily => self.preview_font_at_cursor(ctx),
             Command::SelectRunConfig => self.select_run_config(ctx),
             Command::ChooseRunTarget => self.choose_run_target(),
             Command::OpenLivePreview => self.open_live_preview(ctx),

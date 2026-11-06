@@ -1371,6 +1371,11 @@ impl CodeApp {
         self.lsp.cursor_rect
     }
 
+    /// Where the hover box is on screen, while one shows.
+    pub(super) fn hover_rect(&self) -> Option<Rect> {
+        self.lsp.hover.as_ref().and_then(|h| h.rect)
+    }
+
     pub(super) fn completion_open(&self) -> bool {
         self.lsp.completion.is_some()
     }
@@ -1611,6 +1616,7 @@ impl CodeApp {
         self.completion_after_typing(typed, focused);
         self.signature_after_typing(typed);
         self.update_hover(ctx, uid, out.hover, head);
+        self.font_preview_hover(ctx, out.hover);
         if let Some(pos) = out.ctrl_click {
             self.request_locations("textDocument/definition", "Definitions", Some(pos));
         }

@@ -171,7 +171,8 @@ impl CodeApp {
     pub(super) fn other_pane(&mut self, ui: &mut egui::Ui, rect: Rect, opts: editor_view::Options) {
         let Some(uid) = self.split.as_ref().map(|s| s.other) else { return };
         let Some(i) = self.docs.iter().position(|d| d.uid == uid) else { return };
-        let deco = self.decorations(i);
+        let mut deco = self.decorations(i);
+        self.font_names_decorate(&ui.ctx().clone(), i, &mut deco);
         let pane = 1 - self.active_pane();
         let Some(split) = &mut self.split else { return };
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect));

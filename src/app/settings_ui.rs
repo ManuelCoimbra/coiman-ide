@@ -113,6 +113,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "editor",
+                "font_previews",
+                "Fonts in themselves",
+                "Font names in style sheets drawn in their own font, with samples on hover.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "auto_close_tags",
                 "Close tags as you type",
                 "In HTML, XML and JSX: > adds the end tag, and </ finishes the open one.",

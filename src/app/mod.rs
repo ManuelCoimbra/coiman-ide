@@ -18,6 +18,7 @@ mod doctor;
 mod environment;
 mod file_buttons;
 mod files;
+mod font_preview;
 mod git;
 mod hidden;
 mod history;
@@ -195,6 +196,7 @@ pub struct CodeApp {
     live: live::Live,
     constant: constant::Constant,
     likely: likely::Likely,
+    font_preview: font_preview::FontPreview,
     color_preview: color_preview::ColorPreview,
     images: image_view::Viewer,
     markup: markup::Markup,
@@ -344,6 +346,7 @@ impl CodeApp {
             live: Default::default(),
             constant: Default::default(),
             likely: Default::default(),
+            font_preview: Default::default(),
             color_preview: Default::default(),
             images: Default::default(),
             markup: Default::default(),
@@ -692,6 +695,7 @@ impl eframe::App for CodeApp {
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
             let pane = self.active_pane();
             let mut deco = self.decorations(self.active);
+            self.font_names_decorate(&ctx, self.active, &mut deco);
             deco.bulb = self.bulb_at(self.active);
             // Text typed this frame (the editor reads events without consuming them).
             let typed: String = ui.input(|i| {
@@ -758,6 +762,7 @@ impl eframe::App for CodeApp {
             theme::round_island_corners(&ctx, &islands);
         }
         self.lsp_popups(&ctx);
+        self.font_preview_ui(&ctx);
         self.lsp_room(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);
