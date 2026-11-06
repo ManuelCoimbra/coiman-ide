@@ -1,10 +1,9 @@
 //! The web authoring kit: Emmet on Tab, the color picker, Baseline and specificity
 //! on hover, Baseline problems against a project's target, a guard against
-//! formatters that fight, and image files shown as images.
+//! formatters that fight.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver};
 
 use eframe::egui::{self, RichText};
 use rust_code_core::baseline::{self, Target};
@@ -13,41 +12,9 @@ use rust_code_core::emmet::{self, Syntax};
 use rust_code_core::formatters::{self, WebTools};
 use rust_code_core::lsp::{convert, types as lt};
 
+use super::CodeApp;
 use super::lsp::path_key;
-use super::{CodeApp, repaint};
 use crate::buffer::Selection;
-use crate::theme;
-
-/// The largest image file to decode.
-const MAX_IMAGE_BYTES: u64 = 128 * 1024 * 1024;
-
-const IMAGE_EXTENSIONS: [&str; 8] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif"];
-
-pub(super) fn is_image(path: &Path) -> bool {
-    path.extension().is_some_and(|e| IMAGE_EXTENSIONS.iter().any(|i| e.eq_ignore_ascii_case(i)))
-}
-
-pub(super) struct Decoded {
-    pub(super) size: [usize; 2],
-    pub(super) rgba: Vec<u8>,
-}
-
-enum ImageState {
-    Loading(Receiver<Result<Decoded, String>>),
-    Ready(egui::TextureHandle, [usize; 2]),
-    Failed(String),
-}
-
-struct ImageView {
-    path: PathBuf,
-    bytes: u64,
-    state: ImageState,
-    /// `None` fits the image to the space; otherwise screen points per pixel.
-    scale: Option<f32>,
-    /// The document that was active: switching tabs leaves the image.
-    over: Option<u64>,
-    showing: bool,
-}
 
 /// The picker's window.
 struct Picker {
@@ -73,23 +40,8 @@ struct Checked {
 
 #[derive(Default)]
 pub(super) struct Web {
-    image: Option<ImageView>,
-    /// Opened since the last frame, and not started yet.
-    image_to_open: Option<PathBuf>,
     picker: Option<Picker>,
     checked: HashMap<PathBuf, Checked>,
-}
-
-pub(super) fn decode(path: &Path) -> Result<Decoded, String> {
-    let image = image::ImageReader::open(path)
-        .map_err(|e| e.to_string())?
-        .with_guessed_format()
-        .map_err(|e| e.to_string())?
-        .decode()
-        .map_err(|e| e.to_string())?
-        .into_rgba8();
-    let size = [image.width() as usize, image.height() as usize];
-    Ok(Decoded { size, rgba: image.into_raw() })
 }
 
 fn to_color32(c: &Color) -> egui::Color32 {
@@ -363,152 +315,7 @@ impl CodeApp {
         })
     }
 
-    // ----- images ----------------------------------------------------------------------
-
-    /// Asks for an image file to be shown. Any other file closes the one showing.
-    pub(super) fn open_image_file(&mut self, path: &Path) -> bool {
-        let image = is_image(path);
-        self.web.image_to_open = image.then(|| path.to_path_buf());
-        image
-    }
-
-    fn open_image(&mut self, ctx: &egui::Context, path: &Path) {
-        let bytes = std::fs::metadata(path).map_or(0, |m| m.len());
-        let state = if bytes > MAX_IMAGE_BYTES {
-            ImageState::Failed(format!("Too large to show ({} MB)", bytes / (1024 * 1024)))
-        } else {
-            let (tx, rx) = mpsc::channel();
-            let (file, wake) = (path.to_path_buf(), repaint(ctx));
-            std::thread::spawn(move || {
-                let _ = tx.send(decode(&file));
-                wake();
-            });
-            ImageState::Loading(rx)
-        };
-        let over = self.docs.get(self.active).map(|d| d.uid);
-        self.web.image = Some(ImageView { path: path.to_path_buf(), bytes, state, scale: None, over, showing: true });
-    }
-
-    pub(super) fn image_tab(&self) -> Option<(String, bool)> {
-        let view = self.web.image.as_ref()?;
-        Some((view.path.file_name()?.to_string_lossy().into_owned(), view.showing))
-    }
-
-    pub(super) fn hide_image(&mut self) {
-        if let Some(view) = &mut self.web.image {
-            view.showing = false;
-        }
-    }
-
-    pub(super) fn show_image_tab(&mut self) {
-        let over = self.docs.get(self.active).map(|d| d.uid);
-        if let Some(view) = &mut self.web.image {
-            view.showing = true;
-            view.over = over;
-        }
-    }
-
-    pub(super) fn close_image_tab(&mut self) {
-        self.web.image = None;
-    }
-
-    /// Shows the open image in place of the editor. Says whether it did.
-    pub(super) fn image_view(&mut self, ui: &mut egui::Ui) -> bool {
-        if let Some(path) = self.web.image_to_open.take() {
-            self.hide_logs();
-            self.hide_bytes();
-            self.open_image(ui.ctx(), &path);
-        }
-        let active = self.docs.get(self.active).map(|d| d.uid);
-        if let Some(view) = self.web.image.as_mut().filter(|v| v.over != active) {
-            view.showing = false;
-        }
-        let Some(view) = self.web.image.as_mut().filter(|v| v.showing) else { return false };
-        if let ImageState::Loading(rx) = &view.state
-            && let Ok(result) = rx.try_recv()
-        {
-            view.state = match result {
-                Ok(d) => {
-                    let image = egui::ColorImage::from_rgba_unmultiplied(d.size, &d.rgba);
-                    let name = view.path.display().to_string();
-                    ImageState::Ready(ui.ctx().load_texture(name, image, egui::TextureOptions::NEAREST), d.size)
-                }
-                Err(why) => ImageState::Failed(why),
-            };
-        }
-        let pal = theme::colors();
-        let mut close = false;
-        ui.horizontal(|ui| {
-            ui.add_space(8.0);
-            let name = view.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            ui.label(RichText::new(name).strong());
-            let kib = view.bytes as f64 / 1024.0;
-            let weight = if kib < 1024.0 { format!("{kib:.1} KB") } else { format!("{:.1} MB", kib / 1024.0) };
-            let details = match &view.state {
-                ImageState::Ready(_, [w, h]) => format!("{w} x {h}, {weight}"),
-                _ => weight,
-            };
-            ui.label(RichText::new(details).color(pal.text_dim));
-            if ui.selectable_label(view.scale.is_none(), "Fit").clicked() {
-                view.scale = None;
-            }
-            if ui.selectable_label(view.scale == Some(1.0), "100%").clicked() {
-                view.scale = Some(1.0);
-            }
-            close = ui.button("Close").clicked();
-        });
-        ui.separator();
-        match &view.state {
-            ImageState::Loading(_) => {
-                ui.label("Loading…");
-            }
-            ImageState::Failed(why) => {
-                ui.label(format!("Can't show this image: {why}"));
-            }
-            ImageState::Ready(texture, [w, h]) => {
-                let natural = egui::vec2(*w as f32, *h as f32);
-                let scale = view.scale.unwrap_or_else(|| {
-                    let room = ui.available_size();
-                    (room.x / natural.x).min(room.y / natural.y).min(1.0)
-                });
-                let id = texture.id();
-                egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-                    let (rect, _) = ui.allocate_exact_size(natural * scale, egui::Sense::hover());
-                    checkerboard(ui, rect);
-                    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-                    ui.painter().image(id, rect, uv, egui::Color32::WHITE);
-                });
-            }
-        }
-        if close {
-            self.web.image = None;
-        }
-        true
-    }
-
     pub(super) fn web_windows(&mut self, ctx: &egui::Context) {
         self.picker_window(ctx);
-    }
-}
-
-/// What shows through a transparent image.
-fn checkerboard(ui: &egui::Ui, rect: egui::Rect) {
-    const CELL: f32 = 10.0;
-    let painter = ui.painter_at(rect);
-    let (dark, light) = (egui::Color32::from_gray(60), egui::Color32::from_gray(90));
-    painter.rect_filled(rect, 0.0, dark);
-    let clip = ui.clip_rect().intersect(rect);
-    let columns = (clip.left() - rect.left()) / CELL;
-    let rows = (clip.top() - rect.top()) / CELL;
-    let (first_x, first_y) = (columns.floor() as i32, rows.floor() as i32);
-    let count_x = (clip.width() / CELL).ceil() as i32 + 1;
-    let count_y = (clip.height() / CELL).ceil() as i32 + 1;
-    for y in first_y..first_y + count_y {
-        for x in first_x..first_x + count_x {
-            if (x + y) % 2 == 0 {
-                let min = rect.min + egui::vec2(x as f32 * CELL, y as f32 * CELL);
-                painter.rect_filled(egui::Rect::from_min_size(min, egui::vec2(CELL, CELL)), 0.0, light);
-            }
-        }
     }
 }

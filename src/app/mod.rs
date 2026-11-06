@@ -20,6 +20,7 @@ mod files;
 mod git;
 mod hidden;
 mod history;
+mod image_view;
 mod keys_ui;
 mod light_colors;
 mod likely;
@@ -193,6 +194,7 @@ pub struct CodeApp {
     live: live::Live,
     constant: constant::Constant,
     likely: likely::Likely,
+    images: image_view::Viewer,
     markup: markup::Markup,
     light_colors: light_colors::LightColors,
     svg_preview: svg_preview::SvgPreview,
@@ -340,6 +342,7 @@ impl CodeApp {
             live: Default::default(),
             constant: Default::default(),
             likely: Default::default(),
+            images: Default::default(),
             markup: Default::default(),
             light_colors: Default::default(),
             svg_preview: Default::default(),

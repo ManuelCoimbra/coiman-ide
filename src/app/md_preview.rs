@@ -196,7 +196,7 @@ fn load_picture(ctx: &egui::Context, path: PathBuf) -> Picture {
                     (egui::ColorImage::from_rgba_premultiplied(size, &pixels), egui::vec2(w, h))
                 })
         } else {
-            super::web::decode(&path).map(|d| {
+            super::image_view::decode(&path).map(|d| {
                 let natural = egui::vec2(d.size[0] as f32, d.size[1] as f32);
                 (egui::ColorImage::from_rgba_unmultiplied(d.size, &d.rgba), natural)
             })

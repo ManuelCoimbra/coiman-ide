@@ -711,7 +711,11 @@ impl CodeApp {
     }
 
     pub(super) fn sidebar(&mut self, ui: &mut egui::Ui) {
-        let active_path = self.docs.get(self.active).and_then(|d| d.path.clone());
+        // A picture showing in place of the editor is what the explorer marks.
+        let active_path = self
+            .shown_image()
+            .map(std::path::Path::to_path_buf)
+            .or_else(|| self.docs.get(self.active).and_then(|d| d.path.clone()));
         match self.sidebar_view {
             SidebarView::Explorer => {
                 self.plugin_tree_sections(ui);
@@ -1319,7 +1323,9 @@ impl CodeApp {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if let Some(doc) = self.docs.get(self.active) {
+                if self.shown_image().is_some() {
+                    ui.label(white("Image".to_owned()));
+                } else if let Some(doc) = self.docs.get(self.active) {
                     ui.label(white(doc.language_name().to_owned()));
                     if doc.buffer.read_only {
                         ui.label(white("Read-only".to_owned()))
