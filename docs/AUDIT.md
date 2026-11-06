@@ -166,7 +166,7 @@ Each row is a reported problem: its cause, what changed, the tests and the resul
 
 A high-effort code review of `f23397a..aca3f48` found 10 problems. All are fixed:
 
-1. **Security:** Markdown pictures at `//host/share/x.png` or `\host\share` were read over SMB as soon as the preview opened, which on Windows sends the user's NTLM hash. Network paths are now refused, for pictures and links.
+1. **Security:** Markdown pictures at `//host/share/x.png` or `\\host\share` were read over SMB as soon as the preview opened, which on Windows sends the user's NTLM hash. Network paths are now refused, for pictures and links.
 2. Animated GIF and WebP decoders had no memory limits, so a frame could allocate its declared size before the 1 GB check. They now get the same limits as stills.
 3. Markdown pictures weren't fitted to the GPU's texture size, and every file's pictures were kept. They're fitted now, and dropped when the preview moves to another file.
 4. `*ptr = 1;` followed by Enter continued as a ` * ` comment. A `*` line now continues only inside a `/*` comment.
