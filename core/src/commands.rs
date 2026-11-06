@@ -177,6 +177,7 @@ pub enum Command {
     // Run and test.
     RunWithoutDebugging,
     RunProgram,
+    RunCurrentFile,
     SelectRunConfig,
     ChooseRunTarget,
     OpenLivePreview,
@@ -396,6 +397,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ToggleBlame, "Git: Toggle Inline Blame"),
     (Command::RunWithoutDebugging, "Run: Start Without Debugging"),
     (Command::RunProgram, "Run: Run Program"),
+    (Command::RunCurrentFile, "Run: Run Current File"),
     (Command::SelectRunConfig, "Run: Select and Start Configuration..."),
     (Command::ChooseRunTarget, "Run: Choose What Run Starts..."),
     (Command::OpenLivePreview, "Preview: Open Live Preview"),
@@ -625,6 +627,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ToggleBlame, "git.toggleBlame"),
     (Command::RunWithoutDebugging, "workbench.action.debug.run"),
     (Command::RunProgram, "rustcode.runProgram"),
+    (Command::RunCurrentFile, "rustcode.runCurrentFile"),
     (Command::SelectRunConfig, "workbench.action.debug.selectandstart"),
     (Command::ChooseRunTarget, "rustcode.chooseRunTarget"),
     (Command::OpenLivePreview, "rustcode.openLivePreview"),
@@ -699,6 +702,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowOutput
             | RunWithoutDebugging
             | RunProgram
+            | RunCurrentFile
             | ChooseRunTarget
             | OpenLivePreview
             | ShowLanguageDoctor

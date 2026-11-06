@@ -221,6 +221,11 @@ the active file the way its language runs, in a terminal tab:
 Build output goes to the system temp folder, never your project. For anything else, use
 **Run: Open Configurations**.
 
+What Run starts is chosen in the title bar: **Current File**, or a configuration. Picking one with
+`Ctrl+F5` chooses it too, and the status bar says so. **Run: Run Current File** (`Ctrl+Shift+F10`)
+and the ▶ beside `main` always run the file in front, whatever is chosen. Every way of running
+saves changed files first. Programs start in the folder the project is opened at.
+
 ### Workspace trust
 
 Opening a folder runs nothing from it. Until you click **Trust Folder**, it stays in Restricted

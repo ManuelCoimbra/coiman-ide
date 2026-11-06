@@ -727,8 +727,9 @@ impl CodeApp {
             return;
         }
         if let Some(id) = self.other_test_at(line) {
+            // The marker beside `main` runs this file, whatever Run is set to.
             if id == run::RUN_PROGRAM {
-                self.run_program(ctx);
+                self.run_current_file(ctx);
                 return;
             }
             let file = self.docs[self.active].path.clone();
@@ -1070,8 +1071,10 @@ impl CodeApp {
         let Some(root) = self.run_scope() else { return };
         if name == CURRENT_FILE {
             self.cargo.run_pins.remove(&root);
+            self.status = Some("Run now starts the active file".to_owned());
         } else {
             self.cargo.run_pins.insert(root, name.to_owned());
+            self.status = Some(format!("Run now starts {name}"));
         }
     }
 
@@ -1336,20 +1339,36 @@ impl CodeApp {
         }
     }
 
-    /// Run Program: runs the active file the way its language runs. With no
-    /// file open, the folder's Cargo project.
-    pub(super) fn run_program(&mut self, ctx: &egui::Context) {
-        self.cargo.run_refusal = None;
-        // What runs is what's on screen.
+    /// Saves every changed file, so what runs is what's on screen. Says whether it could.
+    fn save_before_run(&mut self, ctx: &egui::Context) -> bool {
         for i in 0..self.docs.len() {
             if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {
                 let why = format!("Nothing was run: {} couldn't be saved", self.docs[i].title());
                 self.refuse_run(ctx, why);
-                return;
+                return false;
             }
         }
+        true
+    }
+
+    /// Run Program: what the title bar's choice says, the configuration chosen
+    /// there or else the active file.
+    pub(super) fn run_program(&mut self, ctx: &egui::Context) {
+        self.cargo.run_refusal = None;
         if let Some(config) = self.pinned_config().cloned() {
-            self.run_config(ctx, &config);
+            if self.save_before_run(ctx) {
+                self.run_config(ctx, &config);
+            }
+            return;
+        }
+        self.run_current_file(ctx);
+    }
+
+    /// Runs the active file the way its language runs, whatever configuration Run is
+    /// set to. With no file open, the folder's Cargo project.
+    pub(super) fn run_current_file(&mut self, ctx: &egui::Context) {
+        self.cargo.run_refusal = None;
+        if !self.save_before_run(ctx) {
             return;
         }
         if self.active_is_page() {
@@ -1420,7 +1439,11 @@ impl CodeApp {
     /// Ctrl+F5: run the selected configuration (asks which the first time).
     pub(super) fn run_selected_config(&mut self, ctx: &egui::Context) {
         match self.pinned_config().cloned() {
-            Some(config) => self.run_config(ctx, &config),
+            Some(config) => {
+                if self.save_before_run(ctx) {
+                    self.run_config(ctx, &config);
+                }
+            }
             None => self.load_run_configs(ctx, true),
         }
     }
@@ -1433,12 +1456,20 @@ impl CodeApp {
         let Some(config) = self.cargo.configs.iter().find(|c| c.name == name).cloned() else { return };
         if let Some(root) = self.run_scope() {
             self.cargo.run_pins.insert(root, config.name.clone());
+            // Run follows it from now on, which would be a surprise if unsaid.
+            self.status = Some(format!(
+                "Run now starts {}. Run: Run Current File (Ctrl+Shift+F10) runs the file, and the title bar's choice changes it back",
+                config.name
+            ));
         }
-        self.run_config(ctx, &config);
+        if self.save_before_run(ctx) {
+            self.run_config(ctx, &config);
+        }
     }
 
     fn run_config(&mut self, ctx: &egui::Context, config: &RunConfig) {
         let Some(root) = self.run_scope() else { return };
+        rust_code_core::applog::info(&format!("run configuration {} in {}", config.name, root.display()));
         if !self.allowed_to_run(&root) {
             return;
         }

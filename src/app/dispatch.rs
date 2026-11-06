@@ -210,6 +210,7 @@ impl CodeApp {
             Command::NextFunction | Command::PreviousFunction => self.adjacent_function(cmd == Command::NextFunction),
             Command::RunWithoutDebugging => self.run_selected_config(ctx),
             Command::RunProgram => self.run_program(ctx),
+            Command::RunCurrentFile => self.run_current_file(ctx),
             Command::SelectRunConfig => self.select_run_config(ctx),
             Command::ChooseRunTarget => self.choose_run_target(),
             Command::OpenLivePreview => self.open_live_preview(ctx),

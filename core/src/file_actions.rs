@@ -44,7 +44,7 @@ pub fn for_file(relative: &str) -> Vec<FileAction> {
         _ => {}
     }
     if name == "package.json" {
-        actions.insert(0, action("Scripts", "Choose one of its scripts to run", Command::RunProgram));
+        actions.insert(0, action("Scripts", "Choose one of its scripts to run", Command::RunCurrentFile));
     }
     if extension == "log" || name.contains(".log.") {
         actions.push(action("Log View", "Filter and color it, however large", Command::OpenLogView));

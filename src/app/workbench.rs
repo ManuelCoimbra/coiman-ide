@@ -476,6 +476,7 @@ impl CodeApp {
                     ui.separator();
                 }
                 item(ui, "Run Program", Command::RunProgram);
+                item(ui, "Run Current File", Command::RunCurrentFile);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
                 item(ui, "Choose What Run Starts...", Command::ChooseRunTarget);
                 item(ui, "Send Line, Selection or Cell to REPL", Command::SendToRepl);
