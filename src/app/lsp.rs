@@ -215,6 +215,8 @@ pub(super) struct LspState {
     rename_at: Option<(u64, usize)>,
     /// Last screen rectangle of the primary cursor.
     pub(super) cursor_rect: Option<Rect>,
+    /// Where the completion list was last drawn, while it shows.
+    completion_rect: Option<Rect>,
     /// Show the problems under the cursor after the next editor frame (F8).
     show_problem_at_cursor: bool,
 }
@@ -1512,7 +1514,13 @@ impl CodeApp {
         let Some(doc) = self.docs.get(self.active) else { return };
         let (uid, head) = (doc.uid, doc.buffer.primary().head);
         self.lsp.cursor_rect = Some(out.cursor_rect);
-        let focused = self.editor_focused(ctx);
+        // Pressing on the completion list takes focus from the editor, and would close the list
+        // before the click that picks from it.
+        let on_list = self
+            .lsp
+            .completion_rect
+            .is_some_and(|r| ctx.input(|i| i.pointer.interact_pos().is_some_and(|p| r.contains(p))));
+        let focused = self.editor_focused(ctx) || on_list;
         match self.pasted.take() {
             Some(pasted) => self.symbols_after_typing(&pasted),
             None => self.symbols_after_typing(typed),
@@ -1955,11 +1963,12 @@ impl CodeApp {
         let active_uid = self.docs.get(self.active).map(|d| d.uid);
         let font = egui::FontId::monospace(self.font_size);
         let mut accept = None;
+        self.lsp.completion_rect = None;
         if let (Some(c), Some(rect)) = (&mut self.lsp.completion, self.lsp.cursor_rect)
             && Some(c.uid) == active_uid
             && !c.shown.is_empty()
         {
-            egui::Area::new(egui::Id::unique("lsp_completion"))
+            let shown = egui::Area::new(egui::Id::unique("lsp_completion"))
                 .order(egui::Order::Foreground)
                 .fixed_pos(rect.left_bottom() + egui::vec2(0.0, 2.0))
                 .constrain(true)
@@ -1978,6 +1987,8 @@ impl CodeApp {
                                     if c.scroll_to_selected {
                                         resp.scroll_to_me(Some(Align::Center));
                                     }
+                                } else if resp.hovered() {
+                                    ui.painter().rect_filled(rect, 2.0, theme::colors().hover_bg);
                                 }
                                 let (glyph, color) = lsp_ui::kind_glyph(e.item.kind);
                                 let y = rect.center().y;
@@ -2020,12 +2031,17 @@ impl CodeApp {
                         c.scroll_to_selected = false;
                     });
                 });
+            self.lsp.completion_rect = Some(shown.response.rect);
         }
         if let Some(row) = accept {
             if let Some(c) = &mut self.lsp.completion {
                 c.selected = row;
             }
             self.accept_completion();
+            // The click took focus from the editor: typing goes on there.
+            if let Some(doc) = self.docs.get_mut(self.active) {
+                doc.request_focus = true;
+            }
         }
 
         let code_size = self.font_size * 0.95;
