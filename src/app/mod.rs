@@ -29,6 +29,7 @@ mod look;
 mod lsp;
 mod lsp_extra;
 mod lsp_room;
+mod markup;
 mod md_preview;
 mod outline;
 mod plugins;
@@ -192,6 +193,7 @@ pub struct CodeApp {
     live: live::Live,
     constant: constant::Constant,
     likely: likely::Likely,
+    markup: markup::Markup,
     light_colors: light_colors::LightColors,
     svg_preview: svg_preview::SvgPreview,
     snippet_stops: Option<snippets_ui::SnippetStops>,
@@ -338,6 +340,7 @@ impl CodeApp {
             live: Default::default(),
             constant: Default::default(),
             likely: Default::default(),
+            markup: Default::default(),
             light_colors: Default::default(),
             svg_preview: Default::default(),
             snippet_stops: None,
@@ -446,6 +449,7 @@ impl eframe::App for CodeApp {
         self.pump_live(&ctx);
         self.pump_constant(&ctx);
         self.pump_likely(&ctx);
+        self.pump_markup(&ctx);
         self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);

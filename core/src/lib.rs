@@ -41,6 +41,7 @@ pub mod live_adapters;
 pub mod logfile;
 pub mod lsp;
 pub mod markdown;
+pub mod markup;
 pub mod matchers;
 pub mod plugin;
 pub mod preview;

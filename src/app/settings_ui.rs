@@ -106,6 +106,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("editor", "emmet", "Emmet", "Tab grows abbreviations in HTML and CSS.", Kind::Toggle),
             row(
                 "editor",
+                "markup_problems",
+                "Check HTML and XML",
+                "Tags left open, closed in the wrong order or broken, while you type.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "format_on_save",
                 "Format on save",
                 "Format with the language server when saving.",

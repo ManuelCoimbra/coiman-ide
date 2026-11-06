@@ -74,6 +74,8 @@ pub struct EditorSettings {
     pub format_on_save: bool,
     /// Warn about loops that look endless and memory that looks leaked.
     pub likely_problems: bool,
+    /// Check HTML and XML for tags left open, misnested or broken.
+    pub markup_problems: bool,
     /// Columns per indent level (`.editorconfig` and detection take priority).
     pub tab_size: usize,
     /// Indent with spaces rather than tabs.
@@ -321,6 +323,7 @@ impl Default for EditorSettings {
             bracket_pair_colorization: true,
             format_on_save: false,
             likely_problems: true,
+            markup_problems: true,
             tab_size: 4,
             insert_spaces: true,
             detect_indentation: true,
