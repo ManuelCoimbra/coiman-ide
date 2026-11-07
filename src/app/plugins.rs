@@ -837,6 +837,11 @@ impl CodeApp {
                 if icons::button(ui, Icon::ArrowDown, "Import from VS Code: themes, snippets, languages").clicked() {
                     self.import_from_vscode();
                 }
+                if icons::button(ui, Icon::Check, "VS Code Compatibility Report: which extensions work here, and why")
+                    .clicked()
+                {
+                    self.vscode_compatibility(&ctx);
+                }
             });
         });
         if !self.settings.plugins.enabled {

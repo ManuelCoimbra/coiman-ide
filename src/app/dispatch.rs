@@ -451,6 +451,7 @@ impl CodeApp {
             Command::MarkdownPreview => self.toggle_markdown_preview(),
             Command::ToggleSvgPreview => self.toggle_svg_preview(),
             Command::ImportFromVsCode => self.import_from_vscode(),
+            Command::VsCodeCompatibility => self.vscode_compatibility(ctx),
             Command::ChooseBackgroundImage => {
                 let filter = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
                 if let Some(file) = self.file_dialog("background_picture").add_filter("Pictures", &filter).pick_file() {

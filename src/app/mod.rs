@@ -248,6 +248,8 @@ pub struct CodeApp {
     /// Git's setup: installed, the author, remotes, clone and publish.
     git_setup: git_setup::GitSetup,
     maven: maven::MavenState,
+    /// The VS Code compatibility report being written: its file and how many extensions.
+    vscode_report: Option<std::sync::mpsc::Receiver<Result<(PathBuf, usize), String>>>,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -392,6 +394,7 @@ impl CodeApp {
             dialog_dirs: rust_code_core::dialog_dirs::load(),
             git_setup: git_setup::GitSetup::default(),
             maven: maven::MavenState::default(),
+            vscode_report: None,
             pending_close: None,
             allow_close: false,
             chord: None,
@@ -483,6 +486,7 @@ impl eframe::App for CodeApp {
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
         self.pump_maven(&ctx);
+        self.pump_vscode_report();
         self.pump_debug(&ctx);
         self.pump_plugins(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.

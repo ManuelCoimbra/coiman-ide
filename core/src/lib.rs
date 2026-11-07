@@ -79,6 +79,7 @@ pub mod tree_rules;
 pub mod trust;
 pub mod unicode;
 pub mod vim;
+pub mod vscode_compat;
 pub mod vscode_import;
 pub mod watcher;
 pub mod workspace;
