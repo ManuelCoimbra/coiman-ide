@@ -230,6 +230,11 @@ impl CodeApp {
                     action = Some(Action::RestartAll);
                 }
             }
+            // Servers from VS Code extensions, beside the files' own.
+            for (name, root) in self.companion_names() {
+                let folder = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                ui.label(RichText::new(format!("{name}: {folder} (from its VS Code extension)")).strong());
+            }
             let working = !self.lsp.progress.is_empty();
             for (i, client) in self.lsp.clients.iter().enumerate() {
                 let root = client.root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();

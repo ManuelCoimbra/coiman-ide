@@ -94,6 +94,10 @@ pub struct EditorSettings {
     pub auto_close_tags: bool,
     /// `=` after an attribute's name adds `""` (`html.autoCreateQuotes`).
     pub auto_create_quotes: bool,
+    /// Renaming a tag renames its partner (`editor.linkedEditing`, Auto Rename Tag).
+    pub rename_tags: bool,
+    /// File and folder names while a path is typed in a string (Path Intellisense).
+    pub path_completion: bool,
     /// Columns per indent level (`.editorconfig` and detection take priority).
     pub tab_size: usize,
     /// Indent with spaces rather than tabs.
@@ -214,6 +218,10 @@ pub struct LspSettings {
     /// `clangd`, `java`, `csharp`, `go` (and `rust`). A program path,
     /// optionally followed by arguments; empty finds the server itself.
     pub paths: std::collections::BTreeMap<String, String>,
+    /// Run the language servers that come in VS Code extensions (ESLint, Tailwind CSS)
+    /// beside a file's own server, when the extension is installed and the project uses
+    /// the tool.
+    pub extension_servers: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -318,6 +326,7 @@ impl Default for LspSettings {
             rust_analyzer_memory: "default".to_owned(),
             rust_analyzer_separate_target: false,
             paths: std::collections::BTreeMap::new(),
+            extension_servers: true,
         }
     }
 }
@@ -353,6 +362,8 @@ impl Default for EditorSettings {
             doc_comment_templates: true,
             auto_close_tags: true,
             auto_create_quotes: true,
+            rename_tags: true,
+            path_completion: true,
             tab_size: 4,
             insert_spaces: true,
             detect_indentation: true,

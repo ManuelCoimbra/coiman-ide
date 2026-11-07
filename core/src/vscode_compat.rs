@@ -133,6 +133,11 @@ const BUILT_IN: &[(&str, &str)] = &[
     ("ms-python.debugpy", "debugpy, run directly"),
     ("golang.go", "gopls and Delve, run directly"),
     ("vadimcn.vscode-lldb", "CodeLLDB, run directly"),
+    ("dbaeumer.vscode-eslint", "its ESLint server runs here, from this extension: problems and fixes"),
+    ("bradlc.vscode-tailwindcss", "its Tailwind server runs here, from this extension: class names, problems, fixes"),
+    ("christian-kohler.path-intellisense", "paths complete in strings (editor.path_completion)"),
+    ("ionutvmi.path-autocomplete", "paths complete in strings (editor.path_completion)"),
+    ("formulahendry.auto-rename-tag", "tags rename in pairs (editor.rename_tags)"),
 ];
 
 /// What's like it here, for code that can't run, when there's something.
@@ -142,11 +147,8 @@ const SIMILAR: &[(&str, &str)] = &[
         "esbenp.prettier-vscode",
         "format on save leaves Prettier projects to Prettier; run it from a terminal or run configuration",
     ),
-    ("dbaeumer.vscode-eslint", "ESLint's problems show from a run configuration with a matcher"),
     ("ms-dotnettools.csdevkit", "the C# language server and Run; no Solution Explorer"),
     ("mhutchie.git-graph", "the Source Control view and Git: Show History; no graph"),
-    ("bradlc.vscode-tailwindcss", "its language server can be added in languages.toml"),
-    ("formulahendry.auto-rename-tag", "tags are closed as you type; not renamed in pairs"),
 ];
 
 fn read_json(path: &Path) -> Option<Value> {

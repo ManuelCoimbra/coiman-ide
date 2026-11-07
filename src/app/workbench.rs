@@ -316,8 +316,9 @@ impl CodeApp {
                 });
 
                 if let Some(branch) = self.git_branch_label() {
-                    let chip = text_chip(ui, &branch, 22.0, |painter, rect| {
-                        icons::paint(painter, rect.shrink(3.0), Icon::SourceControl, pal.text_dim);
+                    // The branch mark as tall as the text beside it.
+                    let chip = text_chip(ui, &branch, 26.0, |painter, rect| {
+                        icons::paint(painter, rect.shrink(1.0), Icon::SourceControl, pal.text_dim);
                     });
                     if chip.on_hover_text("Switch branch").clicked() {
                         cmd = Some(Command::GitCheckout);

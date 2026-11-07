@@ -12,3 +12,4 @@ pub mod transport;
 
 pub use client::{Client, Event, language_id};
 pub use lsp_types as types;
+pub mod companions;

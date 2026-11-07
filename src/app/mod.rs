@@ -31,6 +31,7 @@ mod live;
 mod logs;
 mod look;
 mod lsp;
+mod lsp_companion;
 mod lsp_extra;
 mod lsp_room;
 mod markup;
@@ -48,6 +49,7 @@ mod snippets_ui;
 mod split;
 mod svg_preview;
 mod tables;
+mod tag_rename;
 mod test_panel;
 mod tool_rails;
 mod traces;
@@ -248,6 +250,8 @@ pub struct CodeApp {
     /// Git's setup: installed, the author, remotes, clone and publish.
     git_setup: git_setup::GitSetup,
     maven: maven::MavenState,
+    companions: lsp_companion::Companions,
+    tag_watch: Option<tag_rename::TagWatch>,
     /// The VS Code compatibility report being written: its file and how many extensions.
     vscode_report: Option<std::sync::mpsc::Receiver<Result<(PathBuf, usize), String>>>,
 
@@ -394,6 +398,8 @@ impl CodeApp {
             dialog_dirs: rust_code_core::dialog_dirs::load(),
             git_setup: git_setup::GitSetup::default(),
             maven: maven::MavenState::default(),
+            companions: lsp_companion::Companions::default(),
+            tag_watch: None,
             vscode_report: None,
             pending_close: None,
             allow_close: false,
@@ -483,6 +489,8 @@ impl eframe::App for CodeApp {
         self.pump_syntax(&ctx);
         self.pump_watcher(&ctx);
         self.pump_lsp(&ctx);
+        self.pump_companions(&ctx);
+        self.pump_tag_rename();
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
         self.pump_maven(&ctx);

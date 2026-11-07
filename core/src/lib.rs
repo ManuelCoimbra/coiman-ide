@@ -54,6 +54,7 @@ pub mod markup;
 pub mod matchers;
 pub mod maven;
 pub mod null_check;
+pub mod path_complete;
 pub mod plugin;
 pub mod preview;
 pub mod project_tree;

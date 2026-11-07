@@ -437,6 +437,22 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   C++, Java, JavaScript, TypeScript, C#, PHP, Kotlin, Swift, Scala, Groovy and Dart
   (**Settings > Editor > Doc comment templates**).
 
+### Servers from VS Code extensions, paths and tag pairs
+
+- **ESLint and Tailwind CSS** run beside a file's own language server, from their installed
+  VS Code extensions (`dbaeumer.vscode-eslint`, `bradlc.vscode-tailwindcss`): no copy of
+  their own is needed, only Node.js. They start for projects that use the tool (an ESLint
+  configuration, `tailwindcss` in `package.json` or a Tailwind configuration), in trusted
+  folders, since they run the project's own configuration. ESLint's problems show with the
+  rest and its fixes are on `Ctrl+.`; Tailwind completes class names (with their colors),
+  and reports its problems. `lsp.extension_servers = false` turns them off. The Language
+  Servers window lists them.
+- **Paths complete in strings**: in `"./`, `src="`, `href="`, `url(`, imports and `#include`,
+  the folder's files and folders are offered, folders first; picking a folder lists
+  what's in it. `/` starts at the open folder. `editor.path_completion` turns it off.
+- **Tags rename in pairs**: typing in a tag's name changes its partner too, in HTML, XML,
+  JSX and Vue, and one undo takes both back. `editor.rename_tags` turns it off.
+
 ### Code generation and NULL checks
 
 Ctrl+. (or the light bulb) offers code made here, with no language server needed, after

@@ -104,6 +104,20 @@ impl Client {
         options: Value,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> std::io::Result<Self> {
+        Self::start_with(kind, launch, root, options, false, wake)
+    }
+
+    /// `start`, saying whether the client tells the server about changed files
+    /// (`workspace/didChangeWatchedFiles`): a server that's told so doesn't watch them
+    /// itself.
+    pub fn start_with(
+        kind: ServerKind,
+        launch: &Launch,
+        root: &Path,
+        options: Value,
+        client_watches: bool,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> std::io::Result<Self> {
         let (server, mut stdin, stdout, stderr): (_, Box<dyn Write + Send>, Box<dyn Read + Send>, _) =
             if let Some(address) = &launch.tcp {
                 let stream = connect(address)?;
@@ -189,12 +203,16 @@ impl Client {
         };
         let root_uri = Url::from_directory_path(root).ok();
         let name = root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let mut capabilities = client_capabilities();
+        if client_watches {
+            capabilities["workspace"]["didChangeWatchedFiles"] = json!({ "dynamicRegistration": true });
+        }
         let params = json!({
             "processId": std::process::id(),
             "clientInfo": { "name": "Rust Code", "version": env!("CARGO_PKG_VERSION") },
             "rootUri": root_uri,
             "workspaceFolders": [{ "uri": root_uri, "name": name }],
-            "capabilities": client_capabilities(),
+            "capabilities": capabilities,
             "initializationOptions": options,
         });
         client.init_id = client.next_id;

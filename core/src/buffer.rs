@@ -873,7 +873,17 @@ impl Buffer {
     /// Applies non-overlapping edits given in the current text's coordinates
     /// (e.g. from a language server) as one undo step. Selections move with
     /// the text around them; one inside a replaced span ends up after it.
-    pub fn apply_edits(&mut self, mut edits: Vec<(usize, usize, String)>) {
+    pub fn apply_edits(&mut self, edits: Vec<(usize, usize, String)>) {
+        self.apply_edits_in(edits, false);
+    }
+
+    /// `apply_edits` as part of the last undo step, which goes on: a change that follows
+    /// from what was just typed (a tag's partner renamed) is undone with it.
+    pub fn apply_edits_joined(&mut self, edits: Vec<(usize, usize, String)>) {
+        self.apply_edits_in(edits, true);
+    }
+
+    fn apply_edits_in(&mut self, mut edits: Vec<(usize, usize, String)>, joined: bool) {
         if self.read_only {
             return;
         }
@@ -924,7 +934,12 @@ impl Buffer {
                 Selection { anchor: map(s.anchor), head: map(s.head), goal: None }
             })
             .collect();
-        self.begin_edit(EditKind::Other);
+        let kind_before = self.last_edit;
+        if joined && !self.undo.is_empty() {
+            self.redo.clear();
+        } else {
+            self.begin_edit(EditKind::Other);
+        }
         let first_line = self.char_to_line(edits[0].0);
         // Back to front, so earlier offsets stay valid.
         for (s, e, t) in edits.iter().rev() {
@@ -932,7 +947,7 @@ impl Buffer {
         }
         let primary = self.primary;
         self.set_selections(sels, primary);
-        self.last_edit = EditKind::Other;
+        self.last_edit = if joined { kind_before } else { EditKind::Other };
         self.finish_edit(first_line);
     }
 
@@ -1499,6 +1514,26 @@ mod edit_selection_tests {
         b.apply_edits(edits);
         assert_eq!(b.rope().to_string(), new);
         assert_eq!(b.char_to_line(b.primary().head), 2);
+    }
+
+    #[test]
+    fn joined_edits_undo_with_the_typing() {
+        // `<div></div>`: typing over the first name, the second follows in the same step.
+        let mut b = Buffer::new("<div></div>");
+        b.set_single(Selection { anchor: 1, head: 4, goal: None });
+        b.insert("p");
+        b.apply_edits_joined(vec![(5, 8, "p".to_owned())]);
+        b.insert("re");
+        b.apply_edits_joined(vec![(7, 8, "pre".to_owned())]);
+        assert_eq!(b.rope().to_string(), "<pre></pre>");
+        assert_eq!(b.primary().head, 4, "the cursor stays in the name typed");
+        // Each undo step takes both names back together: they never disagree.
+        assert!(b.undo());
+        assert_eq!(b.rope().to_string(), "<p></p>");
+        assert!(b.undo());
+        assert_eq!(b.rope().to_string(), "<div></div>");
+        assert!(b.redo());
+        assert_eq!(b.rope().to_string(), "<p></p>");
     }
 
     #[test]

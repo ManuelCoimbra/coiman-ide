@@ -146,6 +146,8 @@ pub(super) struct CompletionEntry {
     item: lt::CompletionItem,
     /// Filled in by the server (`completionItem/resolve`).
     resolved: bool,
+    /// From a companion server (ESLint, Tailwind CSS), not the file's own.
+    companion: bool,
 }
 
 pub(super) struct Completion {
@@ -218,6 +220,11 @@ pub(super) struct LspState {
     code_actions: Vec<lt::CodeActionOrCommand>,
     /// Actions made here (getters, NULL checks), shown with the server's when it answers.
     local_actions: Vec<lt::CodeActionOrCommand>,
+    /// Code actions asked for: whether the main server's answer is still to come, how
+    /// many companions' are, and whether the list has been shown.
+    actions_main_waiting: bool,
+    actions_companions_waiting: usize,
+    actions_shown: bool,
     /// A line known to offer actions, and whether any is a fix.
     bulb: Option<(BulbKey, bool)>,
     bulb_asked: Option<BulbKey>,
@@ -545,6 +552,9 @@ impl CodeApp {
     }
 
     pub(super) fn lsp_did_save(&mut self, i: usize) {
+        if let Some(path) = self.docs.get(i).and_then(|d| d.path.clone()) {
+            self.companion_saved(&path);
+        }
         if let Some((ci, uri)) = self.sync_doc(i) {
             self.lsp.clients[ci].did_save(&uri);
         }
@@ -871,6 +881,7 @@ impl CodeApp {
             .map(|d| (d.range.start.line, d.code.clone()))
             .collect();
         all.retain(|d| d.source.as_deref() != Some("rustc") || !own.contains(&(d.range.start.line, d.code.clone())));
+        all.extend(self.companion_problems(&k));
         all.extend(self.plugin_problems(&k));
         all.extend(self.run_problems(&k));
         all.extend(self.constant_problems(&k));
@@ -1163,6 +1174,9 @@ impl CodeApp {
 
     /// Asks for completions at the cursor (`trigger`: the character typed).
     pub(super) fn request_completion(&mut self, trigger: Option<char>) {
+        if self.path_completion() {
+            return;
+        }
         if let Some(flavor) = self.markup_flavor_unserved() {
             self.markup_completion(flavor);
             return;
@@ -1175,12 +1189,13 @@ impl CodeApp {
             Some(c) => json!({ "triggerKind": 2, "triggerCharacter": c.to_string() }),
             None => json!({ "triggerKind": 1 }),
         };
+        let asked = self.companion_completion(i, head, &context);
         let sent = self.request_for(i, "textDocument/completion", Pending::Completion { uid }, |doc, td| {
             let mut p = Self::position_params(doc, td, head);
             p["context"] = context;
             p
         });
-        if !sent {
+        if !sent && asked == 0 {
             return;
         }
         match &mut self.lsp.completion {
@@ -1254,7 +1269,7 @@ impl CodeApp {
                     sort_text: Some(format!("{n:05}")),
                     ..Default::default()
                 };
-                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item, resolved: true }
+                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item, resolved: true, companion: false }
             })
             .collect();
         self.lsp.completion = Some(Completion {
@@ -1281,6 +1296,7 @@ impl CodeApp {
             _ => (false, Vec::new()),
         };
         let resolved = &c.resolved;
+        let from_companions: Vec<CompletionEntry> = c.entries.drain(..).filter(|e| e.companion).collect();
         c.entries = items
             .into_iter()
             .map(|item| {
@@ -1292,15 +1308,71 @@ impl CodeApp {
                     .unwrap_or_default();
                 // Filled in before, for an earlier list: keep what the server said.
                 match resolved.get(&item.label) {
-                    Some(done) => {
-                        CompletionEntry { label: item.label.clone(), detail, item: done.clone(), resolved: true }
+                    Some(done) => CompletionEntry {
+                        label: item.label.clone(),
+                        detail,
+                        item: done.clone(),
+                        resolved: true,
+                        companion: false,
+                    },
+                    None => {
+                        CompletionEntry { label: item.label.clone(), detail, item, resolved: false, companion: false }
                     }
-                    None => CompletionEntry { label: item.label.clone(), detail, item, resolved: false },
                 }
             })
             .collect();
+        c.entries.extend(from_companions);
         c.incomplete = incomplete;
         c.waiting = false;
+        c.filtered_for = (u64::MAX, 0);
+        self.refilter_completion();
+    }
+
+    /// A companion server's completions joined to the list (replacing its earlier ones).
+    pub(super) fn add_companion_completions(&mut self, uid: u64, items: Vec<lt::CompletionItem>) {
+        if items.is_empty() {
+            return;
+        }
+        // The file's own server may have answered first, with nothing, and closed the
+        // list: it opens again, from where the companion's edits start.
+        if self.lsp.completion.as_ref().is_none_or(|c| c.uid != uid) {
+            let Some(doc) = self.docs.get(self.active).filter(|d| d.uid == uid) else { return };
+            let head = doc.buffer.primary().head;
+            let start = items
+                .iter()
+                .find_map(|i| match &i.text_edit {
+                    Some(lt::CompletionTextEdit::Edit(e)) => Some(e.range.start),
+                    Some(lt::CompletionTextEdit::InsertAndReplace(e)) => Some(e.insert.start),
+                    None => None,
+                })
+                .map(|p| convert::chars_of(doc.buffer.rope(), lt::Range { start: p, end: p }).0)
+                .filter(|s| *s <= head)
+                .unwrap_or_else(|| word_start(doc, head));
+            self.lsp.completion = Some(Completion {
+                uid,
+                start,
+                entries: Vec::new(),
+                shown: Vec::new(),
+                selected: 0,
+                incomplete: true,
+                waiting: false,
+                filtered_for: (u64::MAX, 0),
+                scroll_to_selected: true,
+                docs_asked: None,
+                resolved: HashMap::new(),
+            });
+        }
+        let Some(c) = self.lsp.completion.as_mut().filter(|c| c.uid == uid) else { return };
+        c.entries.retain(|e| !e.companion);
+        let known: HashSet<String> = c.entries.iter().map(|e| e.label.clone()).collect();
+        c.entries.extend(items.into_iter().filter(|i| !known.contains(&i.label)).map(|item| {
+            let detail = item.detail.clone().unwrap_or_default();
+            // Asked of no one for more: the file's own server doesn't know it.
+            CompletionEntry { label: item.label.clone(), detail, item, resolved: true, companion: true }
+        }));
+        if !c.entries.iter().any(|e| !e.companion) {
+            c.waiting = false;
+        }
         c.filtered_for = (u64::MAX, 0);
         self.refilter_completion();
     }
@@ -1453,6 +1525,10 @@ impl CodeApp {
             )
         });
         let item = &c.entries[idx].item;
+        // A folder in a path: what's in it comes next.
+        let into_folder = c.entries[idx].companion
+            && item.kind == Some(lt::CompletionItemKind::FOLDER)
+            && item.insert_text.as_deref().is_some_and(|t| t.ends_with('/'));
         let doc = &mut self.docs[i];
         let rope = doc.buffer.rope();
         let head = doc.buffer.primary().head;
@@ -1499,6 +1575,9 @@ impl CodeApp {
         doc.reveal = true;
         if let Some((uid, item, line_start)) = resolve_later {
             self.resolve_completion(i, uid, idx, &item, Some(line_start));
+        }
+        if into_folder {
+            self.path_completion();
         }
     }
 
@@ -1562,6 +1641,60 @@ impl CodeApp {
         }
     }
 
+    /// The path being typed in a string at the cursor, if one is: what to offer there.
+    fn path_offer(&self) -> Option<(usize, rust_code_core::path_complete::Offer)> {
+        if !self.settings.editor.path_completion {
+            return None;
+        }
+        let doc = self.docs.get(self.active)?;
+        let dir = doc.path.as_deref()?.parent()?;
+        let head = doc.buffer.primary().head;
+        let line_start = doc.buffer.line_start(doc.buffer.char_to_line(head));
+        let before = doc.buffer.slice_string(line_start, head);
+        let offer = rust_code_core::path_complete::complete(&before, dir, self.explorer.root.as_deref())?;
+        Some((line_start + offer.start, offer))
+    }
+
+    /// Shows file and folder names when a path is being typed. Returns whether it did.
+    fn path_completion(&mut self) -> bool {
+        let Some((start, offer)) = self.path_offer() else { return false };
+        let Some(doc) = self.docs.get(self.active) else { return false };
+        let entries: Vec<CompletionEntry> = offer
+            .entries
+            .into_iter()
+            .map(|(name, folder)| {
+                let item = lt::CompletionItem {
+                    label: name.clone(),
+                    // Folders first.
+                    sort_text: Some(format!("{}{}", if folder { 0 } else { 1 }, name.to_lowercase())),
+                    kind: Some(if folder { lt::CompletionItemKind::FOLDER } else { lt::CompletionItemKind::FILE }),
+                    insert_text: Some(if folder { format!("{name}/") } else { name.clone() }),
+                    ..Default::default()
+                };
+                let detail = if folder { "folder" } else { "file" }.to_owned();
+                CompletionEntry { label: name, detail, item, resolved: true, companion: true }
+            })
+            .collect();
+        if entries.is_empty() {
+            return false;
+        }
+        self.lsp.completion = Some(Completion {
+            uid: doc.uid,
+            start,
+            entries,
+            shown: Vec::new(),
+            selected: 0,
+            incomplete: true,
+            waiting: false,
+            filtered_for: (u64::MAX, 0),
+            scroll_to_selected: true,
+            docs_asked: None,
+            resolved: HashMap::new(),
+        });
+        self.refilter_completion();
+        true
+    }
+
     /// Opens, updates or closes completion after the user typed `typed`.
     fn completion_after_typing(&mut self, typed: &str, focused: bool) {
         let Some(doc) = self.docs.get(self.active) else { return };
@@ -1569,6 +1702,17 @@ impl CodeApp {
         if !focused || self.lsp.completion.as_ref().is_some_and(|c| c.uid != uid) {
             self.lsp.completion = None;
         }
+        // A path in a string: its folder's names, read again at each `/`.
+        if focused && !typed.is_empty() && self.path_offer().is_some() {
+            let refresh = typed.ends_with(['/', '"', '\'', '(']) || self.lsp.completion.is_none();
+            if refresh {
+                self.path_completion();
+            } else {
+                self.refilter_completion();
+            }
+            return;
+        }
+        let Some(doc) = self.docs.get(self.active) else { return };
         // HTML and Vue with no server get tags, attributes and values from here.
         if focused && let Some(flavor) = self.markup_flavor_unserved() {
             // Only typing looks again; otherwise the open list follows the cursor.
@@ -1579,14 +1723,19 @@ impl CodeApp {
             }
             return;
         }
-        let Some((ci, _)) = lsp_target(doc).and_then(|(p, _, k)| {
+        let main = lsp_target(doc).and_then(|(p, _, k)| {
             self.lsp.clients.iter().position(|c| serves(c, k, &p) && c.is_ready()).map(|ci| (ci, p))
-        }) else {
+        });
+        // Servers from VS Code extensions complete too (Tailwind's class names).
+        let companion = self.companion_triggers(self.active);
+        if main.is_none() && companion.is_none() {
             return;
-        };
+        }
+        let mut triggers = main.map(|(ci, _)| self.lsp.clients[ci].completion_triggers()).unwrap_or_default();
+        triggers.extend(companion.unwrap_or_default());
         let open = self.lsp.completion.is_some();
         if let Some(ch) = typed.chars().last() {
-            if self.lsp.clients[ci].completion_triggers().contains(&ch) {
+            if triggers.contains(&ch) {
                 self.request_completion(Some(ch));
                 return;
             }
@@ -1884,11 +2033,20 @@ impl CodeApp {
         let i = self.active;
         let Some((range, diagnostics)) = self.code_action_target(i) else { return };
         self.lsp.local_actions = self.local_code_actions(i);
+        self.lsp.actions_shown = false;
+        self.companions.owners.clear();
+        self.lsp.actions_companions_waiting = self.companion_code_actions(i, range);
+        // The companions' problems aren't the main server's to fix.
+        let diagnostics: Vec<lt::Diagnostic> = diagnostics
+            .into_iter()
+            .filter(|d| !matches!(d.source.as_deref(), Some("ESLint" | "eslint" | "Tailwind CSS" | "tailwindcss")))
+            .collect();
         let sent = self.request_for(i, "textDocument/codeAction", Pending::CodeActions, |_, td| {
             json!({ "textDocument": td, "range": range, "context": { "diagnostics": diagnostics, "triggerKind": 1 } })
         });
-        // No server to ask: what's made here is all there is.
-        if !sent {
+        self.lsp.actions_main_waiting = sent;
+        // No server to ask: what's made here (and the companions') is all there is.
+        if !sent && self.lsp.actions_companions_waiting == 0 {
             self.on_code_actions(Value::Null);
         }
     }
@@ -1977,7 +2135,11 @@ impl CodeApp {
         self.lsp.bulb_asked = Some(key);
         // Actions made here light it too, a fix in yellow.
         let local = self.local_code_actions(i);
-        self.lsp.bulb_local = (!local.is_empty()).then(|| {
+        let line = self.docs.get(i).map_or(0, |d| d.buffer.char_to_line(d.buffer.primary().head)) as u32;
+        // A companion's problem on the line: it offers fixes for it.
+        let companion_fix = self.companion_problem_on(i, line);
+        self.lsp.bulb_local = (!local.is_empty() || companion_fix).then(|| {
+            companion_fix ||
             local.iter().any(
                 |a| matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.kind == Some(lt::CodeActionKind::QUICKFIX)),
             )
@@ -2032,7 +2194,34 @@ impl CodeApp {
         self.lsp.bulb = Some((key, fix || self.lsp.bulb_local == Some(true)));
     }
 
+    /// A companion's code actions: added to the list showing, or kept for it.
+    pub(super) fn add_companion_actions(&mut self, actions: Vec<lt::CodeActionOrCommand>) {
+        self.lsp.actions_companions_waiting = self.lsp.actions_companions_waiting.saturating_sub(1);
+        let usable = actions
+            .into_iter()
+            .filter(|a| !matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.disabled.is_some()));
+        if self.lsp.actions_shown {
+            let before = self.lsp.code_actions.len();
+            self.lsp.code_actions.extend(usable);
+            if self.lsp.code_actions.len() > before {
+                let titles: Vec<String> = self.lsp.code_actions.iter().map(action_title).collect();
+                if self.palette.picker_kind() == Some(PickerKind::CodeAction) {
+                    self.palette.replace_picker_items(titles, Vec::new());
+                } else {
+                    self.palette.show_picker(PickerKind::CodeAction, titles, "", "Select a code action");
+                }
+            }
+            return;
+        }
+        self.lsp.local_actions.extend(usable);
+        if !self.lsp.actions_main_waiting && self.lsp.actions_companions_waiting == 0 {
+            self.on_code_actions(Value::Null);
+        }
+    }
+
     fn on_code_actions(&mut self, value: Value) {
+        self.lsp.actions_main_waiting = false;
+        self.lsp.actions_shown = true;
         let from_server = serde_json::from_value::<Option<Vec<_>>>(value)
             .ok()
             .flatten()
@@ -2078,6 +2267,25 @@ impl CodeApp {
         }) else {
             return;
         };
+        // A companion's: its edit applies here, its command goes back to it.
+        if let Some(owner) = self.companions.owners.get(title).copied() {
+            let command = match action {
+                lt::CodeActionOrCommand::Command(c) => Some(c),
+                lt::CodeActionOrCommand::CodeAction(a) => {
+                    if let Some(edit) = &a.edit
+                        && let Err(e) = self.apply_workspace_edit(edit)
+                    {
+                        self.status = Some(format!("Code action failed: {e}"));
+                        return;
+                    }
+                    a.command
+                }
+            };
+            if let Some(cmd) = command {
+                self.companion_execute(owner, cmd);
+            }
+            return;
+        }
         let command = match action {
             lt::CodeActionOrCommand::Command(c) => Some(c),
             lt::CodeActionOrCommand::CodeAction(a) => {
@@ -2280,7 +2488,14 @@ impl CodeApp {
                     egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(2.0).show(ui, |ui| {
                         ui.set_width(440.0);
                         let row_h = ui.fonts_mut(|f| f.row_height(&font)) + 4.0;
-                        egui::ScrollArea::vertical().max_height(row_h * COMPLETION_ROWS as f32).show(ui, |ui| {
+                        // As tall as its rows, up to the most shown: the scroll area otherwise
+                        // keeps the height of an earlier, shorter list.
+                        let rows = c.shown.len().min(COMPLETION_ROWS) as f32;
+                        let gap = ui.spacing().item_spacing.y;
+                        let scroll = egui::ScrollArea::vertical()
+                            .max_height((row_h + gap) * COMPLETION_ROWS as f32 - gap)
+                            .min_scrolled_height((row_h + gap) * rows - gap);
+                        scroll.show(ui, |ui| {
                             for (row, &idx) in c.shown.iter().enumerate() {
                                 let e = &c.entries[idx];
                                 let selected = row == c.selected;
@@ -2558,4 +2773,11 @@ fn csharp_nullable(path: &Path, source: &str) -> bool {
             Some(std::fs::read_to_string(project).is_ok_and(|t| t.contains("<Nullable>enable</Nullable>")))
         })
         .unwrap_or(false)
+}
+
+fn action_title(a: &lt::CodeActionOrCommand) -> String {
+    match a {
+        lt::CodeActionOrCommand::Command(c) => c.title.clone(),
+        lt::CodeActionOrCommand::CodeAction(c) => c.title.clone(),
+    }
 }
