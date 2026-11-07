@@ -194,6 +194,7 @@ impl CodeApp {
 
         let mut cmd = None;
         let mut open_folder = None;
+        let mut remove_folder = None;
         let inside = bar.with_max_x(bar.max.x - 3.0 * WINDOW_BUTTON);
         ui.scope_builder(egui::UiBuilder::new().max_rect(inside), |ui| {
             ui.horizontal_centered(|ui| {
@@ -215,24 +216,50 @@ impl CodeApp {
                         cmd = Some(Command::OpenFolder);
                         ui.close();
                     }
+                    // Recent projects, each with an × that takes it off the list; one that
+                    // is gone shows struck through, still removable.
                     let others: Vec<_> = self
-                        .recent_folders
+                        .recent
+                        .projects
                         .iter()
-                        .filter(|f| Some(*f) != root.as_ref() && f.is_dir())
+                        .filter(|e| Some(&e.path) != root.as_ref())
                         .take(8)
-                        .cloned()
+                        .map(|e| (e.path.clone(), e.name(), e.exists()))
                         .collect();
                     if !others.is_empty() {
                         ui.separator();
                     }
-                    for folder in others {
-                        let label = folder
-                            .file_name()
-                            .map_or_else(|| folder.display().to_string(), |n| n.to_string_lossy().into_owned());
-                        if ui.button(label).on_hover_text(folder.display().to_string()).clicked() {
-                            open_folder = Some(folder);
-                            ui.close();
-                        }
+                    for (folder, name, there) in others {
+                        ui.horizontal(|ui| {
+                            ui.set_width(240.0);
+                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                if ui.small_button("×").on_hover_text("Remove from Recent").clicked() {
+                                    remove_folder = Some(folder.clone());
+                                }
+                                ui.with_layout(egui::Layout::left_to_right(Align::Center), |ui| {
+                                    let text = if there {
+                                        RichText::new(name)
+                                    } else {
+                                        RichText::new(name).strikethrough().color(pal.text_dim)
+                                    };
+                                    let tip = if there {
+                                        folder.display().to_string()
+                                    } else {
+                                        format!("{} (not found)", folder.display())
+                                    };
+                                    let open = ui.add(egui::Button::new(text).frame(false)).on_hover_text(tip);
+                                    if open.clicked() {
+                                        open_folder = Some(folder.clone());
+                                        ui.close();
+                                    }
+                                });
+                            });
+                        });
+                    }
+                    ui.separator();
+                    if ui.button("Manage Recent...").on_hover_text("Open Recent: remove or clear entries").clicked() {
+                        cmd = Some(Command::OpenRecent);
+                        ui.close();
                     }
                 });
 
@@ -273,7 +300,11 @@ impl CodeApp {
             });
         });
         if let Some(folder) = open_folder {
-            self.open_folder(folder);
+            // Through Open Recent's path, which says when a folder is gone.
+            self.open_recent(&folder.display().to_string());
+        }
+        if let Some(folder) = remove_folder {
+            self.remove_recent(&folder);
         }
         window_buttons(ui, bar.with_max_y(bar.min.y + HEIGHT), maximized);
         cmd
@@ -325,6 +356,7 @@ impl CodeApp {
     /// Each menu, in whatever `ui` lays them out.
     fn menus(&mut self, ui: &mut egui::Ui) -> (Option<Command>, f32) {
         let mut cmd = None;
+        let mut recent_click = None;
         let end;
         let keymap = &self.keymap;
         let cargo_project = self.cargo_project;
@@ -340,7 +372,11 @@ impl CodeApp {
                 ui.separator();
                 item(ui, "Open File...", Command::OpenFile);
                 item(ui, "Open Folder...", Command::OpenFolder);
-                item(ui, "Open Recent...", Command::OpenRecent);
+                ui.menu_button("Open Recent", |ui| {
+                    if let Some(click) = self.recent_menu(ui) {
+                        recent_click = Some(click);
+                    }
+                });
                 ui.separator();
                 item(ui, "Save", Command::Save);
                 item(ui, "Save As...", Command::SaveAs);
@@ -499,6 +535,9 @@ impl CodeApp {
                 }
             });
             end = run.response.rect.max.x;
+        }
+        if let Some(click) = recent_click {
+            self.recent_click(click);
         }
         (cmd, end)
     }
@@ -1190,6 +1229,7 @@ impl CodeApp {
 
     pub(super) fn welcome(&mut self, ui: &mut egui::Ui) -> Option<Command> {
         let mut cmd = None;
+        let mut recent_click = None;
         ui.vertical_centered(|ui| {
             ui.add_space(ui.available_height() * 0.2);
             ui.label(RichText::new("Rust Code").size(44.0).color(theme::colors().text_dim));
@@ -1218,7 +1258,20 @@ impl CodeApp {
                     }
                 });
             });
+            // Recent projects and files, each removable, the missing marked.
+            ui.horizontal(|ui| {
+                ui.add_space(((ui.available_width() - 420.0) / 2.0).max(0.0));
+                ui.vertical(|ui| {
+                    ui.set_max_width(420.0);
+                    if let Some(click) = self.recent_section(ui) {
+                        recent_click = Some(click);
+                    }
+                });
+            });
         });
+        if let Some(click) = recent_click {
+            self.recent_click(click);
+        }
         cmd
     }
 

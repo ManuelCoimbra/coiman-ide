@@ -84,7 +84,16 @@ is read and written on your machine.
 - Bidi controls, invisible characters and Private Use Area characters show as a red `?`, with a
   warning above the file and **Next** to step through them, naming each one in the status bar. They
   stay in the file until you delete them (`editor.unicode_warnings`)
-- `Ctrl+R` reopens a recent folder (also **File > Open Recent** and the welcome page)
+- Recent projects (folders) and recent files are kept apart, newest first, with when each was last
+  opened: 20 projects and 30 files. `Ctrl+R` (**Open Recent**) lists both, then **Clear Recently
+  Opened**; the × on a row, or Shift+Delete, removes it and the list stays open. The Welcome page
+  shows a few of each with an × each, More and Clear; **File > Open Recent** has the same with
+  their places, and the project menu (the folder name at the top) lists recent projects with an ×
+  each, then **Manage Recent**. A folder or file that's gone stays
+  listed, struck through and marked "not found", since its drive may only be disconnected: opening
+  it says so, and **File: Remove Missing from Recently Opened** drops all such entries. Clearing
+  asks first. The list lives in `recent.json` in the config folder; the old folders-only list
+  still reads.
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
 - Bookmarks: `Ctrl+Alt+K` toggles, `Ctrl+Alt+L` / `Ctrl+Alt+J` go next and previous, **Bookmarks: List

@@ -39,6 +39,7 @@ mod plugins;
 mod preview;
 mod prints;
 mod profile;
+mod recent_ui;
 mod repl;
 mod settings_ui;
 mod snippets_ui;
@@ -238,7 +239,8 @@ pub struct CodeApp {
     cargo_project_for: (Option<PathBuf>, f64),
     hidden: hidden::HiddenChars,
     /// Folders for Open Recent, newest first.
-    recent_folders: Vec<PathBuf>,
+    /// Recently opened projects and files.
+    recent: rust_code_core::recent::Recent,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -379,7 +381,7 @@ impl CodeApp {
             cargo_project: false,
             cargo_project_for: (None, 0.0),
             hidden: Default::default(),
-            recent_folders: rust_code_core::recent::load(),
+            recent: rust_code_core::recent::load(),
             pending_close: None,
             allow_close: false,
             chord: None,
@@ -812,6 +814,10 @@ impl eframe::App for CodeApp {
             Some(PaletteResult::WorkspaceSymbol(i)) => self.picked_workspace_symbol(i),
             Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
+            Some(PaletteResult::Remove(crate::palette::PickerKind::Recent, label)) => {
+                self.remove_recent(std::path::Path::new(&label))
+            }
+            Some(PaletteResult::Remove(..)) => {}
             Some(PaletteResult::Input(InputKind::Rename, name)) => self.finish_rename(&name),
             Some(PaletteResult::Input(InputKind::NewFile, name)) => self.finish_new_path(&name, false),
             Some(PaletteResult::Input(InputKind::NewFolder, name)) => self.finish_new_path(&name, true),

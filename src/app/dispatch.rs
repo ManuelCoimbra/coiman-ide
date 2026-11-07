@@ -520,15 +520,9 @@ impl CodeApp {
                     self.palette.show_picker(PickerKind::Indentation, items, &current, "Select Indentation");
                 }
             }
-            Command::OpenRecent => {
-                let items: Vec<String> =
-                    self.recent_folders.iter().filter(|f| f.is_dir()).map(|f| f.display().to_string()).collect();
-                if items.is_empty() {
-                    self.status = Some("No recent folders".to_owned());
-                } else {
-                    self.palette.show_picker(PickerKind::RecentFolder, items, "", "Select a folder to open");
-                }
-            }
+            Command::OpenRecent => self.show_recent(),
+            Command::ClearRecentlyOpened => self.ask_clear_recent(),
+            Command::RemoveMissingRecent => self.remove_missing_recent(),
             Command::ChangeLineEnding => {
                 if let Some(doc) = self.docs.get(self.active) {
                     let current = doc.line_ending();
@@ -633,7 +627,12 @@ impl CodeApp {
             PickerKind::History => self.picked_history(label),
             PickerKind::RunTarget => self.picked_run_target(ctx, label),
             PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
-            PickerKind::RecentFolder => self.open_folder(label.into()),
+            PickerKind::Recent => self.open_recent(label),
+            PickerKind::ClearRecent => {
+                if label != "Cancel" {
+                    self.clear_recent();
+                }
+            }
             PickerKind::VsCodeImport => self.picked_vscode_import(ctx, label),
             PickerKind::Indentation => {
                 let size = label.strip_prefix("Spaces: ").and_then(|n| n.parse().ok());

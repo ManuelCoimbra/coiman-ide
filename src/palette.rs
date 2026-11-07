@@ -25,6 +25,8 @@ pub enum PaletteResult {
     WorkspaceSymbol(usize),
     /// An item chosen in a picker.
     Picked(PickerKind, String),
+    /// An item to take out of a picker's list (its ×, or Shift+Delete).
+    Remove(PickerKind, String),
     /// Text entered in an input box.
     Input(InputKind, String),
 }
@@ -50,7 +52,10 @@ pub enum PickerKind {
     Bookmark,
     Snippet,
     Indentation,
-    RecentFolder,
+    /// Recent projects and files, and Clear.
+    Recent,
+    /// Yes or no to clearing the recent list.
+    ClearRecent,
     /// "Reopen with Encoding" or "Save with Encoding".
     EncodingAction,
     ReopenWithEncoding,
@@ -72,6 +77,10 @@ struct Picker {
     kind: PickerKind,
     items: Vec<String>,
     placeholder: &'static str,
+    /// A dim note after each item, when there are any.
+    details: Vec<String>,
+    /// Items can be taken out of the list.
+    removable: bool,
 }
 
 /// What Search Everywhere is showing.
@@ -270,7 +279,34 @@ impl Palette {
     pub fn show_picker(&mut self, kind: PickerKind, items: Vec<String>, current: &str, placeholder: &'static str) {
         self.show_with("");
         self.selected = items.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
-        self.picker = Some(Picker { kind, items, placeholder });
+        self.picker = Some(Picker { kind, items, placeholder, details: Vec::new(), removable: false });
+    }
+
+    /// A picker whose items have notes after them and can be removed (a × on each row,
+    /// or Shift+Delete), as Open Recent's are.
+    pub fn show_removable_picker(
+        &mut self,
+        kind: PickerKind,
+        items: Vec<String>,
+        details: Vec<String>,
+        placeholder: &'static str,
+    ) {
+        self.show_with("");
+        self.picker = Some(Picker { kind, items, placeholder, details, removable: true });
+    }
+
+    /// New items for the picker showing, keeping what's typed and the row picked.
+    pub fn replace_picker_items(&mut self, items: Vec<String>, details: Vec<String>) {
+        if let Some(picker) = &mut self.picker {
+            picker.items = items;
+            picker.details = details;
+            self.open = true;
+        }
+    }
+
+    /// The picker showing, if any.
+    pub fn picker_kind(&self) -> Option<PickerKind> {
+        self.picker.as_ref().filter(|_| self.open).map(|p| p.kind)
     }
 
     /// What's being searched after `#`, while the palette shows symbols.
@@ -306,7 +342,8 @@ impl Palette {
         if let Some(picker) = &self.picker {
             for (i, hl) in rank(picker.items.iter().map(String::as_str), &self.query) {
                 let t = &picker.items[i];
-                items.push((t.clone(), String::new(), PaletteResult::Picked(picker.kind, t.clone()), hl));
+                let detail = picker.details.get(i).cloned().unwrap_or_default();
+                items.push((t.clone(), detail, PaletteResult::Picked(picker.kind, t.clone()), hl));
             }
         } else if let Some(tab) = self.everywhere_tab() {
             let q = self.query.trim().to_owned();
@@ -440,6 +477,23 @@ impl Palette {
         }
 
         let mut result = None;
+        // Shift+Delete takes the picked item out of a removable list. Windows sends it as
+        // Cut, which would cut the query instead.
+        let removable = self.picker.as_ref().is_some_and(|p| p.removable);
+        let mut remove = None;
+        if removable && !items.is_empty() {
+            let shift_delete = ctx.input_mut(|i| {
+                let cut = i.modifiers.shift && !i.modifiers.ctrl;
+                let at = i.events.iter().position(|e| {
+                    matches!(e, egui::Event::Key { key: Key::Delete, pressed: true, modifiers, .. } if modifiers.shift)
+                        || (cut && matches!(e, egui::Event::Cut))
+                });
+                at.map(|at| i.events.remove(at)).is_some()
+            });
+            if shift_delete {
+                remove = Some(self.selected);
+            }
+        }
         let shown_tab = self.everywhere_tab();
         let width = if shown_tab.is_some() {
             (ctx.content_rect().width() * 0.6).clamp(500.0, 860.0)
@@ -508,8 +562,29 @@ impl Palette {
                             let selected = i == self.selected;
                             // The whole row is one target, with its background painted under it.
                             let background = ui.painter().add(egui::Shape::Noop);
+                            let mut cross = None;
                             let resp = ui.horizontal(|ui| {
                                 ui.set_min_width(ui.available_width());
+                                // A removable row: its × at the far right, then the note, then
+                                // the label in what's left.
+                                if removable {
+                                    let size = ui.text_style_height(&egui::TextStyle::Body);
+                                    let right_to_left = egui::Layout::right_to_left(egui::Align::Center);
+                                    ui.with_layout(right_to_left, |ui| {
+                                        let (spot, _) =
+                                            ui.allocate_exact_size(egui::vec2(size * 1.4, size), egui::Sense::hover());
+                                        cross = Some(egui::Rect::from_center_size(
+                                            spot.center(),
+                                            egui::vec2(size * 1.2, size * 1.2),
+                                        ));
+                                        ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
+                                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                            let text = highlight_label(ui, label, hl);
+                                            ui.add(egui::Label::new(text).truncate().selectable(false));
+                                        });
+                                    });
+                                    return;
+                                }
                                 let size = ui.text_style_height(&egui::TextStyle::Body);
                                 match outcome {
                                     PaletteResult::OpenFile(_) => {
@@ -539,7 +614,25 @@ impl Palette {
                             if selected && (up || down) {
                                 row.scroll_to_me(None);
                             }
-                            if row.clicked() {
+                            if let Some(cross) = cross.filter(|_| selected || row.hovered()) {
+                                let on = row.hover_pos().is_some_and(|p| cross.contains(p));
+                                let color = if on { pal.text } else { pal.text_dim };
+                                if on {
+                                    ui.painter().rect_filled(cross, 3.0, pal.hover_bg);
+                                }
+                                ui.painter().text(
+                                    cross.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    "×",
+                                    egui::FontId::proportional(cross.height() * 0.9),
+                                    color,
+                                );
+                            }
+                            let on_cross =
+                                cross.is_some_and(|c| row.interact_pointer_pos().is_some_and(|p| c.contains(p)));
+                            if row.clicked() && on_cross {
+                                remove = Some(i);
+                            } else if row.clicked() {
                                 self.selected = i;
                                 result = Some(i);
                             }
@@ -553,6 +646,13 @@ impl Palette {
 
         if enter && !items.is_empty() {
             result = Some(self.selected);
+        }
+        // Taken out: the app redraws the list without it, and the palette stays.
+        if let Some(i) = remove.filter(|&i| i < items.len())
+            && let PaletteResult::Picked(kind, label) = items.swap_remove(i).2
+        {
+            self.selected = i.min(items.len().saturating_sub(1));
+            return Some(PaletteResult::Remove(kind, label));
         }
         self.close_on_click_outside(ctx, area.response.rect);
         let picked = result.map(|i| items.swap_remove(i).2);

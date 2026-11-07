@@ -169,6 +169,10 @@ impl CodeApp {
 
     pub(super) fn open_file(&mut self, path: &Path) {
         rust_code_core::applog::info(&format!("open file {}", path.display()));
+        if path.is_file() {
+            self.recent.add_file(path, recent::now());
+            self.remember_recent();
+        }
         self.hide_view_tabs();
         if self.open_image_file(path) {
             return;
@@ -460,10 +464,8 @@ impl CodeApp {
     }
 
     pub(super) fn open_folder(&mut self, path: PathBuf) {
-        recent::add(&mut self.recent_folders, &path);
-        if let Err(e) = recent::save(&self.recent_folders) {
-            self.status = Some(format!("Could not save recent folders: {e}"));
-        }
+        self.recent.add_project(&path, recent::now());
+        self.remember_recent();
         self.finder.set_root(Some(path.clone()));
         self.watcher.set_root(Some(&path));
         // The workspace settings layer depends on the folder.
