@@ -494,7 +494,16 @@ fn highlight_bytes(cfg: &LangConfig, tree: &Tree, rope: &Rope, start: usize, end
     }
 
     if rainbow {
-        paint_brackets(tree.root_node(), 0, start, end, &mut styles, &literal, theme.palette.rainbow);
+        let palette = &theme.palette;
+        paint_brackets(
+            tree.root_node(),
+            0,
+            start,
+            end,
+            &mut styles,
+            &literal,
+            (palette.rainbow, palette.bracket_unexpected),
+        );
     }
     styles
 }
@@ -508,7 +517,7 @@ fn paint_brackets(
     end: usize,
     styles: &mut [Style],
     literal: &[bool],
-    colors: [Color; 3],
+    (colors, unexpected): ([Color; 3], Color),
 ) {
     let opens = node.child(0).is_some_and(|c| matches!(c.kind(), "(" | "[" | "{"));
     let depth = depth + usize::from(opens);
@@ -522,11 +531,33 @@ fn paint_brackets(
             break;
         }
         if child.child_count() > 0 {
-            paint_brackets(child, depth, start, end, styles, literal, colors);
-        } else if depth > 0 && !child.is_named() && matches!(child.kind(), "(" | ")" | "[" | "]" | "{" | "}") {
+            paint_brackets(child, depth, start, end, styles, literal, (colors, unexpected));
+        } else if !child.is_named() && !child.is_missing() && matches!(child.kind(), "(" | ")" | "[" | "]" | "{" | "}")
+        {
             let i = child.start_byte();
             if (start..end).contains(&i) && !literal[i - start] {
-                styles[i - start] = Style { color: colors[(depth - 1) % colors.len()], italic: false };
+                // A closing bracket needs its opener before it among its siblings.
+                let opener = match child.kind() {
+                    ")" => Some("("),
+                    "]" => Some("["),
+                    "}" => Some("{"),
+                    _ => None,
+                };
+                let stray = opener.is_some_and(|o| {
+                    let mut prev = child.prev_sibling();
+                    while let Some(p) = prev {
+                        if p.kind() == o && !p.is_missing() {
+                            return false;
+                        }
+                        prev = p.prev_sibling();
+                    }
+                    true
+                });
+                let color =
+                    if stray { Some(unexpected) } else { (depth > 0).then(|| colors[(depth - 1) % colors.len()]) };
+                if let Some(color) = color {
+                    styles[i - start] = Style { color, italic: false };
+                }
             }
         }
         if !cursor.goto_next_sibling() {
@@ -556,6 +587,17 @@ mod tests {
             i += s.len;
         }
         out
+    }
+
+    #[test]
+    fn stray_closing_brackets_stand_out() {
+        let palette = crate::theme::current().palette;
+        let line = colors(Lang::Rust, "fn a() { b()); }", 0);
+        let of = |s: &str| line.iter().filter(|(t, _)| t.contains(s)).map(|(_, c)| *c).collect::<Vec<_>>();
+        // The second `)` after `b(` closes nothing.
+        assert!(of(")").contains(&palette.bracket_unexpected), "{line:?}");
+        let good = colors(Lang::Rust, "fn a() { b(); }", 0);
+        assert!(good.iter().all(|(_, c)| *c != palette.bracket_unexpected), "{good:?}");
     }
 
     #[test]

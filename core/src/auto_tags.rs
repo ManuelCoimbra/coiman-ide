@@ -29,6 +29,126 @@ impl TagMode {
     }
 }
 
+/// A tag's name in markup: its char range, and whether it opens, closes or does both.
+#[derive(Clone, Debug)]
+struct TagName {
+    start: usize,
+    end: usize,
+    name: String,
+    close: bool,
+    self_closing: bool,
+}
+
+/// Every tag name in `text`, skipping comments, CDATA, declarations and the raw text
+/// of `<script>` and `<style>`. Attribute values, quoted or in braces, are skipped whole.
+fn tag_names(text: &[char], mode: TagMode) -> Vec<TagName> {
+    let starts = |at: usize, s: &str| s.chars().enumerate().all(|(k, c)| text.get(at + k) == Some(&c));
+    let skip_to = |from: usize, s: &str| (from..text.len()).find(|&k| starts(k, s)).map_or(text.len(), |k| k + s.len());
+    let fold = |s: String| if mode == TagMode::Xml { s } else { s.to_lowercase() };
+    let mut out: Vec<TagName> = Vec::new();
+    let mut i = 0;
+    while i < text.len() {
+        if text[i] != '<' {
+            i += 1;
+            continue;
+        }
+        if starts(i, "<!--") {
+            i = skip_to(i + 4, "-->");
+            continue;
+        }
+        if starts(i, "<![CDATA[") {
+            i = skip_to(i + 9, "]]>");
+            continue;
+        }
+        if starts(i, "<!") || starts(i, "<?") {
+            i = skip_to(i + 2, ">");
+            continue;
+        }
+        let close = text.get(i + 1) == Some(&'/');
+        let start = i + 1 + usize::from(close);
+        let mut end = start;
+        while end < text.len() && name_char(text[end]) {
+            end += 1;
+        }
+        if end == start || !text[start].is_alphabetic() {
+            i += 1;
+            continue;
+        }
+        // To the tag's `>`, past quoted and braced values.
+        let (mut k, mut quote, mut braces) = (end, None, 0usize);
+        while k < text.len() {
+            let c = text[k];
+            match quote {
+                Some(q) if c == q => quote = None,
+                Some(_) => {}
+                None => match c {
+                    '"' | '\'' if braces == 0 => quote = Some(c),
+                    '{' => braces += 1,
+                    '}' => braces = braces.saturating_sub(1),
+                    '>' if braces == 0 => break,
+                    _ => {}
+                },
+            }
+            k += 1;
+        }
+        let self_closing = !close && k > end && text[k - 1] == '/';
+        let name = fold(text[start..end].iter().collect());
+        let raw = mode == TagMode::Html && !close && !self_closing && matches!(name.as_str(), "script" | "style");
+        out.push(TagName { start, end, name: name.clone(), close, self_closing });
+        i = k + 1;
+        if raw {
+            // The raw text runs to the element's end tag, which is still a tag.
+            let close_at = (i..text.len()).find(|&j| {
+                text[j] == '<'
+                    && text.get(j + 1) == Some(&'/')
+                    && text[(j + 2).min(text.len())..].iter().take(name.len()).collect::<String>().to_lowercase()
+                        == name
+            });
+            i = close_at.unwrap_or(text.len());
+        }
+    }
+    out
+}
+
+/// The tag name under char `pos` and its partner's, as char ranges, opening tag first:
+/// what VS Code marks when the cursor is in a tag. Elements nest by name; a void HTML
+/// element or a self-closing tag has no partner.
+pub fn matching_tag(mode: TagMode, text: &[char], pos: usize) -> Option<[(usize, usize); 2]> {
+    if mode == TagMode::Off {
+        return None;
+    }
+    let tags = tag_names(text, mode);
+    let at = tags.iter().position(|t| (t.start..=t.end).contains(&pos))?;
+    let tag = &tags[at];
+    if tag.self_closing || (!tag.close && mode != TagMode::Xml && VOID.contains(&tag.name.as_str())) {
+        return None;
+    }
+    let same = |t: &&TagName| t.name == tag.name && !t.self_closing;
+    let mut depth = 0usize;
+    if tag.close {
+        for t in tags[..at].iter().rev().filter(same) {
+            if t.close {
+                depth += 1;
+            } else if depth == 0 {
+                return Some([(t.start, t.end), (tag.start, tag.end)]);
+            } else {
+                depth -= 1;
+            }
+        }
+    } else {
+        for t in tags[at + 1..].iter().filter(same) {
+            if !t.close {
+                depth += 1;
+            } else if depth == 0 {
+                return Some([(tag.start, tag.end), (t.start, t.end)]);
+            } else {
+                depth -= 1;
+            }
+        }
+    }
+    None
+}
+
 /// What typing a character becomes: the text to put in its place, and where the
 /// cursor goes in it, counted in chars.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -206,6 +326,37 @@ pub fn on_type(mode: TagMode, c: char, before: &str, after: &str, quotes: bool) 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn matching_tags_by_name_and_nesting() {
+        use super::{TagMode, matching_tag};
+        let pair = |mode: TagMode, text: &str, pos: usize| -> Option<(String, String)> {
+            let chars: Vec<char> = text.chars().collect();
+            let [a, b] = matching_tag(mode, &chars, pos)?;
+            let s = |(x, y): (usize, usize)| format!("{x}..{y}={}", chars[x..y].iter().collect::<String>());
+            Some((s(a), s(b)))
+        };
+        let html = "<div class=\"a>b\"><div>x</div><br><img/></DIV>";
+        // The outer div, from its start and from its end tag (any case).
+        assert_eq!(pair(TagMode::Html, html, 2), Some(("1..4=div".into(), "41..44=DIV".into())));
+        assert_eq!(pair(TagMode::Html, html, 42), Some(("1..4=div".into(), "41..44=DIV".into())));
+        // The inner one.
+        assert_eq!(pair(TagMode::Html, html, 19), Some(("18..21=div".into(), "25..28=div".into())));
+        // Void and self-closing tags, and text, have no partner.
+        assert_eq!(pair(TagMode::Html, html, 31), None);
+        assert_eq!(pair(TagMode::Html, html, 35), None);
+        assert_eq!(pair(TagMode::Html, html, 22), None);
+        // Comments and script text hold no tags.
+        let script = "<p><!-- </p> --><script>if (a < b) { x = '</p>' }</script></p>";
+        assert_eq!(pair(TagMode::Html, script, 1).map(|p| p.1), Some("60..61=p".into()));
+        // XML is case-sensitive; JSX skips braces in attributes.
+        assert_eq!(pair(TagMode::Xml, "<a><A></A></a>", 1).map(|p| p.1), Some("12..13=a".into()));
+        assert_eq!(
+            pair(TagMode::Jsx, "<Card on={() => a > b}><Card/></Card>", 2).map(|p| p.1),
+            Some("32..36=Card".into())
+        );
+        assert_eq!(pair(TagMode::Off, html, 2), None);
+    }
+
     use super::TagMode::*;
     use super::*;
 

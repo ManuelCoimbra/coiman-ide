@@ -34,9 +34,13 @@ pub struct Palette<C = Color> {
     pub selection: C,
     pub cursor: C,
     pub indent_guide: C,
+    /// The indent guide of the block holding the cursor.
+    pub indent_guide_active: C,
     pub current_line: C,
     pub bracket_match: C,
     pub rainbow: [C; 3],
+    /// A closing bracket with nothing to close, or the wrong kind.
+    pub bracket_unexpected: C,
     pub widget_bg: C,
     pub hover_bg: C,
 }
@@ -66,9 +70,11 @@ impl<C: Copy> Palette<C> {
             selection: f(self.selection),
             cursor: f(self.cursor),
             indent_guide: f(self.indent_guide),
+            indent_guide_active: f(self.indent_guide_active),
             current_line: f(self.current_line),
             bracket_match: f(self.bracket_match),
             rainbow: self.rainbow.map(&f),
+            bracket_unexpected: f(self.bracket_unexpected),
             widget_bg: f(self.widget_bg),
             hover_bg: f(self.hover_bg),
         }
@@ -143,9 +149,11 @@ const DARK: Palette = Palette {
     selection: rgb(0x264f78),
     cursor: rgb(0xaeafad),
     indent_guide: rgb(0x404040),
+    indent_guide_active: rgb(0x707070),
     current_line: rgb(0x282828),
     bracket_match: rgb(0x888888),
     rainbow: [rgb(0xffd700), rgb(0xda70d6), rgb(0x179fff)],
+    bracket_unexpected: rgb(0xff1212),
     widget_bg: rgb(0x313131),
     hover_bg: rgb(0x2a2d2e),
 };
@@ -172,9 +180,11 @@ const LIGHT: Palette = Palette {
     selection: rgb(0xadd6ff),
     cursor: rgb(0x000000),
     indent_guide: rgb(0xd3d3d3),
+    indent_guide_active: rgb(0x939393),
     current_line: rgb(0xeeeeee),
     bracket_match: rgb(0xb9b9b9),
     rainbow: [rgb(0x0431fa), rgb(0x319331), rgb(0x7b3814)],
+    bracket_unexpected: rgb(0xff1212),
     widget_bg: rgb(0xffffff),
     hover_bg: rgb(0xf2f2f2),
 };
@@ -627,9 +637,14 @@ pub fn load_vscode_theme(path: &Path, ui_theme: Option<&str>) -> Result<Theme, S
         selection: col(&["editor.selectionBackground"], base.selection),
         cursor: col(&["editorCursor.foreground"], editor_fg),
         indent_guide: col(&["editorIndentGuide.background1", "editorIndentGuide.background"], base.indent_guide),
+        indent_guide_active: col(
+            &["editorIndentGuide.activeBackground1", "editorIndentGuide.activeBackground"],
+            base.indent_guide_active,
+        ),
         current_line: col(&["editor.lineHighlightBorder", "editor.lineHighlightBackground"], base.current_line),
         bracket_match: col(&["editorBracketMatch.border"], base.bracket_match),
         rainbow,
+        bracket_unexpected: col(&["editorBracketHighlight.unexpectedBracket.foreground"], base.bracket_unexpected),
         widget_bg: col(&["input.background", "dropdown.background"], base.widget_bg),
         hover_bg: col(&["list.hoverBackground"], base.hover_bg),
     };

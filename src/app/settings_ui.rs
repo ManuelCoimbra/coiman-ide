@@ -73,9 +73,30 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("editor", "indent_guides", "Indent guides", "Lines showing indentation levels.", Kind::Toggle),
             row(
                 "editor",
+                "highlight_active_indentation",
+                "Active indent guide",
+                "Brighten the indent guide of the block the cursor is in.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "bracket_pair_colorization",
                 "Rainbow brackets",
-                "Color matching brackets by depth.",
+                "Color brackets by how deeply they nest, and closing brackets that close nothing in red.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
+                "bracket_pair_guides",
+                "Bracket pair guide",
+                "A line in the bracket's color down the pair the cursor is in, from opener to closer.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
+                "matching_tags",
+                "Matching tags",
+                "Mark the start and end tag of the element whose tag name the cursor is in.",
                 Kind::Toggle,
             ),
             row(

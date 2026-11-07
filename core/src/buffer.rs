@@ -616,6 +616,42 @@ impl Buffer {
         hay.windows(needle.len()).position(|w| w == needle).map(|i| from + i)
     }
 
+    /// The innermost bracket pair around `pos`: an opener before it and its closer at or
+    /// after it, searching at most `limit` chars each way.
+    pub fn enclosing_brackets(&self, pos: usize, limit: usize) -> Option<(usize, usize)> {
+        let pos = pos.min(self.len_chars());
+        let mut closers: Vec<char> = Vec::new();
+        let mut chars = self.rope.chars_at(pos);
+        let mut i = pos;
+        while let Some(c) = chars.prev() {
+            i -= 1;
+            if pos - i > limit {
+                return None;
+            }
+            let close = match c {
+                ')' | ']' | '}' => {
+                    closers.push(c);
+                    continue;
+                }
+                '(' => ')',
+                '[' => ']',
+                '{' => '}',
+                _ => continue,
+            };
+            match closers.last() {
+                Some(&last) if last == close => {
+                    closers.pop();
+                }
+                Some(_) => {}
+                None => {
+                    let (open, end) = self.matching_bracket(i, limit)?;
+                    return (open == i && end >= pos).then_some((open, end));
+                }
+            }
+        }
+        None
+    }
+
     /// Bracket next to `pos` and its partner, searching at most `limit` chars away.
     pub fn matching_bracket(&self, pos: usize, limit: usize) -> Option<(usize, usize)> {
         const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
@@ -1442,6 +1478,23 @@ mod edit_selection_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enclosing_bracket_pairs() {
+        let b = Buffer::new("f(a, [b], {\n  c(d)\n}) x");
+        let pair = |pos: usize| b.enclosing_brackets(pos, 1000);
+        // In `{ ... }`, past the inner `c(d)`.
+        assert_eq!(pair(18), Some((10, 19)));
+        // Inside `[b]`, and right after its opener.
+        assert_eq!(pair(6), Some((5, 7)));
+        // Inside `c(d)`.
+        assert_eq!(pair(16), Some((15, 17)));
+        // Between `[b]` and `{`: the call's parentheses.
+        assert_eq!(pair(8), Some((1, 20)));
+        // Outside everything.
+        assert_eq!(pair(22), None);
+        assert_eq!(pair(0), None);
+    }
 
     #[test]
     fn types_brackets_and_quotes_in_pairs() {

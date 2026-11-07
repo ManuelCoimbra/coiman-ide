@@ -11,7 +11,7 @@ use crate::theme::Color;
 use std::sync::{Arc, RwLock};
 
 use syntect::highlighting::{FontStyle, HighlightIterator, HighlightState, Highlighter as SynHighlighter, Theme};
-use syntect::parsing::{ParseState, ScopeStack, SyntaxSet};
+use syntect::parsing::{ParseState, Scope, ScopeStack, ScopeStackOp, SyntaxSet};
 
 use crate::buffer::Buffer;
 
@@ -28,7 +28,11 @@ pub struct Span {
     pub italic: bool,
 }
 
-type State = (ParseState, HighlightState);
+/// Brackets still open at a line's start, innermost last, for rainbow colors.
+type Open = Vec<char>;
+type State = (ParseState, HighlightState, Open);
+/// Open brackets kept track of; past this, more are colored but not remembered.
+const MAX_OPEN: usize = 4096;
 
 pub struct Highlighter {
     syntax_name: Option<String>,
@@ -39,6 +43,8 @@ pub struct Highlighter {
     cache: HashMap<usize, Vec<Span>>,
     /// Theme generation the cached colors were computed with.
     theme_generation: u64,
+    /// Brackets colored by how deeply they nest (`editor.bracketPairColorization`).
+    rainbow: bool,
 }
 
 fn syntaxes() -> &'static SyntaxSet {
@@ -78,6 +84,17 @@ impl Highlighter {
             tail: None,
             cache: HashMap::new(),
             theme_generation: crate::theme::generation(),
+            rainbow: false,
+        }
+    }
+
+    /// Turns rainbow brackets on or off, highlighting again if that changes them.
+    pub fn set_rainbow(&mut self, on: bool) {
+        if self.rainbow != on {
+            self.rainbow = on;
+            self.checkpoints.clear();
+            self.cache.clear();
+            self.tail = None;
         }
     }
 
@@ -111,7 +128,11 @@ impl Highlighter {
             let theme = theme();
             let highlighter = SynHighlighter::new(&theme);
             if self.checkpoints.is_empty() {
-                self.checkpoints.push((ParseState::new(syntax), HighlightState::new(&highlighter, ScopeStack::new())));
+                self.checkpoints.push((
+                    ParseState::new(syntax),
+                    HighlightState::new(&highlighter, ScopeStack::new()),
+                    Vec::new(),
+                ));
             }
             if self.cache.len() > MAX_CACHED_LINES {
                 self.cache.clear();
@@ -131,7 +152,7 @@ impl Highlighter {
                 if next.is_multiple_of(CHECKPOINT) && next / CHECKPOINT == self.checkpoints.len() {
                     self.checkpoints.push(state.clone());
                 }
-                let spans = highlight_line(buf, next, &mut state, &highlighter, set);
+                let spans = highlight_line(buf, next, &mut state, &highlighter, set, self.rainbow);
                 self.cache.insert(next, spans);
                 next += 1;
             }
@@ -147,6 +168,7 @@ fn highlight_line(
     state: &mut State,
     highlighter: &SynHighlighter,
     set: &SyntaxSet,
+    rainbow: bool,
 ) -> Vec<Span> {
     let mut text = buf.line_text(line);
     let plain_len = text.chars().count();
@@ -156,9 +178,10 @@ fn highlight_line(
     }
     // The "newlines" syntax set expects each line to end with '\n'.
     text.push('\n');
-    let (parse, hl) = state;
+    let (parse, hl, open) = state;
     let Ok(ops) = parse.parse_line(&text, set) else { return fallback() };
-    HighlightIterator::new(hl, &ops, &text, highlighter)
+    let path = hl.path.clone();
+    let spans: Vec<Span> = HighlightIterator::new(hl, &ops, &text, highlighter)
         .filter_map(|(style, piece)| {
             let len = piece.trim_end_matches('\n').chars().count();
             (len > 0).then(|| Span {
@@ -167,7 +190,101 @@ fn highlight_line(
                 italic: style.font_style.contains(FontStyle::ITALIC),
             })
         })
-        .collect()
+        .collect();
+    if !rainbow {
+        return spans;
+    }
+    recolor(spans, &bracket_colors(&text, &ops, path, open))
+}
+
+/// Scopes whose brackets are text, not code.
+fn literal_scopes() -> &'static [Scope] {
+    static SCOPES: OnceLock<Vec<Scope>> = OnceLock::new();
+    SCOPES.get_or_init(|| {
+        ["string", "comment", "constant.character", "constant.other.character", "markup.raw"]
+            .iter()
+            .filter_map(|s| Scope::new(s).ok())
+            .collect()
+    })
+}
+
+/// Each code bracket in `text` (char index) with its rainbow color: by how many brackets
+/// are open around it, carried in `open` from line to line. A closing bracket that closes
+/// nothing, or closes the wrong kind, gets the unexpected-bracket color.
+fn bracket_colors(
+    text: &str,
+    ops: &[(usize, ScopeStackOp)],
+    mut path: ScopeStack,
+    open: &mut Open,
+) -> Vec<(usize, Color)> {
+    let palette = crate::theme::current().palette;
+    let literal = literal_scopes();
+    let mut ops = ops.iter().peekable();
+    let mut out = Vec::new();
+    for (ci, (bi, c)) in text.char_indices().enumerate() {
+        while let Some((at, op)) = ops.peek()
+            && *at <= bi
+        {
+            let _ = path.apply(op);
+            ops.next();
+        }
+        if !matches!(c, '(' | ')' | '[' | ']' | '{' | '}')
+            || path.as_slice().iter().any(|s| literal.iter().any(|l| l.is_prefix_of(*s)))
+        {
+            continue;
+        }
+        let opener = match c {
+            ')' => '(',
+            ']' => '[',
+            '}' => '{',
+            _ => {
+                out.push((ci, palette.rainbow[open.len() % palette.rainbow.len()]));
+                if open.len() < MAX_OPEN {
+                    open.push(c);
+                }
+                continue;
+            }
+        };
+        if open.last() == Some(&opener) {
+            open.pop();
+            out.push((ci, palette.rainbow[open.len() % palette.rainbow.len()]));
+        } else {
+            out.push((ci, palette.bracket_unexpected));
+        }
+    }
+    out
+}
+
+/// `spans` with the chars in `marks` (sorted char indices) given their own color.
+fn recolor(spans: Vec<Span>, marks: &[(usize, Color)]) -> Vec<Span> {
+    if marks.is_empty() {
+        return spans;
+    }
+    let mut out = Vec::with_capacity(spans.len() + marks.len() * 2);
+    let mut marks = marks.iter().peekable();
+    let mut at = 0;
+    for span in spans {
+        let end = at + span.len;
+        let mut from = at;
+        while let Some(&&(i, color)) = marks.peek()
+            && i < end
+        {
+            marks.next();
+            if i < from {
+                continue;
+            }
+            if i > from {
+                out.push(Span { len: i - from, ..span.clone() });
+            }
+            out.push(Span { len: 1, color, italic: false });
+            from = i + 1;
+        }
+        if end > from {
+            out.push(Span { len: end - from, ..span });
+        }
+        at = end;
+    }
+    out
 }
 
 /// A code block's lines as highlighted spans, by its language's name or file extension.
@@ -186,6 +303,39 @@ pub fn snippet(language: &str, text: &str) -> Option<Vec<Vec<Span>>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rainbow_brackets_without_a_tree() {
+        // Ruby has no tree-sitter grammar here; brackets nest across lines, and those in
+        // strings and comments are left alone.
+        let buf = Buffer::new("a = [foo(1), {\n  b: \"(x\"\n}] # (c)\n)");
+        let mut hl = Highlighter::new("rb", true);
+        assert!(hl.is_active());
+        hl.set_rainbow(true);
+        let palette = crate::theme::current().palette;
+        let at = |hl: &mut Highlighter, line: usize, col: usize| {
+            let mut i = 0;
+            for s in hl.spans(&buf, line).unwrap() {
+                if col < i + s.len {
+                    return s.color;
+                }
+                i += s.len;
+            }
+            panic!("no char {col} on line {line}");
+        };
+        let [r0, r1, r2] = palette.rainbow;
+        // `[` depth 0, `(` and `)` depth 1, `{` depth 1.
+        assert_eq!((at(&mut hl, 0, 4), at(&mut hl, 0, 8), at(&mut hl, 0, 10), at(&mut hl, 0, 13)), (r0, r1, r1, r1));
+        assert_ne!(at(&mut hl, 1, 6), r2, "the ( in a string is text");
+        // `}` closes the `{`, `]` the `[`; the comment's brackets are text.
+        assert_eq!((at(&mut hl, 2, 0), at(&mut hl, 2, 1)), (r1, r0));
+        assert_ne!(at(&mut hl, 2, 5), r0);
+        // A `)` with nothing open.
+        assert_eq!(at(&mut hl, 3, 0), palette.bracket_unexpected);
+        // Off: plain again.
+        hl.set_rainbow(false);
+        assert_ne!(at(&mut hl, 3, 0), palette.bracket_unexpected);
+    }
 
     #[test]
     fn block_comment_state_carries_across_lines_and_edits() {

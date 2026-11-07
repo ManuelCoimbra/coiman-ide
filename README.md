@@ -108,8 +108,18 @@ is read and written on your machine.
   (for Python, JS/TS, Java, C/C++, C# and Go the Outline lists classes, interfaces,
   functions and methods).
 - Other languages: syntect highlighting with parser checkpoints every 32 lines
-- Rainbow brackets by nesting depth (tree-sitter languages), indent guides, line numbers,
-  current-line and matching-bracket highlight
+- Rainbow brackets by nesting depth, in every highlighted language (by syntax tree where there
+  is one, else by the grammar's scopes, so brackets in strings and comments are left alone). A
+  closing bracket that closes nothing, or the wrong kind, is red. Themes' `editorBracketHighlight`
+  colors are used.
+- Indent guides, with the guide of the block holding the cursor brightened (the block a line
+  opens, when the cursor is on its first line), and a line in the bracket's own color down the
+  bracket pair the cursor is in, from opener to closer. Line numbers, current-line and
+  matching-bracket highlight.
+- In HTML, XML, Vue, Svelte and JSX, the cursor in a tag's name frames that tag and its partner.
+  Elements nest by name; comments, `<script>` and `<style>` text and attribute values are skipped;
+  void and self-closing tags have none. Settings: **Rainbow brackets**, **Active indent guide**,
+  **Bracket pair guide**, **Matching tags**.
 - Multi-cursor: `Ctrl+D` adds the next match, `Ctrl+Alt+Up/Down` adds cursors, `Alt+Click`,
   `Esc` returns to one cursor; per-document undo/redo (`Ctrl+Z`, `Ctrl+Y`) grouped by word
 - VS Code editing behaviour: auto-indent on Enter (splits `{|}`), smart Home, `Ctrl+L` line

@@ -69,7 +69,15 @@ pub struct EditorSettings {
     pub font_size: f32,
     pub word_wrap: bool,
     pub indent_guides: bool,
+    /// Brighten the indent guide of the block holding the cursor
+    /// (`editor.guides.highlightActiveIndentation`).
+    pub highlight_active_indentation: bool,
     pub bracket_pair_colorization: bool,
+    /// Mark the matching start or end tag when the cursor is in a tag's name.
+    pub matching_tags: bool,
+    /// A line in the bracket's color from the pair around the cursor to its closer
+    /// (`editor.guides.bracketPairs: active`).
+    pub bracket_pair_guides: bool,
     /// Format the file with its language server when saving.
     pub format_on_save: bool,
     /// Warn about loops that look endless and memory that looks leaked.
@@ -328,7 +336,10 @@ impl Default for EditorSettings {
             font_size: 14.0,
             word_wrap: false,
             indent_guides: true,
+            highlight_active_indentation: true,
             bracket_pair_colorization: true,
+            matching_tags: true,
+            bracket_pair_guides: true,
             format_on_save: false,
             likely_problems: true,
             markup_problems: true,

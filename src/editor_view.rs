@@ -52,7 +52,13 @@ pub struct Options {
     pub font_size: f32,
     pub word_wrap: bool,
     pub indent_guides: bool,
+    /// Brighten the guide of the block holding the cursor.
+    pub active_indent_guide: bool,
     pub rainbow_brackets: bool,
+    /// Mark the partner of the tag the cursor is in.
+    pub matching_tags: bool,
+    /// Draw a guide down the bracket pair the cursor is in.
+    pub bracket_pair_guides: bool,
     /// Draw the cursor as a block (Vim/Helix normal mode).
     pub block_cursor: bool,
     pub smooth_scrolling: bool,
@@ -280,11 +286,20 @@ pub fn editor_id(uid: u64, pane: u8) -> egui::Id {
     egui::Id::unique(("editor", uid, pane))
 }
 
+/// A text version and cursor position, which cached lookups are valid for.
+type CursorKey = (u64, usize);
+/// A start tag's name and its end tag's, as char ranges.
+type TagPair = [(usize, usize); 2];
+
 /// Per-document view state that survives between frames.
 #[derive(Default)]
 pub struct ViewState {
     /// Scroll offset in points (x: horizontal, y: vertical).
     scroll: Vec2,
+    /// The tag pair found for (version, cursor), so it isn't looked for every frame.
+    tag_pair: Option<(CursorKey, Option<TagPair>)>,
+    /// The bracket pair around the cursor, for (version, cursor).
+    enclosing: Option<(CursorKey, Option<(usize, usize)>)>,
     /// Rows whose words were drawn as pictures, by start char, so a click finds its char.
     word_shifts: std::collections::HashMap<usize, Vec<WordShift>>,
     /// Widest line seen so far, in visual columns (for the horizontal scroll range).
@@ -1311,6 +1326,49 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
     let primary_line = doc.buffer.char_to_line(primary.head);
     let primary_row = layout.row_of(doc, view, primary.head);
     let bracket = primary.is_empty().then(|| doc.buffer.matching_bracket(primary.head, BRACKET_SEARCH_LIMIT)).flatten();
+    let tag_pair = if opts.matching_tags && primary.is_empty() {
+        let key = (doc.buffer.version(), primary.head);
+        match view.tag_pair {
+            Some((k, pair)) if k == key => pair,
+            _ => {
+                let pair = tag_pair_at(doc, primary.head);
+                view.tag_pair = Some((key, pair));
+                pair
+            }
+        }
+    } else {
+        None
+    };
+    // The pair around the cursor, spanning lines: (first line inside, last line inside,
+    // column, the opener's color).
+    let pair_guide = if opts.bracket_pair_guides {
+        let key = (doc.buffer.version(), primary.head);
+        let pair = match view.enclosing {
+            Some((k, pair)) if k == key => pair,
+            _ => {
+                let pair = doc.buffer.enclosing_brackets(primary.head, BRACKET_SEARCH_LIMIT);
+                view.enclosing = Some((key, pair));
+                pair
+            }
+        };
+        pair.and_then(|(open, close)| {
+            let (lo, lc) = (doc.buffer.char_to_line(open), doc.buffer.char_to_line(close));
+            (lc > lo + 1).then(|| {
+                let col = indent_cols(&doc.buffer, lo).min(indent_cols(&doc.buffer, lc));
+                let color = syntax_color(doc, lo, open - doc.buffer.line_start(lo));
+                (lo + 1, lc - 1, col, color)
+            })
+        })
+    } else {
+        None
+    };
+    let active_guide = (opts.indent_guides && opts.active_indent_guide)
+        .then(|| {
+            let buf = &doc.buffer;
+            let guide = if buf.indent.use_tabs { tab_width() } else { buf.indent.size.max(1) };
+            active_guide(buf, primary_line, guide)
+        })
+        .flatten();
     let x0 = text_rect.left() - scroll.x;
     let gutter_hovered = ui
         .input(|i| i.pointer.hover_pos())
@@ -1322,6 +1380,8 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         let last_line = layout.row(doc, view, last_row - 1).line;
         if let Some(ts) = &mut doc.ts {
             ts.prepare(&doc.buffer, first_line, last_line, opts.rainbow_brackets);
+        } else {
+            doc.highlighter.set_rainbow(opts.rainbow_brackets);
         }
     }
 
@@ -1335,7 +1395,15 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         let levels = if opts.indent_guides { indent_cols(buf, row.line) / guide } else { 0 };
         for level in 0..levels {
             let x = (x0 + (level * guide) as f32 * m.char_w).round() + 0.5;
-            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, pal.indent_guide));
+            let active = active_guide.is_some_and(|(l, first, last)| l == level && (first..=last).contains(&row.line));
+            let color = if active { pal.indent_guide_active } else { pal.indent_guide };
+            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, color));
+        }
+        if let Some((first, last, col, color)) = pair_guide
+            && (first..=last).contains(&row.line)
+        {
+            let x = (x0 + col as f32 * m.char_w).round() + 0.5;
+            text_painter.vline(x, y..=y + m.row_h, Stroke::new(1.0, color));
         }
 
         for ruler in &deco.rulers {
@@ -1379,6 +1447,21 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
                     Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)),
                     0.0,
                     pal.selection,
+                );
+            }
+        }
+
+        // The tag pair the cursor is in: both names framed.
+        for (s, e) in tag_pair.into_iter().flatten() {
+            let (a, b) = (s.max(row.start), e.min(row.end));
+            if b > a {
+                let xa = x0 + shifted(&row_shifts, col_x(buf, row.start, a, m));
+                let xb = x0 + shifted(&row_shifts, col_x(buf, row.start, b, m));
+                text_painter.rect_stroke(
+                    Rect::from_min_max(Pos2::new(xa, y), Pos2::new(xb, y + m.row_h)),
+                    0.0,
+                    Stroke::new(1.0, pal.bracket_match),
+                    egui::StrokeKind::Inside,
                 );
             }
         }
@@ -1737,6 +1820,49 @@ fn squiggle(painter: &egui::Painter, x0: f32, x1: f32, y: f32, color: Color32) {
 
 /// Visual columns of leading whitespace; blank lines take the smaller indent of
 /// the nearest non-blank lines above and below (as VS Code does for guides).
+/// How far around the cursor to look for its tag's partner, in chars.
+const TAG_WINDOW: usize = 200_000;
+/// How far the active indent guide is followed up and down, in lines.
+const ACTIVE_GUIDE_LINES: usize = 2_000;
+
+/// The tag name under `pos` and its partner's, as char ranges, in markup files.
+fn tag_pair_at(doc: &Document, pos: usize) -> Option<TagPair> {
+    let mode = rust_code_core::auto_tags::TagMode::for_extension(&doc.extension());
+    if mode == rust_code_core::auto_tags::TagMode::Off {
+        return None;
+    }
+    let buf = &doc.buffer;
+    let (a, b) = (pos.saturating_sub(TAG_WINDOW), (pos + TAG_WINDOW).min(buf.len_chars()));
+    let chars: Vec<char> = buf.rope().slice(a..b).chars().collect();
+    let pair = rust_code_core::auto_tags::matching_tag(mode, &chars, pos - a)?;
+    Some(pair.map(|(s, e)| (s + a, e + a)))
+}
+
+/// The indent guide of the block holding `line`, as VS Code highlights it: its level and
+/// the lines it runs through. A line that opens a deeper block takes that block's guide.
+fn active_guide(buf: &Buffer, line: usize, guide: usize) -> Option<(usize, usize, usize)> {
+    let level = |l: usize| indent_cols(buf, l) / guide;
+    let here = level(line);
+    let next = if line + 1 < buf.len_lines() { level(line + 1) } else { 0 };
+    let (guide_level, from) = if next > here {
+        (here, line + 1)
+    } else if here > 0 {
+        (here - 1, line)
+    } else {
+        return None;
+    };
+    let inside = |l: usize| level(l) > guide_level;
+    let mut first = from;
+    while first > 0 && from - first < ACTIVE_GUIDE_LINES && inside(first - 1) {
+        first -= 1;
+    }
+    let mut last = from;
+    while last + 1 < buf.len_lines() && last - from < ACTIVE_GUIDE_LINES && inside(last + 1) {
+        last += 1;
+    }
+    Some((guide_level, first, last))
+}
+
 fn indent_cols(buf: &Buffer, line: usize) -> usize {
     let leading = |l: usize| -> Option<usize> {
         let text = buf.line_text(l);
