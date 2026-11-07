@@ -25,6 +25,7 @@ pub mod encoding;
 pub mod environment;
 pub mod file_actions;
 pub mod file_icons;
+pub mod file_ops;
 pub mod find;
 pub mod finder;
 pub mod fonts;

@@ -139,12 +139,55 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+; ctrl+c", Command::DebugTestAtCursor, false),
 ];
 
+/// VS Code's Explorer keys on Windows: only while the Explorer has the keyboard
+/// (`filesExplorerFocus`).
+const EXPLORER_DEFAULTS: &[(&str, Command)] = &[
+    ("enter", Command::ExplorerOpen),
+    ("space", Command::ExplorerOpenPreserveFocus),
+    ("f2", Command::ExplorerRename),
+    ("delete", Command::ExplorerDelete),
+    ("shift+delete", Command::ExplorerDeletePermanently),
+    ("ctrl+c", Command::ExplorerCopy),
+    ("ctrl+x", Command::ExplorerCut),
+    ("ctrl+v", Command::ExplorerPaste),
+    ("shift+alt+c", Command::ExplorerCopyPath),
+    ("ctrl+k ctrl+shift+alt+c", Command::ExplorerCopyRelativePath),
+    ("ctrl+a", Command::ExplorerSelectAll),
+];
+
+/// Takes `shortcut` from this frame's input. Copy, cut and paste arrive as their own
+/// events rather than keys (and Windows sends Shift+Delete as Cut), so those match too.
+fn consume_stroke(input: &mut egui::InputState, shortcut: &KeyboardShortcut) -> bool {
+    if input.consume_shortcut(shortcut) {
+        return true;
+    }
+    let m = shortcut.modifiers;
+    let ctrl_only = (m.ctrl || m.command) && !m.alt && !m.shift;
+    let shift_only = m.shift && !m.ctrl && !m.command && !m.alt;
+    let held = input.modifiers;
+    let wanted = |e: &egui::Event| match e {
+        egui::Event::Copy => ctrl_only && matches!(shortcut.logical_key, egui::Key::C | egui::Key::Insert),
+        egui::Event::Cut if held.shift && !held.ctrl => shift_only && shortcut.logical_key == egui::Key::Delete,
+        egui::Event::Cut => ctrl_only && shortcut.logical_key == egui::Key::X,
+        egui::Event::Paste(_) => {
+            (ctrl_only && shortcut.logical_key == egui::Key::V)
+                || (shift_only && shortcut.logical_key == egui::Key::Insert)
+        }
+        _ => false,
+    };
+    let Some(at) = input.events.iter().position(wanted) else { return false };
+    input.events.remove(at);
+    true
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
     /// One stroke, or two for a chord like `Ctrl+K Ctrl+O`.
     pub keys: Vec<KeyboardShortcut>,
     pub command: Command,
     pub editor_only: bool,
+    /// Only while the Explorer has the keyboard (`filesExplorerFocus`).
+    pub explorer_only: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -173,7 +216,18 @@ impl Keymap {
     pub fn defaults() -> Self {
         let bindings = DEFAULTS
             .iter()
-            .map(|(k, c, e)| Binding { keys: parse_keys(k).expect("valid default key"), command: *c, editor_only: *e })
+            .map(|(k, c, e)| Binding {
+                keys: parse_keys(k).expect("valid default key"),
+                command: *c,
+                editor_only: *e,
+                explorer_only: false,
+            })
+            .chain(EXPLORER_DEFAULTS.iter().map(|(k, c)| Binding {
+                keys: parse_keys(k).expect("valid default key"),
+                command: *c,
+                editor_only: false,
+                explorer_only: true,
+            }))
             .collect();
         Self::from_bindings(bindings)
     }
@@ -231,15 +285,18 @@ impl Keymap {
                 problems.push(format!("keybindings: `{}` needs a `key`", b.command));
                 continue;
             };
-            let editor_only = match b.when.as_deref() {
-                None | Some("") => false,
-                Some("editorTextFocus" | "editorFocus") => true,
+            let (editor_only, explorer_only) = match b.when.as_deref() {
+                None | Some("") => (false, false),
+                Some("editorTextFocus" | "editorFocus") => (true, false),
+                Some("filesExplorerFocus" | "explorerViewletFocus" | "explorerFocus") => (false, true),
                 Some(other) => {
-                    problems.push(format!("keybindings: unsupported `when` clause `{other}` (use editorTextFocus)"));
-                    true
+                    problems.push(format!(
+                        "keybindings: unsupported `when` clause `{other}` (use editorTextFocus or filesExplorerFocus)"
+                    ));
+                    (true, false)
                 }
             };
-            bindings.push(Binding { keys, command: cmd, editor_only });
+            bindings.push(Binding { keys, command: cmd, editor_only, explorer_only });
         }
         (Self::from_bindings(bindings), problems)
     }
@@ -251,6 +308,10 @@ impl Keymap {
 
     pub fn is_editor_only(&self, cmd: Command) -> bool {
         self.bindings.iter().rev().find(|b| b.command == cmd).is_some_and(|b| b.editor_only)
+    }
+
+    pub fn is_explorer_only(&self, cmd: Command) -> bool {
+        self.bindings.iter().rev().find(|b| b.command == cmd).is_some_and(|b| b.explorer_only)
     }
 
     /// Commands these exact keys run.
@@ -266,9 +327,13 @@ impl Keymap {
         chord: &mut Option<KeyboardShortcut>,
         editor_focused: bool,
         terminal_focused: bool,
+        explorer_focused: bool,
     ) -> Option<Command> {
-        let applies =
-            |b: &Binding| (!b.editor_only || editor_focused) && (!terminal_focused || runs_in_terminal(b.command));
+        let applies = |b: &Binding| {
+            (!b.editor_only || editor_focused)
+                && (!b.explorer_only || explorer_focused)
+                && (!terminal_focused || runs_in_terminal(b.command))
+        };
         if let Some(first) = *chord {
             // Wait across idle frames; resolve on the next real key press.
             // Modifiers arrive as keys too, and most people press Ctrl again.
@@ -284,7 +349,7 @@ impl Keymap {
                 if b.keys.len() == 2
                     && b.keys[0] == first
                     && applies(b)
-                    && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[1]))
+                    && ctx.input_mut(|inp| consume_stroke(inp, &b.keys[1]))
                 {
                     // The second stroke may also have produced text (e.g. "z"); drop it.
                     ctx.input_mut(|inp| inp.events.retain(|e| !matches!(e, egui::Event::Text(_))));
@@ -297,7 +362,7 @@ impl Keymap {
             let b = &self.bindings[i];
             // Alt held isn't that shortcut: Ctrl+Alt is how some keyboards type @ and {.
             let alt_differs = !b.keys[0].modifiers.alt && ctx.input(|i| i.modifiers.alt);
-            if applies(b) && !alt_differs && ctx.input_mut(|inp| inp.consume_shortcut(&b.keys[0])) {
+            if applies(b) && !alt_differs && ctx.input_mut(|inp| consume_stroke(inp, &b.keys[0])) {
                 if b.keys.len() == 1 {
                     // Alt combinations can also produce text (Shift+Alt+F types "F" on
                     // Windows); it must not reach the editor.
@@ -328,7 +393,13 @@ impl Keymap {
              # Defaults:\n",
         );
         for b in &self.bindings {
-            let when = if b.editor_only { "  (editorTextFocus)" } else { "" };
+            let when = if b.editor_only {
+                "  (editorTextFocus)"
+            } else if b.explorer_only {
+                "  (filesExplorerFocus)"
+            } else {
+                ""
+            };
             out.push_str(&format!("#   {:<18} {}{when}\n", format_keys(&b.keys), command_id(b.command)));
         }
         out
@@ -353,7 +424,7 @@ pub fn is_modifier(key: egui::Key) -> bool {
 /// A change to one command's keys in the keybindings file.
 pub enum BindingChange {
     /// Replaces its keys.
-    Set { keys: String, editor_only: bool },
+    Set { keys: String, editor_only: bool, explorer_only: bool },
     /// Leaves it with no keys.
     Remove,
     /// Back to its default keys.
@@ -377,11 +448,13 @@ pub fn set_binding_in_text(text: &str, id: &str, change: &BindingChange) -> Resu
     match change {
         BindingChange::Reset => {}
         BindingChange::Remove => bindings.push(binding(&[("command", &removal)])),
-        BindingChange::Set { keys, editor_only } => {
+        BindingChange::Set { keys, editor_only, explorer_only } => {
             bindings.push(binding(&[("command", &removal)]));
             let mut pairs = vec![("key", keys.as_str()), ("command", id)];
             if *editor_only {
                 pairs.push(("when", "editorTextFocus"));
+            } else if *explorer_only {
+                pairs.push(("when", "filesExplorerFocus"));
             }
             bindings.push(binding(&pairs));
         }
@@ -527,7 +600,7 @@ mod tests {
         };
 
         let header = Keymap::defaults().default_file_contents();
-        let set = BindingChange::Set { keys: "Ctrl+K Ctrl+Y".to_owned(), editor_only: true };
+        let set = BindingChange::Set { keys: "Ctrl+K Ctrl+Y".to_owned(), editor_only: true, explorer_only: false };
         let text = set_binding_in_text(&header, id, &set).unwrap();
         assert!(text.starts_with("# Rust Code keybindings"));
         let km = load(&text);
@@ -537,9 +610,9 @@ mod tests {
         assert_eq!(km.commands_using(&parse_keys("ctrl+k ctrl+y").unwrap()), [Command::DeleteLines]);
 
         // Changing again replaces, and other commands' bindings stay.
-        let other = BindingChange::Set { keys: "F7".to_owned(), editor_only: false };
+        let other = BindingChange::Set { keys: "F7".to_owned(), editor_only: false, explorer_only: false };
         let text = set_binding_in_text(&text, command_id(Command::JoinLines), &other).unwrap();
-        let again = BindingChange::Set { keys: "F6".to_owned(), editor_only: true };
+        let again = BindingChange::Set { keys: "F6".to_owned(), editor_only: true, explorer_only: false };
         let text = set_binding_in_text(&text, id, &again).unwrap();
         let km = load(&text);
         assert_eq!(km.shortcut_text(Command::DeleteLines), "F6");
@@ -564,7 +637,7 @@ mod tests {
             let event = egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers };
             let max_texture_side = Some(4096);
             ctx.begin_pass(egui::RawInput { events: vec![event], max_texture_side, ..Default::default() });
-            let command = km.process(&ctx, &mut chord, true, false);
+            let command = km.process(&ctx, &mut chord, true, false, false);
             ctx.end_pass().textures_delta.clear();
             command
         };
@@ -577,6 +650,49 @@ mod tests {
         assert_eq!(press(Key::K, Modifiers::COMMAND), None);
         assert_eq!(press(Key::A, Modifiers::NONE), None);
         assert_eq!(press(Key::R, Modifiers::COMMAND), Some(Command::OpenRecent));
+    }
+
+    #[test]
+    fn explorer_keys_work_only_in_the_explorer() {
+        let km = Keymap::defaults();
+        let ctx = egui::Context::default();
+        let mut chord = None;
+        let mut send = |event: egui::Event, modifiers: Modifiers, editor: bool, explorer: bool| {
+            let max_texture_side = Some(4096);
+            let events = vec![egui::Event::ModifiersChanged(modifiers), event];
+            ctx.begin_pass(egui::RawInput { events, max_texture_side, ..Default::default() });
+            let command = km.process(&ctx, &mut chord, editor, false, explorer);
+            ctx.end_pass().textures_delta.clear();
+            command
+        };
+        let key = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::NONE,
+        };
+        let shifted = |key| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Modifiers::SHIFT,
+        };
+        // F2 renames a symbol in the editor and a file in the Explorer.
+        assert_eq!(send(key(Key::F2), Modifiers::NONE, true, false), Some(Command::RenameSymbol));
+        assert_eq!(send(key(Key::F2), Modifiers::NONE, false, true), Some(Command::ExplorerRename));
+        assert_eq!(send(key(Key::Delete), Modifiers::NONE, false, true), Some(Command::ExplorerDelete));
+        assert_eq!(send(key(Key::Delete), Modifiers::NONE, true, false), None, "the editor deletes text itself");
+        assert_eq!(send(shifted(Key::Delete), Modifiers::SHIFT, false, true), Some(Command::ExplorerDeletePermanently));
+        // Clipboard keys arrive as their own events; Windows sends Shift+Delete as Cut.
+        assert_eq!(send(egui::Event::Copy, Modifiers::COMMAND, false, true), Some(Command::ExplorerCopy));
+        assert_eq!(send(egui::Event::Cut, Modifiers::COMMAND, false, true), Some(Command::ExplorerCut));
+        assert_eq!(send(egui::Event::Cut, Modifiers::SHIFT, false, true), Some(Command::ExplorerDeletePermanently));
+        assert_eq!(send(egui::Event::Paste("x".into()), Modifiers::COMMAND, false, true), Some(Command::ExplorerPaste));
+        // In the editor they're left to the editor.
+        assert_eq!(send(egui::Event::Copy, Modifiers::COMMAND, true, false), None);
+        assert_eq!(send(egui::Event::Paste("x".into()), Modifiers::COMMAND, true, false), None);
     }
 
     #[test]

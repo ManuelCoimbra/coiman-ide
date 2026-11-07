@@ -15,6 +15,8 @@ pub(super) struct KeysUi {
     filter: String,
     /// The command getting new keys, and the strokes pressed so far.
     capture: Option<(Command, Vec<KeyboardShortcut>)>,
+    /// Shown last frame: the search box takes the keyboard when the window opens.
+    shown: bool,
 }
 
 impl KeysUi {
@@ -59,8 +61,10 @@ fn read_strokes(ctx: &egui::Context, strokes: &mut Vec<KeyboardShortcut>) -> boo
 impl CodeApp {
     pub(super) fn keys_window(&mut self, ctx: &egui::Context) {
         if !self.keys_ui.open {
+            self.keys_ui.shown = false;
             return;
         }
+        let opening = !std::mem::replace(&mut self.keys_ui.shown, true);
         // While a key is being captured, Esc cancels that instead.
         let mut open = self.keys_ui.capture.is_some()
             || !ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
@@ -80,7 +84,10 @@ impl CodeApp {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     let search = egui::TextEdit::singleline(&mut state.filter).hint_text("Search commands or keys");
-                    ui.add_enabled(state.capture.is_none(), search.desired_width(320.0));
+                    let search = ui.add_enabled(state.capture.is_none(), search.desired_width(320.0));
+                    if opening {
+                        search.request_focus();
+                    }
                     if ui.button("Edit as File").clicked() {
                         action = Some(Action::OpenFile);
                     }
@@ -114,9 +121,23 @@ impl CodeApp {
                                     ui.add(egui::Label::new(*name).truncate());
                                 });
                                 let text = if keys.is_empty() { "—" } else { keys.as_str() };
+                                // Where the keys work, when not everywhere.
+                                let place = if keys.is_empty() {
+                                    ""
+                                } else if keymap.is_explorer_only(*command) {
+                                    "Explorer"
+                                } else if keymap.is_editor_only(*command) {
+                                    "Editor"
+                                } else {
+                                    ""
+                                };
                                 ui.allocate_ui_with_layout(egui::vec2(170.0, row_h), left, |ui| {
                                     ui.set_width(170.0);
                                     ui.add(egui::Label::new(RichText::new(text).monospace()).truncate());
+                                });
+                                ui.allocate_ui_with_layout(egui::vec2(60.0, row_h), left, |ui| {
+                                    ui.set_width(60.0);
+                                    ui.label(RichText::new(place).small().color(theme::colors().text_dim));
                                 });
                                 if ui.small_button("Change").clicked() {
                                     change = Some(*command);
@@ -190,8 +211,20 @@ fn capture_bar(
         let keys = format_keys(strokes);
         ui.label(RichText::new(&keys).monospace());
         let others = keymap.commands_using(strokes);
-        let others: Vec<&str> =
-            COMMANDS.iter().filter(|(c, _)| *c != command && others.contains(c)).map(|(_, n)| *n).collect();
+        // Keys may be shared by commands that work in different places, as F2 is.
+        let others: Vec<String> = COMMANDS
+            .iter()
+            .filter(|(c, _)| *c != command && others.contains(c))
+            .map(|(c, n)| {
+                if keymap.is_explorer_only(*c) {
+                    format!("{n} (in the Explorer)")
+                } else if keymap.is_editor_only(*c) {
+                    format!("{n} (in the editor)")
+                } else {
+                    (*n).to_owned()
+                }
+            })
+            .collect();
         if !others.is_empty() {
             ui.label(RichText::new(format!("Also used by: {}", others.join(", "))).color(theme::colors().modified));
         }
@@ -202,7 +235,8 @@ fn capture_bar(
         }
         if ui.add_enabled(valid, egui::Button::new("Save")).clicked() {
             let editor_only = keymap.is_editor_only(command);
-            *action = Some(Action::Change(command, BindingChange::Set { keys, editor_only }));
+            let explorer_only = keymap.is_explorer_only(command);
+            *action = Some(Action::Change(command, BindingChange::Set { keys, editor_only, explorer_only }));
         }
     });
 }

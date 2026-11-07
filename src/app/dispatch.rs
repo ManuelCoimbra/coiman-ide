@@ -340,6 +340,17 @@ impl CodeApp {
                     doc.reveal = true;
                 }
             }
+            Command::ExplorerOpen => self.explorer.open_keyboard_row(true),
+            Command::ExplorerOpenPreserveFocus => self.explorer.open_keyboard_row(false),
+            Command::ExplorerRename => self.explorer.rename_picked(),
+            Command::ExplorerDelete => self.explorer.delete_picked(false),
+            Command::ExplorerDeletePermanently => self.explorer.delete_picked(true),
+            Command::ExplorerCopy => self.explorer.copy_picked(ctx, false),
+            Command::ExplorerCut => self.explorer.copy_picked(ctx, true),
+            Command::ExplorerPaste => self.explorer.paste_here(),
+            Command::ExplorerCopyPath => self.explorer.copy_paths(ctx, false),
+            Command::ExplorerCopyRelativePath => self.explorer.copy_paths(ctx, true),
+            Command::ExplorerSelectAll => self.explorer.select_all(),
             Command::JumpToBracket => {
                 // Jump to the partner of the bracket next to the cursor.
                 if let Some(doc) = self.active_doc() {
@@ -771,7 +782,10 @@ impl CodeApp {
             }
         }
         let terminal_focused = self.terminal.has_focus(ctx);
-        if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused, terminal_focused) {
+        // While the delete prompt is up, Enter and Escape are its.
+        let explorer_focused = crate::explorer::Explorer::has_focus(ctx) && self.delete_pending.is_none();
+        if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused, terminal_focused, explorer_focused)
+        {
             self.run_command(ctx, cmd);
         }
     }

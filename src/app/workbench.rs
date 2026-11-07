@@ -805,8 +805,13 @@ impl CodeApp {
                 self.delete_prompt(ui);
                 self.explorer.compact = self.settings.workbench.compact_folders;
                 self.explorer.nest = self.settings.workbench.nest_files;
-                if let Some(path) = self.explorer.ui(ui, active_path.as_deref()) {
+                if let Some((path, to_editor)) = self.explorer.ui(ui, active_path.as_deref()) {
                     self.open_file(&path);
+                    // A single click or Space leaves the keyboard in the Explorer; a double
+                    // click or Enter gives it to the editor, even if the file was open.
+                    if let Some(doc) = self.active_doc() {
+                        doc.request_focus = to_editor;
+                    }
                 }
                 if let Some(action) = self.explorer.action.take() {
                     self.start_explorer_action(action);

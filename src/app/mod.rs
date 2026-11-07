@@ -295,7 +295,8 @@ pub struct CodeApp {
     /// The kind of file New is making there.
     path_template: Option<usize>,
     /// Asking before moving this to the Recycle Bin.
-    delete_pending: Option<PathBuf>,
+    /// Files and folders to delete once confirmed, and whether for good.
+    delete_pending: Option<(Vec<PathBuf>, bool)>,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {

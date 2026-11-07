@@ -67,6 +67,17 @@ is read and written on your machine.
 - Integrated title bar, as in VS Code: menus, the window title and the window buttons share
   one bar. Drag it to move the window, double-click it to maximize, resize from any edge.
 - File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons, and create, rename and delete in the Explorer (right-click; delete goes to the Recycle Bin)
+- The Explorer works from the keyboard, with VS Code's keys. A click selects a row and opens a file
+  while the keyboard stays in the Explorer; Ctrl+click and Shift+click pick more rows; a double
+  click or **Enter** takes the file to the editor, and **Space** opens it and stays. Arrows move,
+  Left and Right close and open folders or go up and in, Home, End and Page keys jump, and typing a
+  name jumps to it. **F2** renames, **Delete** moves the selected rows to the Recycle Bin and
+  **Shift+Delete** deletes them for good, each after asking (Enter confirms, Escape cancels).
+  **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste files and folders ("a copy.txt" when the
+  name is taken; open files follow a move), **Shift+Alt+C** copies paths, **Ctrl+A** selects all
+  and Escape drops the selection and a pending cut. The open folder itself is never deleted, cut or
+  renamed. These keys are commands in **Keyboard Shortcuts**, marked Explorer, and can be changed
+  there or in the keybindings file with `when = "filesExplorerFocus"`.
 - Split the editor with `Ctrl+\\` or by dragging a tab onto the right half of the editor; each pane
   scrolls on its own. `Ctrl+1` / `Ctrl+2` move between them, `Shift+Alt+0` flips the layout, the
   divider drags, and **View > Single Editor** goes back to one. Drag tabs to reorder them

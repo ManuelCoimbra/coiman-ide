@@ -264,7 +264,8 @@ impl CodeApp {
                 self.path_target = Some(path);
                 self.palette.show_input(InputKind::RenamePath, &name, "New name, then Enter");
             }
-            ExplorerAction::Delete(path) => self.delete_pending = Some(path),
+            ExplorerAction::Delete(paths, permanent) => self.delete_pending = Some((paths, permanent)),
+            ExplorerAction::Paste(dir) => self.paste_into(&dir),
         }
     }
 
@@ -339,21 +340,34 @@ impl CodeApp {
         }
     }
 
-    /// Asks before moving a file or folder to the Recycle Bin.
+    /// Asks before moving files and folders to the Recycle Bin, or deleting them for good
+    /// (Shift+Delete). Enter confirms and Escape cancels, as in VS Code's dialog.
     pub(super) fn delete_prompt(&mut self, ui: &mut egui::Ui) {
-        let Some(path) = self.delete_pending.clone() else { return };
+        let Some((paths, permanent)) = self.delete_pending.clone() else { return };
         if ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape)) {
             self.delete_pending = None;
             return;
         }
-        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-        let unsaved = self.docs.iter().any(|d| d.is_dirty() && d.path.as_ref().is_some_and(|p| p.starts_with(&path)));
-        let mut choice = None;
+        let name_of = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let what = match paths.as_slice() {
+            [one] => format!("\"{}\"", name_of(one)),
+            many => format!("these {} items", many.len()),
+        };
+        let unsaved = self
+            .docs
+            .iter()
+            .any(|d| d.is_dirty() && d.path.as_ref().is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone))));
+        let mut choice = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)).then_some(true);
         egui::Frame::new().fill(theme::colors().hover_bg).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
-            let note = if unsaved { " It has unsaved changes." } else { "" };
-            ui.label(format!("Move \"{name}\" to the Recycle Bin?{note}"));
+            let note = if unsaved { " Some have unsaved changes." } else { "" };
+            if permanent {
+                ui.label(format!("Delete {what} for good? This can't be undone.{note}"));
+            } else {
+                ui.label(format!("Move {what} to the Recycle Bin?{note}"));
+            }
             ui.horizontal(|ui| {
-                if ui.button("Move to Recycle Bin").clicked() {
+                let yes = if permanent { "Delete" } else { "Move to Recycle Bin" };
+                if ui.button(yes).clicked() {
                     choice = Some(true);
                 }
                 if ui.button("Cancel").clicked() {
@@ -364,17 +378,85 @@ impl CodeApp {
         match choice {
             Some(true) => {
                 self.delete_pending = None;
-                match trash::delete(&path) {
-                    Ok(()) => {
-                        self.explorer.refresh();
-                        self.finder.mark_stale();
+                let mut failed = Vec::new();
+                for path in &paths {
+                    let done = if permanent {
+                        rust_code_core::file_ops::remove_all(path).map_err(|e| e.to_string())
+                    } else {
+                        trash::delete(path).map_err(|e| e.to_string())
+                    };
+                    if let Err(e) = done {
+                        failed.push(format!("{}: {e}", name_of(path)));
                     }
-                    Err(e) => self.status = Some(format!("Could not delete {name}: {e}")),
+                }
+                self.explorer.forget(&paths);
+                self.explorer.refresh();
+                self.finder.mark_stale();
+                if !failed.is_empty() {
+                    self.status = Some(format!("Could not delete {}", failed.join("; ")));
                 }
             }
             Some(false) => self.delete_pending = None,
             None => {}
         }
+    }
+
+    /// Pastes the Explorer's copied or cut files into `dir`. Copies take a free name
+    /// ("a copy.rs"); cut files move, and open files follow them.
+    pub(super) fn paste_into(&mut self, dir: &Path) {
+        use rust_code_core::file_ops;
+        let Some((files, cut)) = self.explorer.clipboard.clone() else { return };
+        let mut failed = Vec::new();
+        let mut moved = Vec::new();
+        for from in &files {
+            let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if from.is_dir() && file_ops::is_within(dir, from) {
+                failed.push(format!("{name}: a folder can't go inside itself"));
+                continue;
+            }
+            if cut {
+                let to = dir.join(&name);
+                if to == *from {
+                    continue;
+                }
+                if to.exists() {
+                    failed.push(format!("{name} already exists there"));
+                    continue;
+                }
+                match file_ops::move_to(from, &to) {
+                    Ok(()) => {
+                        for doc in &mut self.docs {
+                            let follows =
+                                doc.path.as_ref().and_then(|p| p.strip_prefix(from).ok()).map(|rest| to.join(rest));
+                            if let Some(path) = follows {
+                                self.watcher.watch_file(&path);
+                                doc.path = Some(path);
+                            }
+                        }
+                        moved.push(from.clone());
+                    }
+                    Err(e) => failed.push(format!("{name}: {e}")),
+                }
+            } else if let Err(e) = file_ops::copy_all(from, &file_ops::free_copy_name(dir, &name)) {
+                failed.push(format!("{name}: {e}"));
+            }
+        }
+        if cut {
+            self.explorer.clipboard = None;
+            self.explorer.forget(&moved);
+        }
+        self.explorer.refresh();
+        self.finder.mark_stale();
+        self.status = Some(if failed.is_empty() {
+            format!(
+                "{} {} item{}",
+                if cut { "Moved" } else { "Pasted" },
+                files.len(),
+                if files.len() == 1 { "" } else { "s" }
+            )
+        } else {
+            format!("Could not paste {}", failed.join("; "))
+        });
     }
 
     pub(super) fn open_folder(&mut self, path: PathBuf) {
