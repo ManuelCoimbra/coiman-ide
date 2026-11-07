@@ -30,6 +30,33 @@ pub fn mingw_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// `path` with `dir` added at its end, unless it is there already (any case on Windows).
+pub fn path_with(path: &std::ffi::OsStr, dir: &Path) -> Option<std::ffi::OsString> {
+    let same = |a: &Path| {
+        let (a, b) = (a.to_string_lossy(), dir.to_string_lossy());
+        let (a, b) = (a.trim_end_matches(['\\', '/']), b.trim_end_matches(['\\', '/']));
+        if cfg!(windows) { a.eq_ignore_ascii_case(b) } else { a == b }
+    };
+    let mut dirs: Vec<PathBuf> = std::env::split_paths(path).filter(|d| !d.as_os_str().is_empty()).collect();
+    if dirs.iter().any(|d| same(d)) {
+        return None;
+    }
+    dirs.push(dir.to_path_buf());
+    std::env::join_paths(dirs).ok()
+}
+
+/// The MinGW folder to add to PATH: the first with gcc, when gcc isn't on PATH. With it
+/// on PATH, make finds gcc, gdb finds its own files, and programs find MinGW's DLLs, as
+/// they would from a MinGW shell.
+pub fn mingw_dir_off_path() -> Option<PathBuf> {
+    let gcc = if cfg!(windows) { "gcc.exe" } else { "gcc" };
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    if std::env::split_paths(&path).any(|d| d.join(gcc).is_file()) {
+        return None;
+    }
+    mingw_dirs().into_iter().find(|d| d.join(gcc).is_file())
+}
+
 /// A tool on PATH, else in a MinGW folder.
 pub fn find_tool(name: &str) -> Option<PathBuf> {
     which(name).or_else(|| {
@@ -320,6 +347,19 @@ mod tests {
     use super::*;
 
     const LAB: &str = "# Select environment\nENV ?= linux\n\nFLAGS = -Wall -Wextra\n\nifeq ($(ENV),linux)\n    CC = gcc\n    EXECUTABLE = prog\nendif\n\nifeq ($(ENV),windows)\n    EXECUTABLE = prog.exe\nendif\n\ndefault:\n\t$(CC) $(FLAGS) -o $(EXECUTABLE) main.c input.c\n\ndebug:\n\t$(CC) $(FLAGS) -g -o $(EXECUTABLE) main.c input.c\n\nclean:\n\trm -f $(EXECUTABLE)\n";
+
+    #[test]
+    fn a_folder_joins_path_once() {
+        let sep = if cfg!(windows) { ";" } else { ":" };
+        let (a, b) = if cfg!(windows) { (r"C:\a", r"C:\msys64\ucrt64\bin") } else { ("/a", "/opt/mingw/bin") };
+        let path = std::ffi::OsString::from(format!("{a}{sep}"));
+        let joined = path_with(&path, Path::new(b)).unwrap();
+        assert_eq!(joined.to_string_lossy(), format!("{a}{sep}{b}"));
+        assert_eq!(path_with(&joined, Path::new(b)), None);
+        if cfg!(windows) {
+            assert_eq!(path_with(&joined, Path::new(r"c:\MSYS64\ucrt64\bin\")), None);
+        }
+    }
 
     #[test]
     fn programs_named_by_makefiles() {
