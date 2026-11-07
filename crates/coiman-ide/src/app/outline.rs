@@ -2,7 +2,7 @@
 //! symbol path in the breadcrumbs, Go to Symbol, expand/shrink selection and
 //! syntax text objects (function, type, argument, comment).
 
-use coiman_core::structure::{self, Symbol, SymbolKind, TextObject};
+use coiman_core::editor::structure::{self, Symbol, SymbolKind, TextObject};
 use egui::{Color32, RichText, Sense};
 
 use crate::buffer::Selection;

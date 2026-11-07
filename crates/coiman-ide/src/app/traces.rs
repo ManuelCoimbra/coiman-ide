@@ -4,8 +4,8 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::lsp::types as lt;
-use coiman_core::stacktrace::{self, Analysis, Frame, Place};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::launch::stacktrace::{self, Analysis, Frame, Place};
 use eframe::egui::{self, RichText, Sense};
 
 use super::{CodeApp, PanelTab, repaint};

@@ -6,12 +6,12 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use coiman_core::lsp::companions::{self, Companion};
-use coiman_core::lsp::convert;
-use coiman_core::lsp::servers::{Launch, ServerKind, which};
-use coiman_core::lsp::types as lt;
-use coiman_core::lsp::{Client, Event};
-use coiman_core::trust;
+use coiman_core::language::lsp::companions::{self, Companion};
+use coiman_core::language::lsp::convert;
+use coiman_core::language::lsp::servers::{Launch, ServerKind, which};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::language::lsp::{Client, Event};
+use coiman_core::project::trust;
 use eframe::egui;
 use serde_json::{Value, json};
 

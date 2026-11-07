@@ -131,7 +131,7 @@ enum PendingClose {
 struct FindCache {
     uid: u64,
     version: u64,
-    options: coiman_core::find::FindOptions,
+    options: coiman_core::editor::find::FindOptions,
     matches: Vec<(usize, usize)>,
     /// The regular expression doesn't compile.
     error: Option<String>,
@@ -140,7 +140,7 @@ struct FindCache {
 #[derive(Default)]
 struct FindBar {
     open: bool,
-    options: coiman_core::find::FindOptions,
+    options: coiman_core::editor::find::FindOptions,
     show_replace: bool,
     replacement: String,
     focus_requested: bool,
@@ -226,17 +226,17 @@ pub struct CodeApp {
     cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
-    font_load: Option<std::sync::mpsc::Receiver<coiman_core::fonts::Loaded>>,
+    font_load: Option<std::sync::mpsc::Receiver<coiman_core::appearance::fonts::Loaded>>,
     /// The chosen font for code, behind which the built-in fonts stay.
     editor_font: Option<std::sync::Arc<egui::FontData>>,
     /// Behind them all, for symbols, once a file has called for it.
     /// System fonts behind the built-in ones, by what they cover.
     fallback_fonts: Vec<(String, std::sync::Arc<egui::FontData>)>,
-    fallback_load: Option<std::sync::mpsc::Receiver<Vec<coiman_core::fonts::Fallback>>>,
+    fallback_load: Option<std::sync::mpsc::Receiver<Vec<coiman_core::appearance::fonts::Fallback>>>,
     fallback_started: bool,
     settings_ui: settings_ui::SettingsUi,
     keys_ui: keys_ui::KeysUi,
-    window: Option<coiman_core::session::WindowState>,
+    window: Option<coiman_core::project::session::WindowState>,
     window_fitted: bool,
     /// Indentation picked from the status bar, by document.
     indent_chosen: std::collections::HashMap<u64, crate::buffer::Indent>,
@@ -247,9 +247,9 @@ pub struct CodeApp {
     hidden: hidden::HiddenChars,
     /// Folders for Open Recent, newest first.
     /// Recently opened projects and files.
-    recent: coiman_core::recent::Recent,
+    recent: coiman_core::project::recent::Recent,
     /// Where each file dialog was last left.
-    dialog_dirs: coiman_core::dialog_dirs::DialogDirs,
+    dialog_dirs: coiman_core::project::dialog_dirs::DialogDirs,
     /// Git's setup: installed, the author, remotes, clone and publish.
     git_setup: git_setup::GitSetup,
     maven: maven::MavenState,
@@ -302,7 +302,7 @@ pub struct CodeApp {
     /// Whether the Timeline section of the Explorer is open.
     timeline_open: bool,
     /// Vim or Helix key handling (`editor.keyboard_mode`), and the document it last saw.
-    vim: Option<coiman_core::vim::Vim>,
+    vim: Option<coiman_core::editor::vim::Vim>,
     vim_doc: Option<u64>,
     /// Debugger sessions, breakpoints, watches.
     debug: debug::DebugState,
@@ -323,7 +323,7 @@ pub struct CodeApp {
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
         // Before anything reads a folder's settings or runs a tool for it.
-        coiman_core::trust::enforce();
+        coiman_core::project::trust::enforce();
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let mut app = Self {
             docs: Vec::new(),
@@ -401,8 +401,8 @@ impl CodeApp {
             cargo_project: false,
             cargo_project_for: (None, 0.0),
             hidden: Default::default(),
-            recent: coiman_core::recent::load(),
-            dialog_dirs: coiman_core::dialog_dirs::load(),
+            recent: coiman_core::project::recent::load(),
+            dialog_dirs: coiman_core::project::dialog_dirs::load(),
             git_setup: git_setup::GitSetup::default(),
             maven: maven::MavenState::default(),
             companions: lsp_companion::Companions::default(),
@@ -771,8 +771,8 @@ impl CodeApp {
                     vim.reset(&mut doc.buffer);
                     self.vim_doc = Some(doc.uid);
                 }
-                let block_cursor = self.vim.as_ref().is_some_and(coiman_core::vim::Vim::block_cursor);
-                let was_typing = self.vim.as_ref().is_none_or(|v| v.mode() == coiman_core::vim::Mode::Insert);
+                let block_cursor = self.vim.as_ref().is_some_and(coiman_core::editor::vim::Vim::block_cursor);
+                let was_typing = self.vim.as_ref().is_none_or(|v| v.mode() == coiman_core::editor::vim::Mode::Insert);
                 // Columns mean nothing once lines wrap.
                 let wrap = opts.word_wrap && !doc.large && deco.dim_columns.is_empty();
                 let opts = editor_view::Options { word_wrap: wrap, block_cursor, pane, ..opts };
@@ -803,7 +803,8 @@ impl CodeApp {
                     self.toggle_breakpoint(line);
                 }
                 // Vim commands arrive as text too; only insert-mode typing drives completion.
-                let typing = was_typing && self.vim.as_ref().is_none_or(|v| v.mode() == coiman_core::vim::Mode::Insert);
+                let typing =
+                    was_typing && self.vim.as_ref().is_none_or(|v| v.mode() == coiman_core::editor::vim::Mode::Insert);
                 if !typing {
                     self.close_completion();
                 }

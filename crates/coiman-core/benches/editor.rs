@@ -7,11 +7,11 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use coiman_core::buffer::{Buffer, Selection};
-use coiman_core::document::Document;
-use coiman_core::edit_ops;
-use coiman_core::finder::FileFinder;
-use coiman_core::syntax::{Lang, TsState};
+use coiman_core::editor::buffer::{Buffer, Selection};
+use coiman_core::editor::document::Document;
+use coiman_core::editor::edit_ops;
+use coiman_core::language::syntax::{Lang, TsState};
+use coiman_core::project::finder::FileFinder;
 
 struct Row {
     name: &'static str,
@@ -44,7 +44,7 @@ fn measure(iters: usize, mut f: impl FnMut()) -> Vec<Duration> {
 
 /// A realistic ~10k-line Rust file built from this crate's own sources.
 fn rust_source(lines: usize) -> String {
-    let chunk = include_str!("../src/buffer.rs");
+    let chunk = include_str!("../src/editor/buffer.rs");
     let mut out = String::new();
     while out.lines().count() < lines {
         out.push_str(chunk);

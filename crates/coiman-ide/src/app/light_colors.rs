@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use coiman_core::light_syntax::{self, Kind};
-use coiman_core::theme;
+use coiman_core::appearance::theme;
+use coiman_core::language::light_syntax::{self, Kind};
 
 use super::CodeApp;
 use crate::editor_view::{Decorations, Highlight};

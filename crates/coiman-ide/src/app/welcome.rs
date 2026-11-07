@@ -2,7 +2,7 @@
 //! tiles to start from (a folder, a clone, a sample project, a new file), recent projects
 //! as cards with their badges, and the keys worth knowing.
 
-use coiman_core::project_tree::project_badge;
+use coiman_core::project::project_tree::project_badge;
 use eframe::egui;
 use egui::{Align2, Color32, RichText, Sense};
 
@@ -16,7 +16,7 @@ const WIDTH: f32 = 860.0;
 
 /// "Good morning" and the like, by the clock here.
 fn greeting() -> &'static str {
-    let hour = coiman_core::theme_schedule::minute_now() / 60;
+    let hour = coiman_core::appearance::theme_schedule::minute_now() / 60;
     match hour {
         5..=11 => "Good morning",
         12..=17 => "Good afternoon",
@@ -239,7 +239,7 @@ impl CodeApp {
 }
 
 /// A recent project's card: its badge, name, folder and a Git mark; × removes it.
-fn project_card(ui: &mut egui::Ui, width: f32, entry: &coiman_core::recent::Entry) -> Option<RecentClick> {
+fn project_card(ui: &mut egui::Ui, width: f32, entry: &coiman_core::project::recent::Entry) -> Option<RecentClick> {
     let pal = theme::colors();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, 62.0), Sense::click());
     let hover = theme::eased(ui.ctx(), resp.id.with("hover"), resp.hovered());

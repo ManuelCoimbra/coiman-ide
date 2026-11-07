@@ -7,13 +7,13 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::buffer::minimal_edits;
-use coiman_core::html_complete;
-use coiman_core::lsp::servers::{self, Found, Installer, Launch, ServerKind};
-use coiman_core::lsp::status::{Health, ServerStatus};
-use coiman_core::lsp::types as lt;
-use coiman_core::lsp::{Client, Event, convert, language_id};
-use coiman_core::trust;
+use coiman_core::editor::buffer::minimal_edits;
+use coiman_core::language::html_complete;
+use coiman_core::language::lsp::servers::{self, Found, Installer, Launch, ServerKind};
+use coiman_core::language::lsp::status::{Health, ServerStatus};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::language::lsp::{Client, Event, convert, language_id};
+use coiman_core::project::trust;
 use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
 use serde_json::{Value, json};
 
@@ -136,7 +136,7 @@ pub(super) enum Pending {
         pin: Option<u64>,
         ask: u64,
         part: super::at_cursor::Part,
-        prover: Option<coiman_core::goals::Prover>,
+        prover: Option<coiman_core::language::goals::Prover>,
     },
 }
 
@@ -1642,7 +1642,7 @@ impl CodeApp {
     }
 
     /// The path being typed in a string at the cursor, if one is: what to offer there.
-    fn path_offer(&self) -> Option<(usize, coiman_core::path_complete::Offer)> {
+    fn path_offer(&self) -> Option<(usize, coiman_core::language::path_complete::Offer)> {
         if !self.settings.editor.path_completion {
             return None;
         }
@@ -1651,7 +1651,7 @@ impl CodeApp {
         let head = doc.buffer.primary().head;
         let line_start = doc.buffer.line_start(doc.buffer.char_to_line(head));
         let before = doc.buffer.slice_string(line_start, head);
-        let offer = coiman_core::path_complete::complete(&before, dir, self.explorer.root.as_deref())?;
+        let offer = coiman_core::language::path_complete::complete(&before, dir, self.explorer.root.as_deref())?;
         Some((line_start + offer.start, offer))
     }
 
@@ -2067,8 +2067,8 @@ impl CodeApp {
         let indent = doc.buffer.indent;
         let unit = if indent.use_tabs { "\t".to_owned() } else { " ".repeat(indent.size.max(1)) };
         let nullable = ext == "cs" && csharp_nullable(path, &source);
-        let style = coiman_core::generate::Style { unit: &unit, nl: "\n", nullable };
-        coiman_core::generate::actions(&ext, &source, cursor, style)
+        let style = coiman_core::editor::generate::Style { unit: &unit, nl: "\n", nullable };
+        coiman_core::editor::generate::actions(&ext, &source, cursor, style)
             .into_iter()
             .map(|a| {
                 let edits = a
@@ -2080,8 +2080,8 @@ impl CodeApp {
                     })
                     .collect();
                 let kind = match a.kind {
-                    coiman_core::generate::Kind::Generate => lt::CodeActionKind::SOURCE,
-                    coiman_core::generate::Kind::QuickFix => lt::CodeActionKind::QUICKFIX,
+                    coiman_core::editor::generate::Kind::Generate => lt::CodeActionKind::SOURCE,
+                    coiman_core::editor::generate::Kind::QuickFix => lt::CodeActionKind::QUICKFIX,
                 };
                 lt::CodeActionOrCommand::CodeAction(lt::CodeAction {
                     title: a.title,

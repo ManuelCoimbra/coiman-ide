@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use coiman_core::{applog, theme_schedule};
+use coiman_core::{appearance::theme_schedule, applog};
 
 use super::CodeApp;
 use crate::theme;

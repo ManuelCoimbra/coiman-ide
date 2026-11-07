@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use coiman_core::repl::{self, Kind};
+use coiman_core::launch::repl::{self, Kind};
 use eframe::egui;
 
 use super::{CodeApp, PanelTab};

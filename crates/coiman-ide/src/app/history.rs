@@ -6,8 +6,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use coiman_core::git;
-use coiman_core::history::{Entry, History, Limits, Source};
+use coiman_core::project::git;
+use coiman_core::project::history::{Entry, History, Limits, Source};
 use egui::{Align, RichText, Sense};
 
 use crate::buffer::Selection;

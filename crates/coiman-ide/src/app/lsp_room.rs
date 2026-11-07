@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 
-use coiman_core::lsp::Client;
-use coiman_core::lsp::servers::{ServerKind, rust_analyzer_options};
-use coiman_core::lsp::status::{
+use coiman_core::language::lsp::Client;
+use coiman_core::language::lsp::servers::{ServerKind, rust_analyzer_options};
+use coiman_core::language::lsp::status::{
     Health, ServerStatus, build_folder_sizes, format_bytes, format_duration, process_memory,
 };
 use eframe::egui::{self, RichText};

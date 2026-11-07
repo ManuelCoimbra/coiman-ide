@@ -9,11 +9,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use coiman_core::cargo::{self, FileTarget, TestItem};
-use coiman_core::dap::{self, Adapter, DapClient, DapEvent, DebugKind};
-use coiman_core::hexdata;
-use coiman_core::lsp::registry;
-use coiman_core::run;
+use coiman_core::build::cargo::{self, FileTarget, TestItem};
+use coiman_core::data::hexdata;
+use coiman_core::language::lsp::registry;
+use coiman_core::launch::dap::{self, Adapter, DapClient, DapEvent, DebugKind};
+use coiman_core::launch::run;
 use egui::{Align, Color32, RichText, Sense};
 use serde_json::{Value, json};
 
@@ -710,12 +710,12 @@ impl CodeApp {
                     self.refuse_run(ctx, how.to_owned());
                     return;
                 }
-                DebugKind::Js if coiman_core::lsp::servers::which("node").is_none() => {
+                DebugKind::Js if coiman_core::language::lsp::servers::which("node").is_none() => {
                     self.refuse_run(ctx, "Debugging JavaScript needs Node.js, which isn't on PATH".to_owned());
                     return;
                 }
                 DebugKind::Js => {
-                    self.offer_build_tool(coiman_core::build_tools::BuildTool::JsDebug);
+                    self.offer_build_tool(coiman_core::build::build_tools::BuildTool::JsDebug);
                     return;
                 }
                 DebugKind::Gdb => {
@@ -864,7 +864,7 @@ impl CodeApp {
                 return;
             }
         }
-        let cwd = coiman_core::repl::start_folder(file, self.explorer.root.as_deref());
+        let cwd = coiman_core::launch::repl::start_folder(file, self.explorer.root.as_deref());
         if !self.allowed_to_run(&cwd) {
             return;
         }
@@ -873,7 +873,7 @@ impl CodeApp {
         if kind == DebugKind::Gdb {
             let (file, root) = (file.to_path_buf(), self.explorer.root.clone());
             self.build_then_debug(ctx, format!("Building {name} for debugging..."), move || {
-                let built = coiman_core::c_build::debug_build(&file, root.as_deref())?;
+                let built = coiman_core::build::c_build::debug_build(&file, root.as_deref())?;
                 let name = built.program.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(name);
                 Ok(Launch { kind: DebugKind::Gdb, name, program: built.program, args: built.args, cwd: built.cwd })
             });

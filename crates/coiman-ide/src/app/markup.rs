@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use coiman_core::lsp::types as lt;
-use coiman_core::markup::{self, Problem, Severity};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::language::markup::{self, Problem, Severity};
 use eframe::egui;
 
 use super::lsp::path_key;

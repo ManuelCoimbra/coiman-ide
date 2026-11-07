@@ -6,11 +6,11 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use coiman_core::constant_run::{self, Ending, Job, RunEvent};
-use coiman_core::likely::{self, Certainty, Finding};
-use coiman_core::lsp::servers::which;
-use coiman_core::lsp::types as lt;
-use coiman_core::{run, trust};
+use coiman_core::language::likely::{self, Certainty, Finding};
+use coiman_core::language::lsp::servers::which;
+use coiman_core::language::lsp::types as lt;
+use coiman_core::launch::constant_run::{self, Ending, Job, RunEvent};
+use coiman_core::{launch::run, project::trust};
 use eframe::egui;
 
 use super::lsp::path_key;

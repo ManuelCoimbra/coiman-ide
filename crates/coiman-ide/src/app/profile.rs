@@ -1,8 +1,8 @@
 //! What a language's profile asks of the editor: rulers and dim columns, typing
 //! symbols, a bar of glyphs, and following includes along search paths.
 
-use coiman_core::lsp::registry::{self, Language};
-use coiman_core::{fonts, symbols};
+use coiman_core::language::lsp::registry::{self, Language};
+use coiman_core::{appearance::fonts, editor::symbols};
 use eframe::egui::{self, RichText};
 
 use super::CodeApp;

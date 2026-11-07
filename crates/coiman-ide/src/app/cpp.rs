@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::compile_db::{self, Report, Standing};
-use coiman_core::lsp::convert;
-use coiman_core::lsp::servers::{self, ServerKind};
-use coiman_core::lsp::types as lt;
+use coiman_core::build::compile_db::{self, Report, Standing};
+use coiman_core::language::lsp::convert;
+use coiman_core::language::lsp::servers::{self, ServerKind};
+use coiman_core::language::lsp::types as lt;
 use eframe::egui::{self, RichText};
 use serde_json::Value;
 

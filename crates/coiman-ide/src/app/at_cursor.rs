@@ -2,8 +2,8 @@
 //! and problems. It can be paused, and a place can be pinned to keep watching it.
 //! Nothing is asked of a server while the panel isn't showing.
 
-use coiman_core::goals::{self, Prover};
-use coiman_core::session::SavedPin;
+use coiman_core::language::goals::{self, Prover};
+use coiman_core::project::session::SavedPin;
 use eframe::egui::{self, Color32, RichText};
 use serde_json::Value;
 
@@ -487,7 +487,7 @@ impl CodeApp {
             self.active = i;
             let doc = &mut self.docs[i];
             let pos = pos.min(doc.buffer.rope().len_chars());
-            doc.buffer.set_selections(vec![coiman_core::buffer::Selection::new(pos, pos)], 0);
+            doc.buffer.set_selections(vec![coiman_core::editor::buffer::Selection::new(pos, pos)], 0);
             doc.reveal = true;
             doc.request_focus = true;
         }

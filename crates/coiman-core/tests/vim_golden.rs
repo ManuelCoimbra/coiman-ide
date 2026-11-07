@@ -7,8 +7,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use coiman_core::buffer::{Buffer, Selection};
-use coiman_core::vim::{Flavor, Vim, keys_to_vim, parse_keys};
+use coiman_core::editor::buffer::{Buffer, Selection};
+use coiman_core::editor::vim::{Flavor, Vim, keys_to_vim, parse_keys};
 
 struct Case {
     name: String,

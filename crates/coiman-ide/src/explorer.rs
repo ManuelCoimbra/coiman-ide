@@ -10,8 +10,8 @@ use egui::{Color32, RichText, Sense};
 use crate::icons::{self, Icon};
 use crate::theme;
 
-use coiman_core::file_icons;
-use coiman_core::project_tree::{self, FileRole, FolderKind};
+use coiman_core::appearance::file_icons;
+use coiman_core::project::project_tree::{self, FileRole, FolderKind};
 
 struct Entry {
     path: PathBuf,
@@ -620,7 +620,7 @@ impl Explorer {
             let (root, ctx) = (root.to_path_buf(), ctx.clone());
             std::thread::spawn(move || {
                 let mut files = Vec::new();
-                for entry in coiman_core::finder::walker(&root).build().flatten() {
+                for entry in coiman_core::project::finder::walker(&root).build().flatten() {
                     if entry.file_type().is_some_and(|t| t.is_file()) {
                         files.push(entry.into_path());
                     }
@@ -675,7 +675,7 @@ impl Explorer {
         const MOST: usize = 300;
         let dim = theme::colors().text_dim;
         let matched = self.index.as_ref().map(|index| {
-            let found = coiman_core::finder::rank(index.relative.iter().map(String::as_str), &self.filter);
+            let found = coiman_core::project::finder::rank(index.relative.iter().map(String::as_str), &self.filter);
             let picked: Vec<&str> = found.iter().take(MOST).map(|(i, _)| index.relative[*i].as_str()).collect();
             (filter_rows(&picked, root), found.len())
         });

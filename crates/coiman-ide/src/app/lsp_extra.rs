@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use coiman_core::lsp::servers::ServerKind;
-use coiman_core::lsp::types as lt;
-use coiman_core::lsp::{Client, convert};
+use coiman_core::language::lsp::servers::ServerKind;
+use coiman_core::language::lsp::types as lt;
+use coiman_core::language::lsp::{Client, convert};
 use egui::{Color32, RichText};
 use serde_json::{Value, json};
 
@@ -518,7 +518,7 @@ impl CodeApp {
                 let folder = runnable["args"]["cwd"].as_str().or(runnable["args"]["workspaceRoot"].as_str());
                 let Some(cwd) = folder.map(PathBuf::from).or_else(|| self.explorer.root.clone()) else { return };
                 let name = runnable["label"].as_str().unwrap_or(&title).to_owned();
-                self.start_run(ctx, &coiman_core::run::RunPlan { title: name, command: line.join(" "), cwd });
+                self.start_run(ctx, &coiman_core::launch::run::RunPlan { title: name, command: line.join(" "), cwd });
                 return;
             }
             _ => {}

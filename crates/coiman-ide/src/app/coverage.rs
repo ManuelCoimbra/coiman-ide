@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::SystemTime;
 
-use coiman_core::coverage::{self, LineCoverage};
+use coiman_core::launch::coverage::{self, LineCoverage};
 use eframe::egui::{self, Color32, RichText};
 
 use super::lsp::path_key;
@@ -108,7 +108,7 @@ fn load(path: &Path, root: &Path, label: String) -> Loaded {
         Err(why) => return empty(format!("{}: {why}", path.display())),
     };
     let (branches, functions) = (report.branches, report.functions);
-    let files = coiman_core::stacktrace::project_files(root);
+    let files = coiman_core::launch::stacktrace::project_files(root);
     let (files, lost) = coverage::resolve(report, root, &files);
     Loaded { label, written, files, lost, problem: None, branches, functions }
 }

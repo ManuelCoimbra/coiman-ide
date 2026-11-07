@@ -1,7 +1,7 @@
 //! Renaming a tag renames its partner, as VS Code's linked editing and the Auto Rename
 //! Tag extension do: typing in `<div` changes its `</div>` too, and the other way round.
 
-use coiman_core::auto_tags::{self, TagMode};
+use coiman_core::editor::auto_tags::{self, TagMode};
 
 use super::CodeApp;
 

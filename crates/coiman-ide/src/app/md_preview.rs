@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::markdown::{self, Align as Cell, Block, Inline, Item, Style};
+use coiman_core::language::markdown::{self, Align as Cell, Block, Inline, Item, Style};
 use eframe::egui::{self, Align, FontId, Sense, Stroke, text::LayoutJob};
 
 use super::{CodeApp, repaint};
@@ -30,7 +30,7 @@ pub(super) struct MdPreview {
     parsed: Option<(u64, u64, Vec<Block>)>,
     pictures: HashMap<PathBuf, Picture>,
     /// Colors of code blocks, by a hash of their language and text.
-    code: HashMap<u64, Option<Vec<Vec<coiman_core::highlight::Span>>>>,
+    code: HashMap<u64, Option<Vec<Vec<coiman_core::language::highlight::Span>>>>,
     /// A heading to bring into view, by its anchor.
     scroll_to: Option<String>,
     /// Heights of the top-level blocks as last drawn, and what for: (doc uid,
@@ -53,7 +53,7 @@ struct Draw<'a> {
     /// The longest side a texture can have here.
     max_side: usize,
     pictures: &'a mut HashMap<PathBuf, Picture>,
-    code: &'a mut HashMap<u64, Option<Vec<Vec<coiman_core::highlight::Span>>>>,
+    code: &'a mut HashMap<u64, Option<Vec<Vec<coiman_core::language::highlight::Span>>>>,
     scroll_to: &'a mut Option<String>,
     clicked: Option<String>,
 }
@@ -305,7 +305,7 @@ fn code_block(ui: &mut egui::Ui, d: &mut Draw, lang: &str, text: &str, salt: usi
     let spans = d
         .code
         .entry(key)
-        .or_insert_with(|| (!lang.is_empty()).then(|| coiman_core::highlight::snippet(lang, text)).flatten());
+        .or_insert_with(|| (!lang.is_empty()).then(|| coiman_core::language::highlight::snippet(lang, text)).flatten());
     let font = FontId::monospace(d.size * 0.92);
     let mut job = LayoutJob::default();
     for (n, line) in text.split('\n').enumerate() {
@@ -336,7 +336,7 @@ fn code_block(ui: &mut egui::Ui, d: &mut Draw, lang: &str, text: &str, salt: usi
 }
 
 fn theme_generation() -> u64 {
-    coiman_core::theme::generation()
+    coiman_core::appearance::theme::generation()
 }
 
 /// Columns as wide as their text when it fits, else shared out by how much each wants,

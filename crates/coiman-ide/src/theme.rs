@@ -1,13 +1,13 @@
 //! The current color theme as egui colors and visuals. Theme data, VS Code
-//! import and token matching live in `coiman_core::theme`.
+//! import and token matching live in `coiman_core::appearance::theme`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub use coiman_core::theme::*;
+pub use coiman_core::appearance::theme::*;
 use egui::{Color32, CornerRadius, Margin, Rect, Stroke, Visuals};
 
 /// Workbench colors as egui colors.
-pub type Palette = coiman_core::theme::Palette<Color32>;
+pub type Palette = coiman_core::appearance::theme::Palette<Color32>;
 
 /// Converts a core color to an egui color.
 pub fn c32(c: Color) -> Color32 {

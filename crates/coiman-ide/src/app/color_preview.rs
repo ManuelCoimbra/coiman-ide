@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use coiman_core::{css, theme};
+use coiman_core::{appearance::theme, language::css};
 use egui::Color32;
 
 use super::CodeApp;

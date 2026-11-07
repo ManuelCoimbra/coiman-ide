@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
-use coiman_core::commands::Command;
-use coiman_core::vscode_compat;
-use coiman_core::vscode_import::{self, Contents};
+use coiman_core::editor::commands::Command;
+use coiman_core::extensions::vscode_compat;
+use coiman_core::extensions::vscode_import::{self, Contents};
 
 use super::{CodeApp, repaint};
 use crate::palette::PickerKind;

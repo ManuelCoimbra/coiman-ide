@@ -8,11 +8,11 @@ use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::time::SystemTime;
 
-use coiman_core::cargo::Outcome as CargoOutcome;
-use coiman_core::lsp::discovery::{kill_tree, quiet_command};
-use coiman_core::lsp::types as lt;
-use coiman_core::testing::{self, Adapter, Collect, Format, Outcome, TestResult};
-use coiman_core::{stacktrace, trust};
+use coiman_core::build::cargo::Outcome as CargoOutcome;
+use coiman_core::language::lsp::discovery::{kill_tree, quiet_command};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::launch::testing::{self, Adapter, Collect, Format, Outcome, TestResult};
+use coiman_core::{launch::stacktrace, project::trust};
 use eframe::egui::{self, Align, Color32, RichText, Sense};
 
 use super::cargo::{outcome_icon, shell};
@@ -93,7 +93,7 @@ fn results_file(root: &Path) -> Option<PathBuf> {
 }
 
 fn scan(root: PathBuf) -> Scan {
-    let files = coiman_core::stacktrace::project_files(&root);
+    let files = coiman_core::launch::stacktrace::project_files(&root);
     let (adapters, problem) = match testing::detect(&root, &files) {
         Ok(found) => (found, None),
         Err(why) => (Vec::new(), Some(why)),

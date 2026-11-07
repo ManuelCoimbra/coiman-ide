@@ -1,9 +1,9 @@
 //! The buttons beside the tabs for what the active file can do, and the tree they can open.
 
-use coiman_core::buffer::minimal_edits;
-use coiman_core::commands::Command;
-use coiman_core::data_tree::{self, DataNode};
-use coiman_core::file_actions::{self, FileAction};
+use coiman_core::data::data_tree::{self, DataNode};
+use coiman_core::editor::buffer::minimal_edits;
+use coiman_core::editor::commands::Command;
+use coiman_core::project::file_actions::{self, FileAction};
 use egui::{RichText, Sense};
 
 use super::CodeApp;

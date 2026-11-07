@@ -1,7 +1,7 @@
 //! Widgets for language features: completion rows, hover Markdown, and the
 //! glyphs and colors they use.
 
-use coiman_core::lsp::types::CompletionItemKind;
+use coiman_core::language::lsp::types::CompletionItemKind;
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, vec2};
 
 use crate::theme;
@@ -43,13 +43,15 @@ pub fn kind_glyph(kind: Option<CompletionItemKind>) -> (&'static str, Color32) {
 }
 
 /// The color a completion of that kind stands for, from its documentation or its name.
-pub fn completion_color(item: &coiman_core::lsp::types::CompletionItem) -> Option<Color32> {
+pub fn completion_color(item: &coiman_core::language::lsp::types::CompletionItem) -> Option<Color32> {
     if item.kind != Some(CompletionItemKind::COLOR) {
         return None;
     }
     let documented = serde_json::to_string(&item.documentation).unwrap_or_default();
-    let found =
-        coiman_core::css::colors(&documented).into_iter().chain(coiman_core::css::colors(&item.label)).next()?;
+    let found = coiman_core::language::css::colors(&documented)
+        .into_iter()
+        .chain(coiman_core::language::css::colors(&item.label))
+        .next()?;
     let [r, g, b, a] = found.color.srgb8();
     Some(Color32::from_rgba_unmultiplied(r, g, b, a))
 }

@@ -18,7 +18,10 @@ mod theme;
 use std::path::PathBuf;
 
 // Core modules, re-exported so `crate::buffer::...` paths keep working.
-pub(crate) use coiman_core::{buffer, commands, document, edit_ops, finder, session, settings, syntax, watcher};
+pub(crate) use coiman_core::{
+    editor::buffer, editor::commands, editor::document, editor::edit_ops, language::syntax, project::finder,
+    project::session, project::watcher, settings,
+};
 
 /// The window's icon (title bar, taskbar, Alt+Tab), from the icon's 256-pixel picture.
 fn app_icon() -> egui::IconData {
@@ -37,9 +40,9 @@ fn main() -> eframe::Result {
     let started = std::time::Instant::now();
     // MinGW installed but not on PATH (the usual for a course's setup): add its folder,
     // so Run's make finds gcc, and gdb and the programs it debugs find their DLLs.
-    let mingw = coiman_core::c_build::mingw_dir_off_path();
+    let mingw = coiman_core::build::c_build::mingw_dir_off_path();
     if let Some(dir) = &mingw
-        && let Some(path) = coiman_core::c_build::path_with(&std::env::var_os("PATH").unwrap_or_default(), dir)
+        && let Some(path) = coiman_core::build::c_build::path_with(&std::env::var_os("PATH").unwrap_or_default(), dir)
     {
         // SAFETY: first thing in main, before any thread starts.
         unsafe { std::env::set_var("PATH", path) };

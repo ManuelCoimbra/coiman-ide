@@ -1,7 +1,7 @@
 //! Restricted Mode, in its own process because the gate is global: an untrusted
 //! folder's settings are ignored and nothing runs for it until it is trusted.
 
-use coiman_core::{cargo, settings, trust};
+use coiman_core::{build::cargo, project::trust, settings};
 
 #[test]
 fn untrusted_folders_are_inert_until_trusted() {

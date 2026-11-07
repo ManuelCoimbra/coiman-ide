@@ -139,7 +139,7 @@ pub struct Decorations {
     /// Blame text shown after the end of this line.
     pub blame: Option<(usize, String)>,
     /// Foldable regions (from the syntax tree or indentation).
-    pub folds: Vec<coiman_core::structure::FoldRange>,
+    pub folds: Vec<coiman_core::editor::structure::FoldRange>,
     /// Breakpoints: (line, color, has a condition or log message).
     pub breakpoints: Vec<(usize, Color32, bool)>,
     /// The line the debugger is paused on.
@@ -267,7 +267,7 @@ pub struct Output {
     /// The light bulb was clicked.
     pub bulb_click: bool,
     /// What Vim/Helix mode asked for this frame (`:w`, `:q`, clipboard).
-    pub vim_effects: Vec<coiman_core::vim::Effect>,
+    pub vim_effects: Vec<coiman_core::editor::vim::Effect>,
     /// Screen rectangle of the primary cursor.
     pub cursor_rect: Rect,
 }
@@ -356,7 +356,7 @@ impl ViewState {
 /// Hidden line ranges for the folded regions, merged and sorted.
 fn hidden_lines(
     folded: &std::collections::BTreeSet<usize>,
-    folds: &[coiman_core::structure::FoldRange],
+    folds: &[coiman_core::editor::structure::FoldRange],
 ) -> Vec<(usize, usize)> {
     let mut out: Vec<(usize, usize)> = Vec::new();
     for f in folds.iter().filter(|f| folded.contains(&f.start) && f.end > f.start) {
@@ -519,7 +519,7 @@ pub fn show(
     view: &mut ViewState,
     opts: Options,
     deco: &Decorations,
-    vim: Option<&mut coiman_core::vim::Vim>,
+    vim: Option<&mut coiman_core::editor::vim::Vim>,
 ) -> Output {
     let mut vim_effects = Vec::new();
     let (font_size, word_wrap) = (opts.font_size, opts.word_wrap);
@@ -1021,8 +1021,8 @@ fn handle_mouse(
 
 /// Returns true if the cursor moved or text changed (keep cursor in view).
 /// The Vim/Helix key for an egui key press, if it means anything to them.
-fn vim_key(key: Key, mods: Modifiers) -> Option<coiman_core::vim::Key> {
-    use coiman_core::vim::Key as V;
+fn vim_key(key: Key, mods: Modifiers) -> Option<coiman_core::editor::vim::Key> {
+    use coiman_core::editor::vim::Key as V;
     if mods.command || mods.ctrl {
         let name = key.name();
         let letter = name.chars().next().filter(|c| name.len() == 1 && c.is_ascii_alphabetic())?;
@@ -1050,10 +1050,10 @@ fn vim_keyboard(
     view: &mut ViewState,
     m: &Metrics,
     visible_rows: usize,
-    vim: &mut coiman_core::vim::Vim,
-    effects: &mut Vec<coiman_core::vim::Effect>,
+    vim: &mut coiman_core::editor::vim::Vim,
+    effects: &mut Vec<coiman_core::editor::vim::Effect>,
 ) -> bool {
-    use coiman_core::vim::{Key as V, Mode};
+    use coiman_core::editor::vim::{Key as V, Mode};
     let events = ui.input(|i| i.events.clone());
     let mut moved = false;
     for event in events {
@@ -1105,7 +1105,7 @@ fn vim_keyboard(
 }
 
 /// The cursor line's code brackets and their partners, for Vim's `%`.
-fn bracket_hint(doc: &mut Document) -> coiman_core::vim::BracketHint {
+fn bracket_hint(doc: &mut Document) -> coiman_core::editor::vim::BracketHint {
     let line = doc.buffer.char_to_line(doc.buffer.primary().head);
     let mut q = doc.buffer.line_start(line);
     let mut brackets = Vec::new();
@@ -1857,14 +1857,14 @@ const ACTIVE_GUIDE_LINES: usize = 2_000;
 
 /// The tag name under `pos` and its partner's, as char ranges, in markup files.
 fn tag_pair_at(doc: &Document, pos: usize) -> Option<TagPair> {
-    let mode = coiman_core::auto_tags::TagMode::for_extension(&doc.extension());
-    if mode == coiman_core::auto_tags::TagMode::Off {
+    let mode = coiman_core::editor::auto_tags::TagMode::for_extension(&doc.extension());
+    if mode == coiman_core::editor::auto_tags::TagMode::Off {
         return None;
     }
     let buf = &doc.buffer;
     let (a, b) = (pos.saturating_sub(TAG_WINDOW), (pos + TAG_WINDOW).min(buf.len_chars()));
     let chars: Vec<char> = buf.rope().slice(a..b).chars().collect();
-    let pair = coiman_core::auto_tags::matching_tag(mode, &chars, pos - a)?;
+    let pair = coiman_core::editor::auto_tags::matching_tag(mode, &chars, pos - a)?;
     Some(pair.map(|(s, e)| (s + a, e + a)))
 }
 

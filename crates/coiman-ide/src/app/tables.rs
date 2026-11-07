@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::table::{self, Table};
+use coiman_core::data::table::{self, Table};
 use eframe::egui::{self, Color32, RichText};
 
 use super::{CodeApp, repaint};

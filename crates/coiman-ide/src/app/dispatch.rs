@@ -8,14 +8,14 @@ use crate::keymap::Keymap;
 use crate::palette::PickerKind;
 use crate::settings;
 use crate::theme;
-use coiman_core::encoding;
+use coiman_core::editor::encoding;
 use egui::{Key, Modifiers};
 
 use super::lsp_extra::Hierarchy;
 use super::outline::FoldAction;
 use super::{CodeApp, PanelTab, SidebarView};
-use coiman_core::structure::TextObject;
-use coiman_core::tree_edit;
+use coiman_core::editor::structure::TextObject;
+use coiman_core::editor::tree_edit;
 
 impl CodeApp {
     /// Applies a text edit to the active document and moves its selection.
@@ -249,8 +249,9 @@ impl CodeApp {
                 // Cargo's own view knows Rust's; the rest run in a terminal.
                 let doc = self.docs.get(self.active);
                 let other = doc.and_then(|d| d.path.clone().filter(|_| d.extension() != "rs").map(|p| (p, d.text())));
-                let plan = other
-                    .and_then(|(file, text)| coiman_core::run::tests_of(&file, &text, self.explorer.root.as_deref()));
+                let plan = other.and_then(|(file, text)| {
+                    coiman_core::launch::run::tests_of(&file, &text, self.explorer.root.as_deref())
+                });
                 match plan {
                     Some(plan) => {
                         for i in 0..self.docs.len() {
@@ -586,8 +587,8 @@ impl CodeApp {
     }
 
     /// Carries out what a Vim command line asked for.
-    pub(super) fn vim_effect(&mut self, ctx: &egui::Context, effect: coiman_core::vim::Effect) {
-        use coiman_core::vim::Effect;
+    pub(super) fn vim_effect(&mut self, ctx: &egui::Context, effect: coiman_core::editor::vim::Effect) {
+        use coiman_core::editor::vim::Effect;
         match effect {
             Effect::Save => self.run_command(ctx, Command::Save),
             Effect::Quit { force: true } => self.close_tab(self.active),

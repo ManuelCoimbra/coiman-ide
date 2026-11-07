@@ -694,7 +694,9 @@ impl CodeApp {
             state.fonts_loading = Some(rx);
             let wake = ctx.clone();
             std::thread::spawn(move || {
-                let _ = tx.send(coiman_core::fonts::monospace_families(&coiman_core::fonts::installed()));
+                let _ = tx.send(coiman_core::appearance::fonts::monospace_families(
+                    &coiman_core::appearance::fonts::installed(),
+                ));
                 wake.request_repaint();
             });
         }

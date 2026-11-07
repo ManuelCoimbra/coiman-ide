@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use coiman_core::search::{Msg, Query, SearchHandle};
+use coiman_core::project::search::{Msg, Query, SearchHandle};
 use egui::{Key, RichText};
 
 use crate::commands::{COMMANDS, Command};

@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::git::{self, Identity, Repo};
+use coiman_core::project::git::{self, Identity, Repo};
 use egui::{RichText, Sense};
 
 use super::{CodeApp, repaint};

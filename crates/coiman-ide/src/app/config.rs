@@ -4,8 +4,8 @@ use crate::document::Document;
 use crate::keymap::Keymap;
 use crate::settings;
 use crate::theme;
-use coiman_core::lsp::registry;
-use coiman_core::trust;
+use coiman_core::language::lsp::registry;
+use coiman_core::project::trust;
 use std::path::{Path, PathBuf};
 
 use super::CodeApp;
@@ -134,7 +134,7 @@ impl CodeApp {
         let (tx, rx) = std::sync::mpsc::channel();
         self.font_load = Some(rx);
         std::thread::spawn(move || {
-            let _ = tx.send(coiman_core::fonts::load(&family));
+            let _ = tx.send(coiman_core::appearance::fonts::load(&family));
             wake();
         });
     }
@@ -193,7 +193,7 @@ impl CodeApp {
         if !first && old.cpp != new.cpp {
             self.restart_clangd();
         }
-        coiman_core::environment::set_chosen(&new.python.interpreter);
+        coiman_core::launch::environment::set_chosen(&new.python.interpreter);
         // Servers come from these.
         if !first && languages_changed {
             self.restart_lsp();
@@ -235,7 +235,7 @@ impl CodeApp {
             self.set_zoom(ctx, new.workbench.zoom);
         }
         if first || new.editor.keyboard_mode != old.editor.keyboard_mode {
-            use coiman_core::vim::{Flavor, Vim};
+            use coiman_core::editor::vim::{Flavor, Vim};
             self.vim = match new.editor.keyboard_mode.as_str() {
                 "vim" => Some(Vim::new(Flavor::Vim)),
                 "helix" => Some(Vim::new(Flavor::Helix)),

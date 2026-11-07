@@ -4,16 +4,16 @@
 
 use std::path::{Path, PathBuf};
 
-use coiman_core::dbgout::{Entry, Parser};
-use coiman_core::pty::alacritty_terminal::grid::{Dimensions, Scroll};
-use coiman_core::pty::alacritty_terminal::index::{Column, Line, Point, Side};
-use coiman_core::pty::alacritty_terminal::selection::{Selection, SelectionType};
-use coiman_core::pty::alacritty_terminal::term::TermMode;
-use coiman_core::pty::alacritty_terminal::term::cell::Flags;
-use coiman_core::pty::alacritty_terminal::term::color::Colors;
-use coiman_core::pty::alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
-use coiman_core::pty::{Notice, Session, Size, default_shell};
-use coiman_core::termfind::{self, Row};
+use coiman_core::launch::dbgout::{Entry, Parser};
+use coiman_core::terminal::pty::alacritty_terminal::grid::{Dimensions, Scroll};
+use coiman_core::terminal::pty::alacritty_terminal::index::{Column, Line, Point, Side};
+use coiman_core::terminal::pty::alacritty_terminal::selection::{Selection, SelectionType};
+use coiman_core::terminal::pty::alacritty_terminal::term::TermMode;
+use coiman_core::terminal::pty::alacritty_terminal::term::cell::Flags;
+use coiman_core::terminal::pty::alacritty_terminal::term::color::Colors;
+use coiman_core::terminal::pty::alacritty_terminal::vte::ansi::{Color, CursorShape, NamedColor, Rgb};
+use coiman_core::terminal::pty::{Notice, Session, Size, default_shell};
+use coiman_core::terminal::termfind::{self, Row};
 use egui::{Color32, Event, EventFilter, FontId, Key, Modifiers, Pos2, Rect, Sense, Stroke, Vec2};
 
 use crate::theme;
@@ -63,7 +63,7 @@ struct Tab {
 /// How to look for problems in a tab's output.
 struct Scan {
     cwd: PathBuf,
-    matcher: Option<coiman_core::matchers::Regex>,
+    matcher: Option<coiman_core::launch::matchers::Regex>,
     /// The program ended and its output has been read for the last time.
     done: bool,
 }
@@ -72,7 +72,7 @@ struct Scan {
 pub struct ScanOutput<'a> {
     pub id: u64,
     pub cwd: &'a Path,
-    pub matcher: Option<&'a coiman_core::matchers::Regex>,
+    pub matcher: Option<&'a coiman_core::launch::matchers::Regex>,
     pub lines: Vec<String>,
     /// The program has ended.
     pub ended: bool,
@@ -111,7 +111,7 @@ pub struct Task<'a> {
     pub env: &'a [(String, String)],
     pub cwd: &'a Path,
     /// Read its output for problems: `Some(None)` by the built-in patterns.
-    pub scan: Option<Option<coiman_core::matchers::Regex>>,
+    pub scan: Option<Option<coiman_core::launch::matchers::Regex>>,
 }
 
 /// What the terminal header asks the app to do.
@@ -830,7 +830,7 @@ fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, gri
     if response.clicked() && ui.input(|i| i.modifiers.command) {
         let (start, text) = logical_line(&tab.session, point.line.0);
         let col = (point.line.0 - start) as usize * size.columns + point.column.0;
-        if let Some(url) = coiman_core::matchers::url_at(&text, col) {
+        if let Some(url) = coiman_core::launch::matchers::url_at(&text, col) {
             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
             return;
         }

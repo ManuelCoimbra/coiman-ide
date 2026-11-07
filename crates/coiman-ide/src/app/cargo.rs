@@ -10,15 +10,15 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use coiman_core::build_tools::{self, BuildTool};
-use coiman_core::cargo::{
+use coiman_core::build::build_tools::{self, BuildTool};
+use coiman_core::build::cargo::{
     self, CargoDiagnostic, FileTarget, Outcome, OutputParser, RunConfig, Runner, TestItem, TestScope,
 };
-use coiman_core::lsp::discovery::quiet_command;
-use coiman_core::lsp::status::waits_for_build_lock;
-use coiman_core::lsp::types as lt;
-use coiman_core::matchers;
-use coiman_core::run;
+use coiman_core::language::lsp::discovery::quiet_command;
+use coiman_core::language::lsp::status::waits_for_build_lock;
+use coiman_core::language::lsp::types as lt;
+use coiman_core::launch::matchers;
+use coiman_core::launch::run;
 use egui::{Align, Color32, RichText, Sense};
 
 use crate::icons::{self, Icon};
@@ -399,7 +399,7 @@ impl CodeApp {
             doc.path.as_deref().and_then(|p| p.extension()).is_some_and(|e| {
                 matches!(e.to_string_lossy().to_lowercase().as_str(), "css" | "scss" | "sass" | "less")
             });
-        let colors = if stylesheet { coiman_core::css::color_lines(&text) } else { Vec::new() };
+        let colors = if stylesheet { coiman_core::language::css::color_lines(&text) } else { Vec::new() };
         let colors = colors.into_iter().map(|(line, [r, g, b, a])| (line, Color32::from_rgba_unmultiplied(r, g, b, a)));
         self.cargo.gutter_colors = Some((uid, version, colors.collect()));
         self.cargo.other_tests = Some((uid, version, found));
@@ -507,7 +507,7 @@ impl CodeApp {
         self.cancel_test_run();
         self.cargo.lock_wait = false;
         if let Some(mut job) = self.cargo.job.take() {
-            coiman_core::lsp::discovery::kill_tree(&mut job.child);
+            coiman_core::language::lsp::discovery::kill_tree(&mut job.child);
             self.push_output("[cancelled]".to_owned());
             self.cargo.results.retain(|_, o| *o != Outcome::Running);
         }

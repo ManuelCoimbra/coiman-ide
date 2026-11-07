@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 
-use coiman_core::environment::{self, PythonEnv};
-use coiman_core::lsp::servers::ServerKind;
+use coiman_core::language::lsp::servers::ServerKind;
+use coiman_core::launch::environment::{self, PythonEnv};
 use eframe::egui;
 
 use super::CodeApp;

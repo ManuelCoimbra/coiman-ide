@@ -1,10 +1,10 @@
 //! Coiman IDE's own line icons, inspired by VS Code's codicons and drawn as
 //! vector shapes, so they look sharp at any size and need no icon font.
 
-use coiman_core::project_tree::{ClassKind, FileRole};
+use coiman_core::project::project_tree::{ClassKind, FileRole};
 use std::collections::HashMap;
 
-use coiman_core::file_icons;
+use coiman_core::appearance::file_icons;
 use egui::{Color32, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2, epaint::CubicBezierShape};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

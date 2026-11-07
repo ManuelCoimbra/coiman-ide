@@ -5,9 +5,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use coiman_core::constant_run::{self, Ending, Job, RunEvent};
-use coiman_core::lsp::types as lt;
-use coiman_core::{matchers, run};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::launch::constant_run::{self, Ending, Job, RunEvent};
+use coiman_core::{launch::matchers, launch::run};
 use eframe::egui::{self, RichText};
 
 use super::cargo::{problem_diagnostic, shell};

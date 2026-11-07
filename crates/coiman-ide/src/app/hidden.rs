@@ -3,7 +3,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use coiman_core::unicode::{self, Kind};
+use coiman_core::editor::unicode::{self, Kind};
 use eframe::egui::{self, Color32, RichText};
 
 use super::CodeApp;

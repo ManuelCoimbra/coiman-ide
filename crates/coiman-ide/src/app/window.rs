@@ -6,7 +6,7 @@
 use std::time::{Duration, Instant};
 
 use crate::editor_view::ZoomPart;
-use coiman_core::session::WindowState;
+use coiman_core::project::session::WindowState;
 use eframe::egui::{self, ViewportCommand};
 
 use super::CodeApp;

@@ -6,7 +6,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use coiman_core::plugin::{Event, EventKind, Permission, PluginHost, Update, manifest, registry};
+use coiman_core::extensions::plugin::{Event, EventKind, Permission, PluginHost, Update, manifest, registry};
 
 const ID: &str = "test.host-api";
 
@@ -79,7 +79,7 @@ fn host_api_permissions_sandbox_and_limits() {
 
     // The active editor.
     assert_eq!(message(&host, "doc"), "ok: none");
-    host.set_document(Some(coiman_core::plugin::Document {
+    host.set_document(Some(coiman_core::extensions::plugin::Document {
         path: "src/a.txt".into(),
         language: "Plain Text".into(),
         text: "hello".into(),

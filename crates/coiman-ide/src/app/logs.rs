@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
-use coiman_core::logfile::{self, FilterPlace, Level, LineIndex};
+use coiman_core::data::logfile::{self, FilterPlace, Level, LineIndex};
 use eframe::egui::{self, Align2, Color32, Key, Pos2, Rect, RichText, Sense, Vec2};
 
 use super::{CodeApp, repaint};

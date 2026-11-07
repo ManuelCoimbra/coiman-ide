@@ -6,9 +6,9 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::live::{self, Eval, Identity, InspectRow, LiveEvent, Session};
-use coiman_core::live_adapters::{self, ConnectOptions, LiveKind};
-use coiman_core::repl;
+use coiman_core::launch::live::{self, Eval, Identity, InspectRow, LiveEvent, Session};
+use coiman_core::launch::live_adapters::{self, ConnectOptions, LiveKind};
+use coiman_core::launch::repl;
 use eframe::egui::{self, Color32, RichText, TextEdit};
 
 use super::{CodeApp, PanelTab, repaint};

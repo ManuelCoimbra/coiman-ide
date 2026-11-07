@@ -8,8 +8,8 @@ use crate::session::{self, Session};
 use crate::syntax::SyntaxWorker;
 use crate::theme;
 use crate::watcher::same_path;
-use coiman_core::{editorconfig, find};
-use coiman_core::{project_tree, recent};
+use coiman_core::{editor::editorconfig, editor::find};
+use coiman_core::{project::project_tree, project::recent};
 use std::path::{Path, PathBuf};
 
 use super::{BACKUP_INTERVAL, CodeApp, PendingClose, SidebarView, repaint};
@@ -37,7 +37,7 @@ impl CodeApp {
                     doc.check_disk();
                     // Reloaded with another program's changes: keep that version too.
                     if doc.buffer.version() != version && !doc.is_dirty() {
-                        self.history_record(i, coiman_core::history::Source::External);
+                        self.history_record(i, coiman_core::project::history::Source::External);
                     }
                 }
             }
@@ -128,9 +128,9 @@ impl CodeApp {
         let size = config.indent_size.or(detected.map(|d| d.1)).unwrap_or(editor.tab_size.max(1));
         doc.buffer.indent = Indent { use_tabs, size };
         doc.buffer.auto_close = editor.auto_close_brackets;
-        doc.buffer.indent_rules = coiman_core::indent_rules::IndentRules::for_extension(&doc.extension());
-        let tags = coiman_core::auto_tags::TagMode::for_extension(&doc.extension());
-        doc.buffer.auto_tags = if editor.auto_close_tags { tags } else { coiman_core::auto_tags::TagMode::Off };
+        doc.buffer.indent_rules = coiman_core::editor::indent_rules::IndentRules::for_extension(&doc.extension());
+        let tags = coiman_core::editor::auto_tags::TagMode::for_extension(&doc.extension());
+        doc.buffer.auto_tags = if editor.auto_close_tags { tags } else { coiman_core::editor::auto_tags::TagMode::Off };
         doc.buffer.auto_quotes = editor.auto_create_quotes;
         // Languages whose doc comments are `/** ... */` with `@param` and `@return`.
         let javadoc_like = matches!(
@@ -169,7 +169,7 @@ impl CodeApp {
 
     pub(super) fn add_doc(&mut self, mut doc: Document) {
         self.apply_file_rules(&mut doc);
-        doc.buffer.read_only = doc.path.as_deref().is_some_and(coiman_core::lsp::convert::is_virtual_path);
+        doc.buffer.read_only = doc.path.as_deref().is_some_and(coiman_core::language::lsp::convert::is_virtual_path);
         // Focus the editor when the tab is first shown, so typing goes straight into it.
         doc.request_focus = true;
         doc.uid = self.next_uid;
@@ -186,7 +186,7 @@ impl CodeApp {
         self.untitled_counter += 1;
         let mut doc = Document::untitled(self.untitled_counter);
         doc.buffer.line_ending = self.settings.files.new_file_eol();
-        if let Some((enc, bom)) = coiman_core::encoding::from_setting(&self.settings.files.encoding) {
+        if let Some((enc, bom)) = coiman_core::editor::encoding::from_setting(&self.settings.files.encoding) {
             (doc.encoding, doc.bom) = (enc, bom);
         }
         self.add_doc(doc);
@@ -212,7 +212,7 @@ impl CodeApp {
         let (log_mb, any_mb) = (self.settings.files.log_view_log_mb, self.settings.files.log_view_any_mb);
         const MIB: u64 = 1024 * 1024;
         if !self.logs.editor_anyway.contains(path)
-            && coiman_core::logfile::belongs_in_log_view_from(path, log_mb * MIB, any_mb * MIB)
+            && coiman_core::data::logfile::belongs_in_log_view_from(path, log_mb * MIB, any_mb * MIB)
         {
             self.log_to_open = Some(path.to_path_buf());
             return;
@@ -410,7 +410,7 @@ impl CodeApp {
                 let mut failed = Vec::new();
                 for path in &paths {
                     let done = if permanent {
-                        coiman_core::file_ops::remove_all(path).map_err(|e| e.to_string())
+                        coiman_core::project::file_ops::remove_all(path).map_err(|e| e.to_string())
                     } else {
                         trash::delete(path).map_err(|e| e.to_string())
                     };
@@ -433,7 +433,7 @@ impl CodeApp {
     /// Pastes the Explorer's copied or cut files into `dir`. Copies take a free name
     /// ("a copy.rs"); cut files move, and open files follow them.
     pub(super) fn paste_into(&mut self, dir: &Path) {
-        use coiman_core::file_ops;
+        use coiman_core::project::file_ops;
         let Some((files, cut)) = self.explorer.clipboard.clone() else { return };
         let mut failed = Vec::new();
         let mut moved = Vec::new();
@@ -513,7 +513,7 @@ impl CodeApp {
                 }
                 self.lsp_did_save(index);
                 if !self.auto_save.skip_history {
-                    self.history_record(index, coiman_core::history::Source::Save);
+                    self.history_record(index, coiman_core::project::history::Source::Save);
                 }
                 self.plugins_saved(index);
                 true
@@ -544,7 +544,7 @@ impl CodeApp {
                 self.explorer.refresh();
                 self.finder.mark_stale();
                 self.lsp_did_save(index);
-                self.history_record(index, coiman_core::history::Source::Save);
+                self.history_record(index, coiman_core::project::history::Source::Save);
                 self.plugins_saved(index);
                 true
             }

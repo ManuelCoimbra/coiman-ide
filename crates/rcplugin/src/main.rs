@@ -15,7 +15,7 @@
 use std::path::Path;
 use std::process::ExitCode;
 
-use coiman_core::plugin::registry;
+use coiman_core::extensions::plugin::registry;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

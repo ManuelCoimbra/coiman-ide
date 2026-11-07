@@ -4,10 +4,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
-use coiman_core::dbgout::{self, Entry, Parser};
-use coiman_core::document::Document;
-use coiman_core::finder::walker;
-use coiman_core::watcher::same_path;
+use coiman_core::editor::document::Document;
+use coiman_core::launch::dbgout::{self, Entry, Parser};
+use coiman_core::project::finder::walker;
+use coiman_core::project::watcher::same_path;
 use eframe::egui::{self, RichText};
 
 use super::CodeApp;

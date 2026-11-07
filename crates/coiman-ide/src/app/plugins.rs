@@ -2,7 +2,7 @@
 //! the registry), the consent prompt before anything is installed, and the
 //! contributions plugins fill with data: status bar items, panel tabs, tree
 //! views in the Explorer and Command Palette commands. Plugins run in
-//! `coiman_core::plugin::PluginHost`; nothing is fetched from a registry
+//! `coiman_core::extensions::plugin::PluginHost`; nothing is fetched from a registry
 //! unless the user asks.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -10,14 +10,14 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use coiman_core::lsp::types as lt;
-use coiman_core::plugin::host::ServerResponse;
-use coiman_core::plugin::manifest::{Alignment, Manifest, Permission};
-use coiman_core::plugin::registry::{self, Entry, Package};
-use coiman_core::plugin::store::{self, Lockfile, UpdateDiff};
-use coiman_core::plugin::{
+use coiman_core::extensions::plugin::host::ServerResponse;
+use coiman_core::extensions::plugin::manifest::{Alignment, Manifest, Permission};
+use coiman_core::extensions::plugin::registry::{self, Entry, Package};
+use coiman_core::extensions::plugin::store::{self, Lockfile, UpdateDiff};
+use coiman_core::extensions::plugin::{
     Block, Decoration, Document, Event, EventKind, PluginHost, Problem, Severity, TreeItem, Update,
 };
+use coiman_core::language::lsp::types as lt;
 use egui::{Align, RichText, Sense};
 
 use super::lsp::path_key;
@@ -212,7 +212,7 @@ impl CodeApp {
             }
         }
         for (toml, wasm) in BUILT_IN {
-            let Ok(manifest) = coiman_core::plugin::manifest::parse(toml) else { continue };
+            let Ok(manifest) = coiman_core::extensions::plugin::manifest::parse(toml) else { continue };
             let wasm_hash = registry::sha256_hex(wasm);
             let locked = self.plugins.lock.get(&manifest.id);
             if locked.is_some_and(|l| {
@@ -240,7 +240,7 @@ impl CodeApp {
     fn sync_plugin_languages(&self) {
         let enabled = self.plugins.infos.iter().filter(|i| self.plugins.lock.get(&i.id).is_some_and(|l| l.enabled));
         let decls: Vec<_> = enabled.filter_map(|i| i.manifest.as_ref()).flat_map(|m| m.languages.clone()).collect();
-        coiman_core::languages::set(&decls);
+        coiman_core::language::languages::set(&decls);
     }
 
     pub(super) fn plugin_decorate(&self, i: usize, deco: &mut Decorations) {
@@ -700,7 +700,7 @@ impl CodeApp {
                 let mut problems = Vec::new();
                 for locked in lock.plugins.iter().filter(|l| l.signed() && l.source == base) {
                     let Some(entry) = latest.iter().find(|e| e.id == locked.id) else { continue };
-                    if !coiman_core::plugin::manifest::is_newer(&entry.version, &locked.version) {
+                    if !coiman_core::extensions::plugin::manifest::is_newer(&entry.version, &locked.version) {
                         continue;
                     }
                     let diff = store::load(&dir, locked).and_then(|installed| {

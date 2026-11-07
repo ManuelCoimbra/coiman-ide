@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use coiman_core::lsp::types as lt;
-use coiman_core::preview::{PreviewEvent, PreviewServer};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::launch::preview::{PreviewEvent, PreviewServer};
 use eframe::egui::{self, RichText};
 
 use super::{CodeApp, PanelTab, repaint};

@@ -6,12 +6,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::buffer::Selection;
-use coiman_core::lsp::types as lt;
-use coiman_core::syntax::Lang;
-use coiman_core::tree_edit::{self, Change, Move};
-use coiman_core::tree_rules::{self, FileHits, Hit, RULES_FILE, Rule, Search, Severity};
-use coiman_core::trust;
+use coiman_core::editor::buffer::Selection;
+use coiman_core::editor::tree_edit::{self, Change, Move};
+use coiman_core::language::lsp::types as lt;
+use coiman_core::language::syntax::Lang;
+use coiman_core::language::tree_rules::{self, FileHits, Hit, RULES_FILE, Rule, Search, Severity};
+use coiman_core::project::trust;
 use eframe::egui::{self, RichText, TextEdit};
 
 use super::Document;

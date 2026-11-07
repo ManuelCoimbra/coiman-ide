@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use coiman_core::hexdata::{self, BYTES_PER_ROW, Instruction, MemoryBlock, PAGE};
+use coiman_core::data::hexdata::{self, BYTES_PER_ROW, Instruction, MemoryBlock, PAGE};
 use eframe::egui::{self, Color32, RichText};
 
 use super::CodeApp;

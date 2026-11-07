@@ -1,11 +1,11 @@
-//! "Search" side bar: find in files (see `coiman_core::search`) with
+//! "Search" side bar: find in files (see `coiman_core::project::search`) with
 //! search-as-you-type, streamed results grouped by file, and match highlights.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use coiman_core::find::FindOptions;
-use coiman_core::search::{FileResult, LineMatch, MAX_MATCHES, Msg, Query, SearchHandle};
+use coiman_core::editor::find::FindOptions;
+use coiman_core::project::search::{FileResult, LineMatch, MAX_MATCHES, Msg, Query, SearchHandle};
 use egui::text::LayoutJob;
 use egui::{RichText, TextFormat};
 

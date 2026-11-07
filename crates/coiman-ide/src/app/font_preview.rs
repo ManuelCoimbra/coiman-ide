@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::css::{self, FontList};
+use coiman_core::language::css::{self, FontList};
 use eframe::egui::{self, RichText};
 use resvg::usvg::fontdb::{Database, Family, Query};
 use resvg::{tiny_skia, usvg};

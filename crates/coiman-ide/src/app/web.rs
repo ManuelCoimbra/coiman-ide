@@ -5,11 +5,11 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use coiman_core::baseline::{self, Target};
-use coiman_core::css::{self, Color, Format, Gamut};
-use coiman_core::emmet::{self, Syntax};
-use coiman_core::formatters::{self, WebTools};
-use coiman_core::lsp::{convert, types as lt};
+use coiman_core::build::formatters::{self, WebTools};
+use coiman_core::editor::emmet::{self, Syntax};
+use coiman_core::language::baseline::{self, Target};
+use coiman_core::language::css::{self, Color, Format, Gamut};
+use coiman_core::language::lsp::{convert, types as lt};
 use eframe::egui::{self, RichText};
 
 use super::CodeApp;

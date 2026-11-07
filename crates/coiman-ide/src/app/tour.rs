@@ -227,7 +227,7 @@ impl CodeApp {
             Ok((dir, main)) => {
                 coiman_core::applog::info(&format!("sample project made: {}", dir.display()));
                 // It was made here, by the user's choice: trusted like a folder they opened.
-                let _ = coiman_core::trust::trust(&dir);
+                let _ = coiman_core::project::trust::trust(&dir);
                 self.open_folder(dir);
                 self.open_file(&main);
                 self.status = Some("Sample project made: Ctrl+Shift+F10 runs it".to_owned());

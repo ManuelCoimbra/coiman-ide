@@ -6,8 +6,8 @@ use crate::explorer::ExplorerAction;
 use crate::icons::{self, Icon};
 use crate::terminal::Action as TerminalAction;
 use crate::theme;
-use coiman_core::find;
-use coiman_core::project_tree::{self, FileRole};
+use coiman_core::editor::find;
+use coiman_core::project::project_tree::{self, FileRole};
 use egui::{Align, Color32, Key, RichText, Sense, Stroke};
 
 use super::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
@@ -1463,7 +1463,7 @@ impl CodeApp {
                     self.trust_prompt_hidden = false;
                 }
             }
-            self.plugin_status_items(ui, coiman_core::plugin::manifest::Alignment::Left, size);
+            self.plugin_status_items(ui, coiman_core::extensions::plugin::manifest::Alignment::Left, size);
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
             }
@@ -1602,7 +1602,7 @@ impl CodeApp {
                     self.panel_visible = true;
                     self.panel_tab = PanelTab::PageConsole;
                 }
-                self.plugin_status_items(ui, coiman_core::plugin::manifest::Alignment::Right, size);
+                self.plugin_status_items(ui, coiman_core::extensions::plugin::manifest::Alignment::Right, size);
             });
         });
         status_cmd

@@ -1,7 +1,7 @@
 //! Your own snippets: insert them by prefix and Tab or from a list, and manage
 //! them in a window.
 
-use coiman_core::snippets::{self, Snippet};
+use coiman_core::editor::snippets::{self, Snippet};
 use eframe::egui::{self, RichText};
 
 use super::CodeApp;

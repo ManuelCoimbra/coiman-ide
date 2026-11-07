@@ -396,7 +396,7 @@ impl Default for WorkbenchSettings {
             ui_font_size: 13.0,
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
-            color_theme: crate::theme::DEFAULT_THEME.to_owned(),
+            color_theme: crate::appearance::theme::DEFAULT_THEME.to_owned(),
             background_image: String::new(),
             background_editor: String::new(),
             background_sidebar: String::new(),
@@ -510,7 +510,7 @@ pub fn load(workspace_root: Option<&Path>) -> Loaded {
     let mut problems = Vec::new();
     let mut merged = Table::new();
     // An untrusted folder's settings are ignored: they can name programs to run.
-    let workspace_root = workspace_root.filter(|r| crate::trust::is_trusted(r));
+    let workspace_root = workspace_root.filter(|r| crate::project::trust::is_trusted(r));
     let files = user_settings_path().into_iter().chain(workspace_root.map(workspace_settings_path));
     for path in files {
         if path.exists() {

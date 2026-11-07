@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use coiman_core::bookmarks::{self, Bookmarks};
-use coiman_core::git;
+use coiman_core::editor::bookmarks::{self, Bookmarks};
+use coiman_core::project::git;
 
 use super::CodeApp;
 use crate::buffer::Selection;

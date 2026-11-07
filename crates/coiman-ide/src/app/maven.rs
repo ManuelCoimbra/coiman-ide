@@ -9,10 +9,10 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::SystemTime;
 
-use coiman_core::build_tools::BuildTool;
-use coiman_core::lsp::discovery::quiet_command;
-use coiman_core::maven::{self, DepNode, DepState, Found, Mvn, Plugin, Project};
-use coiman_core::run::RunPlan;
+use coiman_core::build::build_tools::BuildTool;
+use coiman_core::build::maven::{self, DepNode, DepState, Found, Mvn, Plugin, Project};
+use coiman_core::language::lsp::discovery::quiet_command;
+use coiman_core::launch::run::RunPlan;
 use egui::{Align, RichText, Sense};
 
 use super::{CodeApp, SidebarView, repaint};
@@ -222,9 +222,11 @@ impl CodeApp {
     /// extension asks it to.
     fn pom_changed(&mut self) {
         for (pom, _) in &self.maven.stamps {
-            let Some(uri) = coiman_core::lsp::convert::uri_from_path(pom) else { continue };
+            let Some(uri) = coiman_core::language::lsp::convert::uri_from_path(pom) else { continue };
             for client in &mut self.lsp.clients {
-                if client.kind == coiman_core::lsp::servers::ServerKind::Jdtls && pom.starts_with(&client.root) {
+                if client.kind == coiman_core::language::lsp::servers::ServerKind::Jdtls
+                    && pom.starts_with(&client.root)
+                {
                     client.notify("java/projectConfigurationUpdate", serde_json::json!({ "uri": uri.to_string() }));
                     coiman_core::applog::info("maven: pom changed, told jdtls");
                 }
@@ -539,7 +541,8 @@ impl CodeApp {
             Ok((new, line)) => {
                 let doc = &mut self.docs[index];
                 let at = doc.buffer.line_start(line.min(doc.buffer.len_lines().saturating_sub(1)));
-                doc.buffer.replace_all(&new, coiman_core::buffer::Selection { anchor: at, head: at, goal: None });
+                doc.buffer
+                    .replace_all(&new, coiman_core::editor::buffer::Selection { anchor: at, head: at, goal: None });
                 // Selecting it scrolls it into view.
                 doc.select(at, at);
                 self.save_doc(index);

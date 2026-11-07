@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use crate::commands::Command;
-use coiman_core::git::{self, Commit, FileChange, Hunk, Repo, Stash, Status};
+use coiman_core::project::git::{self, Commit, FileChange, Hunk, Repo, Stash, Status};
 use egui::{Align, Color32, Pos2, Rect, RichText, Sense, Vec2};
 
 use crate::document::Document;
@@ -83,7 +83,7 @@ pub(super) struct DiffView {
     /// HEAD ↔ index (staged changes) instead of index ↔ working tree.
     staged: bool,
     /// A local-history version (left) against the current text (right).
-    history: Option<coiman_core::history::Entry>,
+    history: Option<coiman_core::project::history::Entry>,
     /// What a commit changed, against its parent: read-only.
     commit: Option<String>,
     left: String,
@@ -698,7 +698,7 @@ impl CodeApp {
         path: PathBuf,
         rel: String,
         old: String,
-        entry: coiman_core::history::Entry,
+        entry: coiman_core::project::history::Entry,
         i: usize,
     ) {
         let doc = &self.docs[i];

@@ -3,9 +3,9 @@
 
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::lsp::servers::{self, Found, ServerKind};
-use coiman_core::lsp::{language_id, registry};
-use coiman_core::{run, syntax, trust};
+use coiman_core::language::lsp::servers::{self, Found, ServerKind};
+use coiman_core::language::lsp::{language_id, registry};
+use coiman_core::{language::syntax, launch::run, project::trust};
 use eframe::egui::{self, RichText};
 
 use super::lsp::Setup;
@@ -241,7 +241,7 @@ impl CodeApp {
 }
 
 /// What the server said it can do.
-fn offered(client: &coiman_core::lsp::Client) -> String {
+fn offered(client: &coiman_core::language::lsp::Client) -> String {
     let Some(caps) = client.capabilities() else { return "Not known yet".to_owned() };
     let features = [
         ("completion", caps.completion_provider.is_some()),

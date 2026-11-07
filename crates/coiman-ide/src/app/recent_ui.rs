@@ -3,7 +3,7 @@
 
 use std::path::{Path, PathBuf};
 
-use coiman_core::recent::{self, Entry};
+use coiman_core::project::recent::{self, Entry};
 use eframe::egui::{self, RichText};
 
 use super::CodeApp;
@@ -58,7 +58,7 @@ impl CodeApp {
     /// Remembers where dialog `kind` chose `chosen`, for next time.
     pub(super) fn dialog_chose(&mut self, kind: &str, chosen: &Path) {
         self.dialog_dirs.remember(kind, chosen);
-        if let Err(e) = coiman_core::dialog_dirs::save(&self.dialog_dirs) {
+        if let Err(e) = coiman_core::project::dialog_dirs::save(&self.dialog_dirs) {
             self.status = Some(format!("Could not save dialog folders: {e}"));
         }
     }
