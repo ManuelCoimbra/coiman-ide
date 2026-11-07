@@ -437,6 +437,21 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   C++, Java, JavaScript, TypeScript, C#, PHP, Kotlin, Swift, Scala, Groovy and Dart
   (**Settings > Editor > Doc comment templates**).
 
+### Code generation and NULL checks
+
+Ctrl+. (or the light bulb) offers code made here, with no language server needed, after
+any the server offers:
+
+- **Java**, in a class: Generate Getters and Setters (or just one kind), a Constructor,
+  `toString()`, and `equals()` with `hashCode()`. Only what's missing is offered.
+- **C#**, in a class or struct: Generate Properties for fields, a Constructor,
+  `ToString()`, and `Equals()` with `GetHashCode()`.
+- **C and C++**: a pointer from `malloc`, `fopen`, `strchr` and the like, read before it's
+  checked, gets a note on the line, and the yellow bulb offers to add the check after
+  the line that set it.
+
+Nothing is changed until an action is picked.
+
 ### Maven
 
 A folder with a `pom.xml` gets a MAVEN section in the Explorer, as the VS Code Maven

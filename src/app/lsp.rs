@@ -216,9 +216,13 @@ pub(super) struct LspState {
     /// The word the pointer rests on: (doc uid, char, since, request sent).
     hover_rest: Option<(u64, usize, f64, bool)>,
     code_actions: Vec<lt::CodeActionOrCommand>,
+    /// Actions made here (getters, NULL checks), shown with the server's when it answers.
+    local_actions: Vec<lt::CodeActionOrCommand>,
     /// A line known to offer actions, and whether any is a fix.
     bulb: Option<(BulbKey, bool)>,
     bulb_asked: Option<BulbKey>,
+    /// Whether actions made here are on the bulb's line: `Some(true)` when one's a fix.
+    bulb_local: Option<bool>,
     bulb_seen: Option<(BulbKey, f64)>,
     locations: Vec<LocationItem>,
     /// Tabs of documents only a server can read, by [`path_key`]: their real address,
@@ -1879,9 +1883,59 @@ impl CodeApp {
     pub(super) fn request_code_actions(&mut self) {
         let i = self.active;
         let Some((range, diagnostics)) = self.code_action_target(i) else { return };
-        self.request_for(i, "textDocument/codeAction", Pending::CodeActions, |_, td| {
+        self.lsp.local_actions = self.local_code_actions(i);
+        let sent = self.request_for(i, "textDocument/codeAction", Pending::CodeActions, |_, td| {
             json!({ "textDocument": td, "range": range, "context": { "diagnostics": diagnostics, "triggerKind": 1 } })
         });
+        // No server to ask: what's made here is all there is.
+        if !sent {
+            self.on_code_actions(Value::Null);
+        }
+    }
+
+    /// Code actions made here for document `i` at its cursor: Java and C# members, C and
+    /// C++ NULL checks.
+    pub(super) fn local_code_actions(&self, i: usize) -> Vec<lt::CodeActionOrCommand> {
+        let Some(doc) = self.docs.get(i) else { return Vec::new() };
+        let Some(path) = doc.path.as_deref() else { return Vec::new() };
+        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        if !matches!(ext.as_str(), "java" | "cs" | "c" | "h" | "cpp" | "cc" | "cxx" | "hpp" | "hh") {
+            return Vec::new();
+        }
+        let Some(uri) = convert::uri_from_path(path) else { return Vec::new() };
+        let rope = doc.buffer.rope();
+        let source = doc.text();
+        let cursor = rope.char_to_byte(doc.buffer.primary().head.min(rope.len_chars()));
+        let indent = doc.buffer.indent;
+        let unit = if indent.use_tabs { "\t".to_owned() } else { " ".repeat(indent.size.max(1)) };
+        let nullable = ext == "cs" && csharp_nullable(path, &source);
+        let style = rust_code_core::generate::Style { unit: &unit, nl: "\n", nullable };
+        rust_code_core::generate::actions(&ext, &source, cursor, style)
+            .into_iter()
+            .map(|a| {
+                let edits = a
+                    .edits
+                    .iter()
+                    .map(|e| {
+                        let (s, t) = (rope.byte_to_char(e.start), rope.byte_to_char(e.end));
+                        lt::TextEdit { range: convert::range_of(rope, s, t), new_text: e.text.clone() }
+                    })
+                    .collect();
+                let kind = match a.kind {
+                    rust_code_core::generate::Kind::Generate => lt::CodeActionKind::SOURCE,
+                    rust_code_core::generate::Kind::QuickFix => lt::CodeActionKind::QUICKFIX,
+                };
+                lt::CodeActionOrCommand::CodeAction(lt::CodeAction {
+                    title: a.title,
+                    kind: Some(kind),
+                    edit: Some(lt::WorkspaceEdit {
+                        changes: Some(std::iter::once((uri.clone(), edits)).collect()),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                })
+            })
+            .collect()
     }
 
     /// The light bulb for document `i`, if the cursor is where the server said.
@@ -1921,6 +1975,19 @@ impl CodeApp {
             return;
         }
         self.lsp.bulb_asked = Some(key);
+        // Actions made here light it too, a fix in yellow.
+        let local = self.local_code_actions(i);
+        self.lsp.bulb_local = (!local.is_empty()).then(|| {
+            local.iter().any(
+                |a| matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.kind == Some(lt::CodeActionKind::QUICKFIX)),
+            )
+        });
+        if let Some(fix) = self.lsp.bulb_local {
+            self.lsp.bulb = Some((key, fix));
+        } else {
+            self.lsp.bulb = None;
+        }
+        let Some(doc) = self.docs.get(i) else { return };
         // It isn't asked for, so a missing server has nothing to say about it.
         let offers = lsp_target(doc).is_some_and(|(p, _, k)| {
             self.lsp.clients.iter().any(|c| {
@@ -1951,7 +2018,7 @@ impl CodeApp {
             .filter(|a| !matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.disabled.is_some()))
             .collect();
         if usable.is_empty() {
-            self.lsp.bulb = None;
+            self.lsp.bulb = self.lsp.bulb_local.map(|fix| (key, fix));
             return;
         }
         let fix = usable.iter().any(|a| match a {
@@ -1962,17 +2029,32 @@ impl CodeApp {
             }
             lt::CodeActionOrCommand::Command(_) => false,
         });
-        self.lsp.bulb = Some((key, fix));
+        self.lsp.bulb = Some((key, fix || self.lsp.bulb_local == Some(true)));
     }
 
     fn on_code_actions(&mut self, value: Value) {
-        let actions: Vec<lt::CodeActionOrCommand> = serde_json::from_value::<Option<Vec<_>>>(value)
+        let from_server = serde_json::from_value::<Option<Vec<_>>>(value)
             .ok()
             .flatten()
             .unwrap_or_default()
             .into_iter()
-            .filter(|a| !matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.disabled.is_some()))
+            .filter(|a| !matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.disabled.is_some()));
+        // The server's own first: it knows the language better.
+        let mut actions: Vec<lt::CodeActionOrCommand> = from_server.collect();
+        let titles: std::collections::HashSet<String> = actions
+            .iter()
+            .map(|a| match a {
+                lt::CodeActionOrCommand::Command(c) => c.title.clone(),
+                lt::CodeActionOrCommand::CodeAction(c) => c.title.clone(),
+            })
             .collect();
+        for local in std::mem::take(&mut self.lsp.local_actions) {
+            if let lt::CodeActionOrCommand::CodeAction(c) = &local
+                && !titles.contains(&c.title)
+            {
+                actions.push(local);
+            }
+        }
         if actions.is_empty() {
             self.status = Some("No code actions available".to_owned());
             return;
@@ -2456,4 +2538,24 @@ impl CodeApp {
         let (e, w) = self.problem_counts();
         if e + w == 0 { "PROBLEMS".to_owned() } else { format!("PROBLEMS {}", e + w) }
     }
+}
+
+/// Whether nullable reference types are on for a C# file: `#nullable enable` in it, or
+/// `<Nullable>enable</Nullable>` in the nearest project file.
+fn csharp_nullable(path: &Path, source: &str) -> bool {
+    if source.contains("#nullable enable") {
+        return true;
+    }
+    path.ancestors()
+        .skip(1)
+        .take(8)
+        .find_map(|dir| {
+            let project = std::fs::read_dir(dir)
+                .ok()?
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .find(|p| p.extension().is_some_and(|x| x == "csproj"))?;
+            Some(std::fs::read_to_string(project).is_ok_and(|t| t.contains("<Nullable>enable</Nullable>")))
+        })
+        .unwrap_or(false)
 }

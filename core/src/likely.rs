@@ -747,7 +747,15 @@ pub fn check(extension: &str, source: &str) -> Vec<Finding> {
     let root = tree.root_node();
     check_loops(root, source, &mut out);
     match lang {
-        Lang::C | Lang::Cpp => check_leaks(root, source, &mut out),
+        Lang::C | Lang::Cpp => {
+            check_leaks(root, source, &mut out);
+            // Pointers that may be NULL, read before a check.
+            for found in crate::null_check::find(root, source, lang == Lang::Cpp, "    ", "\n") {
+                if let Some(node) = root.descendant_for_byte_range(found.use_start, found.use_end) {
+                    out.push(place(node, source, found.message(), Certainty::Possible));
+                }
+            }
+        }
         Lang::Rust => check_rust_leaks(root, source, &mut out),
         _ => {}
     }
@@ -929,9 +937,12 @@ mod tests {
             ("cpp", "void f() { std::unique_ptr<int> p(new int); }"),
             ("cpp", "void f(std::vector<int*> &v) { int *p = new int; v.push_back(p); }"),
         ] {
-            let found = messages(ext, source);
+            // Leaks only: `fclose(f)` unchecked is the NULL check's to say.
+            let found: Vec<String> = messages(ext, source).into_iter().filter(|m| !m.contains("may be NULL")).collect();
             assert!(found.is_empty(), "{source}: {found:?}");
         }
+        let unchecked = messages("c", "void f(void) { FILE *f = fopen(\"a\", \"r\"); fclose(f); }");
+        assert!(unchecked.iter().any(|m| m.contains("may be NULL")), "{unchecked:?}");
     }
 
     #[test]
