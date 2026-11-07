@@ -300,6 +300,8 @@ pub struct ViewState {
     tag_pair: Option<(CursorKey, Option<TagPair>)>,
     /// The bracket pair around the cursor, for (version, cursor).
     enclosing: Option<(CursorKey, Option<(usize, usize)>)>,
+    /// The bracket next to the cursor and its partner, for (version, cursor).
+    bracket: Option<(CursorKey, Option<(usize, usize)>)>,
     /// Rows whose words were drawn as pictures, by start char, so a click finds its char.
     word_shifts: std::collections::HashMap<usize, Vec<WordShift>>,
     /// Widest line seen so far, in visual columns (for the horizontal scroll range).
@@ -1080,7 +1082,11 @@ fn vim_keyboard(
         match event {
             Event::Text(text) => {
                 for c in text.chars().filter(|c| !c.is_control()) {
+                    if c == '%' {
+                        vim.set_bracket_hint(bracket_hint(doc));
+                    }
                     effects.extend(vim.handle(&mut doc.buffer, V::Char(c)));
+                    vim.clear_bracket_hint();
                 }
                 moved = true;
             }
@@ -1096,6 +1102,18 @@ fn vim_keyboard(
         }
     }
     moved
+}
+
+/// The cursor line's code brackets and their partners, for Vim's `%`.
+fn bracket_hint(doc: &mut Document) -> rust_code_core::vim::BracketHint {
+    let line = doc.buffer.char_to_line(doc.buffer.primary().head);
+    let mut q = doc.buffer.line_start(line);
+    let mut brackets = Vec::new();
+    while let Some(at) = doc.bracket_ahead(q) {
+        brackets.push((at, doc.matching_bracket(at, 1_000_000)));
+        q = at + 1;
+    }
+    (line, brackets)
 }
 
 fn handle_keyboard(
@@ -1325,7 +1343,19 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
     let primary = doc.buffer.primary();
     let primary_line = doc.buffer.char_to_line(primary.head);
     let primary_row = layout.row_of(doc, view, primary.head);
-    let bracket = primary.is_empty().then(|| doc.buffer.matching_bracket(primary.head, BRACKET_SEARCH_LIMIT)).flatten();
+    let bracket = if primary.is_empty() {
+        let key = (doc.buffer.version(), primary.head);
+        match view.bracket {
+            Some((k, pair)) if k == key => pair,
+            _ => {
+                let pair = doc.matching_bracket(primary.head, BRACKET_SEARCH_LIMIT);
+                view.bracket = Some((key, pair));
+                pair
+            }
+        }
+    } else {
+        None
+    };
     let tag_pair = if opts.matching_tags && primary.is_empty() {
         let key = (doc.buffer.version(), primary.head);
         match view.tag_pair {
@@ -1346,7 +1376,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         let pair = match view.enclosing {
             Some((k, pair)) if k == key => pair,
             _ => {
-                let pair = doc.buffer.enclosing_brackets(primary.head, BRACKET_SEARCH_LIMIT);
+                let pair = doc.enclosing_brackets(primary.head, BRACKET_SEARCH_LIMIT);
                 view.enclosing = Some((key, pair));
                 pair
             }

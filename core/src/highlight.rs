@@ -41,6 +41,8 @@ pub struct Highlighter {
     /// State at the start of `tail.0`, from the last highlighting pass.
     tail: Option<(usize, State)>,
     cache: HashMap<usize, Vec<Span>>,
+    /// Char ranges of each highlighted line that are strings or comments.
+    literals: HashMap<usize, Vec<(usize, usize)>>,
     /// Theme generation the cached colors were computed with.
     theme_generation: u64,
     /// Brackets colored by how deeply they nest (`editor.bracketPairColorization`).
@@ -83,6 +85,7 @@ impl Highlighter {
             checkpoints: Vec::new(),
             tail: None,
             cache: HashMap::new(),
+            literals: HashMap::new(),
             theme_generation: crate::theme::generation(),
             rainbow: false,
         }
@@ -94,6 +97,7 @@ impl Highlighter {
             self.rainbow = on;
             self.checkpoints.clear();
             self.cache.clear();
+            self.literals.clear();
             self.tail = None;
         }
     }
@@ -120,6 +124,7 @@ impl Highlighter {
             self.theme_generation = crate::theme::generation();
             self.checkpoints.clear();
             self.cache.clear();
+            self.literals.clear();
             self.tail = None;
         }
         if !self.cache.contains_key(&line) {
@@ -136,6 +141,8 @@ impl Highlighter {
             }
             if self.cache.len() > MAX_CACHED_LINES {
                 self.cache.clear();
+                self.literals.clear();
+                self.literals.clear();
             }
 
             // Resume from the nearest known state at or before `line`.
@@ -152,13 +159,22 @@ impl Highlighter {
                 if next.is_multiple_of(CHECKPOINT) && next / CHECKPOINT == self.checkpoints.len() {
                     self.checkpoints.push(state.clone());
                 }
-                let spans = highlight_line(buf, next, &mut state, &highlighter, set, self.rainbow);
+                let (spans, literals) = highlight_line(buf, next, &mut state, &highlighter, set, self.rainbow);
                 self.cache.insert(next, spans);
+                self.literals.insert(next, literals);
                 next += 1;
             }
             self.tail = Some((next, state));
         }
         self.cache.get(&line).map(Vec::as_slice)
+    }
+
+    /// Whether char `col` of `line` is in a string or comment, highlighting the line if
+    /// it hasn't been yet. `None` without a grammar.
+    pub fn is_literal_at(&mut self, buf: &Buffer, line: usize, col: usize) -> Option<bool> {
+        self.spans(buf, line)?;
+        let ranges = self.literals.get(&line)?;
+        Some(ranges.iter().any(|&(a, b)| (a..b).contains(&col)))
     }
 }
 
@@ -169,10 +185,11 @@ fn highlight_line(
     highlighter: &SynHighlighter,
     set: &SyntaxSet,
     rainbow: bool,
-) -> Vec<Span> {
+) -> (Vec<Span>, Vec<(usize, usize)>) {
     let mut text = buf.line_text(line);
     let plain_len = text.chars().count();
-    let fallback = || vec![Span { len: plain_len, color: Color::from_rgb(0xd0, 0xd0, 0xd0), italic: false }];
+    let fallback =
+        || (vec![Span { len: plain_len, color: Color::from_rgb(0xd0, 0xd0, 0xd0), italic: false }], Vec::new());
     if plain_len > MAX_LINE_CHARS {
         return fallback();
     }
@@ -191,10 +208,42 @@ fn highlight_line(
             })
         })
         .collect();
+    let literals = literal_ranges(&text, &ops, path);
     if !rainbow {
-        return spans;
+        return (spans, literals);
     }
-    recolor(spans, &bracket_colors(&text, &ops, path, open))
+    let marks = bracket_colors(&text, &literals, open);
+    (recolor(spans, &marks), literals)
+}
+
+/// The char ranges of `text` inside strings, comments and character literals, from the
+/// scope stack `path` at its start and the line's scope changes `ops`.
+fn literal_ranges(text: &str, ops: &[(usize, ScopeStackOp)], mut path: ScopeStack) -> Vec<(usize, usize)> {
+    let literal = literal_scopes();
+    let is_literal = |path: &ScopeStack| path.as_slice().iter().any(|s| literal.iter().any(|l| l.is_prefix_of(*s)));
+    let mut ops = ops.iter().peekable();
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    let mut inside = is_literal(&path);
+    for (ci, (bi, _)) in text.char_indices().enumerate() {
+        let mut changed = false;
+        while let Some((at, op)) = ops.peek()
+            && *at <= bi
+        {
+            let _ = path.apply(op);
+            ops.next();
+            changed = true;
+        }
+        if changed {
+            inside = is_literal(&path);
+        }
+        if inside {
+            match out.last_mut() {
+                Some((_, end)) if *end == ci => *end = ci + 1,
+                _ => out.push((ci, ci + 1)),
+            }
+        }
+    }
+    out
 }
 
 /// Scopes whose brackets are text, not code.
@@ -209,28 +258,14 @@ fn literal_scopes() -> &'static [Scope] {
 }
 
 /// Each code bracket in `text` (char index) with its rainbow color: by how many brackets
-/// are open around it, carried in `open` from line to line. A closing bracket that closes
-/// nothing, or closes the wrong kind, gets the unexpected-bracket color.
-fn bracket_colors(
-    text: &str,
-    ops: &[(usize, ScopeStackOp)],
-    mut path: ScopeStack,
-    open: &mut Open,
-) -> Vec<(usize, Color)> {
+/// are open around it, carried in `open` from line to line. Brackets in `literals` (char
+/// ranges) are text. A closing bracket that closes nothing, or closes the wrong kind,
+/// gets the unexpected-bracket color.
+fn bracket_colors(text: &str, literals: &[(usize, usize)], open: &mut Open) -> Vec<(usize, Color)> {
     let palette = crate::theme::current().palette;
-    let literal = literal_scopes();
-    let mut ops = ops.iter().peekable();
     let mut out = Vec::new();
-    for (ci, (bi, c)) in text.char_indices().enumerate() {
-        while let Some((at, op)) = ops.peek()
-            && *at <= bi
-        {
-            let _ = path.apply(op);
-            ops.next();
-        }
-        if !matches!(c, '(' | ')' | '[' | ']' | '{' | '}')
-            || path.as_slice().iter().any(|s| literal.iter().any(|l| l.is_prefix_of(*s)))
-        {
+    for (ci, c) in text.chars().enumerate() {
+        if !matches!(c, '(' | ')' | '[' | ']' | '{' | '}') || literals.iter().any(|&(a, b)| (a..b).contains(&ci)) {
             continue;
         }
         let opener = match c {

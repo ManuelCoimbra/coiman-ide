@@ -312,6 +312,37 @@ pub struct TsState {
 }
 
 impl TsState {
+    /// Whether char `pos` is text rather than code: in a string, character literal or
+    /// comment, but not in code interpolated into a string. `None` while the tree is
+    /// behind the text, so positions in it can't be trusted.
+    pub fn is_literal_at(&self, buf: &Buffer, pos: usize) -> Option<bool> {
+        let (version, tree) = self.tree.as_ref()?;
+        if *version != buf.version() || pos >= buf.len_chars() {
+            return None;
+        }
+        let byte = buf.rope().char_to_byte(pos);
+        let mut node = tree.root_node().descendant_for_byte_range(byte, byte + 1);
+        while let Some(n) = node {
+            let kind = n.kind();
+            if kind.contains("interpolation") || kind.contains("substitution") {
+                return Some(false);
+            }
+            if kind.contains("comment")
+                || kind.contains("string")
+                || kind.contains("char_literal")
+                || kind.contains("character_literal")
+                || kind == "rune_literal"
+                || kind == "regex"
+            {
+                return Some(true);
+            }
+            node = n.parent();
+        }
+        Some(false)
+    }
+}
+
+impl TsState {
     pub fn new(lang: Lang) -> Option<Self> {
         config(lang)?;
         Some(Self {
@@ -587,6 +618,33 @@ mod tests {
             i += s.len;
         }
         out
+    }
+
+    /// A tree for `src`, as the worker would have parsed it.
+    fn parsed(lang: Lang, src: &str) -> (Buffer, TsState) {
+        let mut buf = Buffer::new(src);
+        let mut ts = TsState::new(lang).expect("query compiles");
+        let mut parser = Parser::new();
+        parser.set_language(&lang.language()).unwrap();
+        buf.take_syntax_edits();
+        ts.tree = Some((buf.version(), parser.parse(src, None).unwrap()));
+        (buf, ts)
+    }
+
+    #[test]
+    fn brackets_in_strings_are_text() {
+        let (buf, ts) = parsed(Lang::Rust, "fn a() { let s = \"}\"; b(s) }");
+        assert_eq!(ts.is_literal_at(&buf, 18), Some(true), "the brace in the string");
+        assert_eq!(ts.is_literal_at(&buf, 7), Some(false));
+        let code = &mut |p| !ts.is_literal_at(&buf, p).unwrap_or(false);
+        assert_eq!(buf.matching_bracket_where(7, 1000, code), Some((7, 27)));
+        assert_eq!(buf.matching_bracket(7, 1000), Some((7, 18)), "text alone is fooled");
+        assert_eq!(buf.enclosing_brackets_where(21, 1000, code), Some((7, 27)));
+        // Code interpolated into a string is code; a comment's brackets are text.
+        let (buf, ts) = parsed(Lang::JavaScript, "x = `a${(b)}`; // (");
+        assert_eq!(ts.is_literal_at(&buf, 8), Some(false));
+        assert_eq!(ts.is_literal_at(&buf, 5), Some(true));
+        assert_eq!(ts.is_literal_at(&buf, 18), Some(true));
     }
 
     #[test]

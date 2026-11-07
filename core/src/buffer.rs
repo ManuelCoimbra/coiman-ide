@@ -619,6 +619,17 @@ impl Buffer {
     /// The innermost bracket pair around `pos`: an opener before it and its closer at or
     /// after it, searching at most `limit` chars each way.
     pub fn enclosing_brackets(&self, pos: usize, limit: usize) -> Option<(usize, usize)> {
+        self.enclosing_brackets_where(pos, limit, &mut |_| true)
+    }
+
+    /// [`Buffer::enclosing_brackets`] counting only brackets where `is_code` says so, so
+    /// those in strings and comments are passed over.
+    pub fn enclosing_brackets_where(
+        &self,
+        pos: usize,
+        limit: usize,
+        is_code: &mut dyn FnMut(usize) -> bool,
+    ) -> Option<(usize, usize)> {
         let pos = pos.min(self.len_chars());
         let mut closers: Vec<char> = Vec::new();
         let mut chars = self.rope.chars_at(pos);
@@ -627,6 +638,9 @@ impl Buffer {
             i -= 1;
             if pos - i > limit {
                 return None;
+            }
+            if !matches!(c, '(' | ')' | '[' | ']' | '{' | '}') || !is_code(i) {
+                continue;
             }
             let close = match c {
                 ')' | ']' | '}' => {
@@ -644,7 +658,7 @@ impl Buffer {
                 }
                 Some(_) => {}
                 None => {
-                    let (open, end) = self.matching_bracket(i, limit)?;
+                    let (open, end) = self.matching_bracket_where(i, limit, is_code)?;
                     return (open == i && end >= pos).then_some((open, end));
                 }
             }
@@ -654,10 +668,21 @@ impl Buffer {
 
     /// Bracket next to `pos` and its partner, searching at most `limit` chars away.
     pub fn matching_bracket(&self, pos: usize, limit: usize) -> Option<(usize, usize)> {
+        self.matching_bracket_where(pos, limit, &mut |_| true)
+    }
+
+    /// [`Buffer::matching_bracket`] counting only brackets where `is_code` says so: a
+    /// bracket in a string or comment neither matches nor is matched.
+    pub fn matching_bracket_where(
+        &self,
+        pos: usize,
+        limit: usize,
+        is_code: &mut dyn FnMut(usize) -> bool,
+    ) -> Option<(usize, usize)> {
         const PAIRS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
         let len = self.len_chars();
         for at in [pos, pos.wrapping_sub(1)] {
-            if at >= len {
+            if at >= len || !"()[]{}".contains(self.rope.char(at)) || !is_code(at) {
                 continue;
             }
             let c = self.rope.char(at);
@@ -669,6 +694,9 @@ impl Buffer {
                 let mut depth = 0usize;
                 if forward {
                     for (i, ch) in self.rope.chars_at(at).enumerate().take(limit) {
+                        if (ch == open || ch == close) && !is_code(at + i) {
+                            continue;
+                        }
                         if ch == open {
                             depth += 1;
                         } else if ch == close {
@@ -685,6 +713,9 @@ impl Buffer {
                         i -= 1;
                         if at - i > limit {
                             break;
+                        }
+                        if (ch == open || ch == close) && !is_code(i) {
+                            continue;
                         }
                         if ch == close {
                             depth += 1;

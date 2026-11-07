@@ -115,7 +115,8 @@ is read and written on your machine.
 - Indent guides, with the guide of the block holding the cursor brightened (the block a line
   opens, when the cursor is on its first line), and a line in the bracket's own color down the
   bracket pair the cursor is in, from opener to closer. Line numbers, current-line and
-  matching-bracket highlight.
+  matching-bracket highlight. Matching, the pair guide, **Go to Bracket** and Vim's `%` pass over
+  brackets in strings and comments, as the highlighting knows them.
 - In HTML, XML, Vue, Svelte and JSX, the cursor in a tag's name frames that tag and its partner.
   Elements nest by name; comments, `<script>` and `<style>` text and attribute values are skipped;
   void and self-closing tags have none. Settings: **Rainbow brackets**, **Active indent guide**,

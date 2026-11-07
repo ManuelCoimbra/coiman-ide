@@ -344,7 +344,7 @@ impl CodeApp {
                 // Jump to the partner of the bracket next to the cursor.
                 if let Some(doc) = self.active_doc() {
                     let head = doc.buffer.primary().head;
-                    if let Some((open, close)) = doc.buffer.matching_bracket(head, 1_000_000) {
+                    if let Some((open, close)) = doc.matching_bracket(head, 1_000_000) {
                         let target = if head == open || head == open + 1 { close } else { open };
                         doc.select(target, target);
                     }

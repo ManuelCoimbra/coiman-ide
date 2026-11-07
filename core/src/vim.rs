@@ -336,9 +336,25 @@ pub struct Vim {
     pub autoindent: bool,
     effects: Vec<Effect>,
     message: Option<String>,
+    /// The code brackets of one line and their partners, worked out by the editor, which
+    /// knows strings and comments: `%` uses them on that line.
+    bracket_hint: Option<BracketHint>,
 }
 
+/// A line, and each code bracket on it with its partner (`None`: unmatched).
+pub type BracketHint = (usize, Vec<(usize, Option<(usize, usize)>)>);
+
 impl Vim {
+    /// Brackets for `%` on one line, from what the editor knows is code. Cleared by
+    /// [`Vim::clear_bracket_hint`]; other lines search the text.
+    pub fn set_bracket_hint(&mut self, hint: BracketHint) {
+        self.bracket_hint = Some(hint);
+    }
+
+    pub fn clear_bracket_hint(&mut self) {
+        self.bracket_hint = None;
+    }
+
     pub fn new(flavor: Flavor) -> Self {
         Self {
             flavor,
@@ -363,6 +379,7 @@ impl Vim {
             autoindent: true,
             effects: Vec::new(),
             message: None,
+            bracket_hint: None,
         }
     }
 
@@ -758,8 +775,14 @@ impl Vim {
             }
             Motion::MatchBracket => {
                 let (s, e) = (p, buf.line_end(line));
-                let at = (s..e).find(|&q| "()[]{}".contains(ch(buf, q)))?;
-                let (open, close) = buf.matching_bracket(at, 1_000_000)?;
+                let (at, pair) = match &self.bracket_hint {
+                    Some((l, brackets)) if *l == line => *brackets.iter().find(|(at, _)| (s..e).contains(at))?,
+                    _ => {
+                        let at = (s..e).find(|&q| "()[]{}".contains(ch(buf, q)))?;
+                        (at, buf.matching_bracket(at, 1_000_000))
+                    }
+                };
+                let (open, close) = pair?;
                 (if at == open { close } else { open }, Kind::Inclusive)
             }
             Motion::ParagraphForward | Motion::ParagraphBack => {
@@ -1901,5 +1924,28 @@ fn type_key(buf: &mut Buffer, key: Key, autoindent: bool) {
         Key::Up => buf.move_vertical(-1, false),
         Key::Down => buf.move_vertical(1, false),
         Key::Esc | Key::Ctrl(_) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_uses_the_editors_brackets() {
+        // `f("(", x)`: the `(` in the string isn't code; the editor says so through the hint.
+        let mut buf = Buffer::new("f(\"(\", x)");
+        let mut vim = Vim::new(Flavor::Vim);
+        vim.reset(&mut buf);
+        vim.set_bracket_hint((0, vec![(1, Some((1, 8))), (8, Some((1, 8)))]));
+        vim.handle(&mut buf, Key::Char('%'));
+        assert_eq!(buf.primary().head, 8);
+        vim.handle(&mut buf, Key::Char('%'));
+        assert_eq!(buf.primary().head, 1);
+        // Without it, the text search is fooled by the string.
+        vim.clear_bracket_hint();
+        vim.handle(&mut buf, Key::Char('0'));
+        vim.handle(&mut buf, Key::Char('%'));
+        assert_ne!(buf.primary().head, 8);
     }
 }

@@ -63,7 +63,41 @@ pub struct Document {
     structure: Structure,
 }
 
+/// Whether char `pos` is code, by the syntax tree where there is one, else by the
+/// grammar's scopes. Without either, everything counts.
+fn is_code(buffer: &Buffer, ts: Option<&TsState>, highlighter: &mut Highlighter, pos: usize) -> bool {
+    let literal = match ts {
+        Some(ts) => ts.is_literal_at(buffer, pos),
+        None => {
+            let line = buffer.char_to_line(pos);
+            highlighter.is_literal_at(buffer, line, pos - buffer.line_start(line))
+        }
+    };
+    !literal.unwrap_or(false)
+}
+
 impl Document {
+    /// The bracket next to `pos` and its partner, passing over brackets in strings and
+    /// comments.
+    pub fn matching_bracket(&mut self, pos: usize, limit: usize) -> Option<(usize, usize)> {
+        let Document { buffer, ts, highlighter, .. } = self;
+        buffer.matching_bracket_where(pos, limit, &mut |p| is_code(buffer, ts.as_ref(), highlighter, p))
+    }
+
+    /// The innermost bracket pair around `pos`, passing over brackets in strings and
+    /// comments.
+    pub fn enclosing_brackets(&mut self, pos: usize, limit: usize) -> Option<(usize, usize)> {
+        let Document { buffer, ts, highlighter, .. } = self;
+        buffer.enclosing_brackets_where(pos, limit, &mut |p| is_code(buffer, ts.as_ref(), highlighter, p))
+    }
+
+    /// The first code bracket from `pos` to the end of its line, as Vim's `%` looks for.
+    pub fn bracket_ahead(&mut self, pos: usize) -> Option<usize> {
+        let Document { buffer, ts, highlighter, .. } = self;
+        let end = buffer.line_end(buffer.char_to_line(pos.min(buffer.len_chars())));
+        (pos..end).find(|&q| "()[]{}".contains(buffer.rope().char(q)) && is_code(buffer, ts.as_ref(), highlighter, q))
+    }
+
     fn from_text(path: Option<PathBuf>, untitled_index: usize, text: &str) -> Self {
         let buffer = Buffer::new(text);
         let large = text.len() > LARGE_FILE_BYTES || buffer.len_lines() > LARGE_FILE_LINES;
@@ -416,5 +450,22 @@ fn built_in_language_name(ext: &str) -> &'static str {
         _ => crate::languages::name(ext)
             .or_else(|| crate::lsp::registry::by_extension(ext, false).map(|l| l.name))
             .unwrap_or("Plain Text"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn brackets_in_strings_neither_match_nor_count() {
+        // Ruby is highlighted by syntect here: its scopes say where strings are.
+        let mut doc = Document::from_text(Some(PathBuf::from("t.rb")), 0, "f(\")\", [1])");
+        assert!(doc.ts.is_none());
+        assert_eq!(doc.matching_bracket(1, 1000), Some((1, 10)));
+        assert_eq!(doc.matching_bracket(3, 1000), None, "the ) in the string");
+        assert_eq!(doc.enclosing_brackets(8, 1000), Some((7, 9)));
+        assert_eq!(doc.enclosing_brackets(6, 1000), Some((1, 10)));
+        assert_eq!(doc.bracket_ahead(2), Some(7));
     }
 }
