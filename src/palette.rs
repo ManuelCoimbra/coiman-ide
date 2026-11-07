@@ -41,6 +41,10 @@ pub enum InputKind {
     NewBranch,
     BreakpointCondition,
     Logpoint,
+    /// A repository's URL, to clone.
+    CloneUrl,
+    /// The name of a repository to create on GitHub.
+    GitHubName,
 }
 
 /// What a picker list is choosing.
@@ -56,6 +60,8 @@ pub enum PickerKind {
     Recent,
     /// Yes or no to clearing the recent list.
     ClearRecent,
+    /// Private or public, for a new GitHub repository.
+    GitHubVisibility,
     /// "Reopen with Encoding" or "Save with Encoding".
     EncodingAction,
     ReopenWithEncoding,

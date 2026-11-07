@@ -31,6 +31,8 @@ pub struct FileChange {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Status {
     pub branch: String,
+    /// The remote branch this one follows (`origin/main`), if it follows one.
+    pub upstream: Option<String>,
     pub ahead: u32,
     pub behind: u32,
     pub staged: Vec<FileChange>,
@@ -109,6 +111,176 @@ fn git(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<Vec<u8>, Strin
         let msg = err.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join(" ");
         Err(if msg.is_empty() { format!("git {} failed", args.first().unwrap_or(&"")) } else { msg })
     }
+}
+
+/// Who commits are made by: what Git writes into each one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Identity {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+impl Identity {
+    pub fn is_complete(&self) -> bool {
+        self.name.is_some() && self.email.is_some()
+    }
+}
+
+/// Runs git where no repository's settings apply: its version, global settings, clone.
+/// Such commands read no repository config, so they need no trust.
+fn git_outside(dir: &Path, args: &[&str]) -> Result<String, String> {
+    let out = quiet_command(Path::new("git"))
+        .current_dir(dir)
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("could not run git: {e}"))?;
+    if out.status.success() {
+        Ok(text(out.stdout))
+    } else {
+        let err = String::from_utf8_lossy(&out.stderr);
+        let msg = err.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join(" ");
+        Err(if msg.is_empty() { format!("git {} failed", args.first().unwrap_or(&"")) } else { msg })
+    }
+}
+
+/// Git's version, when it's installed ("git version 2.47.1.windows.1").
+pub fn installed() -> Option<String> {
+    git_outside(&std::env::temp_dir(), &["--version"]).ok().map(|v| v.trim().to_owned())
+}
+
+/// Whether the GitHub CLI (`gh`) is installed.
+pub fn github_cli_installed() -> bool {
+    quiet_command(Path::new("gh")).arg("--version").stdin(Stdio::null()).output().is_ok_and(|o| o.status.success())
+}
+
+/// Where global settings are read and written: `--global`, or a given file (for tests).
+fn scope_args(file: Option<&Path>) -> Vec<String> {
+    match file {
+        Some(f) => vec!["--file".to_owned(), f.display().to_string()],
+        None => vec!["--global".to_owned()],
+    }
+}
+
+/// The name and email set for every repository (`git config --global`).
+pub fn global_identity() -> Identity {
+    global_identity_in(None)
+}
+
+fn global_identity_in(file: Option<&Path>) -> Identity {
+    let get = |key: &str| {
+        let mut args = vec!["config".to_owned()];
+        args.extend(scope_args(file));
+        args.push(key.to_owned());
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        git_outside(&std::env::temp_dir(), &args).ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty())
+    };
+    Identity { name: get("user.name"), email: get("user.email") }
+}
+
+/// Sets the name and email for every repository.
+pub fn set_global_identity(name: &str, email: &str) -> Result<(), String> {
+    set_global_identity_in(None, name, email)
+}
+
+fn set_global_identity_in(file: Option<&Path>, name: &str, email: &str) -> Result<(), String> {
+    check_identity(name, email)?;
+    for (key, value) in [("user.name", name), ("user.email", email)] {
+        let mut args = vec!["config".to_owned()];
+        args.extend(scope_args(file));
+        args.extend([key.to_owned(), value.to_owned()]);
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        git_outside(&std::env::temp_dir(), &args)?;
+    }
+    Ok(())
+}
+
+/// A name and an email that look like what Git expects.
+pub fn check_identity(name: &str, email: &str) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("Enter a name: it goes into every commit.".to_owned());
+    }
+    let email = email.trim();
+    let (user, host) = email.split_once('@').unwrap_or(("", ""));
+    if user.is_empty() || host.is_empty() || email.contains(char::is_whitespace) {
+        return Err("Enter an email like you@example.com. For GitHub, use one on your account, or your noreply address, so commits show as yours.".to_owned());
+    }
+    Ok(())
+}
+
+/// Makes `dir` a repository, its first branch named `branch`.
+pub fn init(dir: &Path, branch: &str) -> Result<Repo, String> {
+    git(dir, &["init", "-q", "-b", branch], None)?;
+    Ok(Repo { root: dir.to_path_buf() })
+}
+
+/// The folder a clone of `url` goes into: the last part of its path, without `.git`.
+pub fn repo_name_from_url(url: &str) -> Option<String> {
+    let url = url.trim().trim_end_matches(['/', '\\']);
+    let last = url.rsplit(['/', '\\', ':']).next()?;
+    let name = last.strip_suffix(".git").unwrap_or(last);
+    (!name.is_empty() && !name.contains(['?', '#'])).then(|| name.to_owned())
+}
+
+/// Clones `url` into a new folder in `parent`. Returns that folder.
+pub fn clone(url: &str, parent: &Path) -> Result<PathBuf, String> {
+    let name = repo_name_from_url(url).ok_or("That doesn't look like a repository URL.")?;
+    let target = parent.join(&name);
+    if target.exists() {
+        return Err(format!("{} already exists. Choose another folder, or remove it first.", target.display()));
+    }
+    git_outside(parent, &["clone", "--", url.trim(), &name])?;
+    Ok(target)
+}
+
+fn valid_remote_name(name: &str) -> Result<(), String> {
+    let ok = !name.is_empty()
+        && !name.starts_with('-')
+        && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    if ok { Ok(()) } else { Err(format!("\"{name}\" can't be a remote's name: use letters, digits, - _ or .")) }
+}
+
+/// The GitHub CLI's arguments to create a repository from the current folder.
+fn github_create_args(name: &str, visibility: &str) -> Vec<String> {
+    ["repo", "create", name, visibility, "--source", ".", "--remote", "origin", "--push"].map(str::to_owned).to_vec()
+}
+
+/// Git's error in plain words, with what to do, for the failures people meet most:
+/// no author set, signing in, no upstream, rejected pushes, a repository not found.
+pub fn explain(error: &str) -> String {
+    let e = error.to_lowercase();
+    let why = if e.contains("please tell me who you are")
+        || e.contains("empty ident")
+        || e.contains("unable to auto-detect email")
+    {
+        "Git doesn't know your name and email, which it writes into each commit. Set them in Source Control (Author)."
+    } else if e.contains("authentication failed")
+        || e.contains("could not read username")
+        || e.contains("terminal prompts disabled")
+        || e.contains("invalid username or password")
+    {
+        "The remote wants you to sign in. Git uses your system's credential manager: sign in once with `git push` in the terminal, or use an SSH remote. Your commit author (name and email) is a separate setting."
+    } else if e.contains("permission denied (publickey)") {
+        "The SSH key isn't accepted. Add your public key to your GitHub account, or use the HTTPS URL."
+    } else if e.contains("has no upstream branch") || e.contains("no upstream configured") {
+        "This branch isn't on the remote yet. Push publishes it."
+    } else if e.contains("[rejected]") || e.contains("fetch first") || e.contains("non-fast-forward") {
+        "The remote has commits you don't have. Pull first, then push."
+    } else if e.contains("repository not found") || e.contains("does not appear to be a git repository") {
+        "The remote isn't there, or you can't see it: check the URL, and that you're signed in to an account that can."
+    } else if e.contains("could not resolve host") || e.contains("unable to access") && e.contains("connect") {
+        "Couldn't reach the server: check the connection and the URL."
+    } else if e.contains("not a git repository") {
+        "This folder isn't in a Git repository. Initialize one in Source Control."
+    } else if e.contains("this repository has no remote") || e.contains("no configured push destination") {
+        "There's no remote to send to. Add one in Source Control (Remotes), or publish to GitHub."
+    } else if e.contains("already exists") && e.contains("remote") {
+        "A remote with that name exists already."
+    } else {
+        return error.to_owned();
+    };
+    format!("{why} ({})", error.trim())
 }
 
 fn text(bytes: Vec<u8>) -> String {
@@ -311,6 +483,62 @@ impl Repo {
         self.run(&["config", "user.name"]).ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty())
     }
 
+    /// The name and email commits here are made with: this repository's, else the global ones.
+    pub fn identity(&self) -> Identity {
+        let get = |key| self.run(&["config", key]).ok().map(|s| s.trim().to_owned()).filter(|s| !s.is_empty());
+        Identity { name: get("user.name"), email: get("user.email") }
+    }
+
+    /// Sets the name and email for this repository only.
+    pub fn set_identity(&self, name: &str, email: &str) -> Result<(), String> {
+        self.run(&["config", "user.name", name])?;
+        self.run(&["config", "user.email", email]).map(drop)
+    }
+
+    /// The remotes and where they point: (name, fetch URL).
+    pub fn remotes(&self) -> Result<Vec<(String, String)>, String> {
+        let out = self.run(&["remote", "-v"])?;
+        Ok(out
+            .lines()
+            .filter(|l| l.ends_with("(fetch)"))
+            .filter_map(|l| {
+                let mut parts = l.split_whitespace();
+                Some((parts.next()?.to_owned(), parts.next()?.to_owned()))
+            })
+            .collect())
+    }
+
+    pub fn add_remote(&self, name: &str, url: &str) -> Result<(), String> {
+        valid_remote_name(name)?;
+        self.run(&["remote", "add", "--", name, url]).map(drop)
+    }
+
+    pub fn remove_remote(&self, name: &str) -> Result<(), String> {
+        self.run(&["remote", "remove", "--", name]).map(drop)
+    }
+
+    /// Creates a repository on GitHub for this one, through the GitHub CLI (`gh`), which
+    /// does the signing in. Adds it as `origin` and pushes the current branch.
+    pub fn create_on_github(&self, name: &str, private: bool) -> Result<String, String> {
+        let visibility = if private { "--private" } else { "--public" };
+        let args = github_create_args(name, visibility);
+        let mut cmd = quiet_command(Path::new("gh"));
+        crate::trust::check(&self.root)?;
+        let out = cmd
+            .current_dir(&self.root)
+            .args(&args)
+            .env("GH_PROMPT_DISABLED", "1")
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| format!("could not run the GitHub CLI (gh): {e}"))?;
+        let all = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        if out.status.success() {
+            Ok(all.lines().find(|l| l.contains("github.com")).unwrap_or("").trim().to_owned())
+        } else {
+            Err(all.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join(" "))
+        }
+    }
+
     /// Blame for one 0-based line of `rel`, as it is in `contents` (unsaved
     /// edits included).
     pub fn blame_line(&self, rel: &str, line: usize, contents: &str) -> Result<BlameLine, String> {
@@ -365,6 +593,7 @@ fn parse_branch(line: &str, status: &mut Status) {
     let (name, rest) = line.split_once(' ').unwrap_or((line, ""));
     status.branch =
         if name == "HEAD" { "(detached)".to_owned() } else { name.split("...").next().unwrap_or(name).to_owned() };
+    status.upstream = name.split_once("...").map(|(_, up)| up.to_owned()).filter(|up| !up.is_empty());
     let number = |key: &str| {
         rest.split([',', '[', ']']).find_map(|part| part.trim().strip_prefix(key)?.trim().parse().ok()).unwrap_or(0)
     };
@@ -512,6 +741,82 @@ pub fn apply_hunks(base: &str, new: &str, hunks: &[Hunk], nl: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identities_remotes_init_and_clone() {
+        let base = std::env::temp_dir().join(format!("rust-code-git-setup-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).unwrap();
+        assert!(installed().is_some_and(|v| v.starts_with("git version")));
+        // Global settings go to a file of our own here, never the real ones.
+        let global = base.join("gitconfig");
+        assert_eq!(global_identity_in(Some(&global)), Identity::default());
+        assert!(set_global_identity_in(Some(&global), "", "a@b.c").is_err());
+        assert!(set_global_identity_in(Some(&global), "Ann", "not an email").is_err());
+        set_global_identity_in(Some(&global), "Ann Lee", "ann@example.com").unwrap();
+        let ann = global_identity_in(Some(&global));
+        assert_eq!((ann.name.as_deref(), ann.email.as_deref()), (Some("Ann Lee"), Some("ann@example.com")));
+        assert!(ann.is_complete());
+        // A new repository, its own author, its remotes.
+        let dir = base.join("proj");
+        std::fs::create_dir_all(&dir).unwrap();
+        let repo = init(&dir, "main").unwrap();
+        repo.set_identity("Bo", "bo@example.com").unwrap();
+        assert_eq!(repo.identity().email.as_deref(), Some("bo@example.com"));
+        std::fs::write(dir.join("a.txt"), "a\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("first").unwrap();
+        assert_eq!(repo.status().unwrap().branch, "main");
+        assert!(repo.add_remote("-x", "u").is_err());
+        repo.add_remote("origin", "https://example.com/proj.git").unwrap();
+        assert_eq!(repo.remotes().unwrap(), [("origin".to_owned(), "https://example.com/proj.git".to_owned())]);
+        assert!(repo.add_remote("origin", "x").is_err());
+        repo.remove_remote("origin").unwrap();
+        assert!(repo.remotes().unwrap().is_empty());
+        // Clone it, by path, into another folder.
+        let into = base.join("clones");
+        std::fs::create_dir_all(&into).unwrap();
+        let cloned = clone(&dir.display().to_string(), &into).unwrap();
+        assert_eq!(cloned, into.join("proj"));
+        assert!(cloned.join("a.txt").exists());
+        assert!(clone(&dir.display().to_string(), &into).unwrap_err().contains("already exists"));
+        let status = Repo { root: cloned }.status().unwrap();
+        assert_eq!(status.upstream.as_deref(), Some("origin/main"));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn names_from_urls_and_plain_errors() {
+        for (url, name) in [
+            ("https://github.com/user/repo.git", "repo"),
+            ("https://github.com/user/repo", "repo"),
+            ("https://github.com/user/repo/", "repo"),
+            ("git@github.com:user/my-lib.git", "my-lib"),
+            ("C:\\work\\proj", "proj"),
+        ] {
+            assert_eq!(repo_name_from_url(url).as_deref(), Some(name), "{url}");
+        }
+        assert_eq!(repo_name_from_url(""), None);
+        assert!(explain("Author identity unknown *** Please tell me who you are.").contains("name and email"));
+        assert!(explain("fatal: Authentication failed for 'https://github.com/a/b.git/'").contains("sign in"));
+        assert!(
+            explain("fatal: could not read Username for 'https://github.com': terminal prompts disabled")
+                .contains("credential manager")
+        );
+        assert!(explain("! [rejected] main -> main (fetch first)").contains("Pull first"));
+        assert!(explain("remote: Repository not found.").contains("check the URL"));
+        assert!(explain("This repository has no remote").contains("Add one"));
+        assert_eq!(explain("something else"), "something else");
+        assert_eq!(
+            github_create_args("demo", "--private"),
+            ["repo", "create", "demo", "--private", "--source", ".", "--remote", "origin", "--push"]
+        );
+        let mut s = Status::default();
+        parse_branch("main...origin/main [ahead 2]", &mut s);
+        assert_eq!((s.branch.as_str(), s.upstream.as_deref(), s.ahead), ("main", Some("origin/main"), 2));
+        parse_branch("feature", &mut s);
+        assert_eq!(s.upstream, None);
+    }
 
     #[test]
     fn amends_stashes_and_reads_history() {

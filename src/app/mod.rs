@@ -20,6 +20,7 @@ mod file_buttons;
 mod files;
 mod font_preview;
 mod git;
+mod git_setup;
 mod hidden;
 mod history;
 mod image_view;
@@ -243,6 +244,8 @@ pub struct CodeApp {
     recent: rust_code_core::recent::Recent,
     /// Where each file dialog was last left.
     dialog_dirs: rust_code_core::dialog_dirs::DialogDirs,
+    /// Git's setup: installed, the author, remotes, clone and publish.
+    git_setup: git_setup::GitSetup,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -385,6 +388,7 @@ impl CodeApp {
             hidden: Default::default(),
             recent: rust_code_core::recent::load(),
             dialog_dirs: rust_code_core::dialog_dirs::load(),
+            git_setup: git_setup::GitSetup::default(),
             pending_close: None,
             allow_close: false,
             chord: None,
@@ -826,6 +830,8 @@ impl eframe::App for CodeApp {
             Some(PaletteResult::Input(InputKind::NewFolder, name)) => self.finish_new_path(&name, true),
             Some(PaletteResult::Input(InputKind::RenamePath, name)) => self.finish_rename_path(&name),
             Some(PaletteResult::Input(InputKind::NewBranch, name)) => self.switch_branch(&ctx, name, true),
+            Some(PaletteResult::Input(InputKind::CloneUrl, url)) => self.git_clone_to(&ctx, &url),
+            Some(PaletteResult::Input(InputKind::GitHubName, name)) => self.git_publish_named(&name),
             Some(PaletteResult::Input(InputKind::BreakpointCondition, text)) => {
                 self.finish_breakpoint_edit(false, &text)
             }

@@ -199,8 +199,25 @@ is read and written on your machine.
 
 ### Source control (Git)
 
-Uses the `git` command line, like VS Code, and only local commands (no fetch, pull or
-push). All git work runs in the background.
+Uses the `git` command line, like VS Code. Fetch, pull, push, clone and publishing reach the
+network, and only when you ask. All git work runs in the background.
+
+- **Setting up**: Source Control says when Git isn't installed (with a link to git-scm.com). When
+  Git doesn't know your name and email, a card says so and opens a form: they're what Git writes
+  into each commit, set for all repositories (`git config --global`) or only this one, and the
+  form explains that signing in to GitHub doesn't set them (GitHub links commits to your account
+  by that email). Otherwise one line says who you commit as, with **Change**
+  (**Git: Set Commit Author**).
+- **Starting a repository**: a folder that isn't one offers **Initialize Repository** (`git init`,
+  first branch `main`) and **Clone Repository...** (**Git: Clone**): a URL, then the folder it goes
+  into; it opens when done.
+- **Remotes**: listed under Remotes, each with an × to remove it; a form adds one (the first is
+  `origin`). **Publish to GitHub** creates the repository on GitHub, adds it as `origin` and pushes,
+  through the GitHub CLI (`gh`, signed in with `gh auth login`); without it, it says how else.
+- Under the branch, one line says where it stands: up to date with `origin/main`, commits to push
+  or pull, not on the remote yet (Push publishes it), or no remote yet.
+- Git's errors come with what they mean and what to do: no author set, signing in, an SSH key not
+  accepted, a branch with no upstream, a rejected push, a remote not found, no connection.
 
 - **Gutter markers** beside the line numbers: green added, blue modified, red wedge for
   deleted lines, compared with the index. Click one to see the old lines and **Stage** or

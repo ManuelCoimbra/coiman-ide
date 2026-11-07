@@ -75,6 +75,9 @@ impl CodeApp {
                     self.open_folder(path);
                 }
             }
+            Command::GitClone | Command::GitInit | Command::GitSetAuthor | Command::GitPublishGitHub => {
+                self.git_setup_command(ctx, cmd);
+            }
             Command::ExplorerFind => {
                 self.sidebar_visible = true;
                 self.sidebar_view = SidebarView::Explorer;
@@ -633,6 +636,7 @@ impl CodeApp {
             PickerKind::RunTarget => self.picked_run_target(ctx, label),
             PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
             PickerKind::Recent => self.open_recent(label),
+            PickerKind::GitHubVisibility => self.git_publish_visibility(ctx, label),
             PickerKind::ClearRecent => {
                 if label != "Cancel" {
                     self.clear_recent();

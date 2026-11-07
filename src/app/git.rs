@@ -185,6 +185,13 @@ pub(super) struct GitState {
     expanded: Option<(String, Vec<(char, String)>)>,
 }
 
+impl GitState {
+    /// The repository, for setting its author.
+    pub(super) fn repo_for_setup(&self) -> Option<&Repo> {
+        self.repo.as_ref()
+    }
+}
+
 impl Default for GitState {
     fn default() -> Self {
         let (tx, rx) = mpsc::channel();
@@ -277,7 +284,13 @@ impl CodeApp {
     }
 
     /// Runs every frame: repository lookup, messages, refreshes, gutter, blame.
+    /// The open repository, if any.
+    pub(super) fn git_repo(&self) -> Option<&Repo> {
+        self.git.repo.as_ref()
+    }
+
     pub(super) fn pump_git(&mut self, ctx: &egui::Context) {
+        self.pump_git_setup(ctx);
         // Keep a diff against the open document current while it is edited.
         if let Some(view) = &mut self.git.diff
             && let Some((uid, version)) = view.live
@@ -358,7 +371,7 @@ impl CodeApp {
                 self.git.lists_stale = true;
                 match status {
                     Ok(status) => self.git.status = Some(status),
-                    Err(e) => self.status = Some(format!("Git: {e}")),
+                    Err(e) => self.status = Some(format!("Git: {}", git::explain(&e))),
                 }
             }
             Msg::Blame { uid, line, version, text } => {
@@ -373,22 +386,22 @@ impl CodeApp {
                     items.extend(branches);
                     self.palette.show_picker(PickerKind::Branch, items, &current, "Select a branch to switch to");
                 }
-                Err(e) => self.status = Some(format!("Git: {e}")),
+                Err(e) => self.status = Some(format!("Git: {}", git::explain(&e))),
             },
             Msg::Diff(src) => self.show_diff(src),
             Msg::Lists(result) => match result {
                 Ok((log, stashes)) => (self.git.log, self.git.stashes) = (log, stashes),
-                Err(e) => self.status = Some(format!("Git: {e}")),
+                Err(e) => self.status = Some(format!("Git: {}", git::explain(&e))),
             },
             Msg::CommitFiles(hash, result) => match result {
                 Ok(files) => self.git.expanded = Some((hash, files)),
-                Err(e) => self.status = Some(format!("Git: {e}")),
+                Err(e) => self.status = Some(format!("Git: {}", git::explain(&e))),
             },
             Msg::LastMessage(result) => match result {
                 // Unless something was typed in the meantime.
                 Ok(message) if self.git.message.is_empty() => self.git.message = message,
                 Ok(_) => {}
-                Err(e) => self.status = Some(format!("Git: {e}")),
+                Err(e) => self.status = Some(format!("Git: {}", git::explain(&e))),
             },
             Msg::Done { result } => {
                 self.git.busy = None;
@@ -398,7 +411,7 @@ impl CodeApp {
                             self.status = Some(done);
                         }
                     }
-                    Err(e) => self.status = Some(format!("Git: {e}")),
+                    Err(e) => self.status = Some(format!("Git: {}", git::explain(&e))),
                 }
                 self.git_refresh_soon(ctx, 0.0);
                 if let Some(view) = self.git.diff.as_ref().filter(|v| v.history.is_none() && v.commit.is_none()) {
@@ -1124,6 +1137,9 @@ impl CodeApp {
                 }
             });
         });
+        if self.settings.git.enabled && self.git_setup_section(ui) {
+            return;
+        }
         let Some(status) = self.git.status.clone() else {
             let text = if !self.settings.git.enabled {
                 "Git is turned off (git.enabled)."
@@ -1142,6 +1158,7 @@ impl CodeApp {
         {
             self.git_checkout(&ctx);
         }
+        self.git_upstream_line(ui, &status.branch, status.upstream.as_deref(), status.ahead, status.behind);
         if self.git.lists_stale {
             self.git.lists_stale = false;
             self.git_job(&ctx, None, |repo| {
@@ -1174,6 +1191,7 @@ impl CodeApp {
                 self.git_stash(&ctx);
             }
         });
+        self.git_remotes_section(ui);
         let hint = format!("Message (Ctrl+Enter to commit on '{}')", status.branch);
         let edit = ui.add(
             egui::TextEdit::multiline(&mut self.git.message)
