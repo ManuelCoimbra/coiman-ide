@@ -1,4 +1,4 @@
-"""Builds core/data/file_icons.txt from an unpacked material-icon-theme package.
+"""Builds crates/coiman-core/data/file_icons.txt from an unpacked material-icon-theme package.
 
     python scripts/build_file_icons.py path/to/package
 

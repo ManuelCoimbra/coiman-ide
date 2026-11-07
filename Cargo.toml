@@ -1,25 +1,9 @@
-[package]
-name = "coiman-ide"
-version = "0.1.0"
-edition = "2024"
-
 [workspace]
-members = ["core", "tools/rcplugin"]
-exclude = ["examples/plugins", "core/tests/fixtures"]
-
-[dependencies]
-rust-code-core = { path = "core" }
-eframe = { version = "0.37.0", default-features = false, features = ["accesskit", "clipboard", "default_fonts", "links", "glow"] }
-# Emoji fonts are their own feature since 0.37.
-egui = { version = "0.37.0", features = ["monochrome_emoji_fonts"] }
-rfd = "0.17.2"
-serde = { version = "1.0.229", features = ["derive"] }
-toml = "1.1.8"
-serde_json = "1"
-trash = "5.2.9"
-resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico", "tiff"] }
-ropey = { version = "=1.6.1", default-features = false, features = ["simd"] }
+resolver = "3"
+members = ["crates/coiman-core", "crates/coiman-ide", "crates/rcplugin"]
+# Plugins build on their own, for WebAssembly (scripts/build-plugins.ps1).
+exclude = ["plugins", "crates/coiman-core/tests/fixtures"]
+default-members = ["crates/coiman-ide"]
 
 [profile.release]
 lto = "thin"
@@ -29,7 +13,7 @@ strip = false
 [profile.release.package.coiman-ide]
 debug = "line-tables-only"
 
-[profile.release.package.rust-code-core]
+[profile.release.package.coiman-core]
 debug = "line-tables-only"
 
 # Debug builds stay small: line numbers for our code, nothing for dependencies.

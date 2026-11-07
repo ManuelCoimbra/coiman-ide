@@ -1,4 +1,4 @@
-# Builds the built-in extensions, the example plugin and the test fixture: each is compiled
+# Builds the built-in plugins, the example plugin and the test fixture: each is compiled
 # for wasm32-unknown-unknown and turned into a component (plugin.wasm next
 # to its plugin.toml) with rcplugin.
 # Needs the wasm32 target: rustup target add wasm32-unknown-unknown
@@ -10,8 +10,9 @@ if ($LASTEXITCODE -ne 0) { throw 'rcplugin failed to build' }
 $tool = Join-Path $root 'target\debug\rcplugin.exe'
 # One shared build folder, so guests don't each keep their own copy of wit-bindgen.
 $env:CARGO_TARGET_DIR = Join-Path $root 'target\plugins'
-$dirs = 'extensions\comment-highlights', 'extensions\trailing-spaces', 'extensions\color-preview', 'extensions\scs-sii',
-    'examples\plugins\word-count', 'examples\plugins\tool-runner', 'core\tests\fixtures\test-plugin'
+$dirs = 'plugins\built-in\comment-highlights', 'plugins\built-in\trailing-spaces', 'plugins\built-in\color-preview',
+    'plugins\built-in\scs-sii', 'plugins\examples\word-count', 'plugins\examples\tool-runner',
+    'crates\coiman-core\tests\fixtures\test-plugin'
 foreach ($dir in $dirs) {
     Push-Location (Join-Path $root $dir)
     try {

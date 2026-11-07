@@ -5,7 +5,7 @@ param([switch]$Quick)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
-$benchArgs = @('bench', '-p', 'rust-code-core', '--bench', 'editor')
+$benchArgs = @('bench', '-p', 'coiman-core', '--bench', 'editor')
 if ($Quick) { $benchArgs += @('--', '--quick') }
 cargo @benchArgs
 $coreFailed = $LASTEXITCODE -ne 0

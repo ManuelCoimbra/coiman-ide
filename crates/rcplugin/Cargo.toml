@@ -1,0 +1,10 @@
+[package]
+name = "rcplugin"
+version = "0.1.0"
+edition = "2024"
+description = "Builds, signs and publishes Coiman IDE plugins"
+
+[dependencies]
+getrandom = "0.4.3"
+coiman-core = { path = "../coiman-core" }
+wit-component = "0.261"

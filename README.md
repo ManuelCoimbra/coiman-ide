@@ -50,9 +50,9 @@ cargo run --release --example make_icons
 
 ## Project structure
 
-A Cargo workspace with three crates:
+A Cargo workspace: three crates in `crates/`, plugins in `plugins/`:
 
-- **`core/` (`rust-code-core`)** — everything that doesn't need a UI, so it can be tested
+- **`crates/coiman-core/` (`coiman-core`)** — everything that doesn't need a UI, so it can be tested
   and benchmarked headlessly: `buffer` (rope, selections, undo), `edit_ops` (line commands),
   `document`, `syntax` (tree-sitter worker) and `highlight` (syntect), `theme` (data, VS Code
   import), `settings`, `session`, `commands`, `search`, `finder`, `watcher`, `lsp` (language
@@ -62,12 +62,12 @@ A Cargo workspace with three crates:
   smart selection, text objects), `history` (local history store), `vim` (Vim/Helix modal editing engine),
   `dap` (debug adapter client for CodeLLDB: DAP over stdio, finding and installing CodeLLDB),
   `plugin` (WebAssembly plugin runtime on Wasmtime, manifests and permissions, signed
-  registries, lockfile). The plugin API is `core/wit/plugin.wit`.
-- **`src/` (`rust-code`)** — the egui app: `app/` (state and frame loop, split into
+  registries, lockfile). The plugin API is `crates/coiman-core/wit/plugin.wit`.
+- **`crates/coiman-ide/` (`coiman-ide`)** — the egui app: `app/` (state and frame loop, split into
   `dispatch`, `files`, `config`, `workbench`, `lsp`, `git`, `cargo`, `outline`, `history`, `debug`, `plugins`), `editor_view` (the editor widget), `icons` (vector
   icons drawn in code, codicon-inspired), `lsp_ui`, `palette`,
   `search_panel`, `explorer`, `terminal` (terminal tabs and grid widget), `keymap`, `theme` (egui colors and visuals).
-- **`tools/rcplugin`** — the plugin publisher's tool: key generation, turning a built
+- **`crates/rcplugin`** — the plugin publisher's tool: key generation, turning a built
   module into a component, signing and publishing to a registry folder.
 
 Checks (no networking crates, formatting, clippy with warnings as errors, tests):
@@ -85,7 +85,7 @@ commands, large-file open, Quick Open over 100k files, startup time, idle memory
 powershell -File scripts/bench.ps1 [-Quick]
 ```
 
-`cargo bench -p rust-code-core` runs only the headless part. Each row prints p50/p99 and
+`cargo bench -p coiman-core` runs only the headless part. Each row prints p50/p99 and
 PASS, FAIL or GAP; a GAP is a known shortfall tracked on the roadmap and doesn't fail the run.
 
 ## Privacy
@@ -571,7 +571,7 @@ downloaded unless you click **Download**.
 
 ### Plugins (WebAssembly)
 
-Plugins are WebAssembly components written against `core/wit/plugin.wit` and run in
+Plugins are WebAssembly components written against `crates/coiman-core/wit/plugin.wit` and run in
 [Wasmtime](https://wasmtime.dev/), on their own thread.
 
 - **Sandboxed**: a plugin gets only the editor's plugin API. It has no WASI, so it has no
@@ -618,7 +618,7 @@ Plugins are WebAssembly components written against `core/wit/plugin.wit` and run
   `!`, `?` or `*`.
 - **Trailing Spaces**: marks whitespace at line ends.
 - **SCS Units** (optional, not installed by default; **Plugins: Install from Folder...** on
-  `extensions/scs-sii`): Euro Truck Simulator 2 and American Truck Simulator `.sii` files get colors, a
+  `plugins/built-in/scs-sii`): Euro Truck Simulator 2 and American Truck Simulator `.sii` files get colors, a
   **SII Units** list in the Explorer, and checks for unbalanced braces, unclosed strings, duplicate
   unit names, malformed lines and a missing `SiiNunit`.
 
@@ -626,13 +626,13 @@ Plugins can color text (`set-decorations`) and report in the Problems panel (`se
 hear about edits (`edited` event). VS Code extensions themselves can't load here: they need VS
 Code's JavaScript host and full system access, which is what this sandbox exists to avoid.
 
-Writing one: see `examples/plugins/word-count`. It has a status item, a panel, a TODO tree
+Writing one: see `plugins/examples/word-count`. It has a status item, a panel, a TODO tree
 view and commands. Build it with `scripts/build-plugins.ps1`, which needs
 `rustup target add wasm32-unknown-unknown`. Publish it with:
 
 ```
 rcplugin keygen my.key
-rcplugin publish examples/plugins/word-count <registry-folder> --key my.key --changelog "..."
+rcplugin publish plugins/examples/word-count <registry-folder> --key my.key --changelog "..."
 ```
 
 ### Language servers
@@ -750,7 +750,7 @@ servers off.
   undo/redo; `gg ge gh gl gs` go to; `;` collapses.
 - Insert mode is the normal editor (completion, auto-indent, IME); `Esc` returns to normal.
 
-The engine (`core/src/vim.rs`) is checked by golden files (`core/tests/golden/`): every Vim
+The engine (`crates/coiman-core/src/vim.rs`) is checked by golden files (`crates/coiman-core/tests/golden/`): every Vim
 case is also run in real Vim (`vim -u NONE`, found on `PATH`, in Git for Windows, or at
 `RUST_CODE_VIM`) and the test fails if Vim disagrees.
 

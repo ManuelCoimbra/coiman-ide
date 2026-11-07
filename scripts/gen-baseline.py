@@ -1,6 +1,6 @@
-"""Writes core/data/baseline.tsv from the data.json of the npm package web-features.
+"""Writes crates/coiman-core/data/baseline.tsv from the data.json of the npm package web-features.
 
-Usage: python -I scripts/gen-baseline.py <data.json> <version> core/data/baseline.tsv
+Usage: python -I scripts/gen-baseline.py <data.json> <version> crates/coiman-core/data/baseline.tsv
 
 Only CSS and HTML features at the level the editor can see them are kept: a
 property, a keyword value of one, a selector, at-rule or function, or an element.
