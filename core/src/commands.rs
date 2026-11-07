@@ -215,6 +215,14 @@ pub enum Command {
     CancelTests,
     CargoCheck,
     CargoClippy,
+    MavenRunGoal,
+    MavenCustomGoal,
+    MavenEffectivePom,
+    MavenAddDependency,
+    MavenResolveDependencies,
+    MavenNewProject,
+    MavenRefresh,
+    ShowMaven,
     ShowOutput,
     // Structure.
     Fold,
@@ -453,6 +461,14 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::CancelTests, "Test: Cancel Test Run"),
     (Command::CargoCheck, "Cargo: Check"),
     (Command::CargoClippy, "Cargo: Clippy"),
+    (Command::MavenRunGoal, "Maven: Run Goal..."),
+    (Command::MavenCustomGoal, "Maven: Custom Goal..."),
+    (Command::MavenEffectivePom, "Maven: Show Effective POM"),
+    (Command::MavenAddDependency, "Maven: Add Dependency..."),
+    (Command::MavenResolveDependencies, "Maven: Resolve Dependencies"),
+    (Command::MavenNewProject, "Maven: New Project from Archetype..."),
+    (Command::MavenRefresh, "Maven: Refresh"),
+    (Command::ShowMaven, "View: Show Maven"),
     (Command::ShowOutput, "View: Toggle Output"),
     (Command::Fold, "Fold"),
     (Command::Unfold, "Unfold"),
@@ -702,6 +718,14 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::CancelTests, "testing.cancelRun"),
     (Command::CargoCheck, "rust-code.cargo.check"),
     (Command::CargoClippy, "rust-code.cargo.clippy"),
+    (Command::MavenRunGoal, "maven.goal.execute"),
+    (Command::MavenCustomGoal, "maven.goal.custom"),
+    (Command::MavenEffectivePom, "maven.project.effectivePom"),
+    (Command::MavenAddDependency, "maven.project.addDependency"),
+    (Command::MavenResolveDependencies, "rust-code.maven.resolveDependencies"),
+    (Command::MavenNewProject, "maven.archetype.generate"),
+    (Command::MavenRefresh, "maven.explorer.refresh"),
+    (Command::ShowMaven, "rust-code.maven.focus"),
     (Command::ShowOutput, "workbench.action.output.toggleOutput"),
     (Command::Fold, "editor.fold"),
     (Command::Unfold, "editor.unfold"),
@@ -759,6 +783,11 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowOutput
             | RunWithoutDebugging
             | RunProgram
+            | MavenRunGoal
+            | MavenCustomGoal
+            | MavenAddDependency
+            | MavenNewProject
+            | ShowMaven
             | RunCurrentFile
             | ChooseRunTarget
             | OpenLivePreview

@@ -437,6 +437,29 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   C++, Java, JavaScript, TypeScript, C#, PHP, Kotlin, Swift, Scala, Groovy and Dart
   (**Settings > Editor > Doc comment templates**).
 
+### Maven
+
+A folder with a `pom.xml` gets a MAVEN section in the Explorer, as the VS Code Maven
+extension has it:
+
+- **Projects and modules**, each with its **Lifecycle** (click a phase, or its ▶, to run
+  `mvn <phase>` in a terminal tab), **Plugins** with their goals (goals Rust Code doesn't
+  know are read with `mvn help:describe`), and **Dependencies** as a tree.
+- The tree is read from the local repository (`~/.m2/repository`, or `<localRepository>`
+  in `settings.xml`) the way Maven resolves it: nearest wins, scopes, exclusions, parents,
+  imported BOMs, profiles for this OS and JDK, classifiers such as JavaFX's `win` jars.
+  Conflicts and what isn't downloaded yet are marked. **Resolve Dependencies** (right
+  click) has Maven download what's missing and shows its own `dependency:tree`.
+- **Maven: Run Goal...**, **Custom Goal...** (with a history), **Show Effective POM**,
+  **Add Dependency...** (searches Maven Central, asks the scope, writes it into the pom as
+  one undo step and saves), **Resolve Dependencies**, **New Project from Archetype...**
+  (quickstart, webapp or simple; inside a parent with `<packaging>pom</packaging>` it's
+  added as a module), **Refresh** and **View: Show Maven**, in the palette.
+- poms are read again when they change, and the Java language server is told.
+- The project's `mvnw` is used first, then `mvn` from PATH. Without either, Rust Code
+  offers to download Apache Maven 3.9.16 (9 MB, checked against its SHA-512) into its
+  config folder. Maven needs Java.
+
 ### Debugging (CodeLLDB)
 
 Rust Code debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug

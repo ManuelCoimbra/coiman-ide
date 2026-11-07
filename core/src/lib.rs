@@ -51,6 +51,7 @@ pub mod lsp;
 pub mod markdown;
 pub mod markup;
 pub mod matchers;
+pub mod maven;
 pub mod plugin;
 pub mod preview;
 pub mod project_tree;

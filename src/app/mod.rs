@@ -34,6 +34,7 @@ mod lsp;
 mod lsp_extra;
 mod lsp_room;
 mod markup;
+mod maven;
 mod md_preview;
 mod outline;
 mod plugins;
@@ -246,6 +247,7 @@ pub struct CodeApp {
     dialog_dirs: rust_code_core::dialog_dirs::DialogDirs,
     /// Git's setup: installed, the author, remotes, clone and publish.
     git_setup: git_setup::GitSetup,
+    maven: maven::MavenState,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -389,6 +391,7 @@ impl CodeApp {
             recent: rust_code_core::recent::load(),
             dialog_dirs: rust_code_core::dialog_dirs::load(),
             git_setup: git_setup::GitSetup::default(),
+            maven: maven::MavenState::default(),
             pending_close: None,
             allow_close: false,
             chord: None,
@@ -479,6 +482,7 @@ impl eframe::App for CodeApp {
         self.pump_lsp(&ctx);
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
+        self.pump_maven(&ctx);
         self.pump_debug(&ctx);
         self.pump_plugins(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.
@@ -836,6 +840,10 @@ impl eframe::App for CodeApp {
                 self.finish_breakpoint_edit(false, &text)
             }
             Some(PaletteResult::Input(InputKind::Logpoint, text)) => self.finish_breakpoint_edit(true, &text),
+            Some(PaletteResult::Input(InputKind::MavenGoal, text)) => self.maven_goal_typed(&ctx, &text),
+            Some(PaletteResult::Input(InputKind::MavenSearch, text)) => self.maven_search(&ctx, &text),
+            Some(PaletteResult::Input(InputKind::MavenGroupId, text)) => self.maven_group_typed(&text),
+            Some(PaletteResult::Input(InputKind::MavenArtifactId, text)) => self.maven_artifact_typed(&ctx, &text),
             Some(PaletteResult::GoToLine(line)) if line > 0 => {
                 if let Some(doc) = self.active_doc() {
                     doc.goto_line(line);

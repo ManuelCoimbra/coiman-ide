@@ -56,6 +56,9 @@ fn build_dir(stem: &str) -> PathBuf {
     std::env::temp_dir().join("rust-code-run").join(stem)
 }
 
+/// Why a Maven project can't run: the app offers to fetch Maven when it sees this.
+pub const MAVEN_MISSING: &str = "This Maven project needs Maven: no mvnw in the project, and no mvn on PATH";
+
 fn need(tool: &str, what: &str) -> Result<(), String> {
     if which(tool).is_some() { Ok(()) } else { Err(format!("{what} needs `{tool}`, which isn't on PATH")) }
 }
@@ -197,17 +200,11 @@ fn java_plan(file: &Path, main: &JavaMain, root: Option<&Path>) -> Result<RunPla
     let full = if package.is_empty() { class.clone() } else { format!("{package}.{class}") };
     // A build tool knows the dependencies.
     if let Some(dir) = find_up(file, root, "pom.xml") {
-        let wrapper = dir.join(if cfg!(windows) { "mvnw.cmd" } else { "mvnw" });
-        let mvn = if wrapper.exists() {
-            call(&wrapper)
-        } else {
-            need("mvn", "This Maven project")?;
-            "mvn".to_owned()
-        };
+        let mvn = crate::maven::find_mvn(&dir, root).ok_or_else(|| MAVEN_MISSING.to_owned())?;
         let main_arg = quote(&format!("-Dexec.mainClass={full}"));
         return Ok(RunPlan {
             title: class.clone(),
-            command: format!("{mvn} -q compile exec:java {main_arg}"),
+            command: mvn.command(&format!("-q compile exec:java {main_arg}")),
             cwd: dir,
         });
     }

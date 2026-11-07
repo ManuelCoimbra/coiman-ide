@@ -45,6 +45,12 @@ pub enum InputKind {
     CloneUrl,
     /// The name of a repository to create on GitHub.
     GitHubName,
+    /// Goals and options to run with mvn.
+    MavenGoal,
+    /// What to look for on Maven Central.
+    MavenSearch,
+    MavenGroupId,
+    MavenArtifactId,
 }
 
 /// What a picker list is choosing.
@@ -77,6 +83,10 @@ pub enum PickerKind {
     DebugTarget,
     RunTarget,
     VsCodeImport,
+    MavenGoal,
+    MavenFound,
+    MavenScope,
+    MavenArchetype,
 }
 
 struct Picker {
@@ -299,6 +309,18 @@ impl Palette {
     ) {
         self.show_with("");
         self.picker = Some(Picker { kind, items, placeholder, details, removable: true });
+    }
+
+    /// A picker whose items have notes after them.
+    pub fn show_detailed_picker(
+        &mut self,
+        kind: PickerKind,
+        items: Vec<String>,
+        details: Vec<String>,
+        placeholder: &'static str,
+    ) {
+        self.show_with("");
+        self.picker = Some(Picker { kind, items, placeholder, details, removable: false });
     }
 
     /// New items for the picker showing, keeping what's typed and the row picked.

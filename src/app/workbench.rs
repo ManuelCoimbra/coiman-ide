@@ -811,11 +811,58 @@ impl CodeApp {
         match self.sidebar_view {
             SidebarView::Explorer => {
                 self.plugin_tree_sections(ui);
+                // Open sections share the height, leaving the project tree room: a section
+                // dragged taller can't push the others over each other.
+                let open_sections = [self.has_maven() && self.maven.open, self.timeline_open, self.outline_open]
+                    .iter()
+                    .filter(|o| **o)
+                    .count();
+                let cap = ((ui.available_height() - 160.0) / open_sections.max(1) as f32).max(80.0);
+                if self.has_maven() {
+                    let open = self.maven.open;
+                    let panel =
+                        egui::Panel::bottom("maven").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);
+                    let panel = if open {
+                        panel.default_size(260.0_f32.min(cap)).size_range(80.0..=cap)
+                    } else {
+                        panel.exact_size(26.0)
+                    };
+                    panel.show(ui, |ui| {
+                        let header = ui
+                            .horizontal(|ui| {
+                                let size = ui.text_style_height(&egui::TextStyle::Body);
+                                let chevron = if open { Icon::ChevronDown } else { Icon::ChevronRight };
+                                let a = icons::show(ui, chevron, size, theme::colors().text_dim)
+                                    .interact(Sense::click())
+                                    .clicked();
+                                let b = ui
+                                    .add(
+                                        egui::Label::new(RichText::new("MAVEN").small().strong()).sense(Sense::click()),
+                                    )
+                                    .clicked();
+                                let ctx = ui.ctx().clone();
+                                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                    self.maven_header_buttons(ui, &ctx);
+                                });
+                                a || b
+                            })
+                            .inner;
+                        if header {
+                            self.maven.open = !self.maven.open;
+                        }
+                        if open {
+                            self.maven_view(ui);
+                        }
+                    });
+                }
                 let open = self.timeline_open;
                 let panel =
                     egui::Panel::bottom("timeline").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);
-                let panel =
-                    if open { panel.default_size(180.0).size_range(80.0..=500.0) } else { panel.exact_size(26.0) };
+                let panel = if open {
+                    panel.default_size(180.0_f32.min(cap)).size_range(80.0..=cap)
+                } else {
+                    panel.exact_size(26.0)
+                };
                 panel.show(ui, |ui| {
                     let header = ui
                         .horizontal(|ui| {
@@ -840,8 +887,11 @@ impl CodeApp {
                 let open = self.outline_open;
                 let panel =
                     egui::Panel::bottom("outline").resizable(open).frame(egui::Frame::NONE).show_separator_line(true);
-                let panel =
-                    if open { panel.default_size(220.0).size_range(80.0..=600.0) } else { panel.exact_size(26.0) };
+                let panel = if open {
+                    panel.default_size(220.0_f32.min(cap)).size_range(80.0..=cap)
+                } else {
+                    panel.exact_size(26.0)
+                };
                 panel.show(ui, |ui| {
                     let header = ui
                         .horizontal(|ui| {

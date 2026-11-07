@@ -252,6 +252,14 @@ impl CodeApp {
             Command::TestAll => self.test_all(ctx),
             Command::CancelTests => self.cancel_job(),
             Command::CargoCheck => self.run_cargo_check(ctx, "check"),
+            Command::MavenRunGoal => self.maven_goal_picker(None),
+            Command::MavenCustomGoal => self.maven_custom_goal(None),
+            Command::MavenEffectivePom => self.maven_effective_pom(ctx, None),
+            Command::MavenAddDependency => self.maven_add_dependency(None),
+            Command::MavenResolveDependencies => self.maven_resolve(ctx, None),
+            Command::MavenNewProject => self.maven_new_project(),
+            Command::MavenRefresh => self.maven_refresh(ctx),
+            Command::ShowMaven => self.show_maven(),
             Command::CargoClippy => self.run_cargo_check(ctx, "clippy"),
             Command::ShowOutput => self.toggle_panel(PanelTab::Output),
             Command::GitCommit => self.git_commit(ctx),
@@ -643,6 +651,10 @@ impl CodeApp {
                 }
             }
             PickerKind::VsCodeImport => self.picked_vscode_import(ctx, label),
+            PickerKind::MavenGoal => self.picked_maven_goal(ctx, label),
+            PickerKind::MavenFound => self.picked_maven_found(label),
+            PickerKind::MavenScope => self.picked_maven_scope(label),
+            PickerKind::MavenArchetype => self.picked_maven_archetype(label),
             PickerKind::Indentation => {
                 let size = label.strip_prefix("Spaces: ").and_then(|n| n.parse().ok());
                 let mut docs = std::mem::take(&mut self.docs);

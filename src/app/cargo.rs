@@ -1251,6 +1251,8 @@ impl CodeApp {
                     self.status = Some(format!("{name} is ready"));
                     if tool == BuildTool::JsDebug {
                         self.start_debugging(ctx);
+                    } else if tool == BuildTool::Maven {
+                        self.maven_installed();
                     } else {
                         self.run_program(ctx);
                     }
@@ -1294,6 +1296,8 @@ impl CodeApp {
             self.cargo.tool_offer = None;
             if tool == BuildTool::JsDebug {
                 self.status = Some("Not fetched: JavaScript can still run, without debugging".to_owned());
+            } else if tool == BuildTool::Maven {
+                self.status = Some("Not fetched: Maven goals need mvn (or the project's mvnw)".to_owned());
             } else {
                 self.cargo.tool_declined = true;
                 self.status = Some("Run again to try without it: CMake will say what it can't find".to_owned());
@@ -1391,6 +1395,10 @@ impl CodeApp {
                 let names = plans.iter().map(|p| p.title.clone()).collect();
                 self.cargo.run_targets = plans;
                 self.palette.show_picker(PickerKind::RunTarget, names, "", "Select the program to run");
+            }
+            Err(e) if e == run::MAVEN_MISSING => {
+                self.refuse_run(ctx, e);
+                self.offer_build_tool(BuildTool::Maven);
             }
             Err(e) => self.refuse_run(ctx, e),
         }

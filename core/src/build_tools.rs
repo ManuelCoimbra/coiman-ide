@@ -14,6 +14,7 @@ pub enum BuildTool {
     Ninja,
     MinGw,
     JsDebug,
+    Maven,
 }
 
 impl BuildTool {
@@ -22,6 +23,7 @@ impl BuildTool {
             Self::Ninja => "Ninja 1.13.2",
             Self::MinGw => "GCC 16.2 for Windows (winlibs MinGW-w64)",
             Self::JsDebug => "js-debug 1.140.0",
+            Self::Maven => "Apache Maven 3.9.16",
         }
     }
 
@@ -38,6 +40,10 @@ impl BuildTool {
             Self::JsDebug => "Debugging JavaScript needs js-debug, and it wasn't found. Download js-debug 1.140.0 from \
                               github.com/microsoft (about 1 MB) into Rust Code's config folder?"
                 .to_owned(),
+            Self::Maven => "This Maven project needs Maven, and it wasn't found (no mvnw, no mvn on PATH). Download \
+                            Apache Maven 3.9.16 from repo.maven.apache.org (9 MB) into Rust Code's config folder? It \
+                            needs Java."
+                .to_owned(),
         }
     }
 
@@ -51,14 +57,21 @@ impl BuildTool {
             Self::JsDebug => {
                 "https://github.com/microsoft/vscode-js-debug/releases/download/v1.140.0/js-debug-dap-v1.140.0.tar.gz"
             }
+            Self::Maven => {
+                "https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.zip"
+            }
         }
     }
 
-    fn sha256(self) -> &'static str {
+    /// The archive's SHA-256, or SHA-512 where that's what its publisher gives.
+    fn digest(self) -> &'static str {
         match self {
             Self::Ninja => "07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65",
             Self::MinGw => "3c69305081e4a647144339a936244fcf7d3d9e558319e1ad7be2cd2886d4b6a1",
             Self::JsDebug => "27dab92937ec1ab35821ae955aac867544fe06a1b6307229049f2d789af10968",
+            Self::Maven => {
+                "ed41650d42485cfc243fad22158caf9cbb5dc408ce7a09ddb94dd42a019de929ca43065bfa450612cf12bf78b5cafa3884b96c090de326ff590448c933454af3"
+            }
         }
     }
 
@@ -67,6 +80,7 @@ impl BuildTool {
             Self::Ninja => "ninja",
             Self::MinGw => "mingw",
             Self::JsDebug => "js-debug",
+            Self::Maven => "maven",
         }
     }
 
@@ -75,6 +89,7 @@ impl BuildTool {
         match self {
             Self::Ninja | Self::JsDebug => "",
             Self::MinGw => "mingw64/bin",
+            Self::Maven => "apache-maven-3.9.16/bin",
         }
     }
 }
@@ -86,7 +101,7 @@ fn tools_dir() -> Option<PathBuf> {
 /// Folders of the tools that have been fetched, for finding and running them.
 pub fn dirs() -> Vec<PathBuf> {
     let Some(tools) = tools_dir() else { return Vec::new() };
-    [BuildTool::Ninja, BuildTool::MinGw]
+    [BuildTool::Ninja, BuildTool::MinGw, BuildTool::Maven]
         .into_iter()
         .map(|t| tools.join(t.folder()).join(t.bin()))
         .filter(|d| d.is_dir())
@@ -97,6 +112,22 @@ pub fn dirs() -> Vec<PathBuf> {
 pub fn js_debug_server() -> Option<PathBuf> {
     let dir = tools_dir()?.join(BuildTool::JsDebug.folder());
     Some(dir.join("js-debug").join("src").join("dapDebugServer.js")).filter(|p| p.is_file())
+}
+
+/// Maven's launcher, if it's been fetched.
+pub fn maven_program() -> Option<PathBuf> {
+    let dir = tools_dir()?.join(BuildTool::Maven.folder()).join(BuildTool::Maven.bin());
+    Some(dir.join(if cfg!(windows) { "mvn.cmd" } else { "mvn" })).filter(|p| p.is_file())
+}
+
+/// The digest a pin is compared with: by its length, SHA-256 or SHA-512.
+fn digest_hex(pin: &str, bytes: &[u8]) -> String {
+    use sha2::Digest;
+    if pin.len() == 128 {
+        sha2::Sha512::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
+    } else {
+        sha256_hex(bytes)
+    }
 }
 
 /// What's in the way of CMake building here, given what's installed.
@@ -149,7 +180,7 @@ pub fn install(tool: BuildTool) -> Result<(), String> {
         let curl = ["-L", "--fail", "--silent", "--show-error", "-o", &archive_text, tool.url()];
         run(&system_tool("curl"), &curl)?;
         let bytes = std::fs::read(&archive).map_err(|e| e.to_string())?;
-        if sha256_hex(&bytes) != tool.sha256() {
+        if digest_hex(tool.digest(), &bytes) != tool.digest() {
             return Err("The download isn't the expected file, so it wasn't used".to_owned());
         }
         drop(bytes);
@@ -175,10 +206,22 @@ mod tests {
     }
 
     #[test]
+    fn digests_by_their_length() {
+        assert_eq!(
+            digest_hex(&"0".repeat(64), b"abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert!(digest_hex(&"0".repeat(128), b"abc").starts_with("ddaf35a193617aba"));
+    }
+
+    #[test]
     fn pins_are_whole() {
-        for tool in [BuildTool::Ninja, BuildTool::MinGw, BuildTool::JsDebug] {
-            assert_eq!(tool.sha256().len(), 64);
-            assert!(tool.url().starts_with("https://github.com/") && !tool.url().contains(' '));
+        for tool in [BuildTool::Ninja, BuildTool::MinGw, BuildTool::JsDebug, BuildTool::Maven] {
+            assert!(matches!(tool.digest().len(), 64 | 128));
+            assert!(tool.digest().chars().all(|c| c.is_ascii_hexdigit()));
+            let host = tool.url().starts_with("https://github.com/")
+                || tool.url().starts_with("https://repo.maven.apache.org/");
+            assert!(host && !tool.url().contains(' '));
         }
     }
 }

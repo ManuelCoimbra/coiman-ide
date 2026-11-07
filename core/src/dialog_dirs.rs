@@ -24,8 +24,9 @@ impl DialogDirs {
         }
     }
 
+    /// The file's folders; a byte order mark (from an editor that adds one) is skipped.
     pub fn parse(text: &str) -> Self {
-        serde_json::from_str(text).unwrap_or_default()
+        serde_json::from_str(text.trim_start_matches('\u{feff}')).unwrap_or_default()
     }
 }
 
@@ -63,5 +64,7 @@ mod tests {
         let text = serde_json::to_string(&dirs).unwrap();
         assert_eq!(DialogDirs::parse(&text), dirs);
         assert_eq!(DialogDirs::parse("nonsense"), DialogDirs::default());
+        // Saved by an editor that starts the file with a byte order mark.
+        assert_eq!(DialogDirs::parse(&format!("\u{feff}{text}")), dirs);
     }
 }

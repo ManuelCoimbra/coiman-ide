@@ -152,6 +152,8 @@ pub struct Session {
     writer: Writer,
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    /// The shell's process id, for stopping what it started too.
+    pid: Option<u32>,
     notices: Receiver<Notice>,
     size: Size,
     shared_size: Arc<Mutex<Size>>,
@@ -206,6 +208,7 @@ impl Session {
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| format!("could not start {program}: {e}"))?;
         drop(pair.slave);
         let killer = child.clone_killer();
+        let pid = child.process_id();
         let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer: Writer = Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
 
@@ -246,7 +249,7 @@ impl Session {
 
         let name =
             Path::new(&program).file_stem().map_or_else(|| program.clone(), |s| s.to_string_lossy().into_owned());
-        Ok(Self { term, writer, master: pair.master, killer, notices, size, shared_size, name, exited: false })
+        Ok(Self { term, writer, master: pair.master, killer, pid, notices, size, shared_size, name, exited: false })
     }
 
     /// The emulator state (grid, cursor, modes); hold the lock briefly.
@@ -306,9 +309,27 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         if !self.exited {
+            // What the shell started goes too: a program a build tool runs (a JavaFX
+            // window from `mvn javafx:run`) would outlive the shell otherwise.
+            if let Some(pid) = self.pid {
+                kill_tree(pid);
+            }
             let _ = self.killer.kill();
         }
     }
+}
+
+/// Stops a process and every process under it.
+fn kill_tree(pid: u32) {
+    let pid = pid.to_string();
+    let (program, args): (&str, Vec<&str>) =
+        if cfg!(windows) { ("taskkill", vec!["/T", "/F", "/PID", &pid]) } else { ("pkill", vec!["-TERM", "-P", &pid]) };
+    let _ = crate::lsp::discovery::quiet_command(&crate::lsp::servers::system_tool(program))
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
 }
 
 #[cfg(test)]
