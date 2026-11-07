@@ -302,6 +302,9 @@ pub enum DebugKind {
     Go,
     /// js-debug, for JavaScript on Node.
     Js,
+    /// gdb's own adapter (`gdb -i dap`, gdb 14 and later), for C and C++ built with
+    /// MinGW or GCC.
+    Gdb,
 }
 
 /// Where Delve is: on PATH, or where `go install` puts it.
@@ -345,6 +348,7 @@ impl DebugKind {
             Self::Data { command, .. } => command.split_whitespace().next().unwrap_or(command).to_owned(),
             Self::Go => "Delve".to_owned(),
             Self::Js => "js-debug".to_owned(),
+            Self::Gdb => "gdb".to_owned(),
         }
     }
 
@@ -363,6 +367,15 @@ impl DebugKind {
             Self::Go => {
                 let args = ["dap", "--listen=127.0.0.1:0"].map(str::to_owned).to_vec();
                 Some(Adapter { program: find_dlv()?, args })
+            }
+            Self::Gdb => {
+                let mut args = vec!["--interpreter=dap".to_owned()];
+                // The program's console is its own window: gdb's streams carry the
+                // protocol, and the program can read what's typed.
+                if cfg!(windows) {
+                    args.extend(["-iex".to_owned(), "set new-console on".to_owned()]);
+                }
+                Some(Adapter { program: crate::c_build::find_gdb()?, args })
             }
             Self::Js => {
                 let server = crate::build_tools::js_debug_server()?.to_string_lossy().into_owned();
@@ -416,6 +429,15 @@ impl DebugKind {
                 "outputMode": "remote",
                 // Its build goes outside the project.
                 "output": go_build_path(),
+            }),
+            Self::Gdb => json!({
+                "type": "gdb",
+                "request": "launch",
+                "name": name,
+                "program": program,
+                "args": args,
+                "cwd": cwd,
+                "stopAtBeginningOfMainSubprogram": false,
             }),
             Self::Js => json!({
                 "type": "pwa-node",

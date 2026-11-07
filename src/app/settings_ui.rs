@@ -134,6 +134,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "editor",
+                "doc_comment_templates",
+                "Doc comment templates",
+                "Enter after /** above a function writes its Doxygen comment: @brief, @param, @return.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "font_previews",
                 "Fonts in themselves",
                 "Font names in style sheets drawn in their own font, with samples on hover.",

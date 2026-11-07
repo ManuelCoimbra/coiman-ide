@@ -413,6 +413,28 @@ servers, Git, Cargo, run configurations, Run Program and debugging are off. Trus
 subfolders and is remembered outside the project. **Workspaces: Trust or Restrict This Folder**
 changes your mind later. The built-in terminal is your own shell and stays available.
 
+### C and C++ with MinGW (course projects)
+
+Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS Code's
+`.vscode/launch.json` and `tasks.json`) run and debug as they do in VS Code:
+
+- **Run** (`Ctrl+Shift+F10` or ▶) builds with the makefile, then runs the program it names
+  (`-o prog`, with variables such as `$(EXECUTABLE)` read), in a terminal tab that takes
+  input: `make; .\prog.exe`. `make` is used when there is one, else MinGW's `mingw32-make`,
+  found on PATH or in `C:\MinGWin`, `C:\mingw32in`, `D:\mingw32in` and the like.
+- **Debug** (`F5`) uses gdb's own debug adapter (gdb 14 or later). It builds first: as
+  `.vscode/launch.json` says when it has a `cppdbg` launch (running its `preLaunchTask` from
+  `tasks.json`, with Linux paths such as `/usr/bin/make` and `/usr/bin/gdb` replaced by the
+  tools found here), else with the makefile's `debug` target, else with `gcc -g`. The
+  program gets its own console window, for its input and output. Breakpoints, stepping,
+  Locals, Watch (`str[i]`) and the call stack work as in VS Code; registers wait behind
+  "show".
+- **Doxygen**: `/**` and Enter above a function writes its comment, as VS Code's Doxygen
+  Documentation Generator does: `@brief`, one `@param` per parameter, and `@return` unless it
+  returns `void`. Above anything else, `@brief`; elsewhere `/**` is closed with ` */`. For C,
+  C++, Java, JavaScript, TypeScript, C#, PHP, Kotlin, Swift, Scala, Groovy and Dart
+  (**Settings > Editor > Doc comment templates**).
+
 ### Debugging (CodeLLDB)
 
 Rust Code debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug

@@ -156,6 +156,9 @@ pub struct Buffer {
     pub auto_tags: TagMode,
     /// Whether `=` after an attribute's name adds `""`.
     pub auto_quotes: bool,
+    /// Enter after `/**` above a function writes its Doxygen comment (`@brief`, `@param`,
+    /// `@return`); otherwise it only closes the comment.
+    pub doc_comments: bool,
     rope: Rope,
     selections: Vec<Selection>,
     primary: usize,
@@ -189,6 +192,7 @@ impl Buffer {
             indent_rules: IndentRules::default(),
             auto_tags: TagMode::Off,
             auto_quotes: false,
+            doc_comments: false,
             rope: Rope::from_str(text),
             selections: vec![Selection::cursor(0)],
             primary: 0,
@@ -994,6 +998,19 @@ impl Buffer {
                 let tags = rules == IndentRules::Markup
                     && indent_rules::open_tag(trimmed).is_some()
                     && after.trim_start().starts_with("</");
+                // `/**` and Enter: the comment closed, and for a function its Doxygen lines.
+                if matches!(rules, IndentRules::Brackets)
+                    && s.is_empty()
+                    && matches!(code, "/**" | "/*!")
+                    && after.trim().is_empty()
+                    && !self.comment_goes_on(line)
+                {
+                    let last = (line + 9).min(self.len_lines());
+                    let following: Vec<String> = (line + 1..last).map(|l| self.line_text(l)).collect();
+                    let (text, cursor) =
+                        crate::doc_comment::doc_block(&following.join(" "), &indent, nl, self.doc_comments);
+                    return Change { start: s.start(), end: s.end(), text, cursor_offset: Some(cursor) };
+                }
                 // A `*` line only goes on inside a `/*` comment, not `*ptr = 1;`.
                 let comment = matches!(rules, IndentRules::Brackets)
                     && ((code.starts_with("/*") && !code.contains("*/"))
@@ -1024,6 +1041,14 @@ impl Buffer {
             })
             .collect();
         self.apply_changes(changes, false);
+    }
+
+    /// Whether a `/*` on `line` is already followed by its comment's lines (` * ...`).
+    fn comment_goes_on(&self, line: usize) -> bool {
+        (line + 1..(line + 50).min(self.len_lines()))
+            .map(|l| self.line_text(l))
+            .find(|t| !t.trim().is_empty())
+            .is_some_and(|t| t.trim_start().starts_with('*'))
     }
 
     /// Whether `line`, starting with `*`, carries on a `/*` comment from the lines above.
@@ -1511,6 +1536,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn doc_comments_on_enter_after_slash_star_star() {
+        let mut b = Buffer::new("#pragma once\n\n/**\nint vector3dDestroy(PtVector3d *pVec);\n");
+        b.indent_rules = IndentRules::Brackets;
+        b.doc_comments = true;
+        // `/**` above the function, and Enter.
+        b.set_single(Selection::cursor(b.line_start(2) + 3));
+        b.insert_newline();
+        let want = "#pragma once\n\n/**\n * @brief \n * \n * @param pVec \n * @return int \n */\nint vector3dDestroy(PtVector3d *pVec);\n";
+        assert_eq!(b.text(), want);
+        // The cursor waits after `@brief `.
+        assert_eq!(b.primary().head, b.line_start(3) + " * @brief ".len());
+        // Inside a comment already written, Enter only carries it on.
+        let mut b = Buffer::new("/**\n * @brief Old\n */\nint f(void);\n");
+        b.indent_rules = IndentRules::Brackets;
+        b.doc_comments = true;
+        b.set_single(Selection::cursor(3));
+        b.insert_newline();
+        assert_eq!(b.text(), "/**\n * \n * @brief Old\n */\nint f(void);\n");
+        // Off: closed, nothing more.
+        let mut b = Buffer::new("/**\nint f(int a);\n");
+        b.indent_rules = IndentRules::Brackets;
+        b.set_single(Selection::cursor(3));
+        b.insert_newline();
+        assert_eq!(b.text(), "/**\n * \n */\nint f(int a);\n");
+    }
+
+    #[test]
     fn enclosing_bracket_pairs() {
         let b = Buffer::new("f(a, [b], {\n  c(d)\n}) x");
         let pair = |pos: usize| b.enclosing_brackets(pos, 1000);
@@ -1706,7 +1758,8 @@ mod tests {
             (IndentRules::Shell, "for f in *; do|", "for f in *; do\n    |"),
             (IndentRules::Yaml, "server:|", "server:\n    |"),
             (IndentRules::Brackets, "    call(|)", "    call(\n        |\n    )"),
-            (IndentRules::Brackets, "/**|", "/**\n * |"),
+            // A new `/**` comment is closed as it opens.
+            (IndentRules::Brackets, "/**|", "/**\n * |\n */"),
             (IndentRules::Brackets, "/*\n    * text|", "/*\n    * text\n    * |"),
             (IndentRules::Brackets, "    *ptr = 1;|", "    *ptr = 1;\n    |"),
             (IndentRules::Brackets, "/* a */\n*p = 1;|", "/* a */\n*p = 1;\n|"),

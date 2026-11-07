@@ -443,7 +443,9 @@ impl CodeApp {
                                 Some((
                                     s["name"].as_str()?.to_owned(),
                                     s["variablesReference"].as_i64()?,
-                                    s["expensive"].as_bool().unwrap_or(false),
+                                    // Registers too (gdb lists them): seldom wanted, and long.
+                                    s["expensive"].as_bool().unwrap_or(false)
+                                        || s["presentationHint"].as_str() == Some("registers"),
                                 ))
                             })
                             .collect()
@@ -716,6 +718,11 @@ impl CodeApp {
                     self.offer_build_tool(rust_code_core::build_tools::BuildTool::JsDebug);
                     return;
                 }
+                DebugKind::Gdb => {
+                    let how = "Debugging C and C++ needs gdb 14 or later: not found on PATH or in a MinGW folder (C:\\MinGW\\bin, C:\\mingw32\\bin, C:\\msys64\\ucrt64\\bin...). MSYS2: pacman -S mingw-w64-ucrt-x86_64-gdb";
+                    self.refuse_run(ctx, how.to_owned());
+                    return;
+                }
                 other => {
                     let name = other.name();
                     self.refuse_run(ctx, format!("{name} isn't on PATH"));
@@ -817,6 +824,7 @@ impl CodeApp {
         }
         match ext.as_str() {
             "go" => return Some(DebugKind::Go),
+            "c" | "h" | "cpp" | "cc" | "cxx" | "c++" | "hpp" | "hh" => return Some(DebugKind::Gdb),
             "js" | "mjs" | "cjs" => return Some(DebugKind::Js),
             _ => {}
         }
@@ -858,6 +866,17 @@ impl CodeApp {
         }
         let cwd = rust_code_core::repl::start_folder(file, self.explorer.root.as_deref());
         if !self.allowed_to_run(&cwd) {
+            return;
+        }
+        // C and C++ are built first, with debug information: as .vscode/launch.json says,
+        // else the makefile's `debug` target, else gcc -g.
+        if kind == DebugKind::Gdb {
+            let (file, root) = (file.to_path_buf(), self.explorer.root.clone());
+            self.build_then_debug(ctx, format!("Building {name} for debugging..."), move || {
+                let built = rust_code_core::c_build::debug_build(&file, root.as_deref())?;
+                let name = built.program.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(name);
+                Ok(Launch { kind: DebugKind::Gdb, name, program: built.program, args: built.args, cwd: built.cwd })
+            });
             return;
         }
         let launch = Launch { kind: kind.clone(), name, program: file.to_path_buf(), args: Vec::new(), cwd };

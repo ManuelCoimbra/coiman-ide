@@ -509,16 +509,39 @@ fn cmake_plans(dir: &Path, title_suffix: &str) -> Result<Outcome, String> {
     Ok(outcome)
 }
 
+/// How to call make in a shell command: `make`, else MinGW's `mingw32-make`, by name
+/// when it's on PATH, else by its path (a MinGW folder).
+fn make_command() -> Result<String, String> {
+    let make = crate::c_build::make_program()
+        .ok_or("This makefile needs make (or MinGW's mingw32-make), found neither on PATH nor in a MinGW folder")?;
+    let name = make.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    if which(&name).is_some() {
+        return Ok(name);
+    }
+    Ok(if cfg!(windows) { format!("& '{}'", make.display()) } else { quote(&make.display().to_string()) })
+}
+
+/// Builds with make, then runs the program the makefile names, in its folder.
+fn make_then_run(dir: &Path, program: &str, make: &str) -> RunPlan {
+    let path = crate::c_build::program_path(dir, program);
+    let file = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let command = if cfg!(windows) {
+        format!("{make}; if ($?) {{ & '.\\{file}' }}")
+    } else {
+        format!("{make} && ./{}", quote(&file))
+    };
+    RunPlan { title: format!("make, then {file}"), command, cwd: dir.to_path_buf() }
+}
+
 fn make_plans(file: &Path) -> Result<Outcome, String> {
     let text = std::fs::read_to_string(file).unwrap_or_default();
     let dir = file.parent().unwrap_or(file).to_path_buf();
+    let make = make_command()?;
     let plans = make_targets(&text)
         .into_iter()
-        .map(|t| RunPlan { title: format!("make {t}"), command: format!("make {}", quote(&t)), cwd: dir.clone() })
+        .map(|t| RunPlan { title: format!("make {t}"), command: format!("{make} {}", quote(&t)), cwd: dir.clone() })
         .collect();
-    let outcome = one_or_choose(plans).ok_or_else(|| format!("{} has no targets", name_of(file)))?;
-    need("make", "This Makefile")?;
-    Ok(outcome)
+    one_or_choose(plans).ok_or_else(|| format!("{} has no targets", name_of(file)))
 }
 
 fn c_family(file: &Path, source: &str, root: Option<&Path>, cpp: bool) -> Result<Outcome, String> {
@@ -528,27 +551,37 @@ fn c_family(file: &Path, source: &str, root: Option<&Path>, cpp: bool) -> Result
     if let Some(dir) = find_up(file, root, "CMakeLists.txt") {
         return cmake_plans(&dir, if has_main { "" } else { " (project)" });
     }
-    if let Some(dir) = find_up(file, root, "Makefile") {
-        let text = std::fs::read_to_string(dir.join("Makefile")).unwrap_or_default();
+    // A makefile by any of the names make reads (course projects use `makefile`).
+    let makefile = upward(file, root).find_map(crate::c_build::makefile_in);
+    if let Some(makefile) = &makefile {
+        let dir = makefile.parent().unwrap_or(file).to_path_buf();
+        let text = std::fs::read_to_string(makefile).unwrap_or_default();
         if make_targets(&text).iter().any(|t| t == "run") {
-            need("make", "This Makefile")?;
+            let make = make_command()?;
             let title = if has_main { "make run" } else { "make run (project)" }.to_owned();
-            return Ok(Outcome::Run(RunPlan { title, command: "make run".to_owned(), cwd: dir }));
+            return Ok(Outcome::Run(RunPlan { title, command: format!("{make} run"), cwd: dir }));
         }
-        // No `run`, and this file can't stand alone: the Makefile says what there is.
+        // The program the makefile builds: make, then run it, as `make` and `./prog` would.
+        if let Some(program) = crate::c_build::makefile_program(&text, None) {
+            return Ok(Outcome::Run(make_then_run(&dir, &program, &make_command()?)));
+        }
+        // No `run`, and this file can't stand alone: the makefile says what there is.
         if !has_main {
-            return make_plans(&dir.join("Makefile"));
+            return make_plans(makefile);
         }
     }
     if !has_main {
         return Err(format!("{} has no main function", name_of(file)));
     }
-    for (marker, tool) in [("Makefile", "Make"), ("meson.build", "Meson")] {
-        if find_up(file, root, marker).is_some() {
-            return Err(format!(
-                "This project builds with {tool}, which decides the program's name: add it in Run: Open Configurations, then press Ctrl+F5"
-            ));
-        }
+    if makefile.is_some() {
+        return Err(
+            "This project builds with Make, but its makefile doesn't say what program it makes (no `-o`): add it in Run: Open Configurations, then press Ctrl+F5".to_owned(),
+        );
+    }
+    if find_up(file, root, "meson.build").is_some() {
+        return Err(
+            "This project builds with Meson, which decides the program's name: add it in Run: Open Configurations, then press Ctrl+F5".to_owned(),
+        );
     }
     let compilers: &[&str] = if cpp { &["g++", "clang++"] } else { &["gcc", "clang"] };
     let Some(compiler) = compilers.iter().find(|c| which(c).is_some()) else {
@@ -1341,6 +1374,40 @@ mod program_line_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_makefile_builds_then_its_program_runs() {
+        let dir = std::env::temp_dir().join(format!("rust-code-run-makefile-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let main = "#include <stdio.h>
+int main(void) { return 0; }
+";
+        std::fs::write(dir.join("main.c"), main).unwrap();
+        std::fs::write(
+            dir.join("makefile"),
+            "EXECUTABLE = prog
+default:
+	gcc -o $(EXECUTABLE) main.c
+",
+        )
+        .unwrap();
+        match plan(&dir.join("main.c"), main, Some(&dir)) {
+            Ok(Outcome::Run(p)) => {
+                assert_eq!(p.cwd, dir);
+                assert!(p.command.contains("make"), "{}", p.command);
+                if cfg!(windows) {
+                    assert!(p.command.ends_with(r"if ($?) { & '.\prog.exe' }"), "{}", p.command);
+                } else {
+                    assert!(p.command.ends_with("&& ./prog"), "{}", p.command);
+                }
+            }
+            // Without make here, it says so instead.
+            Err(why) => assert!(crate::c_build::make_program().is_none() && why.contains("make"), "{why}"),
+            Ok(other) => panic!("{other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn a_preview_runs_the_program_or_else_its_tests() {

@@ -88,6 +88,8 @@ pub struct EditorSettings {
     pub color_decorators: bool,
     /// Show font names in style sheets in their own font, with a card of samples on hover.
     pub font_previews: bool,
+    /// Enter after `/**` above a function writes a Doxygen comment for it.
+    pub doc_comment_templates: bool,
     /// Type a tag's end for it in HTML, XML and JSX (`html.autoClosingTags`).
     pub auto_close_tags: bool,
     /// `=` after an attribute's name adds `""` (`html.autoCreateQuotes`).
@@ -348,6 +350,7 @@ impl Default for EditorSettings {
             markup_problems: true,
             color_decorators: true,
             font_previews: true,
+            doc_comment_templates: true,
             auto_close_tags: true,
             auto_create_quotes: true,
             tab_size: 4,

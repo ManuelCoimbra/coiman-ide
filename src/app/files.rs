@@ -132,6 +132,31 @@ impl CodeApp {
         let tags = rust_code_core::auto_tags::TagMode::for_extension(&doc.extension());
         doc.buffer.auto_tags = if editor.auto_close_tags { tags } else { rust_code_core::auto_tags::TagMode::Off };
         doc.buffer.auto_quotes = editor.auto_create_quotes;
+        // Languages whose doc comments are `/** ... */` with `@param` and `@return`.
+        let javadoc_like = matches!(
+            doc.extension().as_str(),
+            "c" | "h"
+                | "cpp"
+                | "hpp"
+                | "cc"
+                | "cxx"
+                | "hh"
+                | "hxx"
+                | "java"
+                | "js"
+                | "jsx"
+                | "ts"
+                | "tsx"
+                | "mjs"
+                | "cs"
+                | "php"
+                | "kt"
+                | "swift"
+                | "scala"
+                | "groovy"
+                | "dart"
+        );
+        doc.buffer.doc_comments = editor.doc_comment_templates && javadoc_like;
         // `'` starts Rust lifetimes and is an apostrophe in prose.
         doc.buffer.pair_single_quote = !matches!(doc.extension().as_str(), "rs" | "md" | "markdown" | "txt");
         doc.trim_trailing_whitespace = config.trim_trailing_whitespace.unwrap_or(editor.trim_trailing_whitespace);
