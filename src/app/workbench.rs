@@ -211,12 +211,14 @@ impl CodeApp {
                 });
                 let project =
                     project.on_hover_text(root.as_ref().map_or_else(String::new, |r| r.display().to_string()));
-                egui::Popup::menu(&project).show(|ui| {
+                // Open while entries are removed; a click outside, or opening one, closes it.
+                egui::Popup::menu(&project).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
                     if ui.button("Open Folder...").clicked() {
                         cmd = Some(Command::OpenFolder);
                         ui.close();
                     }
-                    // Recent projects, each with an × that takes it off the list; one that
+                    // Recent projects as the bar shows the open one: its badge, its name, a
+                    // Git mark for a repository, and an × that takes it off the list. One that
                     // is gone shows struck through, still removable.
                     let others: Vec<_> = self
                         .recent
@@ -224,37 +226,87 @@ impl CodeApp {
                         .iter()
                         .filter(|e| Some(&e.path) != root.as_ref())
                         .take(8)
-                        .map(|e| (e.path.clone(), e.name(), e.exists()))
+                        .map(|e| (e.path.clone(), e.name(), e.exists(), e.path.join(".git").exists()))
                         .collect();
                     if !others.is_empty() {
                         ui.separator();
                     }
-                    for (folder, name, there) in others {
-                        ui.horizontal(|ui| {
-                            ui.set_width(240.0);
-                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                                if ui.small_button("×").on_hover_text("Remove from Recent").clicked() {
-                                    remove_folder = Some(folder.clone());
-                                }
-                                ui.with_layout(egui::Layout::left_to_right(Align::Center), |ui| {
-                                    let text = if there {
-                                        RichText::new(name)
-                                    } else {
-                                        RichText::new(name).strikethrough().color(pal.text_dim)
-                                    };
-                                    let tip = if there {
-                                        folder.display().to_string()
-                                    } else {
-                                        format!("{} (not found)", folder.display())
-                                    };
-                                    let open = ui.add(egui::Button::new(text).frame(false)).on_hover_text(tip);
-                                    if open.clicked() {
-                                        open_folder = Some(folder.clone());
-                                        ui.close();
-                                    }
-                                });
-                            });
-                        });
+                    // Rows as wide as the longest name needs, not the menu's width.
+                    let font = egui::TextStyle::Button.resolve(ui.style());
+                    let row_h = ui.spacing().interact_size.y;
+                    let badge_w = row_h * 0.8;
+                    let longest = others
+                        .iter()
+                        .map(|(_, name, ..)| {
+                            ui.fonts_mut(|f| f.layout_no_wrap(name.clone(), font.clone(), pal.text).size().x)
+                        })
+                        .fold(0.0_f32, f32::max);
+                    let any_git = others.iter().any(|(.., git)| *git);
+                    let git_w = if any_git { row_h * 0.75 + 6.0 } else { 0.0 };
+                    let cross_w = row_h;
+                    let width = 4.0 + badge_w + 8.0 + longest + 10.0 + git_w + cross_w;
+                    for (folder, name, there, git) in others {
+                        let (rect, row) = ui.allocate_exact_size(egui::vec2(width, row_h), Sense::click());
+                        let cross = egui::Rect::from_min_size(
+                            egui::pos2(rect.right() - cross_w, rect.top()),
+                            egui::vec2(cross_w, row_h),
+                        );
+                        let on_cross = row.hover_pos().is_some_and(|p| cross.contains(p));
+                        let painter = ui.painter();
+                        if row.hovered() {
+                            painter.rect_filled(rect, 4.0, pal.hover_bg);
+                        }
+                        // The badge, in the project's color.
+                        let (letters, [r, g, b]) = project_tree::project_badge(&name);
+                        let badge = egui::Rect::from_min_size(
+                            egui::pos2(rect.left() + 4.0, rect.center().y - badge_w / 2.0),
+                            egui::vec2(badge_w, badge_w),
+                        );
+                        let fill = if there { Color32::from_rgb(r, g, b) } else { pal.text_dim.gamma_multiply(0.5) };
+                        painter.rect_filled(badge, 4.0, fill);
+                        let small = egui::FontId::proportional(badge_w * 0.5);
+                        painter.text(badge.center(), egui::Align2::CENTER_CENTER, letters, small, Color32::WHITE);
+                        // The name.
+                        let color = if there { pal.text } else { pal.text_dim };
+                        let at = egui::pos2(badge.right() + 8.0, rect.center().y);
+                        let shown = painter.text(at, egui::Align2::LEFT_CENTER, &name, font.clone(), color);
+                        if !there {
+                            let y = shown.center().y;
+                            painter.line_segment(
+                                [egui::pos2(shown.left(), y), egui::pos2(shown.right(), y)],
+                                (1.0, color),
+                            );
+                        }
+                        // Git, when the project is a repository.
+                        if git {
+                            let size = row_h * 0.75;
+                            let mark = egui::Rect::from_min_size(
+                                egui::pos2(
+                                    rect.left() + 4.0 + badge_w + 8.0 + longest + 10.0,
+                                    rect.center().y - size / 2.0,
+                                ),
+                                egui::vec2(size, size),
+                            );
+                            icons::paint(painter, mark, Icon::SourceControl, pal.text_dim);
+                        }
+                        // The ×, brighter under the pointer.
+                        if on_cross {
+                            painter.rect_filled(cross.shrink(2.0), 3.0, pal.widget_bg);
+                        }
+                        let cross_color = if on_cross { pal.text } else { pal.text_dim };
+                        painter.text(cross.center(), egui::Align2::CENTER_CENTER, "×", font.clone(), cross_color);
+                        let tip = match (there, on_cross) {
+                            (_, true) => "Remove from Recent".to_owned(),
+                            (true, false) => folder.display().to_string(),
+                            (false, false) => format!("{} (not found)", folder.display()),
+                        };
+                        let row = row.on_hover_text(tip);
+                        if row.clicked() && on_cross {
+                            remove_folder = Some(folder.clone());
+                        } else if row.clicked() {
+                            open_folder = Some(folder.clone());
+                            ui.close();
+                        }
                     }
                     ui.separator();
                     if ui.button("Manage Recent...").on_hover_text("Open Recent: remove or clear entries").clicked() {

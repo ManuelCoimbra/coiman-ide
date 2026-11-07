@@ -88,8 +88,9 @@ is read and written on your machine.
   opened: 20 projects and 30 files. `Ctrl+R` (**Open Recent**) lists both, then **Clear Recently
   Opened**; the × on a row, or Shift+Delete, removes it and the list stays open. The Welcome page
   shows a few of each with an × each, More and Clear; **File > Open Recent** has the same with
-  their places, and the project menu (the folder name at the top) lists recent projects with an ×
-  each, then **Manage Recent**. A folder or file that's gone stays
+  their places, and the project menu (the folder name at the top) lists recent projects as the bar
+  shows the open one: badge, name, a Git mark for a repository and an × that removes it while the
+  menu stays open. The menu is as wide as the longest name. Then **Manage Recent**. A folder or file that's gone stays
   listed, struck through and marked "not found", since its drive may only be disconnected: opening
   it says so, and **File: Remove Missing from Recently Opened** drops all such entries. Clearing
   asks first. The list lives in `recent.json` in the config folder; the old folders-only list
