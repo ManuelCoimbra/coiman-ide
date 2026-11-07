@@ -276,6 +276,8 @@ fn web_kind(relative: &str) -> Option<ClassKind> {
 /// built from it, its tests, its styles.
 pub fn nested_files(names: &[&str]) -> std::collections::HashMap<String, String> {
     const VIEWS: &[&str] = &["tsx", "jsx", "vue", "svelte", "ts", "js", "html"];
+    // Looked up for every candidate: a set, so a folder of thousands stays quick.
+    let present: std::collections::HashSet<&str> = names.iter().copied().collect();
     let above = |name: &str| -> Option<String> {
         let (stem, extension) = name.rsplit_once('.')?;
         let mut tries: Vec<String> = Vec::new();
@@ -308,7 +310,7 @@ pub fn nested_files(names: &[&str]) -> std::collections::HashMap<String, String>
             let base = stem.strip_suffix(".module").unwrap_or(stem);
             tries.extend(VIEWS.iter().map(|e| format!("{base}.{e}")));
         }
-        tries.into_iter().find(|t| t != name && names.contains(&t.as_str()))
+        tries.into_iter().find(|t| t != name && present.contains(t.as_str()))
     };
     let mut nested = std::collections::HashMap::new();
     for name in names {

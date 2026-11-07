@@ -875,6 +875,14 @@ impl CodeApp {
                             {
                                 self.explorer.reveal(path);
                             }
+                            let find = icons::button(ui, Icon::Search, "Filter Files (Ctrl+Alt+F)");
+                            if find.clicked() {
+                                if self.explorer.filter_open {
+                                    self.explorer.filter_open = false;
+                                } else {
+                                    self.explorer.open_filter();
+                                }
+                            }
                             if icons::button(ui, Icon::Refresh, "Refresh Explorer").clicked() {
                                 self.explorer.refresh();
                                 self.finder.mark_stale();
@@ -889,14 +897,24 @@ impl CodeApp {
                 });
                 if self.explorer.root.is_none()
                     && ui.button("Open Folder").clicked()
-                    && let Some(path) = rfd::FileDialog::new().pick_folder()
+                    && let Some(path) = self.file_dialog("open_folder").pick_folder()
                 {
+                    self.dialog_chose("open_folder", &path);
                     self.open_folder(path);
                 }
                 self.delete_prompt(ui);
                 self.explorer.compact = self.settings.workbench.compact_folders;
                 self.explorer.nest = self.settings.workbench.nest_files;
-                if let Some((path, to_editor)) = self.explorer.ui(ui, active_path.as_deref()) {
+                self.explorer
+                    .set_sort(crate::explorer::SortOrder::from_setting(&self.settings.workbench.explorer_sort_order));
+                let started = std::time::Instant::now();
+                let picked = self.explorer.ui(ui, active_path.as_deref());
+                // A slow Explorer is worth knowing about: big folders should draw quickly.
+                let took = started.elapsed();
+                if took.as_millis() >= 50 {
+                    rust_code_core::applog::warn(&format!("explorer drew slowly: {} ms", took.as_millis()));
+                }
+                if let Some((path, to_editor)) = picked {
                     self.open_file(&path);
                     // A single click or Space leaves the keyboard in the Explorer; a double
                     // click or Enter gives it to the editor, even if the file was open.

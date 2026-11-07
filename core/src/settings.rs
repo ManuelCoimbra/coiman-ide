@@ -168,6 +168,9 @@ pub struct WorkbenchSettings {
     pub compact_folders: bool,
     /// Explorer: show `a.test.ts`, `a.js` and `a.css` under `a.ts`.
     pub nest_files: bool,
+    /// Explorer: how a folder's entries are ordered (`explorer.sortOrder`): "default"
+    /// (folders first), "mixed", "files_first", "type" or "modified".
+    pub explorer_sort_order: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -389,6 +392,7 @@ impl Default for WorkbenchSettings {
             double_shift: true,
             ui: "islands".to_owned(),
             compact_folders: true,
+            explorer_sort_order: "default".to_owned(),
             nest_files: true,
         }
     }

@@ -17,6 +17,7 @@ pub mod css;
 pub mod dap;
 pub mod data_tree;
 pub mod dbgout;
+pub mod dialog_dirs;
 pub mod document;
 pub mod edit_ops;
 pub mod editorconfig;

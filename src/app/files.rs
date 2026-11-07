@@ -503,11 +503,16 @@ impl CodeApp {
 
     pub(super) fn save_doc_as(&mut self, index: usize) -> bool {
         let Some(doc) = self.docs.get_mut(index) else { return false };
-        let mut dialog = rfd::FileDialog::new().set_file_name(doc.title());
-        if let Some(dir) = doc.path.as_ref().and_then(|p| p.parent()).or(self.explorer.root.as_deref()) {
+        // A saved file's own folder; an untitled one where Save As was last left.
+        let own = doc.path.as_ref().and_then(|p| p.parent()).map(Path::to_path_buf);
+        let title = doc.title();
+        let mut dialog = self.file_dialog("save_as").set_file_name(title);
+        if let Some(dir) = own {
             dialog = dialog.set_directory(dir);
         }
         let Some(path) = dialog.save_file() else { return false };
+        self.dialog_chose("save_as", &path);
+        let Some(doc) = self.docs.get_mut(index) else { return false };
         match doc.save_as(path) {
             Ok(()) => {
                 self.status = Some(format!("Saved {}", doc.title()));

@@ -290,6 +290,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "workbench",
+                "explorer_sort_order",
+                "Sort order",
+                "How the Explorer orders a folder: folders first, mixed, files first, by type or by date modified.",
+                Kind::Choice(crate::explorer::SortOrder::CHOICES),
+            ),
+            row(
+                "workbench",
                 "compact_folders",
                 "Compact packages",
                 "In the Explorer, show packages holding only one package as one row, like org.example.",
@@ -755,12 +762,16 @@ impl CodeApp {
             Some(Action::Set(table, key, value)) => self.change_setting(ctx, workspace, table, key, Some(&value)),
             Some(Action::Reset(table, key)) => self.change_setting(ctx, workspace, table, key, None),
             Some(Action::ChoosePath(table, key, folder)) => {
-                let dialog = rfd::FileDialog::new();
+                let kind = format!("setting_{table}_{key}");
+                let dialog = self.file_dialog(&kind);
                 let chosen = if folder {
                     dialog.pick_folder()
                 } else {
                     dialog.add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp", "bmp"]).pick_file()
                 };
+                if let Some(path) = &chosen {
+                    self.dialog_chose(&kind, path);
+                }
                 match chosen {
                     Some(path) => {
                         let value = literal(Value::String(path.to_string_lossy().into_owned()));

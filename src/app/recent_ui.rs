@@ -46,6 +46,23 @@ fn place(path: &Path) -> String {
 }
 
 impl CodeApp {
+    /// A file dialog that opens where dialog `kind` was last left, else in the open folder.
+    pub(super) fn file_dialog(&self, kind: &str) -> rfd::FileDialog {
+        let dialog = rfd::FileDialog::new();
+        match self.dialog_dirs.get(kind).map(Path::to_path_buf).or_else(|| self.explorer.root.clone()) {
+            Some(dir) => dialog.set_directory(dir),
+            None => dialog,
+        }
+    }
+
+    /// Remembers where dialog `kind` chose `chosen`, for next time.
+    pub(super) fn dialog_chose(&mut self, kind: &str, chosen: &Path) {
+        self.dialog_dirs.remember(kind, chosen);
+        if let Err(e) = rust_code_core::dialog_dirs::save(&self.dialog_dirs) {
+            self.status = Some(format!("Could not save dialog folders: {e}"));
+        }
+    }
+
     /// Saves the recent list, saying so if it can't be.
     pub(super) fn remember_recent(&mut self) {
         if let Err(e) = recent::save(&self.recent) {

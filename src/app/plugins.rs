@@ -737,10 +737,11 @@ impl CodeApp {
             self.plugins_init(ctx);
         }
         let Some(folder) =
-            rfd::FileDialog::new().set_title("Plugin folder (plugin.toml and plugin.wasm)").pick_folder()
+            self.file_dialog("plugin_folder").set_title("Plugin folder (plugin.toml and plugin.wasm)").pick_folder()
         else {
             return;
         };
+        self.dialog_chose("plugin_folder", &folder);
         match registry::read_folder(&folder) {
             Ok(pkg) => {
                 self.plugins.consent = Some(Consent {

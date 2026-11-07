@@ -370,7 +370,8 @@ impl CodeApp {
 
     /// `Coverage: Load Report`.
     pub(super) fn pick_coverage_report(&mut self, ctx: &egui::Context) {
-        let Some(path) = rfd::FileDialog::new().pick_file() else { return };
+        let Some(path) = self.file_dialog("coverage_report").pick_file() else { return };
+        self.dialog_chose("coverage_report", &path);
         let root = self.explorer.root.clone().or_else(|| path.parent().map(Path::to_path_buf)).unwrap_or_default();
         let label = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
         self.load_coverage(ctx, path, root, label, false);

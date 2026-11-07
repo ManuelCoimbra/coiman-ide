@@ -241,6 +241,8 @@ pub struct CodeApp {
     /// Folders for Open Recent, newest first.
     /// Recently opened projects and files.
     recent: rust_code_core::recent::Recent,
+    /// Where each file dialog was last left.
+    dialog_dirs: rust_code_core::dialog_dirs::DialogDirs,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -382,6 +384,7 @@ impl CodeApp {
             cargo_project_for: (None, 0.0),
             hidden: Default::default(),
             recent: rust_code_core::recent::load(),
+            dialog_dirs: rust_code_core::dialog_dirs::load(),
             pending_close: None,
             allow_close: false,
             chord: None,

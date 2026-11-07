@@ -259,7 +259,9 @@ impl CodeApp {
     /// `Log: Open in Log View`: the active file, or one to choose.
     pub(super) fn log_view_command(&mut self, ctx: &egui::Context) {
         let current = self.docs.get(self.active).and_then(|d| d.path.clone());
-        if let Some(path) = current.or_else(|| rfd::FileDialog::new().pick_file()) {
+        let picked = || self.file_dialog("log_file").pick_file();
+        if let Some(path) = current.or_else(picked) {
+            self.dialog_chose("log_file", &path);
             self.open_log_view(ctx, &path);
         }
     }

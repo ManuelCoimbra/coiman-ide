@@ -2,6 +2,8 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::time::SystemTime;
 
 use egui::{Color32, RichText, Sense};
 
@@ -15,6 +17,125 @@ struct Entry {
     path: PathBuf,
     name: String,
     is_dir: bool,
+    modified: Option<SystemTime>,
+}
+
+/// How the Explorer orders a folder's entries, as VS Code's `explorer.sortOrder`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SortOrder {
+    /// Folders first, then by name.
+    #[default]
+    Default,
+    /// Folders and files together, by name.
+    Mixed,
+    /// Files first, then folders.
+    FilesFirst,
+    /// Folders first, then files by extension.
+    Type,
+    /// Folders first, then the most recently changed first.
+    Modified,
+}
+
+impl SortOrder {
+    /// The setting's values and what to call them.
+    pub const CHOICES: &[(&str, &str)] = &[
+        ("default", "Folders first"),
+        ("mixed", "Mixed"),
+        ("files_first", "Files first"),
+        ("type", "By type"),
+        ("modified", "By date modified"),
+    ];
+
+    pub fn from_setting(value: &str) -> Self {
+        match value {
+            "mixed" => Self::Mixed,
+            "files_first" | "filesFirst" => Self::FilesFirst,
+            "type" => Self::Type,
+            "modified" => Self::Modified,
+            _ => Self::Default,
+        }
+    }
+}
+
+/// Puts a folder's entries in `order`, names compared without case.
+fn sort_entries(entries: &mut [Entry], order: SortOrder) {
+    let name = |e: &Entry| e.name.to_lowercase();
+    let extension = |e: &Entry| {
+        e.name.rsplit_once('.').filter(|(stem, _)| !stem.is_empty()).map(|(_, x)| x.to_lowercase()).unwrap_or_default()
+    };
+    let folders_first = |a: &Entry, b: &Entry| b.is_dir.cmp(&a.is_dir);
+    match order {
+        SortOrder::Default => entries.sort_by(|a, b| folders_first(a, b).then_with(|| name(a).cmp(&name(b)))),
+        SortOrder::Mixed => entries.sort_by_key(name),
+        SortOrder::FilesFirst => entries.sort_by(|a, b| a.is_dir.cmp(&b.is_dir).then_with(|| name(a).cmp(&name(b)))),
+        SortOrder::Type => entries.sort_by(|a, b| {
+            folders_first(a, b).then_with(|| extension(a).cmp(&extension(b))).then_with(|| name(a).cmp(&name(b)))
+        }),
+        SortOrder::Modified => entries.sort_by(|a, b| {
+            folders_first(a, b).then_with(|| b.modified.cmp(&a.modified)).then_with(|| name(a).cmp(&name(b)))
+        }),
+    }
+}
+
+/// A folder to read, how to sort it, and for which root (so stale answers are dropped).
+type ReadRequest = (PathBuf, SortOrder, u64);
+/// A folder's entries, read off the UI thread.
+type Listed = (PathBuf, Vec<Entry>, u64);
+
+/// One thread reading folders as they're asked for, so a big or slow folder (a network
+/// drive) never holds a frame up.
+struct Reader {
+    ask: Sender<ReadRequest>,
+    answers: Receiver<Listed>,
+}
+
+impl Reader {
+    fn start(ctx: egui::Context) -> Self {
+        let (ask, requests) = mpsc::channel::<ReadRequest>();
+        let (answer, answers) = mpsc::channel();
+        std::thread::spawn(move || {
+            while let Ok((dir, order, generation)) = requests.recv() {
+                let entries = read_dir_sorted(&dir, order);
+                if answer.send((dir, entries, generation)).is_err() {
+                    break;
+                }
+                ctx.request_repaint();
+            }
+        });
+        Self { ask, answers }
+    }
+}
+
+/// The open folder's files, for the filter: paths and the same paths relative, with `/`.
+struct FileIndex {
+    root: PathBuf,
+    relative: Vec<String>,
+}
+
+/// The filter's matches, as rows: (depth, path, a folder).
+fn filter_rows(relative: &[&str], root: &Path) -> Vec<(usize, PathBuf, bool)> {
+    // Folders before files at each level, then by name: compare component by component.
+    let mut sorted: Vec<&str> = relative.to_vec();
+    let key = |rel: &str| {
+        let parts: Vec<&str> = rel.split('/').collect();
+        let last = parts.len() - 1;
+        parts.iter().enumerate().map(|(i, p)| (i == last, p.to_lowercase())).collect::<Vec<_>>()
+    };
+    sorted.sort_by_key(|rel| key(rel));
+    let mut rows = Vec::new();
+    let mut open: Vec<String> = Vec::new();
+    for rel in sorted {
+        let parts: Vec<&str> = rel.split('/').collect();
+        let folders = &parts[..parts.len() - 1];
+        let same = open.iter().zip(folders).take_while(|(a, b)| a.as_str() == **b).count();
+        open.truncate(same);
+        for (depth, folder) in folders.iter().enumerate().skip(same) {
+            open.push((*folder).to_owned());
+            rows.push((depth + 1, root.join(open.join("/")), true));
+        }
+        rows.push((parts.len(), root.join(rel), false));
+    }
+    rows
 }
 
 /// What the Explorer's context menu or keys ask for (`None`: the open folder).
@@ -113,6 +234,23 @@ pub struct Explorer {
     last_active: Option<PathBuf>,
     /// A row picked this frame: (path, whether the editor takes the keyboard).
     picked: Option<(PathBuf, bool)>,
+    /// How folders are sorted.
+    sort: SortOrder,
+    /// Reads folders off the UI thread.
+    reader: Option<Reader>,
+    /// Folders being read, and listings kept on screen until they're read again.
+    pending: HashSet<PathBuf>,
+    stale: HashSet<PathBuf>,
+    /// Bumped when the root or the order changes, so older reads are dropped.
+    generation: u64,
+    /// The filter box (Ctrl+Alt+F): shown, what's typed, and whether it takes the keyboard.
+    pub filter_open: bool,
+    filter: String,
+    filter_focus: bool,
+    /// Every file in the open folder, for the filter; and one being built.
+    index: Option<FileIndex>,
+    indexing: Option<Receiver<FileIndex>>,
+    index_stale: bool,
 }
 
 /// How a row is marked.
@@ -146,6 +284,11 @@ struct FolderLook {
 impl Explorer {
     pub fn set_root(&mut self, root: PathBuf) {
         self.cache.clear();
+        self.stale.clear();
+        self.pending.clear();
+        self.generation += 1;
+        self.index = None;
+        self.index_stale = true;
         self.roles.clear();
         self.manifest = None;
         self.expanded.clear();
@@ -153,10 +296,41 @@ impl Explorer {
         self.root = Some(root);
     }
 
+    /// Reads every shown folder again. What's on screen stays until the new listing
+    /// arrives, so nothing flickers.
     pub fn refresh(&mut self) {
-        self.cache.clear();
+        self.stale.extend(self.cache.keys().cloned());
         self.roles.clear();
         self.manifest = None;
+        self.index_stale = true;
+    }
+
+    /// Sorts folders this way from now on.
+    pub fn set_sort(&mut self, order: SortOrder) {
+        if self.sort != order {
+            self.sort = order;
+            self.generation += 1;
+            self.pending.clear();
+            self.stale.extend(self.cache.keys().cloned());
+        }
+    }
+
+    /// Opens the filter box and gives it the keyboard.
+    pub fn open_filter(&mut self) {
+        self.filter_open = true;
+        self.filter_focus = true;
+    }
+
+    /// Takes in folders read since the last frame.
+    fn take_listings(&mut self) {
+        let Some(reader) = &self.reader else { return };
+        while let Ok((dir, entries, generation)) = reader.answers.try_recv() {
+            self.pending.remove(&dir);
+            if generation == self.generation {
+                self.stale.remove(&dir);
+                self.cache.insert(dir, entries);
+            }
+        }
     }
 
     /// Whether the Explorer has the keyboard.
@@ -410,8 +584,135 @@ impl Explorer {
         self.scroll_to = Some(file.to_path_buf());
     }
 
+    /// A folder's entries as last read; reading it (again) on the reader thread if it
+    /// hasn't been, or has changed. Empty until the first read arrives.
     fn listing(&mut self, dir: &Path) -> &[Entry] {
-        self.cache.entry(dir.to_path_buf()).or_insert_with(|| read_dir_sorted(dir))
+        let fresh = self.cache.contains_key(dir) && !self.stale.contains(dir);
+        if !fresh
+            && !self.pending.contains(dir)
+            && let Some(reader) = &self.reader
+            && reader.ask.send((dir.to_path_buf(), self.sort, self.generation)).is_ok()
+        {
+            self.pending.insert(dir.to_path_buf());
+        }
+        self.cache.get(dir).map_or(&[], Vec::as_slice)
+    }
+
+    /// Whether a folder is still being read for the first time.
+    fn loading(&self, dir: &Path) -> bool {
+        self.pending.contains(dir) && !self.cache.contains_key(dir)
+    }
+
+    /// Builds the file index for the filter, off the UI thread, and takes it in.
+    fn update_index(&mut self, ctx: &egui::Context, root: &Path) {
+        if let Some(rx) = &self.indexing
+            && let Ok(index) = rx.try_recv()
+        {
+            self.indexing = None;
+            if index.root == root {
+                self.index = Some(index);
+            }
+        }
+        let wrong_root = self.index.as_ref().is_some_and(|i| i.root != root);
+        if self.indexing.is_none() && (self.index.is_none() || self.index_stale || wrong_root) {
+            self.index_stale = false;
+            let (tx, rx) = mpsc::channel();
+            let (root, ctx) = (root.to_path_buf(), ctx.clone());
+            std::thread::spawn(move || {
+                let mut files = Vec::new();
+                for entry in rust_code_core::finder::walker(&root).build().flatten() {
+                    if entry.file_type().is_some_and(|t| t.is_file()) {
+                        files.push(entry.into_path());
+                    }
+                }
+                let relative = files
+                    .iter()
+                    .map(|p| p.strip_prefix(&root).unwrap_or(p).to_string_lossy().replace('\\', "/"))
+                    .collect();
+                let _ = tx.send(FileIndex { root, relative });
+                ctx.request_repaint();
+            });
+            self.indexing = Some(rx);
+        }
+    }
+
+    /// The filter box over the tree. Escape closes it, Enter opens the first match and
+    /// Down goes into the matches.
+    fn filter_box(&mut self, ui: &mut egui::Ui) {
+        let edit = egui::TextEdit::singleline(&mut self.filter)
+            .hint_text("Filter files (Esc closes)")
+            .desired_width(f32::INFINITY);
+        let response = ui.add(edit);
+        if std::mem::take(&mut self.filter_focus) {
+            response.request_focus();
+        }
+        // A one-line box lets go of the keyboard on Enter and Escape before this sees them.
+        let left = response.lost_focus();
+        // Taken, so the editor the file opens in doesn't get them too.
+        let escape = left && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+        let enter = left && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter));
+        let down = response.has_focus() && ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown));
+        if escape {
+            self.filter_open = false;
+            self.filter.clear();
+            ui.memory_mut(|m| m.request_focus(focus_id()));
+        }
+        let first_file = self.rows.iter().find(|r| !r.is_dir).map(|r| r.path.clone());
+        if enter && let Some(file) = first_file.clone() {
+            self.select_only(&file);
+            self.picked = Some((file, true));
+        }
+        if down && let Some(first) = first_file {
+            self.select_only(&first);
+            self.scroll_to = Some(first);
+            ui.memory_mut(|m| m.request_focus(focus_id()));
+        }
+        ui.add_space(2.0);
+    }
+
+    /// The filter's matches as a tree, folders open, in place of the whole tree.
+    fn filtered_ui(&mut self, ui: &mut egui::Ui, root: &Path, focused: bool, clicked: &mut Option<PathBuf>) {
+        const MOST: usize = 300;
+        let dim = theme::colors().text_dim;
+        let matched = self.index.as_ref().map(|index| {
+            let found = rust_code_core::finder::rank(index.relative.iter().map(String::as_str), &self.filter);
+            let picked: Vec<&str> = found.iter().take(MOST).map(|(i, _)| index.relative[*i].as_str()).collect();
+            (filter_rows(&picked, root), found.len())
+        });
+        let Some((rows, total)) = matched else {
+            ui.label(RichText::new("Indexing files...").color(dim));
+            return;
+        };
+        if rows.is_empty() {
+            ui.label(RichText::new(format!("No files match \"{}\"", self.filter.trim())).color(dim));
+            return;
+        }
+        for (depth, path, is_dir) in rows {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            let marks = self.marks(&path, focused);
+            let response = if is_dir {
+                let look = FolderLook { expanded: true, kind: FolderKind::Plain, module: false };
+                row(ui, depth, &name, "", marks, Row::Folder(look))
+            } else {
+                let place = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().into_owned();
+                let role = self.role_in_tree(ui.ctx(), &path, &place);
+                row(ui, depth, &name, "", marks, Row::File(&place, role, None))
+            };
+            self.drawing.push(RowInfo { path: path.clone(), opens: false, expanded: true, is_dir, depth });
+            if self.scroll_to.as_deref() == Some(path.as_path()) {
+                response.scroll_to_me(Some(egui::Align::Center));
+                self.scroll_to = None;
+            }
+            if response.clicked() && self.click_row(ui, &path) && !is_dir {
+                *clicked = Some(path.clone());
+            }
+            if response.double_clicked() && !is_dir {
+                self.picked = Some((path, true));
+            }
+        }
+        if total > MOST {
+            ui.label(RichText::new(format!("{} more: type more to narrow them down", total - MOST)).small().color(dim));
+        }
     }
 
     /// A folder's row: how far down it reaches when packages are compact, what to call it
@@ -532,10 +833,20 @@ impl Explorer {
                 self.anchor = Some(file.to_path_buf());
             }
         }
+        if self.reader.is_none() {
+            self.reader = Some(Reader::start(ui.ctx().clone()));
+        }
+        self.take_listings();
         self.keys(ui);
-        let from_keys = self.picked.take();
+        let mut from_keys = self.picked.take();
         let (mut clicked, mut to_editor) = (None, false);
         let focused = Self::has_focus(ui.ctx());
+        if self.filter_open {
+            self.update_index(&ui.ctx().clone(), &root);
+            self.filter_box(ui);
+            from_keys = from_keys.or(self.picked.take());
+        }
+        let filtering = self.filter_open && !self.filter.trim().is_empty();
         let area = ui.available_rect_before_wrap();
         ui.interact(area, focus_id(), Sense::focusable_noninteractive());
         self.drawing.clear();
@@ -543,6 +854,10 @@ impl Explorer {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             self.reads_left = 16;
+            if filtering {
+                self.filtered_ui(ui, &root, focused, &mut clicked);
+                return;
+            }
             let name =
                 root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
             let module = self.listing(&root).iter().any(|e| !e.is_dir && project_tree::is_module_file(&e.name));
@@ -593,17 +908,32 @@ impl Explorer {
         // Collect what we need so `self` can be borrowed mutably while recursing.
         let entries: Vec<(PathBuf, String, bool)> =
             self.listing(dir).iter().map(|e| (e.path.clone(), e.name.clone(), e.is_dir)).collect();
+        if entries.is_empty() && self.loading(dir) {
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let (rect, _) =
+                ui.allocate_exact_size(egui::vec2(ui.available_width(), (font.size * 1.7).round()), Sense::hover());
+            let at = egui::pos2(
+                rect.left() + 4.0 + depth as f32 * INDENT + (font.size * 1.1).round() * 2.0 + 6.0,
+                rect.center().y,
+            );
+            ui.painter().text(at, egui::Align2::LEFT_CENTER, "Loading...", font, theme::colors().text_dim);
+            return;
+        }
         let nested = self.nested_in(dir);
+        // What goes under each file, gathered once: asking every entry about every other
+        // took seconds in a folder of thousands.
+        let mut under_of: HashMap<&str, Vec<(PathBuf, String)>> = HashMap::new();
+        for (path, child, _) in &entries {
+            if let Some(top) = nested.get(child) {
+                under_of.entry(top.as_str()).or_default().push((path.clone(), child.clone()));
+            }
+        }
         for (path, name, is_dir) in &entries {
             if nested.contains_key(name) {
                 continue;
             }
-            let under: Vec<(PathBuf, String)> = entries
-                .iter()
-                .filter(|(_, child, _)| nested.get(child) == Some(name))
-                .map(|(path, child, _)| (path.clone(), child.clone()))
-                .collect();
-            self.entry_ui(ui, (path.clone(), name.clone(), *is_dir), &under, depth, focused, clicked);
+            let under = under_of.get(name.as_str()).map_or(&[][..], Vec::as_slice);
+            self.entry_ui(ui, (path.clone(), name.clone(), *is_dir), under, depth, focused, clicked);
         }
     }
 
@@ -630,6 +960,22 @@ impl Explorer {
         };
         let marks = self.marks(&path, focused);
         self.drawing.push(RowInfo { path: path.clone(), opens: is_dir || !under.is_empty(), expanded, is_dir, depth });
+        // Out of sight: the row keeps its place and its turn for the keyboard, but builds
+        // nothing, so a folder of thousands costs what fits on screen.
+        let height = (egui::TextStyle::Body.resolve(ui.style()).size * 1.7).round();
+        let (top, clip) = (ui.cursor().top(), ui.clip_rect());
+        let unseen = top > clip.bottom() || top + height < clip.top();
+        if unseen && self.scroll_to.as_deref() != Some(path.as_path()) {
+            ui.add_space(height);
+            if is_dir && expanded {
+                self.dir_ui(ui, &path, depth + 1, focused, clicked);
+            } else if expanded {
+                for (child, name) in under {
+                    self.entry_ui(ui, (child.clone(), name.clone(), false), &[], depth + 1, focused, clicked);
+                }
+            }
+            return;
+        }
         let inside = self.root.as_deref().and_then(|r| path.strip_prefix(r).ok()).unwrap_or(&path);
         let place = inside.to_string_lossy().into_owned();
         let response = match look {
@@ -741,6 +1087,11 @@ fn row(ui: &mut egui::Ui, depth: usize, text: &str, hint: &str, marks: Marks, wh
     let font = egui::TextStyle::Body.resolve(ui.style());
     let height = (font.size * 1.7).round();
     let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
+    // Rows scrolled out of sight take their place but draw nothing: a folder of thousands
+    // costs little more than what fits on screen.
+    if !ui.is_rect_visible(rect) {
+        return response;
+    }
     let painter = ui.painter_at(rect);
     let band = rect.shrink2(egui::vec2(2.0, 0.0));
     if marks.selected {
@@ -842,7 +1193,7 @@ fn read_role(path: &Path, place: &str) -> FileRole {
     if read { FileRole::of(place, &String::from_utf8_lossy(&bytes)) } else { FileRole::of_name(place) }
 }
 
-fn read_dir_sorted(dir: &Path) -> Vec<Entry> {
+fn read_dir_sorted(dir: &Path, order: SortOrder) -> Vec<Entry> {
     let Ok(read) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -854,11 +1205,11 @@ fn read_dir_sorted(dir: &Path) -> Vec<Entry> {
             if is_dir && name == ".git" {
                 return None;
             }
-            Some(Entry { path: e.path(), name, is_dir })
+            let modified = if order == SortOrder::Modified { e.metadata().ok()?.modified().ok() } else { None };
+            Some(Entry { path: e.path(), name, is_dir, modified })
         })
         .collect();
-    // Folders first, then case-insensitive by name.
-    entries.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
+    sort_entries(&mut entries, order);
     entries
 }
 
@@ -928,6 +1279,85 @@ mod tests {
         assert_eq!(explorer.selection, [PathBuf::from("proj/README.md")]);
         assert_eq!(explorer.clipboard, Some((vec![], true)));
         assert_eq!(explorer.cursor, None);
+    }
+
+    #[test]
+    fn folders_sort_every_way() {
+        let entry = |name: &str, is_dir: bool, secs: u64| Entry {
+            path: PathBuf::from(name),
+            name: name.to_owned(),
+            is_dir,
+            modified: Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+        };
+        let names = |order: SortOrder| {
+            let mut entries = vec![
+                entry("b.rs", false, 3),
+                entry("src", true, 1),
+                entry("A.md", false, 1),
+                entry("docs", true, 2),
+                entry("c.md", false, 2),
+            ];
+            sort_entries(&mut entries, order);
+            entries.into_iter().map(|e| e.name).collect::<Vec<_>>()
+        };
+        assert_eq!(names(SortOrder::Default), ["docs", "src", "A.md", "b.rs", "c.md"]);
+        assert_eq!(names(SortOrder::Mixed), ["A.md", "b.rs", "c.md", "docs", "src"]);
+        assert_eq!(names(SortOrder::FilesFirst), ["A.md", "b.rs", "c.md", "docs", "src"]);
+        assert_eq!(names(SortOrder::Type), ["docs", "src", "A.md", "c.md", "b.rs"]);
+        assert_eq!(names(SortOrder::Modified), ["docs", "src", "b.rs", "c.md", "A.md"]);
+        assert_eq!(SortOrder::from_setting("filesFirst"), SortOrder::FilesFirst);
+        assert_eq!(SortOrder::from_setting("nonsense"), SortOrder::Default);
+    }
+
+    #[test]
+    fn filter_matches_make_a_tree() {
+        let root = Path::new("p");
+        let rows = filter_rows(&["src/app/mod.rs", "README.md", "src/main.rs", "src/app/lsp.rs"], root);
+        let shown: Vec<(usize, String, bool)> = rows
+            .into_iter()
+            .map(|(d, p, dir)| (d, p.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"), dir))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                (1, "src".to_owned(), true),
+                (2, "src/app".to_owned(), true),
+                (3, "src/app/lsp.rs".to_owned(), false),
+                (3, "src/app/mod.rs".to_owned(), false),
+                (2, "src/main.rs".to_owned(), false),
+                (1, "README.md".to_owned(), false),
+            ]
+        );
+    }
+
+    #[test]
+    fn folders_are_read_off_the_ui_thread() {
+        let dir = std::env::temp_dir().join(format!("rust_code_explorer_read_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("a.txt"), "").unwrap();
+        let mut explorer = Explorer { reader: Some(Reader::start(egui::Context::default())), ..Default::default() };
+        assert!(explorer.listing(&dir).is_empty(), "nothing yet: it's being read");
+        assert!(explorer.loading(&dir));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while explorer.listing(&dir).is_empty() && std::time::Instant::now() < deadline {
+            explorer.take_listings();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let names: Vec<String> = explorer.listing(&dir).iter().map(|e| e.name.clone()).collect();
+        assert_eq!(names, ["sub", "a.txt"]);
+        // A refresh keeps the listing on screen while it's read again.
+        std::fs::write(dir.join("b.txt"), "").unwrap();
+        explorer.refresh();
+        assert_eq!(explorer.listing(&dir).len(), 2);
+        assert!(!explorer.loading(&dir));
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while explorer.listing(&dir).len() < 3 && std::time::Instant::now() < deadline {
+            explorer.take_listings();
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(explorer.listing(&dir).len(), 3);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

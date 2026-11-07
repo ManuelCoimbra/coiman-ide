@@ -28,8 +28,9 @@ impl CodeApp {
     pub(super) fn picked_vscode_import(&mut self, ctx: &egui::Context, label: &str) {
         match label {
             CHOOSE_VSIX => {
-                let dialog = rfd::FileDialog::new().add_filter("VS Code extension", &["vsix"]);
+                let dialog = self.file_dialog("vsix").add_filter("VS Code extension", &["vsix"]);
                 let Some(file) = dialog.pick_file() else { return };
+                self.dialog_chose("vsix", &file);
                 let temp = std::env::temp_dir().join(format!("rust-code-vsix-{}", std::process::id()));
                 let _ = std::fs::remove_dir_all(&temp);
                 let result = vscode_import::unpack_vsix(&file, &temp);
@@ -40,7 +41,8 @@ impl CodeApp {
                 let _ = std::fs::remove_dir_all(&temp);
             }
             CHOOSE_FOLDER => {
-                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                if let Some(folder) = self.file_dialog("vscode_extension_folder").pick_folder() {
+                    self.dialog_chose("vscode_extension_folder", &folder);
                     self.import_extension(ctx, &folder);
                 }
             }

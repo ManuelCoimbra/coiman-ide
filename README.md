@@ -78,6 +78,18 @@ is read and written on your machine.
   and Escape drops the selection and a pending cut. The open folder itself is never deleted, cut or
   renamed. These keys are commands in **Keyboard Shortcuts**, marked Explorer, and can be changed
   there or in the keybindings file with `when = "filesExplorerFocus"`.
+- **Filter Files** (`Ctrl+Alt+F`, or the magnifier in the Explorer's header) filters the whole
+  project, not only open folders: matches show as a tree, Enter opens the first, Down goes into
+  them, Escape closes the filter. It searches an index built off the UI thread and rebuilt on
+  Refresh.
+- **Sort order** (Settings > Workbench) orders folders like VS Code's `explorer.sortOrder`: folders
+  first, mixed, files first, by type or by date modified.
+- Folders are read on their own thread, so a slow or huge folder never freezes the window; a
+  refresh keeps what's shown until the new listing arrives. Rows out of sight are skipped, so a
+  folder of 20,000 files scrolls like a small one.
+- Each file dialog opens where it was last left (Open File, Open Folder, Save As for new files,
+  background pictures, plugin folders and the rest each remember their own), kept in
+  `dialogs.json` in the config folder.
 - Split the editor with `Ctrl+\\` or by dragging a tab onto the right half of the editor; each pane
   scrolls on its own. `Ctrl+1` / `Ctrl+2` move between them, `Shift+Alt+0` flips the layout, the
   divider drags, and **View > Single Editor** goes back to one. Drag tabs to reorder them

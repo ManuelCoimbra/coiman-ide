@@ -64,18 +64,21 @@ impl CodeApp {
             Command::SearchEverywhere => self.open_everywhere(),
             Command::NewFile => self.new_file(),
             Command::OpenFile => {
-                let mut dialog = rfd::FileDialog::new();
-                if let Some(root) = &self.explorer.root {
-                    dialog = dialog.set_directory(root);
-                }
-                if let Some(path) = dialog.pick_file() {
+                if let Some(path) = self.file_dialog("open_file").pick_file() {
+                    self.dialog_chose("open_file", &path);
                     self.open_file(&path);
                 }
             }
             Command::OpenFolder => {
-                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                if let Some(path) = self.file_dialog("open_folder").pick_folder() {
+                    self.dialog_chose("open_folder", &path);
                     self.open_folder(path);
                 }
+            }
+            Command::ExplorerFind => {
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Explorer;
+                self.explorer.open_filter();
             }
             Command::Save => {
                 // A project's own formatter owns its files: the server would fight it.
@@ -439,12 +442,14 @@ impl CodeApp {
             Command::ImportFromVsCode => self.import_from_vscode(),
             Command::ChooseBackgroundImage => {
                 let filter = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
-                if let Some(file) = rfd::FileDialog::new().add_filter("Pictures", &filter).pick_file() {
+                if let Some(file) = self.file_dialog("background_picture").add_filter("Pictures", &filter).pick_file() {
+                    self.dialog_chose("background_picture", &file);
                     self.set_background(ctx, &file.to_string_lossy());
                 }
             }
             Command::ChooseBackgroundFolder => {
-                if let Some(folder) = rfd::FileDialog::new().pick_folder() {
+                if let Some(folder) = self.file_dialog("background_folder").pick_folder() {
+                    self.dialog_chose("background_folder", &folder);
                     self.set_background(ctx, &folder.to_string_lossy());
                 }
             }

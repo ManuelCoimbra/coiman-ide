@@ -259,7 +259,9 @@ impl CodeApp {
     /// `Hex: Open File`: the active file, or one to choose.
     pub(super) fn hex_command(&mut self) {
         let current = self.docs.get(self.active).and_then(|d| d.path.clone());
-        if let Some(path) = current.or_else(|| rfd::FileDialog::new().pick_file()) {
+        let picked = || self.file_dialog("hex_file").pick_file();
+        if let Some(path) = current.or_else(picked) {
+            self.dialog_chose("hex_file", &path);
             self.bytes.to_open = Some(path);
         }
     }

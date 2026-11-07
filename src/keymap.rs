@@ -30,6 +30,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+k ctrl+o", Command::OpenFolder, false),
     ("ctrl+r", Command::OpenRecent, false),
     ("ctrl+alt+k", Command::ToggleBookmark, true),
+    ("ctrl+alt+f", Command::ExplorerFind, false),
     ("ctrl+alt+l", Command::NextBookmark, true),
     ("ctrl+alt+j", Command::PreviousBookmark, true),
     ("ctrl+k v", Command::MarkdownPreview, false),
