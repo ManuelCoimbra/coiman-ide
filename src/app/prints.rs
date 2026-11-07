@@ -61,6 +61,12 @@ impl CodeApp {
     /// Reads the output again now and then. It stays quiet with nothing new:
     /// a frame too early asks for just one more.
     pub(super) fn pump_prints(&mut self, ctx: &egui::Context) {
+        // Nothing to read: no reason to look again.
+        if self.terminal.is_empty() && self.job_output().is_empty() {
+            self.prints.hits.clear();
+            self.prints.sites.clear();
+            return;
+        }
         let now = ctx.input(|i| i.time);
         if now < self.prints.next_scan {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(self.prints.next_scan - now));

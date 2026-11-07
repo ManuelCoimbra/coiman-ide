@@ -87,6 +87,7 @@ pub enum PickerKind {
     MavenFound,
     MavenScope,
     MavenArchetype,
+    SampleProject,
 }
 
 struct Picker {

@@ -289,6 +289,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "workbench",
+                "max_fps",
+                "Frame rate limit",
+                "Most frames a second while something moves, below a fast display's rate to save power. 0 follows the display.",
+                Kind::Whole(0, 1000),
+            ),
+            row(
+                "workbench",
+                "search_in_top_bar",
+                "Search in the top bar",
+                "A search box in the middle of the top bar; off, a magnifier on the right.",
+                Kind::Toggle,
+            ),
+            row(
+                "workbench",
                 "ui",
                 "Layout",
                 "Rounded islands with gaps between them, or the classic square panels.",

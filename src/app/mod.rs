@@ -19,6 +19,7 @@ mod environment;
 mod file_buttons;
 mod files;
 mod font_preview;
+mod frames;
 mod git;
 mod git_setup;
 mod hidden;
@@ -52,6 +53,7 @@ mod tables;
 mod tag_rename;
 mod test_panel;
 mod tool_rails;
+mod tour;
 mod traces;
 mod tree_tools;
 mod view_tabs;
@@ -252,6 +254,8 @@ pub struct CodeApp {
     maven: maven::MavenState,
     companions: lsp_companion::Companions,
     tag_watch: Option<tag_rename::TagWatch>,
+    tour: tour::Tour,
+    frames: frames::Frames,
     /// The VS Code compatibility report being written: its file and how many extensions.
     vscode_report: Option<std::sync::mpsc::Receiver<Result<(PathBuf, usize), String>>>,
 
@@ -400,6 +404,8 @@ impl CodeApp {
             maven: maven::MavenState::default(),
             companions: lsp_companion::Companions::default(),
             tag_watch: None,
+            tour: tour::Tour::default(),
+            frames: frames::Frames::default(),
             vscode_report: None,
             pending_close: None,
             allow_close: false,
@@ -455,6 +461,18 @@ impl CodeApp {
 
 impl eframe::App for CodeApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let started = std::time::Instant::now();
+        self.frame_started(ui.ctx());
+        self.draw_frame(ui);
+        self.frame_ended(started);
+    }
+}
+
+// ----- editor widget -----------------------------------------------------------
+
+impl CodeApp {
+    /// One frame of the window.
+    fn draw_frame(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         self.handle_close_request(&ctx);
         if std::mem::take(&mut self.settings_reload) {
@@ -536,12 +554,13 @@ impl eframe::App for CodeApp {
         }
         // Zen mode hides all workbench chrome around the editor.
         if !zen {
-            egui::Panel::bottom("status_bar")
+            let status = egui::Panel::bottom("status_bar")
                 .frame(egui::Frame::new().fill(theme::colors().status_bg).inner_margin(egui::Margin::symmetric(8, 2)))
                 .show_separator_line(false)
                 .show(ui, |ui| {
                     cmd = cmd.or(self.status_bar(ui));
                 });
+            self.tour_spot("status", status.response.rect);
 
             let rail_frame = egui::Frame::new().fill(theme::colors().activity_bg);
             if theme::islands() {
@@ -655,6 +674,9 @@ impl eframe::App for CodeApp {
 
         let gaps = theme::island_gaps(zen, true, false, !(self.panel_visible && !zen && !panel_right));
         let frame = theme::island_frame(theme::colors().editor_bg, egui::Margin::ZERO, gaps);
+        if let Some(r) = self.tour.step.map(|_| ui.available_rect_before_wrap()) {
+            self.tour_spot("editor", r.shrink(8.0));
+        }
         let central = egui::CentralPanel::no_frame().frame(frame).show(ui, |ui| {
             if self.docs.is_empty() {
                 if self.git.diff.is_some() {
@@ -866,6 +888,7 @@ impl eframe::App for CodeApp {
 
         self.close_dialog(&ctx);
         self.run_refusal_ui(&ctx);
+        cmd = cmd.or(self.tour_ui(&ctx));
 
         if let Some(c) = cmd {
             self.run_command(&ctx, c);
@@ -885,8 +908,6 @@ impl eframe::App for CodeApp {
         }
     }
 }
-
-// ----- editor widget -----------------------------------------------------------
 
 /// A callback that wakes the UI from a background thread.
 fn repaint(ctx: &egui::Context) -> impl Fn() + Send + Sync + 'static {

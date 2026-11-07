@@ -194,6 +194,16 @@ impl CodeApp {
         let pal = theme::colors();
         let (rect, response) = ui.allocate_exact_size(egui::vec2(RAIL_WIDTH, 38.0), Sense::click_and_drag());
         let tile = rect.shrink2(egui::vec2(5.0, 1.0));
+        let spot = match tool {
+            RailTool::Side(SidebarView::Explorer) => Some("explorer"),
+            RailTool::Side(SidebarView::Git) => Some("git"),
+            RailTool::Side(SidebarView::Extensions) => Some("extensions"),
+            RailTool::Panel(PanelTab::Terminal) => Some("terminal"),
+            _ => None,
+        };
+        if let Some(spot) = spot {
+            self.tour_spot(spot, tile);
+        }
         let opened = theme::eased(ui.ctx(), response.id.with("open"), open);
         let hovered = theme::eased(ui.ctx(), response.id.with("hover"), response.hovered());
         if hovered > 0.0 {

@@ -452,6 +452,8 @@ impl CodeApp {
             Command::ToggleSvgPreview => self.toggle_svg_preview(),
             Command::ImportFromVsCode => self.import_from_vscode(),
             Command::VsCodeCompatibility => self.vscode_compatibility(ctx),
+            Command::TakeTour => self.start_tour(),
+            Command::NewSampleProject => self.new_sample_project(),
             Command::ChooseBackgroundImage => {
                 let filter = ["png", "jpg", "jpeg", "gif", "webp", "bmp"];
                 if let Some(file) = self.file_dialog("background_picture").add_filter("Pictures", &filter).pick_file() {
@@ -656,6 +658,7 @@ impl CodeApp {
             PickerKind::MavenFound => self.picked_maven_found(label),
             PickerKind::MavenScope => self.picked_maven_scope(label),
             PickerKind::MavenArchetype => self.picked_maven_archetype(label),
+            PickerKind::SampleProject => self.picked_sample(label),
             PickerKind::Indentation => {
                 let size = label.strip_prefix("Spaces: ").and_then(|n| n.parse().ok());
                 let mut docs = std::mem::take(&mut self.docs);

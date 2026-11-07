@@ -327,10 +327,13 @@ impl CodeApp {
 
                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                     ui.add_space(6.0);
-                    if tool_button(ui, Icon::Gear, pal.text, "Settings").clicked() {
+                    let gear = tool_button(ui, Icon::Gear, pal.text, "Settings");
+                    self.tour_spot("settings", gear.rect);
+                    if gear.clicked() {
                         cmd = Some(Command::OpenUserSettings);
                     }
-                    if tool_button(ui, Icon::Search, pal.text, "Search Everywhere (Double Shift)").clicked() {
+                    let boxed = self.settings.workbench.search_in_top_bar;
+                    if !boxed && tool_button(ui, Icon::Search, pal.text, "Search Everywhere (Double Shift)").clicked() {
                         cmd = Some(Command::SearchEverywhere);
                     }
                     ui.add_space(8.0);
@@ -341,13 +344,75 @@ impl CodeApp {
                     } else if tool_button(ui, Icon::Bug, green, "Debug (F5)").clicked() {
                         cmd = Some(Command::StartDebugging);
                     }
-                    if self.run_button_visible() && tool_button(ui, Icon::Play, green, &self.run_button_tip()).clicked()
-                    {
-                        cmd = Some(Command::RunProgram);
+                    let mut run_spot = None;
+                    if self.run_button_visible() {
+                        let run = tool_button(ui, Icon::Play, green, &self.run_button_tip());
+                        run_spot = Some(run.rect);
+                        if run.clicked() {
+                            cmd = Some(Command::RunProgram);
+                        }
                     }
                     let target = self.run_target_label().unwrap_or_else(|| "Current File".to_owned());
-                    if text_chip(ui, &target, 0.0, |_, _| {}).on_hover_text("Choose what Run starts").clicked() {
+                    let chip = text_chip(ui, &target, 0.0, |_, _| {});
+                    // What runs, and the arrow when a file can run.
+                    self.tour_spot("run", run_spot.map_or(chip.rect, |r| r.union(chip.rect)));
+                    if chip.on_hover_text("Choose what Run starts").clicked() {
                         cmd = Some(Command::ChooseRunTarget);
+                    }
+                    // The search box, in what's left between the project and Run: centered on
+                    // the window when there's room, else in the gap; a magnifier when narrow.
+                    if boxed {
+                        let free = ui.available_rect_before_wrap();
+                        let width = 380.0_f32.min(free.width() - 32.0);
+                        if width >= 170.0 {
+                            let half = width / 2.0 + 16.0;
+                            let x = bar.center().x.clamp(free.left() + half, free.right() - half);
+                            let rect =
+                                egui::Rect::from_center_size(egui::pos2(x, bar.center().y), egui::vec2(width, 28.0));
+                            let resp = ui.interact(rect, egui::Id::unique("top_bar_search"), Sense::click());
+                            self.tour_spot("search", rect);
+                            let hovered = theme::eased(ui.ctx(), resp.id.with("hover"), resp.hovered());
+                            let fill = pal.widget_bg.lerp_to_gamma(pal.hover_bg, hovered);
+                            let p = ui.painter();
+                            p.rect_filled(rect, 7.0, fill);
+                            p.rect_stroke(rect, 7.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+                            let icon = egui::Rect::from_center_size(
+                                rect.left_center() + egui::vec2(16.0, 0.0),
+                                egui::vec2(15.0, 15.0),
+                            );
+                            icons::paint(p, icon, Icon::Search, pal.text_dim);
+                            let font = egui::TextStyle::Body.resolve(ui.style());
+                            let keys = self.keymap.shortcut_text(Command::SearchEverywhere);
+                            let keys = if keys.is_empty() { "Double Shift".to_owned() } else { keys };
+                            let hint = if width >= 300.0 { "Search files, symbols, commands" } else { "Search" };
+                            let text_rect = rect.with_min_x(rect.left() + 30.0).with_max_x(rect.right() - 8.0);
+                            p.with_clip_rect(text_rect).text(
+                                egui::pos2(text_rect.left(), rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                hint,
+                                font.clone(),
+                                pal.text_dim,
+                            );
+                            if width >= 300.0 {
+                                let small = egui::FontId::proportional(font.size * 0.85);
+                                p.text(
+                                    rect.right_center() - egui::vec2(10.0, 0.0),
+                                    egui::Align2::RIGHT_CENTER,
+                                    keys,
+                                    small,
+                                    pal.text_dim,
+                                );
+                            }
+                            if resp
+                                .on_hover_text("Search Everywhere: files, symbols, commands, settings, text")
+                                .clicked()
+                            {
+                                cmd = Some(Command::SearchEverywhere);
+                            }
+                        } else if tool_button(ui, Icon::Search, pal.text, "Search Everywhere (Double Shift)").clicked()
+                        {
+                            cmd = Some(Command::SearchEverywhere);
+                        }
                     }
                 });
             });
@@ -1365,7 +1430,19 @@ impl CodeApp {
                 ("Show All Commands", Command::CommandPalette),
                 ("Go to File...", Command::QuickOpen),
                 ("Toggle Terminal", Command::ToggleTerminal),
+                ("Take the Tour", Command::TakeTour),
+                ("New Sample Project...", Command::NewSampleProject),
             ];
+            // First time here: the tour is offered, not started.
+            if !super::tour::seen() {
+                if ui
+                    .button(RichText::new("New here? Take the tour  →").size(15.0).color(theme::colors().accent))
+                    .clicked()
+                {
+                    cmd = Some(Command::TakeTour);
+                }
+                ui.add_space(14.0);
+            }
             // Grids don't center themselves, so pad to roughly center a ~300px block.
             ui.horizontal(|ui| {
                 ui.add_space(((ui.available_width() - 300.0) / 2.0).max(0.0));

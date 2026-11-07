@@ -168,6 +168,11 @@ pub struct WorkbenchSettings {
     pub reduced_motion: bool,
     /// Pressing Shift twice opens Search Everywhere.
     pub double_shift: bool,
+    /// Search Everywhere's box in the middle of the top bar; off, a magnifier on the right.
+    pub search_in_top_bar: bool,
+    /// Most frames a second while something moves (scrolling output, animations); 0
+    /// follows the display. The window draws nothing while nothing changes either way.
+    pub max_fps: u32,
     /// The window's layout: "islands", or "classic" for square panels edge to edge.
     pub ui: String,
     /// Explorer: show a chain of packages holding only each other as one row, `org.example`.
@@ -404,6 +409,8 @@ impl Default for WorkbenchSettings {
             theme_schedule: String::new(),
             reduced_motion: false,
             double_shift: true,
+            search_in_top_bar: true,
+            max_fps: 0,
             ui: "islands".to_owned(),
             compact_folders: true,
             explorer_sort_order: "default".to_owned(),

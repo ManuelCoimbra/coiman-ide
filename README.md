@@ -437,6 +437,19 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   C++, Java, JavaScript, TypeScript, C#, PHP, Kotlin, Swift, Scala, Groovy and Dart
   (**Settings > Editor > Doc comment templates**).
 
+### First steps, search and frame rate
+
+- **Help: Take the Tour** shows where things are, one part of the window at a time, with a
+  button to try each: projects, the editor, search and commands, run and debug, the
+  terminal, language tooling, Git, settings and extensions. The Welcome page offers it
+  until it's been taken. **Help: New Sample Project...** makes a small Python, C, Java,
+  JavaScript or Rust project and opens it, ready to run with Ctrl+Shift+F10.
+- **Search in the top bar**: the box in the middle opens Search Everywhere (or press Shift
+  twice). `workbench.search_in_top_bar = false` puts a magnifier on the right instead.
+- **Frame rate**: nothing is drawn while nothing changes. While something does, frames
+  keep to the refresh rate of the display the window is on; `workbench.max_fps` sets a
+  lower limit to save power (0 follows the display).
+
 ### Servers from VS Code extensions, paths and tag pairs
 
 - **ESLint and Tailwind CSS** run beside a file's own language server, from their installed

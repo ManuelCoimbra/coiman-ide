@@ -46,8 +46,12 @@ impl CodeApp {
         let now = ctx.input(|i| i.time);
         let start = self.environment_start();
         let moved = self.environment.current.as_ref().map(|(dir, _)| dir) != start.as_ref();
-        // An idle window draws nothing, and an environment can appear at any time.
-        if start.is_some() {
+        // An idle window draws nothing, and an environment can appear at any time: while
+        // Python is in play (its file in front, or its server running), look again in a
+        // while even with nothing else happening. Otherwise the next frame will.
+        let python = self.docs.get(self.active).is_some_and(|d| matches!(d.extension().as_str(), "py" | "pyw" | "pyi"))
+            || self.lsp.clients.iter().any(|c| c.kind == ServerKind::Python);
+        if start.is_some() && python {
             let wait = (self.environment.next_check - now).max(0.1);
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(wait));
         }
