@@ -520,7 +520,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Feature | How |
 | --- | --- |
 | Errors and warnings | Squiggles, the message after the line (Error Lens style), hover for details; Problems panel (`Ctrl+Shift+M`), counts in the status bar; `F8` / `Shift+F8` next/previous problem |
-| Completion | As you type, after `.`/`:`, or `Ctrl+Space`; `Enter`/`Tab` accepts, snippets place the cursor, auto-imports are added |
+| Completion | As you type, after `.`/`:`, or `Ctrl+Space`; `Enter`/`Tab` accepts, snippets place the cursor. The picked entry's signature and docs show beside the list (to its left when there's no room). Completions of names not yet imported (rust-analyzer's `HashMap` from anywhere) add the `use` line when taken: the server fills an entry in on request (`completionItem/resolve`), even after the list was fetched again as you typed |
 | Hover | Rest the pointer on a symbol, or `Ctrl+K Ctrl+I` at the cursor |
 | Go to Definition / Implementations | `F12` or `Ctrl+Click` / `Ctrl+F12` |
 | Go to Type Definition | **Go > Go to Type Definition**, or the command palette |

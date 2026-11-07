@@ -70,6 +70,13 @@ pub(super) enum Pending {
     Completion {
         uid: u64,
     },
+    /// A completion item filled in: its docs while the list shows, or, once accepted
+    /// (`apply_at`: the start of its line then), the imports it adds above it.
+    CompletionResolve {
+        uid: u64,
+        idx: usize,
+        apply_at: Option<usize>,
+    },
     /// `anchor` is the pointer position, or `None` when asked from the keyboard.
     Hover {
         uid: u64,
@@ -137,6 +144,8 @@ pub(super) struct CompletionEntry {
     label: String,
     detail: String,
     item: lt::CompletionItem,
+    /// Filled in by the server (`completionItem/resolve`).
+    resolved: bool,
 }
 
 pub(super) struct Completion {
@@ -152,6 +161,11 @@ pub(super) struct Completion {
     /// (buffer version, cursor) the list was filtered for.
     filtered_for: (u64, usize),
     scroll_to_selected: bool,
+    /// The label whose docs were asked for.
+    docs_asked: Option<String>,
+    /// Items the server filled in, by label: the list is fetched again as you type, so
+    /// an answer can come for an entry that has since been replaced.
+    resolved: HashMap<String, lt::CompletionItem>,
 }
 
 pub(super) struct Hover {
@@ -754,6 +768,7 @@ impl CodeApp {
         };
         match pending {
             Pending::Completion { uid } => self.on_completion(uid, value),
+            Pending::CompletionResolve { uid, idx, apply_at } => self.on_completion_resolved(uid, idx, apply_at, value),
             Pending::Hover { uid, pos, anchor } => self.on_hover(uid, pos, anchor, value),
             Pending::Locations { title, word } => self.on_locations(title, &word, value),
             Pending::Rename { name } => match serde_json::from_value::<Option<lt::WorkspaceEdit>>(value) {
@@ -1177,6 +1192,8 @@ impl CodeApp {
                     waiting: true,
                     filtered_for: (u64::MAX, 0),
                     scroll_to_selected: true,
+                    docs_asked: None,
+                    resolved: HashMap::new(),
                 });
             }
         }
@@ -1233,7 +1250,7 @@ impl CodeApp {
                     sort_text: Some(format!("{n:05}")),
                     ..Default::default()
                 };
-                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item }
+                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item, resolved: true }
             })
             .collect();
         self.lsp.completion = Some(Completion {
@@ -1246,6 +1263,8 @@ impl CodeApp {
             waiting: false,
             filtered_for: (u64::MAX, 0),
             scroll_to_selected: true,
+            docs_asked: None,
+            resolved: HashMap::new(),
         });
         self.refilter_completion();
     }
@@ -1257,6 +1276,7 @@ impl CodeApp {
             Ok(Some(lt::CompletionResponse::List(list))) => (list.is_incomplete, list.items),
             _ => (false, Vec::new()),
         };
+        let resolved = &c.resolved;
         c.entries = items
             .into_iter()
             .map(|item| {
@@ -1266,7 +1286,13 @@ impl CodeApp {
                     .and_then(|d| d.description.clone().or_else(|| d.detail.clone()))
                     .or_else(|| item.detail.clone())
                     .unwrap_or_default();
-                CompletionEntry { label: item.label.clone(), detail, item }
+                // Filled in before, for an earlier list: keep what the server said.
+                match resolved.get(&item.label) {
+                    Some(done) => {
+                        CompletionEntry { label: item.label.clone(), detail, item: done.clone(), resolved: true }
+                    }
+                    None => CompletionEntry { label: item.label.clone(), detail, item, resolved: false },
+                }
             })
             .collect();
         c.incomplete = incomplete;
@@ -1315,10 +1341,113 @@ impl CodeApp {
         }
     }
 
+    /// Whether the server for document `i` fills in completion items on request.
+    fn resolves_completions(&self, i: usize) -> bool {
+        let Some(doc) = self.docs.get(i) else { return false };
+        lsp_target(doc).is_some_and(|(path, _, kind)| {
+            self.lsp.clients.iter().any(|c| {
+                serves(c, kind, &path)
+                    && c.capabilities()
+                        .and_then(|caps| caps.completion_provider.as_ref())
+                        .and_then(|p| p.resolve_provider)
+                        .unwrap_or(false)
+            })
+        })
+    }
+
+    /// Asks the server to fill in completion item `idx`.
+    fn resolve_completion(
+        &mut self,
+        i: usize,
+        uid: u64,
+        idx: usize,
+        item: &lt::CompletionItem,
+        apply_at: Option<usize>,
+    ) {
+        let value = serde_json::to_value(item).unwrap_or_default();
+        self.request_for(
+            i,
+            "completionItem/resolve",
+            Pending::CompletionResolve { uid, idx, apply_at },
+            move |_, _| value,
+        );
+    }
+
+    /// The picked entry's docs, asked for once it's been picked.
+    fn resolve_selected_completion(&mut self) {
+        let Some(c) = &self.lsp.completion else { return };
+        let Some(&idx) = c.shown.get(c.selected) else { return };
+        let label = &c.entries[idx].item.label;
+        if c.docs_asked.as_ref() == Some(label) || c.entries[idx].resolved || c.resolved.contains_key(label) {
+            return;
+        }
+        let (uid, item) = (c.uid, c.entries[idx].item.clone());
+        let Some(i) = self.doc_index(uid) else { return };
+        if !self.resolves_completions(i) {
+            if let Some(c) = &mut self.lsp.completion {
+                c.docs_asked = Some(item.label.clone());
+            }
+            return;
+        }
+        if let Some(c) = &mut self.lsp.completion {
+            c.docs_asked = Some(item.label.clone());
+        }
+        self.resolve_completion(i, uid, idx, &item, None);
+    }
+
+    fn on_completion_resolved(&mut self, uid: u64, idx: usize, apply_at: Option<usize>, value: Value) {
+        let Ok(item) = serde_json::from_value::<lt::CompletionItem>(value) else { return };
+        let Some(line_start) = apply_at else {
+            // Docs for the list: kept on the entry with that label, which may since have
+            // moved in a list fetched again.
+            let _ = idx;
+            if let Some(c) = self.lsp.completion.as_mut().filter(|c| c.uid == uid) {
+                if let Some(entry) = c.entries.iter_mut().find(|e| e.item.label == item.label) {
+                    entry.item = item.clone();
+                    entry.resolved = true;
+                }
+                c.resolved.insert(item.label.clone(), item);
+            }
+            return;
+        };
+        // Accepted already: add the imports, which go above its line, so the text there
+        // is as the server saw it.
+        let Some(i) = self.doc_index(uid) else { return };
+        let doc = &mut self.docs[i];
+        let rope = doc.buffer.rope();
+        let edits: Vec<(usize, usize, String)> = item
+            .additional_text_edits
+            .iter()
+            .flatten()
+            .map(|e| {
+                let (a, b) = convert::chars_of(rope, e.range);
+                (a, b, e.new_text.clone())
+            })
+            .filter(|(_, b, _)| *b <= line_start)
+            .collect();
+        if edits.is_empty() {
+            return;
+        }
+        let shift: isize = edits.iter().map(|(a, b, t)| t.chars().count() as isize - (b - a) as isize).sum();
+        let sel = doc.buffer.primary();
+        let moved = |p: usize| (p as isize + shift).max(0) as usize;
+        doc.buffer.apply_edits(edits);
+        doc.buffer.set_single(crate::buffer::Selection::new(moved(sel.anchor), moved(sel.head)));
+        self.status = Some("Added the import this completion needs".to_owned());
+    }
+
     fn accept_completion(&mut self) {
         let Some(c) = self.lsp.completion.take() else { return };
         let Some(&idx) = c.shown.get(c.selected) else { return };
         let Some(i) = self.doc_index(c.uid) else { return };
+        // Not filled in yet: the imports it adds come after, from the server.
+        let resolve_later = (!c.entries[idx].resolved && self.resolves_completions(i)).then(|| {
+            (
+                c.uid,
+                c.entries[idx].item.clone(),
+                self.docs[i].buffer.line_start(self.docs[i].buffer.char_to_line(c.start)),
+            )
+        });
         let item = &c.entries[idx].item;
         let doc = &mut self.docs[i];
         let rope = doc.buffer.rope();
@@ -1364,6 +1493,9 @@ impl CodeApp {
         let base = (start as isize + shift) as usize;
         doc.buffer.set_single(crate::buffer::Selection::new(base + sel.0, base + sel.1));
         doc.reveal = true;
+        if let Some((uid, item, line_start)) = resolve_later {
+            self.resolve_completion(i, uid, idx, &item, Some(line_start));
+        }
     }
 
     /// Where the cursor was drawn last.
@@ -2049,6 +2181,7 @@ impl CodeApp {
     /// Completion list and hover popups, drawn over everything.
     pub(super) fn lsp_popups(&mut self, ctx: &egui::Context) {
         self.signature_popup(ctx);
+        self.resolve_selected_completion();
         let active_uid = self.docs.get(self.active).map(|d| d.uid);
         let font = egui::FontId::monospace(self.font_size);
         let mut accept = None;
@@ -2121,6 +2254,53 @@ impl CodeApp {
                     });
                 });
             self.lsp.completion_rect = Some(shown.response.rect);
+            // The picked entry's signature and docs beside the list, as VS Code shows them.
+            if let Some(entry) = c.shown.get(c.selected).map(|&idx| &c.entries[idx]) {
+                let docs = match &entry.item.documentation {
+                    Some(lt::Documentation::String(s)) => s.clone(),
+                    Some(lt::Documentation::MarkupContent(m)) => m.value.clone(),
+                    None => String::new(),
+                };
+                let detail = entry.item.detail.clone().unwrap_or_default();
+                if !docs.trim().is_empty() || !detail.trim().is_empty() {
+                    // Right of the list if there's room, else left of it, else under it.
+                    const DOCS_W: f32 = 396.0;
+                    let list = shown.response.rect;
+                    let screen = ctx.content_rect();
+                    let at = if list.right() + 4.0 + DOCS_W <= screen.right() {
+                        list.right_top() + egui::vec2(4.0, 0.0)
+                    } else if list.left() - 4.0 - DOCS_W >= screen.left() {
+                        list.left_top() - egui::vec2(4.0 + DOCS_W, 0.0)
+                    } else {
+                        list.left_bottom() + egui::vec2(0.0, 4.0)
+                    };
+                    let code_size = self.font_size * 0.95;
+                    egui::Area::new(egui::Id::unique("lsp_completion_docs"))
+                        .order(egui::Order::Foreground)
+                        .fixed_pos(at)
+                        .constrain(true)
+                        .show(ctx, |ui| {
+                            egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(8.0).show(
+                                ui,
+                                |ui| {
+                                    ui.set_max_width(380.0);
+                                    egui::ScrollArea::vertical()
+                                        .id_salt("lsp_completion_docs_scroll")
+                                        .max_height(300.0)
+                                        .show(ui, |ui| {
+                                            if !detail.trim().is_empty() {
+                                                ui.label(RichText::new(&detail).monospace().size(code_size));
+                                            }
+                                            if !detail.trim().is_empty() && !docs.trim().is_empty() {
+                                                ui.separator();
+                                            }
+                                            lsp_ui::markdown(ui, &docs, code_size);
+                                        });
+                                },
+                            );
+                        });
+                }
+            }
         }
         if let Some(row) = accept {
             if let Some(c) = &mut self.lsp.completion {

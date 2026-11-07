@@ -402,6 +402,12 @@ fn client_capabilities() -> Value {
                     "snippetSupport": true,
                     "documentationFormat": ["markdown", "plaintext"],
                     "labelDetailsSupport": true,
+                    "insertReplaceSupport": true,
+                    "deprecatedSupport": true,
+                    "tagSupport": { "valueSet": [1] },
+                    // Filled in when picked or shown: rust-analyzer only offers completions
+                    // that add an import (`additionalTextEdits`) to a client that asks.
+                    "resolveSupport": { "properties": ["documentation", "detail", "additionalTextEdits"] },
                 },
                 "contextSupport": true,
             },
@@ -493,6 +499,18 @@ fn built_in_language_id(ext: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completions_can_be_filled_in_on_request() {
+        // Without this, rust-analyzer offers no completion that adds an import.
+        let caps = client_capabilities();
+        let item = &caps["textDocument"]["completion"]["completionItem"];
+        let props: Vec<&str> =
+            item["resolveSupport"]["properties"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        assert!(props.contains(&"additionalTextEdits"));
+        assert!(props.contains(&"documentation"));
+        assert_eq!(item["insertReplaceSupport"], true);
+    }
 
     #[test]
     fn classifies_messages() {
