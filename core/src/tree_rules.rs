@@ -1,5 +1,5 @@
 //! Tree-sitter queries as search, and as lint rules a project keeps in
-//! `.rust-code/rules.toml`. There are no types here: a rule sees syntax only.
+//! `.coiman/rules.toml`. There are no types here: a rule sees syntax only.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,7 +12,12 @@ use tree_sitter::{Node, Parser, Query, QueryCursor, Tree};
 use crate::finder;
 use crate::syntax::Lang;
 
-pub const RULES_FILE: &str = ".rust-code/rules.toml";
+pub const RULES_FILE: &str = ".coiman/rules.toml";
+
+/// Where a project's rules are: `.coiman/rules.toml`, or `.rust-code`'s from before.
+pub fn rules_path(root: &std::path::Path) -> std::path::PathBuf {
+    crate::settings::project_dir(root).join("rules.toml")
+}
 /// Larger files aren't read when walking a project.
 const MAX_FILE: u64 = 2 * 1024 * 1024;
 const MATCH_LIMIT: u32 = 1 << 16;

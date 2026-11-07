@@ -1,5 +1,5 @@
 [package]
-name = "rust-code"
+name = "coiman-ide"
 version = "0.1.0"
 edition = "2024"
 
@@ -26,7 +26,7 @@ lto = "thin"
 # Crash reports need these: function names for everything, lines for our own code.
 strip = false
 
-[profile.release.package.rust-code]
+[profile.release.package.coiman-ide]
 debug = "line-tables-only"
 
 [profile.release.package.rust-code-core]

@@ -1,4 +1,4 @@
-//! The language servers Rust Code knows: which languages each one serves,
+//! The language servers Coiman IDE knows: which languages each one serves,
 //! how to find it, how to start it, and how it can be installed. Nothing
 //! here downloads anything unless [`install`] is called, which the editor
 //! only does after the user agreed.
@@ -176,7 +176,7 @@ pub enum Installer {
     /// `dotnet tool install --global <tool>` (from NuGet).
     Dotnet(PathBuf, &'static str),
     /// Download an archive with the system `curl` and unpack it with `tar`
-    /// into Rust Code's `lsp` folder. `api` is a GitHub releases API URL to
+    /// into Coiman IDE's `lsp` folder. `api` is a GitHub releases API URL to
     /// read the archive's address from, when it isn't fixed.
     /// `runtime` is a Java runtime archive to unpack into `runtime/` too.
     Download { url: &'static str, api: Option<(&'static str, &'static str)>, runtime: Option<&'static str> },
@@ -267,7 +267,7 @@ pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
     }
 }
 
-/// `<config>/rust-code/lsp/<id>`: servers Rust Code downloaded itself.
+/// `<config>/rust-code/lsp/<id>`: servers Coiman IDE downloaded itself.
 pub fn install_dir(kind: ServerKind) -> Option<PathBuf> {
     crate::settings::config_dir().map(|d| d.join("lsp").join(kind.id()))
 }
@@ -325,7 +325,7 @@ fn java_major(java: &Path) -> Option<u32> {
 /// Java version the Java language server (latest jdtls) needs.
 pub const JDTLS_JAVA: u32 = 25;
 
-/// A Java runtime new enough for jdtls: the one Rust Code downloaded, then
+/// A Java runtime new enough for jdtls: the one Coiman IDE downloaded, then
 /// `JAVA_HOME`, then `PATH`.
 fn java() -> Option<PathBuf> {
     let own = install_dir(ServerKind::Jdtls).and_then(|d| find_file(&d.join("runtime"), "java"));

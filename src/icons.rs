@@ -1,4 +1,4 @@
-//! Rust Code's own line icons, inspired by VS Code's codicons and drawn as
+//! Coiman IDE's own line icons, inspired by VS Code's codicons and drawn as
 //! vector shapes, so they look sharp at any size and need no icon font.
 
 use rust_code_core::project_tree::{ClassKind, FileRole};

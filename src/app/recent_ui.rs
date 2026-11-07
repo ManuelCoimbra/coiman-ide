@@ -167,61 +167,6 @@ impl CodeApp {
         });
     }
 
-    /// The Welcome page's recent projects and files, a few of each.
-    pub(super) fn recent_section(&self, ui: &mut egui::Ui) -> Option<RecentClick> {
-        if self.recent.is_empty() {
-            return None;
-        }
-        let mut click = None;
-        let pal = theme::colors();
-        for (title, list) in [("Recent Projects", &self.recent.projects), ("Recent Files", &self.recent.files)] {
-            if list.is_empty() {
-                continue;
-            }
-            ui.add_space(14.0);
-            ui.label(RichText::new(title).strong().color(pal.text_dim));
-            ui.add_space(4.0);
-            for entry in list.iter().take(6) {
-                ui.horizontal(|ui| {
-                    ui.set_width(ui.available_width());
-                    // The × in one column at the right; name and place in the rest.
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.small_button("×").on_hover_text("Remove from Recent").clicked() {
-                            click = Some(RecentClick::Remove(entry.path.clone()));
-                        }
-                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            let there = entry.exists();
-                            let name = RichText::new(entry.name());
-                            let link = if there {
-                                ui.link(name)
-                            } else {
-                                let gone = name.strikethrough().color(pal.text_dim);
-                                ui.add(egui::Label::new(gone).sense(egui::Sense::click()))
-                            };
-                            if link.on_hover_text(entry.path.display().to_string()).clicked() {
-                                click = Some(RecentClick::Open(entry.path.clone()));
-                            }
-                            let note =
-                                if there { place(&entry.path) } else { format!("not found · {}", place(&entry.path)) };
-                            ui.add(egui::Label::new(RichText::new(note).small().color(pal.text_dim)).truncate());
-                        });
-                    });
-                });
-            }
-        }
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            if ui.link("More...").clicked() {
-                click = Some(RecentClick::More);
-            }
-            ui.add_space(12.0);
-            if ui.link("Clear Recently Opened...").clicked() {
-                click = Some(RecentClick::Clear);
-            }
-        });
-        click
-    }
-
     /// File > Open Recent: a few projects and files, then More and Clear.
     pub(super) fn recent_menu(&self, ui: &mut egui::Ui) -> Option<RecentClick> {
         let mut click = None;

@@ -3,7 +3,7 @@
 //! Layers, lowest to highest priority:
 //! 1. built-in defaults,
 //! 2. user settings: `<config dir>/rust-code/settings.toml`,
-//! 3. workspace settings: `<folder>/.rust-code/settings.toml`.
+//! 3. workspace settings: `<folder>/.coiman/settings.toml` (or `.rust-code`, from before).
 //!
 //! Each file may contain `extends = "other.toml"` (relative to the file) to
 //! inherit from another file, and `[windows]` / `[macos]` / `[linux]` tables
@@ -276,7 +276,7 @@ pub struct HistorySettings {
 #[serde(default)]
 pub struct DebugSettings {
     /// Path to CodeLLDB (the adapter executable or its extension folder);
-    /// empty finds Rust Code's own install or VS Code's extension.
+    /// empty finds Coiman IDE's own install or VS Code's extension.
     pub codelldb_path: String,
     /// Step into the standard library (`std`, `core`, `alloc`) instead of over it.
     pub step_into_std: bool,
@@ -396,7 +396,7 @@ impl Default for WorkbenchSettings {
             ui_font_size: 13.0,
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
-            color_theme: "Dark Modern".to_owned(),
+            color_theme: crate::theme::DEFAULT_THEME.to_owned(),
             background_image: String::new(),
             background_editor: String::new(),
             background_sidebar: String::new(),
@@ -446,13 +446,43 @@ fn current_platform() -> &'static str {
     }
 }
 
-/// `<config dir>/rust-code`, e.g. `%APPDATA%\rust-code` on Windows.
-pub fn config_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("APPDATA")
+fn config_base() -> Option<PathBuf> {
+    std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))?;
-    Some(base.join("rust-code"))
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+}
+
+/// `<config dir>/coiman-ide`, e.g. `%APPDATA%\coiman-ide` on Windows.
+pub fn config_dir() -> Option<PathBuf> {
+    config_base().map(|b| b.join("coiman-ide"))
+}
+
+/// The folder before the rename to Coiman IDE: `<config dir>/rust-code`.
+pub fn old_config_dir() -> Option<PathBuf> {
+    config_base().map(|b| b.join("rust-code"))
+}
+
+/// Brings the settings, plugins, history and downloaded tools from before the rename:
+/// the old folder is moved to the new name, once, when there's no new one yet. Returns
+/// what happened, for the log.
+pub fn adopt_old_config() -> Option<String> {
+    let (old, new) = (old_config_dir()?, config_dir()?);
+    if new.exists() || !old.is_dir() {
+        return None;
+    }
+    Some(match std::fs::rename(&old, &new) {
+        Ok(()) => format!("settings moved from {} to {}", old.display(), new.display()),
+        Err(e) => format!("could not move {} to {}: {e}", old.display(), new.display()),
+    })
+}
+
+/// A project's own folder of settings: `.coiman`, or `.rust-code` from before the rename
+/// when that's the one there.
+pub fn project_dir(root: &Path) -> PathBuf {
+    let new = root.join(".coiman");
+    let old = root.join(".rust-code");
+    if !new.exists() && old.is_dir() { old } else { new }
 }
 
 pub fn user_settings_path() -> Option<PathBuf> {
@@ -464,7 +494,7 @@ pub fn user_keybindings_path() -> Option<PathBuf> {
 }
 
 pub fn workspace_settings_path(root: &Path) -> PathBuf {
-    root.join(".rust-code").join("settings.toml")
+    project_dir(root).join("settings.toml")
 }
 
 /// Result of loading all layers: the settings plus anything worth telling the user.
@@ -623,8 +653,8 @@ pub fn default_file_contents() -> String {
         .map(|l| if l.is_empty() || l.starts_with('[') { format!("{l}\n") } else { format!("# {l}\n") })
         .collect();
     format!(
-        "# Rust Code user settings. Uncomment a line to change it; save to apply.\n\
-         # Workspace settings in <folder>/.rust-code/settings.toml override these.\n\
+        "# Coiman IDE user settings. Uncomment a line to change it; save to apply.\n\
+         # Workspace settings in <folder>/.coiman/settings.toml override these.\n\
          # `extends = \"base.toml\"` inherits from another file; [windows]/[macos]/[linux]\n\
          # tables apply only on that platform, e.g. [windows.editor] font_size = 15\n\
          #\n\
@@ -636,6 +666,23 @@ pub fn default_file_contents() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_settings_folder_old_and_new() {
+        let root = std::env::temp_dir().join(format!("rc-project-dir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        // Nothing yet: the new name.
+        assert_eq!(project_dir(&root), root.join(".coiman"));
+        // A project from before the rename keeps its folder.
+        std::fs::create_dir_all(root.join(".rust-code")).unwrap();
+        assert_eq!(project_dir(&root), root.join(".rust-code"));
+        assert_eq!(workspace_settings_path(&root), root.join(".rust-code").join("settings.toml"));
+        // With both, the new one.
+        std::fs::create_dir_all(root.join(".coiman")).unwrap();
+        assert_eq!(project_dir(&root), root.join(".coiman"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     fn table(s: &str) -> Table {
         s.parse().unwrap()
@@ -706,7 +753,7 @@ mod tests {
     fn set_value_keeps_comments_and_uncomments() {
         let text = default_file_contents();
         let out = set_value_in_text(&text, "workbench", "color_theme", "\"Monokai\"");
-        assert!(out.contains("# Rust Code user settings"), "comments survive");
+        assert!(out.contains("# Coiman IDE user settings"), "comments survive");
         let (s, problems) = from_table(table(&out));
         assert!(problems.is_empty());
         assert_eq!(s.workbench.color_theme, "Monokai");

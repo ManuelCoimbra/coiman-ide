@@ -29,7 +29,7 @@ const ERROR: egui::Color32 = egui::Color32::from_rgb(0xF1, 0x4C, 0x4C);
 use crate::icons::{self, Icon};
 use crate::theme;
 
-/// Extensions that ship with Rust Code: sandboxed plugins like any other, with
+/// Extensions that ship with Coiman IDE: sandboxed plugins like any other, with
 /// no download. They can be turned off in the Extensions view.
 const BUILT_IN: [(&str, &[u8]); 2] = [
     (

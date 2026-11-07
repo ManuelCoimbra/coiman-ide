@@ -245,8 +245,8 @@ fn classify(msg: Value) -> Option<DapEvent> {
 /// `initialize` arguments for this client.
 pub fn initialize_args() -> Value {
     json!({
-        "clientID": "rust-code",
-        "clientName": "Rust Code",
+        "clientID": "coiman-ide",
+        "clientName": "Coiman IDE",
         "adapterID": "lldb",
         "linesStartAt1": true,
         "columnsStartAt1": true,
@@ -548,7 +548,7 @@ fn exe(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
-/// Where Rust Code installs CodeLLDB: `<config>/rust-code/codelldb`.
+/// Where Coiman IDE installs CodeLLDB: `<config>/rust-code/codelldb`.
 pub fn install_dir() -> Option<PathBuf> {
     crate::settings::config_dir().map(|d| d.join("codelldb"))
 }
@@ -579,7 +579,7 @@ fn adapter_in(extension: &Path) -> Option<Adapter> {
     Some(Adapter { program, args })
 }
 
-/// CodeLLDB from the setting, Rust Code's own install, or VS Code's extensions.
+/// CodeLLDB from the setting, Coiman IDE's own install, or VS Code's extensions.
 pub fn find_codelldb(configured: &str) -> Option<Adapter> {
     if !configured.trim().is_empty() {
         let p = PathBuf::from(configured.trim());
@@ -632,7 +632,7 @@ pub fn package_url() -> Option<&'static str> {
 }
 
 /// Downloads CodeLLDB with the system's `curl` and unpacks it with `tar`
-/// (Rust Code itself makes no network connections). Only call this after
+/// (Coiman IDE itself makes no network connections). Only call this after
 /// the user agreed.
 pub fn install_codelldb() -> Result<Adapter, String> {
     let url = package_url().ok_or("CodeLLDB has no package for this platform")?;

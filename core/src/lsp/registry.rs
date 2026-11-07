@@ -1,5 +1,5 @@
 //! Languages described as data: adding one takes a few lines of TOML and no code.
-//! Rust Code ships entries for common servers, and the user's `languages.toml`
+//! Coiman IDE ships entries for common servers, and the user's `languages.toml`
 //! adds to or replaces them, including the languages built into the editor.
 
 use std::path::PathBuf;

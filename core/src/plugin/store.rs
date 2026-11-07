@@ -69,7 +69,7 @@ impl Lockfile {
     pub fn save(&self, dir: &Path) -> Result<(), String> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         let text = format!(
-            "# Installed plugins. Written by Rust Code; a plugin whose files don't match\n\
+            "# Installed plugins. Written by Coiman IDE; a plugin whose files don't match\n\
              # these hashes is not loaded.\n\n{}",
             toml::to_string_pretty(self).map_err(|e| e.to_string())?
         );

@@ -12,7 +12,7 @@ $coreFailed = $LASTEXITCODE -ne 0
 
 cargo build --release
 if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
-$exe = (Resolve-Path 'target\release\rust-code.exe').Path
+$exe = (Resolve-Path 'target\release\coiman-ide.exe').Path
 
 # Run the app against a throwaway config folder so the user's settings and
 # session are neither read nor written.

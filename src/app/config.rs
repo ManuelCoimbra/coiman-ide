@@ -221,7 +221,8 @@ impl CodeApp {
         }
         if first || new.workbench.color_theme != old.workbench.color_theme {
             // The built-in theme needs no scan of installed VS Code themes.
-            if self.themes.is_empty() && !new.workbench.color_theme.eq_ignore_ascii_case("Dark Modern") {
+            let built_in = theme::built_in_names().iter().any(|n| new.workbench.color_theme.eq_ignore_ascii_case(n));
+            if self.themes.is_empty() && !built_in {
                 self.themes = theme::discover();
             }
             let (t, err) = theme::resolve(&new.workbench.color_theme, &self.themes);

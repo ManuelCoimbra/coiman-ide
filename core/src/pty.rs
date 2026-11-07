@@ -21,7 +21,7 @@ pub use alacritty_terminal;
 fn merged_path(other: Option<&std::ffi::OsStr>) -> Option<std::ffi::OsString> {
     let own = std::env::var_os("PATH")?;
     let mut parts: Vec<std::path::PathBuf> = std::env::split_paths(&own).collect();
-    // Then what Rust Code fetched: what's already on the system comes first.
+    // Then what Coiman IDE fetched: what's already on the system comes first.
     let fetched = crate::build_tools::dirs();
     let extra: Vec<std::path::PathBuf> = other.into_iter().flat_map(std::env::split_paths).chain(fetched).collect();
     for part in extra {
@@ -204,7 +204,7 @@ impl Session {
         }
         cmd.env("TERM", "xterm-256color");
         cmd.env("COLORTERM", "truecolor");
-        cmd.env("TERM_PROGRAM", "rust-code");
+        cmd.env("TERM_PROGRAM", "coiman-ide");
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| format!("could not start {program}: {e}"))?;
         drop(pair.slave);
         let killer = child.clone_killer();

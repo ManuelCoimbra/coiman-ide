@@ -1225,7 +1225,7 @@ impl CodeApp {
             egui::Frame::new().fill(pal.hover_bg).inner_margin(6.0).show(ui, |ui| {
                 ui.label(
                     "Debugging needs CodeLLDB, which isn't installed. Download it from \
-                     github.com/vadimcn/codelldb (about 135 MB once unpacked into Rust Code's \
+                     github.com/vadimcn/codelldb (about 135 MB once unpacked into Coiman IDE's \
                      config folder)? It uses the system's curl and tar.",
                 );
                 ui.horizontal(|ui| {

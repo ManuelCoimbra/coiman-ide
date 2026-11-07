@@ -1,4 +1,4 @@
-//! Word Count: an example Rust Code plugin.
+//! Word Count: an example Coiman IDE plugin.
 //!
 //! - A status bar item with the active editor's word count (`editor-read`).
 //! - "Word Count: Show Report" fills a panel with counts and frequent words.

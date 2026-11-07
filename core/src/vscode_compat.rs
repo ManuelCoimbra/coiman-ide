@@ -1,5 +1,5 @@
 //! Which VS Code extensions can be used here, and why the others can't. An extension's
-//! code needs VS Code's extension host (Node.js and the `vscode` API), which Rust Code
+//! code needs VS Code's extension host (Node.js and the `vscode` API), which Coiman IDE
 //! doesn't have: its data (themes, snippets, languages) comes across, what it does may be
 //! built in already, and the VS Code APIs its code calls say what's missing. Nothing in
 //! an extension is run: its `package.json` is read, and its code is only searched for the
@@ -287,7 +287,7 @@ pub fn markdown(reports: &[Report]) -> String {
     let mut s = String::new();
     s.push_str("# VS Code extensions here\n\n");
     s.push_str(&format!(
-        "{} extensions found in VS Code. Rust Code has no extension host: an extension's code (JavaScript for Node.js and the `vscode` API) doesn't run here. What it holds as data comes across, and much of what popular extensions do is built in.\n\n",
+        "{} extensions found in VS Code. Coiman IDE has no extension host: an extension's code (JavaScript for Node.js and the `vscode` API) doesn't run here. What it holds as data comes across, and much of what popular extensions do is built in.\n\n",
         reports.len()
     ));
     s.push_str(&format!(

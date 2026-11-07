@@ -1,4 +1,4 @@
-//! Rust Code's editor core: text buffer, documents, syntax highlighting,
+//! Coiman IDE's editor core: text buffer, documents, syntax highlighting,
 //! settings, themes, sessions and workspace services. No UI dependencies, so
 //! everything here can be tested and benchmarked headlessly.
 

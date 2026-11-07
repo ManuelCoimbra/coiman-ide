@@ -45,6 +45,13 @@ impl CodeApp {
 
     pub(super) fn run_command(&mut self, ctx: &egui::Context, cmd: Command) {
         rust_code_core::applog::info(&format!("command {cmd:?}"));
+        // A side view asked for on the Welcome page shows there.
+        if matches!(
+            cmd,
+            Command::ShowSourceControl | Command::ShowTesting | Command::ShowDebug | Command::ShowExtensions
+        ) {
+            self.welcome_sidebar = true;
+        }
         match cmd {
             Command::OpenLog | Command::OpenCrashLog => {
                 let Some(dir) = rust_code_core::applog::dir() else { return };
@@ -112,7 +119,15 @@ impl CodeApp {
                     self.request_close_tab(self.active);
                 }
             }
-            Command::ToggleSidebar => self.sidebar_visible = !self.sidebar_visible,
+            Command::ToggleSidebar => {
+                // On the Welcome page a hidden panel shows; elsewhere it toggles.
+                if self.sidebar_visible && !self.sidebar_shown() {
+                    self.welcome_sidebar = true;
+                } else {
+                    self.sidebar_visible = !self.sidebar_visible;
+                    self.welcome_sidebar = self.sidebar_visible;
+                }
+            }
             Command::ToggleTerminal => {
                 if self.terminal.detached {
                     self.terminal.focus_requested = true;
@@ -287,10 +302,12 @@ impl CodeApp {
                 self.status = Some("Restarting language servers…".to_owned());
             }
             Command::ShowExplorer => {
+                self.welcome_sidebar = true;
                 self.sidebar_visible = true;
                 self.sidebar_view = SidebarView::Explorer;
             }
             Command::ShowSearch => {
+                self.welcome_sidebar = true;
                 self.sidebar_visible = true;
                 self.sidebar_view = SidebarView::Search;
                 self.search.focus_requested = true;
@@ -435,8 +452,10 @@ impl CodeApp {
                     self.themes = theme::discover();
                 }
                 let mut labels: Vec<String> = self.themes.iter().map(|t| t.label.clone()).collect();
-                if !labels.iter().any(|l| l == "Dark Modern") {
-                    labels.insert(0, "Dark Modern".to_owned());
+                for (i, name) in theme::built_in_names().into_iter().enumerate() {
+                    if !labels.iter().any(|l| l == name) {
+                        labels.insert(i, name.to_owned());
+                    }
                 }
                 let current = self.settings.workbench.color_theme.clone();
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");

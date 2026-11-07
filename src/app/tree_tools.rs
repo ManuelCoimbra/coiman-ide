@@ -313,7 +313,7 @@ impl CodeApp {
     // ----- rules ---------------------------------------------------------------------
 
     fn load_rules(&mut self, root: &Path) {
-        let path = root.join(RULES_FILE);
+        let path = tree_rules::rules_path(root);
         let text = std::fs::read_to_string(&path).unwrap_or_default();
         let (rules, problems) = tree_rules::parse_rules(&text);
         let tools = &mut self.tree_tools;
@@ -341,7 +341,8 @@ impl CodeApp {
         if now >= self.tree_tools.next_rules_check {
             self.tree_tools.next_rules_check = now + RULES_CHECK_SECONDS;
             let root = self.explorer.root.clone().filter(|r| trust::is_trusted(r));
-            let modified = root.as_ref().and_then(|r| std::fs::metadata(r.join(RULES_FILE)).ok()?.modified().ok());
+            let modified =
+                root.as_ref().and_then(|r| std::fs::metadata(tree_rules::rules_path(r)).ok()?.modified().ok());
             if modified != self.tree_tools.rules_modified || root != self.tree_tools.rules_root {
                 self.tree_tools.rules_modified = modified;
                 self.tree_tools.rules_root = root.clone();

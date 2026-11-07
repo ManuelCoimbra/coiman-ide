@@ -249,7 +249,7 @@ impl CodeApp {
         if info.installed.is_none() {
             ui.label("Git isn't installed, or isn't on the PATH.");
             ui.label(
-                RichText::new("Install it from git-scm.com, then restart the editor. Rust Code uses the git command for everything here.")
+                RichText::new("Install it from git-scm.com, then restart the editor. Coiman IDE uses the git command for everything here.")
                     .small()
                     .color(pal.text_dim),
             );

@@ -1,6 +1,6 @@
 //! Tests in any language: an adapter says how to run a project's tests and in what
 //! form the results come back, and everything else is the same for all of them.
-//! Adapters are data, so a project can add its own in `.rust-code/tests.toml`.
+//! Adapters are data, so a project can add its own in `.coiman/tests.toml`.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -125,7 +125,7 @@ struct AdaptersFile {
 
 /// The project's own adapters.
 pub fn custom_adapters(root: &Path) -> Result<Vec<Adapter>, String> {
-    let path = root.join(".rust-code").join("tests.toml");
+    let path = crate::settings::project_dir(root).join("tests.toml");
     let Ok(text) = std::fs::read_to_string(&path) else { return Ok(Vec::new()) };
     let file: AdaptersFile = toml::from_str(&text).map_err(|e| format!("tests.toml: {}", e.message()))?;
     Ok(file

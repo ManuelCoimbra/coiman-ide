@@ -1,6 +1,10 @@
-# Rust Code
+# Coiman IDE
 
-A lightweight VS Code–style editor written in Rust with [egui](https://github.com/emilk/egui).
+<img src="assets/icon/coiman-256.png" alt="Coiman IDE icon" width="96">
+
+A lightweight code editor and IDE written in Rust with [egui](https://github.com/emilk/egui):
+language servers, debugging, Git, run configurations, Maven, and the VS Code themes,
+snippets and language servers you already have.
 
 The code font is `editor.font_family`: any fixed-width font installed on the computer, picked in
 Settings, or a path to a font file.
@@ -8,13 +12,40 @@ Settings, or a path to a font file.
 Settings (`Ctrl+,`) and keyboard shortcuts (`Ctrl+K Ctrl+S`) each have a window, so no file editing
 is needed; **Edit as File** still opens the TOML behind them.
 
-`<config>` below is your config folder: `%APPDATA%\rust-code` on Windows,
-`$XDG_CONFIG_HOME/rust-code` or `~/.config/rust-code` elsewhere.
+`<config>` below is your config folder: `%APPDATA%\coiman-ide` on Windows (a `rust-code` folder from before the rename is moved there on first start),
+`$XDG_CONFIG_HOME/coiman-ide` or `~/.config/coiman-ide` elsewhere.
 
-## Run
+## Build, run and test
+
+You need Rust (stable, edition 2024). On Windows the GNU toolchain is used, and MinGW's
+`windres` (MSYS2: `pacman -S mingw-w64-ucrt-x86_64-binutils`) puts the icon into the
+program; without it the program builds without its icon in the file.
 
 ```
 cargo run --release -- [folder-or-file]
+```
+
+The program is `target/release/coiman-ide.exe`. Tests and lints, as the checks run them:
+
+```
+cargo test --workspace
+cargo clippy --all-targets
+powershell -File scripts/check.ps1
+```
+
+## Theme
+
+**Coiman Dark** is the default theme, in the icon's colors: navy, electric blue and white.
+Dark Modern, Light Modern and any VS Code theme are in **Preferences: Color Theme**.
+
+## Icon
+
+`assets/icon/coiman.svg` is the icon: a hexagon, three linked nodes making a C, and a small
+square for the editor, in navy, electric blue and white. The PNGs (16 to 1024 pixels) and
+`coiman.ico` beside it are made from it:
+
+```
+cargo run --release --example make_icons
 ```
 
 ## Project structure
@@ -243,9 +274,9 @@ network, and only when you ask. All git work runs in the background.
 
 ### Run, test and check (Cargo)
 
-- **Run configurations** live in `.rust-code/launch.toml` (commit it to share them):
+- **Run configurations** live in `.coiman/launch.toml` (commit it to share them):
   `name`, `command` (run through the shell, so pipes and `&&` work), optional `cwd` and
-  `env`. Without the file, Rust Code offers what Cargo implies: run each binary, test,
+  `env`. Without the file, Coiman IDE offers what Cargo implies: run each binary, test,
   check and clippy the workspace. The title bar's **Current File** selector sets what Run starts: the active file, or a
   configuration, remembered per folder. `Ctrl+F5` runs the selected configuration (asks the first
   time), **Run: Select and Start Configuration...** picks another, **Run: Open
@@ -408,7 +439,7 @@ saves changed files first. Programs start in the folder the project is opened at
 ### Workspace trust
 
 Opening a folder runs nothing from it. Until you click **Trust Folder**, it stays in Restricted
-Mode: you can read and edit files, but its `.rust-code/settings.toml` is ignored, and language
+Mode: you can read and edit files, but its `.coiman/settings.toml` is ignored, and language
 servers, Git, Cargo, run configurations, Run Program and debugging are off. Trust covers
 subfolders and is remembered outside the project. **Workspaces: Trust or Restrict This Folder**
 changes your mind later. The built-in terminal is your own shell and stays available.
@@ -487,7 +518,7 @@ A folder with a `pom.xml` gets a MAVEN section in the Explorer, as the VS Code M
 extension has it:
 
 - **Projects and modules**, each with its **Lifecycle** (click a phase, or its ▶, to run
-  `mvn <phase>` in a terminal tab), **Plugins** with their goals (goals Rust Code doesn't
+  `mvn <phase>` in a terminal tab), **Plugins** with their goals (goals Coiman IDE doesn't
   know are read with `mvn help:describe`), and **Dependencies** as a tree.
 - The tree is read from the local repository (`~/.m2/repository`, or `<localRepository>`
   in `settings.xml`) the way Maven resolves it: nearest wins, scopes, exclusions, parents,
@@ -500,13 +531,13 @@ extension has it:
   (quickstart, webapp or simple; inside a parent with `<packaging>pom</packaging>` it's
   added as a module), **Refresh** and **View: Show Maven**, in the palette.
 - poms are read again when they change, and the Java language server is told.
-- The project's `mvnw` is used first, then `mvn` from PATH. Without either, Rust Code
+- The project's `mvnw` is used first, then `mvn` from PATH. Without either, Coiman IDE
   offers to download Apache Maven 3.9.16 (9 MB, checked against its SHA-512) into its
   config folder. Maven needs Java.
 
 ### Debugging (CodeLLDB)
 
-Rust Code debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug
+Coiman IDE debugs through [CodeLLDB](https://github.com/vadimcn/codelldb) over the Debug
 Adapter Protocol. It uses `debug.codelldb_path`, then its own copy in
 `<config>\codelldb`, then an installed VS Code CodeLLDB extension. If none is
 found, the Debug view offers to download it (about 135 MB once unpacked). Nothing is
@@ -645,15 +676,15 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Stack traces | `Stack Trace: Analyze` takes a trace pasted from a log, ticket or chat, or the selected text. It rejoins wrapped lines, opens up traces flattened into one line or escaped in JSON, drops timestamps and quoting, and links frames from Java, Kotlin, C#, Python, JavaScript, TypeScript, Rust, Go, C and C++, PHP, Ruby, Dart, Elixir and more to files in this project, even when the paths come from another machine. A frame matching only by file name is marked as a guess |
 | Language profiles | A `languages.toml` entry can ask for rulers, dim columns, backslash symbols (`\\to` becomes `→` as you type, or on Tab), a bar of glyphs to click, and an include statement with search paths for `Go to Include at Cursor`. COBOL, fixed-form Fortran, Lean, Agda and APL ship with theirs. `Insert Symbol` finds any symbol by name in any file. `[symbols]` in settings adds your own names, `editor.rulers` draws rulers elsewhere, and `editor.include_paths` adds folders |
 | CSV and TSV | Columns are colored in the text. `CSV: Toggle Table View`, or the status bar, shows a table that stays quick at a million rows: click a header to sort (numbers by value, gaps last), filter, drag column edges, move with the arrow keys, copy a cell, and double-click a row for its line in the text. It follows edits, finds the delimiter and says when rows are uneven or a quote never closes. The table only views: edit in the text |
-| Tests in any language | The Testing view finds a project's runner and reads its results, not its printed text: `go test -json`, pytest, unittest, `node --test`, Vitest, Jest, `dotnet test`, Maven, Gradle and RSpec. Tests are listed before they run where their text shows them, with a run button and a pass or fail mark there and in the gutter. A failure shows its message, with links to the frames in this project. A project adds its own runner in `.rust-code/tests.toml`, naming a command and its `format` (`gojson`, `junit`, `trx`, `tap`, `unittest`, `rspec`, `jest`) |
+| Tests in any language | The Testing view finds a project's runner and reads its results, not its printed text: `go test -json`, pytest, unittest, `node --test`, Vitest, Jest, `dotnet test`, Maven, Gradle and RSpec. Tests are listed before they run where their text shows them, with a run button and a pass or fail mark there and in the gutter. A failure shows its message, with links to the frames in this project. A project adds its own runner in `.coiman/tests.toml`, naming a command and its `format` (`gojson`, `junit`, `trx`, `tap`, `unittest`, `rspec`, `jest`) |
 | Large logs | Logs from 16 MB, and any file from 128 MB, open in a view that reads only the lines on screen, so size doesn't matter. `Log: Open in Log View` opens any file there. Filter by regex as you type (case, invert), follow as lines arrive, and double-click a filtered row for the lines around it. It starts over if the file is truncated or rotated, colors lines by level, and hands the selected line onward to `Stack Trace: Analyze`. It keeps reading behind other tabs; the status bar brings it back |
 | Bytes | A binary file opens as hex instead of garbled text, and `Hex: Open File` shows any file that way, at any size, with a jump to an offset. While debugging, if the adapter offers them, the Debug view adds Memory and Disassembly: read memory at an address, an expression or a variable (`mem`), with bytes that changed since the last stop in red, and step by instruction with the current one highlighted |
 | Coverage | Beside the code, bars show which lines ran, which only partly, and which never did. Reports are read from where tools leave them (LCOV, Cobertura, JaCoCo, coverage.py JSON, Go profiles), or with `Coverage: Load Report`, including ones written on another machine. The Testing view's Coverage button runs tests with it for `node --test`, pytest with pytest-cov, `dotnet test`, Go, Jest and Vitest. The COVERAGE tab lists files, least covered first. Marks hide once a file changes, as its line numbers no longer match. Plugins add other formats through `set-coverage` |
 | At the cursor | `View: Show Cursor Info` opens a panel that follows the cursor with what the language server says about that spot and any problems there. In Lean and Coq it shows the goals too, with lines new since the last answer in green. Pause freezes it, and Pin keeps watching a place while you work elsewhere, asking again as its file changes |
-| Structure and rules | In Lisp files, `Ctrl+Alt+Right` slurps and `Ctrl+Alt+Left` barfs, with `Shift` for the backward moves. `Shift+Alt+R` raises, `Shift+Alt+S` splices and `Shift+Alt+W` wraps, and the `Structure:` commands wrap in other brackets. Other languages raise and wrap through their syntax tree. `Search: Find by Syntax Tree` runs a tree-sitter query over the project. A project's own lint rules go in `.rust-code/rules.toml` (`id`, `language`, `query`, `message`, optional `severity` and `fix` using `$capture`), and reach Problems for the open file or with `Rules: Check Project`. `Rules: Apply Fixes in File` applies fixes. Rules see syntax only, not types |
+| Structure and rules | In Lisp files, `Ctrl+Alt+Right` slurps and `Ctrl+Alt+Left` barfs, with `Shift` for the backward moves. `Shift+Alt+R` raises, `Shift+Alt+S` splices and `Shift+Alt+W` wraps, and the `Structure:` commands wrap in other brackets. Other languages raise and wrap through their syntax tree. `Search: Find by Syntax Tree` runs a tree-sitter query over the project. A project's own lint rules go in `.coiman/rules.toml` (`id`, `language`, `query`, `message`, optional `severity` and `fix` using `$capture`), and reach Problems for the open file or with `Rules: Check Project`. `Rules: Apply Fixes in File` applies fixes. Rules see syntax only, not types |
 | Lenses and hierarchies | Code lens titles beside the code can be clicked: rust-analyzer's Run, Run Test and implementation counts work here. Call and type hierarchies open as a tree in the References panel, a level at a time |
 | Live sessions | `Preview: Constant Preview` keeps showing what the active file does: a page or stylesheet follows edits in your browser, Markdown shows its preview, and a program saves and runs again after each pause in typing, marking the lines of output that changed, or runs its tests if it's a library. Only in trusted folders, so anything the program does happens again on each run. `Live: Show Session` attaches to a running system on this computer: nREPL (reading `.nrepl-port` if there is one), a Python kernel (a new one, or an existing `kernel-*.json`; needs `jupyter_client` and `ipykernel`), Swank for Common Lisp, a BEAM node for Elixir and Erlang (needs Erlang on `PATH`), or RIDE for Dyalog APL. It says what it's attached to and what the server offers, and Interrupt only appears if the server can. In Clojure files, `Ctrl+Enter` sends the selection or the top-level form and shows the answer beside it, gone once the line changes, and slow code never holds up the editor. The inspector shows the namespace's values, in the same rows as the debugger's variables, opening maps and lists. New systems add a `Session` adapter |
-| Web authoring | Tab grows Emmet abbreviations in HTML and CSS (`ul>li.item$*3`, `m10-20`); `Emmet: Expand Abbreviation` also works in JSX and PHP. `Color: Pick Color at Cursor` keeps a color's format and shows WCAG contrast and when it leaves sRGB or Display P3. Hover shows Baseline availability and selector specificity. `web.baseline` (`widely`, `newly` or a year, in `.rust-code/settings.toml`) flags what falls below a project's target. Image files (PNG, JPEG, GIF, WebP, BMP, ICO, TIFF) open in a viewer. It fits the picture or zooms it: `+`, `-`, `1` for actual size and `0` to fit, Ctrl and the wheel or a pinch about the pointer, a double click to fit. Drag or the wheel moves it. It's smooth when smaller and shows crisp pixels when zoomed in, with a checkerboard behind transparency. Photos are turned the way their EXIF says. GIFs and WebPs animate. A picture wider than the graphics card holds is shown smaller, and says so. A broken file says what is wrong, and AVIF, HEIC, JPEG XL and PSD say they can't be shown. HTML, CSS and JSON use `vscode-langservers-extracted` if it's on PATH. Format on save leaves a file alone if the project has Prettier, Biome or dprint, and the doctor names formatters that conflict. Baseline data comes from [web-features](https://github.com/web-platform-dx/web-features) (Apache-2.0), regenerated by `scripts/gen-baseline.py` |
+| Web authoring | Tab grows Emmet abbreviations in HTML and CSS (`ul>li.item$*3`, `m10-20`); `Emmet: Expand Abbreviation` also works in JSX and PHP. `Color: Pick Color at Cursor` keeps a color's format and shows WCAG contrast and when it leaves sRGB or Display P3. Hover shows Baseline availability and selector specificity. `web.baseline` (`widely`, `newly` or a year, in `.coiman/settings.toml`) flags what falls below a project's target. Image files (PNG, JPEG, GIF, WebP, BMP, ICO, TIFF) open in a viewer. It fits the picture or zooms it: `+`, `-`, `1` for actual size and `0` to fit, Ctrl and the wheel or a pinch about the pointer, a double click to fit. Drag or the wheel moves it. It's smooth when smaller and shows crisp pixels when zoomed in, with a checkerboard behind transparency. Photos are turned the way their EXIF says. GIFs and WebPs animate. A picture wider than the graphics card holds is shown smaller, and says so. A broken file says what is wrong, and AVIF, HEIC, JPEG XL and PSD say they can't be shown. HTML, CSS and JSON use `vscode-langservers-extracted` if it's on PATH. Format on save leaves a file alone if the project has Prettier, Biome or dprint, and the doctor names formatters that conflict. Baseline data comes from [web-features](https://github.com/web-platform-dx/web-features) (Apache-2.0), regenerated by `scripts/gen-baseline.py` |
 | One Python | The terminal, Run and Python's language server all use the same Python: the project's `.venv`, `venv` or `env`, then `.python-version` with pyenv, `environment.yml` with conda, what was active at launch, then PATH. The status bar names it and why; click it to choose (`python.interpreter`) |
 | Languages as data | Add a language with a few lines in `languages.toml` (**Language: Open languages.toml**): extensions, comment, server, root markers, run command. Thirteen ship ready, finding their servers on PATH. **Language: Doctor** shows for the active file what works, what doesn't and why |
 | Live preview | Run on an HTML file (or **Preview: Open Live Preview**) shows it in your browser from a server on this computer. Edits appear as you type: stylesheets swap in place, anything else reloads. TypeScript compiles with no setup, `console` output lands in the **PAGE** panel, script errors in Problems, and `Alt`+click in the page jumps to the element's line |
@@ -670,7 +701,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Top bar | In the island layout: every menu behind one button, the project with its own initials and color, the branch, what Run starts, Run, Debug, Go to File and Settings |
 | Tool rails | In the island layout, icons on both edges of the window open tools on that side; click again to close. Drag an icon to the other rail to move its tool there: the panel's tools take the whole panel to the right. It's remembered with the session |
 | Search Everywhere | Shift twice, or the search button, opens one box over files, symbols, commands, settings and text. Tab goes through them; Ctrl+P, Ctrl+Shift+P and the rest keep working. `workbench.double_shift` turns Shift twice off |
-| Logs | Two files in `<config>/logs`. `rust-code.log` says what the app did: commands, files opened, clicks, status messages and each change to what's on screen, with times. `crash.log` holds each panic's place, message, backtrace and the last lines of the log, and notes a session that ended without closing. **Developer: Open Log** and **Developer: Open Crash Log** open them. They stay on this computer and never hold text you type |
+| Logs | Two files in `<config>/logs`. `coiman-ide.log` says what the app did: commands, files opened, clicks, status messages and each change to what's on screen, with times. `crash.log` holds each panic's place, message, backtrace and the last lines of the log, and notes a session that ended without closing. **Developer: Open Log** and **Developer: Open Crash Log** open them. They stay on this computer and never hold text you type |
 | Motion | Panels slide, a line slides between tabs, and rail icons and popups ease in, in under a sixth of a second. `workbench.reduced_motion` makes it all immediate |
 | File buttons | Beside the tabs, what the active file can do: Preview for Markdown and SVG, Table for CSV, Live Preview for HTML, Tree and Format for JSON, YAML and TOML, Scripts for `package.json`, Header/Source and Flags for C and C++, Log View, Run Tests and Coverage, REPL, and Hex for anything |
 | Import from VS Code | **Extensions: Import from VS Code**, or the arrow in Extensions, takes themes, snippets and language names and comments from an installed extension, a `.vsix` or a folder. **Extensions: VS Code Compatibility Report**, or the check mark beside the arrow, lists every installed extension: built in here (and by what), data that imports, a pack, or code that can't run (with the VS Code APIs it calls and what's similar here). Extensions' code can't run here and their TextMate colors aren't read: the status bar says what stayed behind. What you already have stays as it is |
@@ -779,7 +810,7 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
 ### Settings, keybindings and themes
 
 - **Settings** (`Ctrl+,`): TOML, layered defaults → user
-  (`<config>\settings.toml`) → workspace (`<folder>/.rust-code/settings.toml`).
+  (`<config>\settings.toml`) → workspace (`<folder>/.coiman/settings.toml`).
   Files can `extends = "other.toml"` and have `[windows]` / `[macos]` / `[linux]` tables.
   Unknown keys and errors show in the status bar; saving a settings file applies it.
   Separate `editor.font_size` and `workbench.ui_font_size`, on top of `workbench.zoom`.

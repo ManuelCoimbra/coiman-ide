@@ -1,6 +1,6 @@
-//! Tools a build needs that Rust Code can fetch when asked: pinned releases, checked
+//! Tools a build needs that Coiman IDE can fetch when asked: pinned releases, checked
 //! against their hash, kept in its config folder and used by what it runs. They don't
-//! touch the system: nothing outside Rust Code sees them.
+//! touch the system: nothing outside Coiman IDE sees them.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -31,17 +31,17 @@ impl BuildTool {
     pub fn offer(self) -> String {
         match self {
             Self::Ninja => "This CMake project needs a build tool, and none was found. Download Ninja 1.13.2 from \
-                            github.com/ninja-build (under 1 MB) into Rust Code's config folder?"
+                            github.com/ninja-build (under 1 MB) into Coiman IDE's config folder?"
                 .to_owned(),
             Self::MinGw => "This CMake project needs a C++ compiler, and none was found. Download GCC 16.2 and its \
                             build tools (winlibs MinGW-w64) from github.com/brechtsanders (264 MB, about 900 MB unpacked) \
-                            into Rust Code's config folder?"
+                            into Coiman IDE's config folder?"
                 .to_owned(),
             Self::JsDebug => "Debugging JavaScript needs js-debug, and it wasn't found. Download js-debug 1.140.0 from \
-                              github.com/microsoft (about 1 MB) into Rust Code's config folder?"
+                              github.com/microsoft (about 1 MB) into Coiman IDE's config folder?"
                 .to_owned(),
             Self::Maven => "This Maven project needs Maven, and it wasn't found (no mvnw, no mvn on PATH). Download \
-                            Apache Maven 3.9.16 from repo.maven.apache.org (9 MB) into Rust Code's config folder? It \
+                            Apache Maven 3.9.16 from repo.maven.apache.org (9 MB) into Coiman IDE's config folder? It \
                             needs Java."
                 .to_owned(),
         }

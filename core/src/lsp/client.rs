@@ -209,7 +209,7 @@ impl Client {
         }
         let params = json!({
             "processId": std::process::id(),
-            "clientInfo": { "name": "Rust Code", "version": env!("CARGO_PKG_VERSION") },
+            "clientInfo": { "name": "Coiman IDE", "version": env!("CARGO_PKG_VERSION") },
             "rootUri": root_uri,
             "workspaceFolders": [{ "uri": root_uri, "name": name }],
             "capabilities": capabilities,

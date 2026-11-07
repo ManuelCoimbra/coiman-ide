@@ -1,4 +1,4 @@
-//! Cargo integration without a UI: run configurations (`.rust-code/launch.toml`),
+//! Cargo integration without a UI: run configurations (`.coiman/launch.toml`),
 //! test discovery from source with tree-sitter, `cargo test` / `cargo nextest`
 //! command lines and output parsing, and `cargo check`/`clippy` JSON messages.
 
@@ -12,7 +12,7 @@ use crate::lsp::discovery::quiet_command;
 
 // ----- run configurations -----------------------------------------------------------
 
-/// One entry of `.rust-code/launch.toml`.
+/// One entry of `.coiman/launch.toml`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunConfig {
     pub name: String,
@@ -38,7 +38,7 @@ struct LaunchFile {
 /// `<workspace>/.rust-code/launch.toml`: committed with the project so the
 /// whole team shares the same run configurations.
 pub fn launch_file(root: &Path) -> PathBuf {
-    root.join(".rust-code").join("launch.toml")
+    crate::settings::project_dir(root).join("launch.toml")
 }
 
 /// Configurations from the launch file; `Err` explains a broken file.
@@ -89,7 +89,7 @@ pub fn launch_file_contents(configs: &[RunConfig]) -> String {
         toml::to_string_pretty(&LaunchFile { configurations: configs.to_vec() }).unwrap_or_default()
     };
     format!(
-        "# Rust Code run configurations. Commit this file to share them.\n\
+        "# Coiman IDE run configurations. Commit this file to share them.\n\
          # Each entry: name, command (run in a terminal tab), optional cwd and env.\n\
          #\n\
          # [[configurations]]\n\

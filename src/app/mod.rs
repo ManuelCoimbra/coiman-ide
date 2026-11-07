@@ -59,6 +59,7 @@ mod tree_tools;
 mod view_tabs;
 mod vscode_import;
 mod web;
+mod welcome;
 mod window;
 mod workbench;
 
@@ -256,6 +257,8 @@ pub struct CodeApp {
     tag_watch: Option<tag_rename::TagWatch>,
     tour: tour::Tour,
     frames: frames::Frames,
+    /// The side panel was asked for while the Welcome page shows (it's hidden there).
+    welcome_sidebar: bool,
     /// The VS Code compatibility report being written: its file and how many extensions.
     vscode_report: Option<std::sync::mpsc::Receiver<Result<(PathBuf, usize), String>>>,
 
@@ -406,6 +409,7 @@ impl CodeApp {
             tag_watch: None,
             tour: tour::Tour::default(),
             frames: frames::Frames::default(),
+            welcome_sidebar: false,
             vscode_report: None,
             pending_close: None,
             allow_close: false,
@@ -586,7 +590,11 @@ impl CodeApp {
         let classic = !theme::islands();
         let mut islands: Vec<egui::Rect> = trust_island.into_iter().collect();
         let (mut sides, mut panels) = (Vec::new(), Vec::new());
-        let left_open = self.sidebar_visible && !zen;
+        // The Welcome page stands alone, unless the side panel is asked for there.
+        if !self.docs.is_empty() {
+            self.welcome_sidebar = false;
+        }
+        let left_open = self.sidebar_shown() && !zen;
         if !left_open {
             // Slides away, with what it was showing.
             let gaps = theme::island_gaps(false, true, false, true);

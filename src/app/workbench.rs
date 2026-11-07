@@ -840,7 +840,7 @@ impl CodeApp {
             return;
         }
         let builder =
-            egui::ViewportBuilder::default().with_title("Terminal - Rust Code").with_inner_size([900.0, 520.0]);
+            egui::ViewportBuilder::default().with_title("Terminal - Coiman IDE").with_inner_size([900.0, 520.0]);
         let mut action = None;
         let mut closed = false;
         let font_size = self.terminal_font();
@@ -1413,66 +1413,6 @@ impl CodeApp {
         }
     }
 
-    pub(super) fn welcome(&mut self, ui: &mut egui::Ui) -> Option<Command> {
-        let mut cmd = None;
-        let mut recent_click = None;
-        ui.vertical_centered(|ui| {
-            ui.add_space(ui.available_height() * 0.2);
-            ui.label(RichText::new("Rust Code").size(44.0).color(theme::colors().text_dim));
-            ui.label(RichText::new("Editing evolved, in Rust").size(16.0).color(theme::colors().text_dim));
-            ui.add_space(24.0);
-            let keymap = &self.keymap;
-            let rows: &[(&str, Command)] = &[
-                ("New File", Command::NewFile),
-                ("Open File...", Command::OpenFile),
-                ("Open Folder...", Command::OpenFolder),
-                ("Open Recent...", Command::OpenRecent),
-                ("Show All Commands", Command::CommandPalette),
-                ("Go to File...", Command::QuickOpen),
-                ("Toggle Terminal", Command::ToggleTerminal),
-                ("Take the Tour", Command::TakeTour),
-                ("New Sample Project...", Command::NewSampleProject),
-            ];
-            // First time here: the tour is offered, not started.
-            if !super::tour::seen() {
-                if ui
-                    .button(RichText::new("New here? Take the tour  →").size(15.0).color(theme::colors().accent))
-                    .clicked()
-                {
-                    cmd = Some(Command::TakeTour);
-                }
-                ui.add_space(14.0);
-            }
-            // Grids don't center themselves, so pad to roughly center a ~300px block.
-            ui.horizontal(|ui| {
-                ui.add_space(((ui.available_width() - 300.0) / 2.0).max(0.0));
-                egui::Grid::new("welcome").num_columns(2).spacing([40.0, 10.0]).show(ui, |ui| {
-                    for (label, c) in rows {
-                        if ui.link(*label).clicked() {
-                            cmd = Some(*c);
-                        }
-                        ui.label(RichText::new(keymap.shortcut_text(*c)).monospace().color(theme::colors().text_dim));
-                        ui.end_row();
-                    }
-                });
-            });
-            // Recent projects and files, each removable, the missing marked.
-            ui.horizontal(|ui| {
-                ui.add_space(((ui.available_width() - 420.0) / 2.0).max(0.0));
-                ui.vertical(|ui| {
-                    ui.set_max_width(420.0);
-                    if let Some(click) = self.recent_section(ui) {
-                        recent_click = Some(click);
-                    }
-                });
-            });
-        });
-        if let Some(click) = recent_click {
-            self.recent_click(click);
-        }
-        cmd
-    }
-
     /// Draws the status bar. Returns a command when a clickable item was clicked.
     pub(super) fn status_bar(&mut self, ui: &mut egui::Ui) -> Option<Command> {
         let mut status_cmd = None;
@@ -1754,7 +1694,7 @@ impl CodeApp {
             title.push_str(&name.to_string_lossy());
             title.push_str(" - ");
         }
-        title.push_str("Rust Code");
+        title.push_str("Coiman IDE");
         // Sending a viewport command schedules another frame, so only send changes;
         // otherwise the app repaints continuously.
         if title != self.last_title {
@@ -1812,7 +1752,7 @@ fn paint_window_button(
     }
 }
 
-/// The app mark in the title bar: Rust Code's cog with code brackets.
+/// The app mark in the title bar: Coiman IDE's cog with code brackets.
 fn paint_logo(painter: &egui::Painter, rect: egui::Rect) {
     let color = theme::colors().accent;
     let c = rect.center();
@@ -1867,6 +1807,21 @@ fn window_buttons(ui: &mut egui::Ui, bar: egui::Rect, maximized: bool) {
 }
 
 /// An icon button of the top bar.
+/// The Coiman IDE icon, loaded once for the Welcome page.
+pub(super) fn logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::unique("coiman_logo");
+    if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        return t;
+    }
+    let png = include_bytes!("../../assets/icon/coiman-128.png");
+    let image = image::load_from_memory(png).map(|i| i.into_rgba8()).unwrap_or_default();
+    let size = [image.width() as usize, image.height() as usize];
+    let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
+    let texture = ctx.load_texture("coiman_logo", color, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
+    texture
+}
+
 fn tool_button(ui: &mut egui::Ui, icon: Icon, color: Color32, tip: &str) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(egui::vec2(32.0, 30.0), Sense::click());
     let hovered = theme::eased(ui.ctx(), response.id.with("hover"), response.hovered());

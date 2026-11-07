@@ -1240,7 +1240,7 @@ pub fn plan(file: &Path, source: &str, root: Option<&Path>) -> Result<Outcome, S
             data_run(template, file, root)
         }
         _ => Err(format!(
-            "Rust Code doesn't know how to run {}. A run configuration can: add it in Run: Open Configurations, then press Ctrl+F5",
+            "Coiman IDE doesn't know how to run {}. A run configuration can: add it in Run: Open Configurations, then press Ctrl+F5",
             name_of(file)
         )),
     }

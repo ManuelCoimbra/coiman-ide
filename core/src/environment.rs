@@ -128,7 +128,7 @@ fn conda_env(start: &Path, root: Option<&Path>, home: Option<&Path>) -> Option<P
 fn inherited() -> Option<PythonEnv> {
     let from = |var: &str, conda| {
         let prefix = PathBuf::from(std::env::var_os(var)?);
-        from_prefix(&prefix, format!("`{var}` was set when Rust Code started"), conda)
+        from_prefix(&prefix, format!("`{var}` was set when Coiman IDE started"), conda)
     };
     from("VIRTUAL_ENV", false).or_else(|| from("CONDA_PREFIX", true))
 }

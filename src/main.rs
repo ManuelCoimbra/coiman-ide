@@ -1,4 +1,4 @@
-//! Rust Code — a lightweight VS Code–style editor built with egui.
+//! Coiman IDE — a lightweight VS Code–style editor built with egui.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -20,6 +20,19 @@ use std::path::PathBuf;
 // Core modules, re-exported so `crate::buffer::...` paths keep working.
 pub(crate) use rust_code_core::{buffer, commands, document, edit_ops, finder, session, settings, syntax, watcher};
 
+/// The window's icon (title bar, taskbar, Alt+Tab), from the icon's 256-pixel picture.
+fn app_icon() -> egui::IconData {
+    let png = include_bytes!("../assets/icon/coiman-256.png");
+    match image::load_from_memory(png) {
+        Ok(img) => {
+            let rgba = img.into_rgba8();
+            let (width, height) = rgba.dimensions();
+            egui::IconData { rgba: rgba.into_raw(), width, height }
+        }
+        Err(_) => egui::IconData::default(),
+    }
+}
+
 fn main() -> eframe::Result {
     let started = std::time::Instant::now();
     // MinGW installed but not on PATH (the usual for a course's setup): add its folder,
@@ -31,7 +44,11 @@ fn main() -> eframe::Result {
         // SAFETY: first thing in main, before any thread starts.
         unsafe { std::env::set_var("PATH", path) };
     }
+    let adopted = rust_code_core::settings::adopt_old_config();
     rust_code_core::applog::start();
+    if let Some(what) = adopted {
+        rust_code_core::applog::info(&what);
+    }
     if let Some(dir) = mingw {
         rust_code_core::applog::info(&format!("MinGW not on PATH: added {}", dir.display()));
     }
@@ -64,7 +81,8 @@ fn main() -> eframe::Result {
     let size = saved_window.map_or([1280.0, 800.0], |w| [w.width, w.height]);
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Rust Code")
+            .with_title("Coiman IDE")
+            .with_icon(std::sync::Arc::new(app_icon()))
             .with_inner_size(size)
             .with_maximized(saved_window.is_some_and(|w| w.maximized))
             .with_min_inner_size([640.0, 400.0])
@@ -74,7 +92,7 @@ fn main() -> eframe::Result {
     };
 
     let result = eframe::run_native(
-        "Rust Code",
+        "Coiman IDE",
         options,
         Box::new(move |cc| {
             // Time until here is window + GPU context creation inside eframe.

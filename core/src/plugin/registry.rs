@@ -5,7 +5,7 @@
 //! its `plugin.toml` and `plugin.wasm`, and an Ed25519 signature by the
 //! publisher's key over those. Nothing is installed unless the files match
 //! their hashes and the signature verifies. URLs are fetched with the
-//! system's `curl` (Rust Code itself opens no connections), and only when
+//! system's `curl` (Coiman IDE itself opens no connections), and only when
 //! the user asks.
 
 use std::path::{Path, PathBuf};

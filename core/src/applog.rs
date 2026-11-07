@@ -31,7 +31,7 @@ pub fn dir() -> Option<PathBuf> {
 }
 
 pub fn log_path(dir: &Path) -> PathBuf {
-    dir.join("rust-code.log")
+    dir.join("coiman-ide.log")
 }
 
 pub fn crash_path(dir: &Path) -> PathBuf {

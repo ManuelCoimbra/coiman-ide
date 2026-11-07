@@ -480,7 +480,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "debug",
                 "codelldb_path",
                 "CodeLLDB path",
-                "Empty finds Rust Code's own install or VS Code's extension.",
+                "Empty finds Coiman IDE's own install or VS Code's extension.",
                 Kind::Text(""),
             ),
             row("debug", "step_into_std", "Step into the standard library", "Instead of over it.", Kind::Toggle),

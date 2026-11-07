@@ -163,7 +163,7 @@ impl CodeApp {
             let open = if right {
                 self.rails.right_view == Some(view)
             } else {
-                self.sidebar_visible && self.sidebar_view == view
+                self.sidebar_shown() && self.sidebar_view == view
             };
             if self.rail_icon(ui, RailTool::Side(view), icon, tip, open) {
                 if !open {
@@ -172,6 +172,7 @@ impl CodeApp {
                     self.rails.right_view = None;
                 } else {
                     self.sidebar_visible = false;
+                    self.welcome_sidebar = false;
                 }
             }
         }

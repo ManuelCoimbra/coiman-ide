@@ -612,7 +612,7 @@ pub fn all_projects(projects: &[Project]) -> Vec<&Project> {
 // ----- running Maven -------------------------------------------------------------------
 
 /// How Maven is started for a project: its wrapper (`mvnw`) when it or a parent folder
-/// has one, else `mvn` from PATH, else the Maven Rust Code fetched.
+/// has one, else `mvn` from PATH, else the Maven Coiman IDE fetched.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Mvn {
     pub program: PathBuf,

@@ -383,7 +383,7 @@ impl Keymap {
     /// File contents for a new keybindings file, listing the defaults as comments.
     pub fn default_file_contents(&self) -> String {
         let mut out = String::from(
-            "# Rust Code keybindings (VS Code command IDs). Save to apply.\n\
+            "# Coiman IDE keybindings (VS Code command IDs). Save to apply.\n\
              # Add a binding:\n\
              #   [[bindings]]\n\
              #   key = \"ctrl+shift+d\"\n\
@@ -603,7 +603,7 @@ mod tests {
         let header = Keymap::defaults().default_file_contents();
         let set = BindingChange::Set { keys: "Ctrl+K Ctrl+Y".to_owned(), editor_only: true, explorer_only: false };
         let text = set_binding_in_text(&header, id, &set).unwrap();
-        assert!(text.starts_with("# Rust Code keybindings"));
+        assert!(text.starts_with("# Coiman IDE keybindings"));
         let km = load(&text);
         assert_eq!(km.shortcut_text(Command::DeleteLines), "Ctrl+K Ctrl+Y");
         assert!(km.is_editor_only(Command::DeleteLines));

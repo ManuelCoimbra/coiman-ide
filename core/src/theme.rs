@@ -158,6 +158,52 @@ const DARK: Palette = Palette {
     hover_bg: rgb(0x2a2d2e),
 };
 
+/// Coiman Dark: the icon's colors. Its navy behind everything, its electric blue for
+/// what's picked, focused or pointed at, and text a blue-tinted white.
+const COIMAN: Palette = Palette {
+    dark: true,
+    editor_bg: rgb(0x0f1a33),
+    editor_fg: rgb(0xd5def0),
+    sidebar_bg: rgb(0x0c1630),
+    activity_bg: rgb(0x0a1328),
+    tab_active_bg: rgb(0x0f1a33),
+    tab_inactive_bg: rgb(0x0c1630),
+    tab_active_fg: rgb(0xffffff),
+    tab_inactive_fg: rgb(0x8a9bbf),
+    accent: rgb(0x2f8cff),
+    status_bg: rgb(0x2f8cff),
+    status_fg: rgb(0xffffff),
+    border: rgb(0x1d2b4d),
+    text: rgb(0xd5def0),
+    text_dim: rgb(0x8090b4),
+    line_number: rgb(0x4b5c82),
+    line_number_active: rgb(0xd5def0),
+    modified: rgb(0xf2c46d),
+    selection: rgb(0x1f4b91),
+    cursor: rgb(0x5aa9ff),
+    indent_guide: rgb(0x1f2c4a),
+    indent_guide_active: rgb(0x3b5382),
+    current_line: rgb(0x14213f),
+    bracket_match: rgb(0x4f6a9a),
+    rainbow: [rgb(0xffd54a), rgb(0xc792ea), rgb(0x5aa9ff)],
+    bracket_unexpected: rgb(0xff4d4d),
+    widget_bg: rgb(0x16233f),
+    hover_bg: rgb(0x1a2a4c),
+};
+
+/// The default theme's name.
+pub const DEFAULT_THEME: &str = "Coiman Dark";
+
+/// The themes built in, by name: (name, theme).
+pub fn built_in_names() -> [&'static str; 2] {
+    ["Coiman Dark", "Dark Modern"]
+}
+
+/// Coiman Dark: Dark Modern's code colors on the icon's navy and blue.
+pub fn coiman() -> Theme {
+    Theme { name: "Coiman Dark".to_owned(), palette: COIMAN, ..builtin() }
+}
+
 const LIGHT: Palette = Palette {
     dark: false,
     editor_bg: rgb(0xffffff),
@@ -767,6 +813,9 @@ pub fn resolve(name: &str, available: &[ThemeEntry]) -> (Theme, Option<String>) 
             Err(err) => (builtin(), Some(err)),
         };
     }
+    if name.eq_ignore_ascii_case("Coiman Dark") {
+        return (coiman(), None);
+    }
     let error = (!name.eq_ignore_ascii_case("Dark Modern")).then(|| format!("Color theme `{name}` not found"));
     (builtin(), error)
 }
@@ -805,7 +854,11 @@ mod tests {
 
     #[test]
     fn islands_stand_on_a_darker_canvas_in_any_theme() {
-        let all = [resolve("Dark Modern", &[]).0.palette, resolve("Light Modern", &[]).0.palette];
+        let all = [
+            resolve("Dark Modern", &[]).0.palette,
+            resolve("Light Modern", &[]).0.palette,
+            resolve("Coiman Dark", &[]).0.palette,
+        ];
         let sum = |c: Color| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
         for palette in all {
             let islands = palette.islands();
@@ -816,6 +869,20 @@ mod tests {
             assert_eq!(islands.status_fg, palette.text_dim);
             assert_eq!(islands.editor_fg, palette.editor_fg);
         }
+    }
+
+    #[test]
+    fn coiman_dark_is_the_icons_colors() {
+        let (theme, error) = resolve("coiman dark", &[]);
+        assert_eq!(error, None);
+        assert_eq!(theme.name, "Coiman Dark");
+        assert_eq!(theme.palette.accent, rgb(0x2f8cff), "the icon's electric blue");
+        assert_eq!(theme.palette.editor_bg, rgb(0x0f1a33), "its navy");
+        // Code colors as Dark Modern's.
+        assert_eq!(theme.rules.len(), builtin().rules.len());
+        // Text stands out from its background.
+        let sum = |c: Color| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
+        assert!(sum(theme.palette.text) > sum(theme.palette.editor_bg) + 350);
     }
 
     #[test]
