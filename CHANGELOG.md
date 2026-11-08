@@ -14,6 +14,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 ### Added
 
 - MIT license, contributing guide, this changelog, and CI on Windows (format, clippy, tests).
+- The Dock layout, now the default (`workbench.ui = "dock"`): tools in a dock at the bottom,
+  opening as sheets over the code that can be pinned beside it; open files as cards; the
+  bottom panel as a floating card; a new top bar with the icon as the menu and Run, its target
+  and Debug in one pill. Islands and Classic remain as settings.
+- Settings with section pills, rows on cards and switches; a restyled command palette.
+- Transitions: the lit file card and the dock's dot glide, sheets slide in, a tool's content
+  slides in when it changes. They follow the reduced motion setting.
 
 ## [0.1.0] - 2026-11-07
 
