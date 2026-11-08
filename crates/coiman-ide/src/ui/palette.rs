@@ -533,20 +533,17 @@ impl Palette {
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0 - 10.0 * (1.0 - arrived)))
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(6.0).show(ui, |ui| {
+                palette_frame(ui).show(ui, |ui| {
                     ui.set_width(width);
-                    let edit = ui.add(
-                        egui::TextEdit::singleline(&mut self.query)
-                            .hint_text(self.picker.as_ref().map_or(
-                                if self.everywhere.is_some() {
-                                    "Search everything (Tab changes what)"
-                                } else {
-                                    "Search files by name (> commands, : line, # symbols)"
-                                },
-                                |p| p.placeholder,
-                            ))
-                            .desired_width(f32::INFINITY),
+                    let hint = self.picker.as_ref().map_or(
+                        if self.everywhere.is_some() {
+                            "Search everything (Tab changes what)"
+                        } else {
+                            "Search files by name (> commands, : line, # symbols)"
+                        },
+                        |p| p.placeholder,
                     );
+                    let edit = search_box(ui, &mut self.query, hint);
                     // A click's release can hand focus back to the editor, and Enter would go there too.
                     if !self.just_opened && !edit.has_focus() {
                         edit.request_focus();
@@ -564,7 +561,7 @@ impl Palette {
                     if edit.changed() {
                         self.selected = 0;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(6.0);
                     if let Some(tab) = shown_tab {
                         ui.horizontal(|ui| {
                             for (one, name) in EVERYWHERE_TABS {
@@ -578,7 +575,7 @@ impl Palette {
                     }
 
                     // Room for every item up to the cap (the list otherwise keeps its first, smaller size).
-                    let row_h = ui.spacing().interact_size.y + ui.spacing().item_spacing.y;
+                    let row_h = ROW_HEIGHT + ui.spacing().item_spacing.y;
                     let wanted = (items.len().max(1) as f32 * row_h).min(360.0);
                     let list = egui::ScrollArea::vertical().auto_shrink([false, true]);
                     list.max_height(360.0).min_scrolled_height(wanted).show(ui, |ui| {
@@ -594,6 +591,8 @@ impl Palette {
                             let mut cross = None;
                             let resp = ui.horizontal(|ui| {
                                 ui.set_min_width(ui.available_width());
+                                ui.set_min_height(ROW_HEIGHT);
+                                ui.add_space(8.0);
                                 // A removable row: its × at the far right, then the note, then
                                 // the label in what's left.
                                 if removable {
@@ -628,9 +627,21 @@ impl Palette {
                                     }
                                     _ => {}
                                 }
-                                let text = highlight_label(ui, label, hl);
-                                ui.add(egui::Label::new(text).truncate().selectable(false));
-                                ui.label(RichText::new(detail).small().color(theme::colors().text_dim));
+                                let shortcut = matches!(outcome, PaletteResult::Run(_) | PaletteResult::RunPlugin(_));
+                                let right_to_left = egui::Layout::right_to_left(egui::Align::Center);
+                                ui.with_layout(right_to_left, |ui| {
+                                    ui.add_space(6.0);
+                                    if shortcut {
+                                        key_caps(ui, detail);
+                                    } else {
+                                        let note = RichText::new(detail).small().color(theme::colors().text_dim);
+                                        ui.add(egui::Label::new(note).truncate().selectable(false));
+                                    }
+                                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                                        let text = highlight_label(ui, label, hl);
+                                        ui.add(egui::Label::new(text).truncate().selectable(false));
+                                    });
+                                });
                             });
                             let row = resp.response.rect.expand2(egui::vec2(0.0, ui.spacing().item_spacing.y / 2.0));
                             let row = ui.interact(row, ui.scope_id().with(("palette_row", i)), egui::Sense::click());
@@ -638,7 +649,16 @@ impl Palette {
                             let fill =
                                 if selected { Some(pal.selection) } else { row.hovered().then_some(pal.hover_bg) };
                             if let Some(fill) = fill {
-                                ui.painter().set(background, egui::Shape::rect_filled(row.rect, 3.0, fill));
+                                let mut shapes = vec![egui::Shape::rect_filled(row.rect, 6.0, fill)];
+                                if selected {
+                                    // A bar in the accent color marks the row Enter takes.
+                                    let bar = egui::Rect::from_min_size(
+                                        row.rect.left_top() + egui::vec2(0.0, 5.0),
+                                        egui::vec2(3.0, row.rect.height() - 10.0),
+                                    );
+                                    shapes.push(egui::Shape::rect_filled(bar, 1.5, pal.accent));
+                                }
+                                ui.painter().set(background, egui::Shape::Vec(shapes));
                             }
                             if selected && (up || down) {
                                 row.scroll_to_me(None);
@@ -708,9 +728,9 @@ impl Palette {
             .order(egui::Order::Foreground)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 40.0))
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(6.0).show(ui, |ui| {
+                palette_frame(ui).show(ui, |ui| {
                     ui.set_width(width);
-                    let edit = ui.add(egui::TextEdit::singleline(&mut self.query).desired_width(f32::INFINITY));
+                    let edit = search_box(ui, &mut self.query, "");
                     if !self.just_opened && !edit.has_focus() {
                         edit.request_focus();
                     }
@@ -726,7 +746,11 @@ impl Palette {
                         }
                         self.just_opened = false;
                     }
-                    ui.label(RichText::new(placeholder).small().color(theme::colors().text_dim));
+                    ui.add_space(4.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(4.0);
+                        ui.label(RichText::new(placeholder).small().color(theme::colors().text_dim));
+                    });
                 });
             });
         self.close_on_click_outside(ctx, area.response.rect);
@@ -738,13 +762,88 @@ impl Palette {
     }
 }
 
-/// The label with fuzzy-matched characters in the accent color.
+/// Height of a row in the list.
+const ROW_HEIGHT: f32 = 28.0;
+
+/// The palette's card: rounded, a little padding, a faint border.
+fn palette_frame(ui: &egui::Ui) -> egui::Frame {
+    let pal = theme::colors();
+    egui::Frame::popup(ui.style())
+        .fill(pal.sidebar_bg)
+        .corner_radius(12.0)
+        .stroke(egui::Stroke::new(1.0, pal.border))
+        .inner_margin(8.0)
+}
+
+/// The query box: a magnifier, the text, and a border that lights up in the accent color.
+fn search_box(ui: &mut egui::Ui, query: &mut String, hint: &str) -> egui::Response {
+    let pal = theme::colors();
+    let id = ui.next_auto_id();
+    let focused = ui.memory(|m| m.has_focus(id));
+    let stroke = egui::Stroke::new(1.0, if focused { pal.accent } else { pal.border });
+    let frame = egui::Frame::new().fill(pal.widget_bg).corner_radius(8.0).stroke(stroke).inner_margin(egui::Margin {
+        left: 10,
+        right: 10,
+        top: 7,
+        bottom: 7,
+    });
+    frame
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                let size = ui.text_style_height(&egui::TextStyle::Body);
+                crate::ui::icons::show(ui, crate::ui::icons::Icon::Search, size, pal.text_dim);
+                ui.add_space(4.0);
+                let edit = egui::TextEdit::singleline(query)
+                    .id(id)
+                    .hint_text(RichText::new(hint).color(pal.text_dim))
+                    .frame(egui::Frame::NONE)
+                    .desired_width(f32::INFINITY);
+                ui.add(edit)
+            })
+            .inner
+        })
+        .inner
+}
+
+/// A shortcut such as `Ctrl+K Ctrl+S`, each key in its own small box.
+fn key_caps(ui: &mut egui::Ui, keys: &str) {
+    if keys.is_empty() {
+        return;
+    }
+    let pal = theme::colors();
+    let font = egui::FontId::proportional(11.5);
+    ui.spacing_mut().item_spacing.x = 3.0;
+    // Right to left: the last key first.
+    let chords: Vec<&str> = keys.split(' ').collect();
+    for (n, chord) in chords.iter().rev().enumerate() {
+        if n > 0 {
+            ui.add_space(4.0);
+        }
+        for key in chord.split('+').rev() {
+            let galley = ui.painter().layout_no_wrap(key.to_owned(), font.clone(), pal.text_dim);
+            let size = egui::vec2((galley.size().x + 10.0).max(20.0), 19.0);
+            let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+            let p = ui.painter();
+            p.rect_filled(rect, 4.0, pal.widget_bg);
+            p.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+            p.galley(rect.center() - galley.size() / 2.0, galley, pal.text_dim);
+        }
+    }
+}
+
+/// The label with fuzzy-matched characters in the accent color. A command's category
+/// (`File:` in `File: Save`) is dimmed, so the name stands out.
 fn highlight_label(ui: &egui::Ui, label: &str, highlights: &[usize]) -> egui::text::LayoutJob {
     let font = egui::TextStyle::Button.resolve(ui.style());
     let pal = theme::colors();
+    let category = label
+        .find(": ")
+        .filter(|&at| at <= 24 && !label[..at].contains(['/', '\\']))
+        .map_or(0, |at| label[..at + 1].chars().count());
     let mut job = egui::text::LayoutJob::default();
     for (i, c) in label.chars().enumerate() {
-        let color = if highlights.contains(&i) { pal.accent } else { pal.text };
+        let plain = if i < category { pal.text_dim } else { pal.text };
+        let color = if highlights.contains(&i) { pal.accent } else { plain };
         job.append(&c.to_string(), 0.0, egui::TextFormat { font_id: font.clone(), color, ..Default::default() });
     }
     job
