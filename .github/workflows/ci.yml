@@ -20,10 +20,17 @@ jobs:
           rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal --component clippy,rustfmt
           rustup default stable-x86_64-pc-windows-gnu
           rustc -vV
+      # gcc builds the tree-sitter grammars; windres puts the icon in the program.
+      - uses: msys2/setup-msys2@v2
+        id: msys2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils
       - name: MinGW on PATH
         shell: pwsh
         run: |
-          "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "${{ steps.msys2.outputs.msys2-location }}\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
       - uses: actions/cache@v4
         with:
           path: |
