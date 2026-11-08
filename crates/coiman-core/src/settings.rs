@@ -173,7 +173,8 @@ pub struct WorkbenchSettings {
     /// Most frames a second while something moves (scrolling output, animations); 0
     /// follows the display. The window draws nothing while nothing changes either way.
     pub max_fps: u32,
-    /// The window's layout: "islands", or "classic" for square panels edge to edge.
+    /// The window's layout: "dock" (tools in a dock at the bottom, opening as sheets over the
+    /// code), "islands", or "classic" for square panels edge to edge.
     pub ui: String,
     /// Explorer: show a chain of packages holding only each other as one row, `org.example`.
     pub compact_folders: bool,
@@ -411,7 +412,7 @@ impl Default for WorkbenchSettings {
             double_shift: true,
             search_in_top_bar: true,
             max_fps: 0,
-            ui: "islands".to_owned(),
+            ui: "dock".to_owned(),
             compact_folders: true,
             explorer_sort_order: "default".to_owned(),
             nest_files: true,

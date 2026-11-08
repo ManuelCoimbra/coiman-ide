@@ -37,7 +37,13 @@ impl CodeApp {
     /// One line on what a screenshot should show now.
     fn describe_screen(&self, ctx: &egui::Context) -> String {
         let size = ctx.content_rect().size();
-        let layout = if theme::islands() { "islands" } else { "classic" };
+        let layout = if theme::dock() {
+            "dock"
+        } else if theme::islands() {
+            "islands"
+        } else {
+            "classic"
+        };
         let left = if self.sidebar_visible { format!("{:?}", self.sidebar_view) } else { "none".to_owned() };
         let right = self.rails.right_view.map_or_else(|| "none".to_owned(), |v| format!("{v:?}"));
         let panel = match (self.panel_visible, self.rails.panel_right) {

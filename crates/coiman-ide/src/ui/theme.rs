@@ -25,6 +25,22 @@ pub fn islands() -> bool {
     ISLANDS.load(Ordering::Relaxed)
 }
 
+static DOCK: AtomicBool = AtomicBool::new(true);
+
+/// The Dock layout: tools in a dock at the bottom, opening as sheets over the code.
+pub fn dock() -> bool {
+    DOCK.load(Ordering::Relaxed)
+}
+
+/// What's behind the open files: cards stand on the editor's own color in the Dock layout.
+pub fn tab_bar_bg() -> Color32 {
+    if dock() { colors().editor_bg } else { colors().tab_inactive_bg }
+}
+
+pub fn set_dock(on: bool) {
+    DOCK.store(on, Ordering::Relaxed);
+}
+
 /// Chooses between the island layout and the classic one, and restyles egui.
 pub fn set_islands(ctx: &egui::Context, on: bool) {
     ISLANDS.store(on, Ordering::Relaxed);

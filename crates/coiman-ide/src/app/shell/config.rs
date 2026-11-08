@@ -217,6 +217,7 @@ impl CodeApp {
             self.word_wrap = new.editor.word_wrap;
         }
         if first || new.workbench.ui != old.workbench.ui {
+            theme::set_dock(new.workbench.ui == "dock");
             theme::set_islands(ctx, new.workbench.ui != "classic");
         }
         if first || new.workbench.color_theme != old.workbench.color_theme {

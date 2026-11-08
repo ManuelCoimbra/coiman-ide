@@ -18,7 +18,7 @@ use extensions::plugins;
 use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room};
 use launch::{cargo, coverage, debug, live, maven, prints, repl, test_panel, traces};
 use project::{git, git_setup};
-use shell::{file_buttons, frames, keys_ui, look, recent_ui, settings_ui, tool_rails, tour, window, workbench};
+use shell::{dock, file_buttons, frames, keys_ui, look, recent_ui, settings_ui, tool_rails, tour, window, workbench};
 use views::{bytes_view, constant, image_view, logs, md_preview, preview, svg_preview, tables};
 
 use std::path::PathBuf;
@@ -125,6 +125,8 @@ pub struct CodeApp {
     watcher: FileWatcher,
 
     sidebar_visible: bool,
+    /// In the Dock layout, the side tool is pinned beside the code instead of floating over it.
+    sheet_pinned: bool,
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
     double_shift: crate::ui::palette::DoubleShift,
@@ -297,6 +299,7 @@ impl CodeApp {
             finder: FileFinder::new(repaint(ctx)),
             watcher: FileWatcher::new(repaint(ctx)),
             sidebar_visible: true,
+            sheet_pinned: false,
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
             double_shift: Default::default(),
@@ -514,8 +517,18 @@ impl CodeApp {
                 .show(ui, |ui| self.trust_bar(ui));
             trust_island = Some(bar.response.rect - gaps);
         }
+        let dock = theme::dock();
         // Zen mode hides all workbench chrome around the editor.
-        if !zen {
+        if !zen && dock {
+            egui::Panel::bottom("dock_strip")
+                .exact_size(dock::STRIP_HEIGHT)
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(egui::Frame::new().fill(theme::colors().activity_bg))
+                .show(ui, |ui| {
+                    cmd = cmd.or(self.dock_strip(ui));
+                });
+        } else if !zen {
             let status = egui::Panel::bottom("status_bar")
                 .frame(egui::Frame::new().fill(theme::colors().status_bg).inner_margin(egui::Margin::symmetric(8, 2)))
                 .show_separator_line(false)
@@ -554,7 +567,9 @@ impl CodeApp {
             self.welcome_sidebar = false;
         }
         let left_open = self.sidebar_shown() && !zen;
-        if !left_open {
+        // In the Dock layout an unpinned tool floats over the code instead (after the editor).
+        let floating = dock && !self.sheet_pinned;
+        if !left_open && !floating {
             // Slides away, with what it was showing.
             let gaps = theme::island_gaps(false, true, false, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
@@ -568,7 +583,7 @@ impl CodeApp {
             sides.extend(place);
             islands.extend(place);
         }
-        if left_open {
+        if left_open && !floating {
             // Never let the side bar take more than half the window, whatever it contains.
             let max_side = (ui.available_width() * 0.5).max(200.0);
             let gaps = theme::island_gaps(false, true, false, true);
@@ -581,15 +596,20 @@ impl CodeApp {
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut true, |ui| self.sidebar(ui));
             let place = side.map(|side| side.response.rect - gaps);
+            if let Some(place) = place.filter(|_| dock)
+                && self.pin_chip(&ctx, place, true)
+            {
+                self.sheet_pinned = false;
+            }
             sides.extend(place);
             islands.extend(place);
         }
 
-        let right_view = self.rails.right_view.filter(|_| !zen && !classic);
+        let right_view = self.rails.right_view.filter(|_| !zen && !classic && !dock);
         if right_view.is_some() {
             self.rails.right_last = right_view;
         }
-        if let Some(view) = self.rails.right_last.filter(|_| !classic) {
+        if let Some(view) = self.rails.right_last.filter(|_| !classic && !dock) {
             let gaps = theme::island_gaps(false, false, false, true);
             let max_side = (ui.available_width() * 0.5).max(200.0);
             let shown = std::mem::replace(&mut self.sidebar_view, view);
@@ -608,7 +628,7 @@ impl CodeApp {
             sides.extend(place);
             islands.extend(place);
         }
-        let panel_right = self.rails.panel_right && !classic;
+        let panel_right = self.rails.panel_right && !classic && !dock;
         // A terminal doesn't slide: each step would resize it, and the program in it would redraw.
         let panel_slides = self.panel_tab != PanelTab::Terminal;
         let panel_open = self.panel_visible && !zen;
@@ -627,12 +647,21 @@ impl CodeApp {
             islands.extend(place);
         }
         if !panel_right && (panel_open || panel_slides) {
-            let gaps = theme::island_gaps(false, true, true, true);
+            let gaps = if dock {
+                egui::Margin { left: 8, right: 8, top: 6, bottom: 0 }
+            } else {
+                theme::island_gaps(false, true, true, true)
+            };
+            let frame = if dock {
+                dock::panel_frame()
+            } else {
+                theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps)
+            };
             let panel = egui::Panel::bottom("panel")
-                .default_size(220.0)
+                .default_size(240.0)
                 .resizable(true)
                 .show_separator_line(classic)
-                .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
+                .frame(frame)
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
             let place = panel.map(|panel| panel.response.rect - gaps);
             panels.extend(place);
@@ -654,7 +683,7 @@ impl CodeApp {
                     self.open_log_view(ui.ctx(), &path);
                 }
                 if !self.view_tabs().is_empty() {
-                    egui::Frame::new().fill(theme::colors().tab_inactive_bg).show(ui, |ui| {
+                    egui::Frame::new().fill(theme::tab_bar_bg()).show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         self.tab_bar(ui);
                     });
@@ -665,7 +694,7 @@ impl CodeApp {
                 cmd = cmd.or(self.welcome(ui));
                 return;
             }
-            egui::Frame::new().fill(theme::colors().tab_inactive_bg).show(ui, |ui| {
+            egui::Frame::new().fill(theme::tab_bar_bg()).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 self.tab_bar(ui);
             });
@@ -773,6 +802,9 @@ impl CodeApp {
                 self.other_pane(ui, rect, opts);
             }
         });
+        if floating && !zen {
+            self.side_sheet(&ctx, central.response.rect - gaps, left_open);
+        }
         let places = look::Places { editor: central.response.rect - gaps, sides, panels };
         self.paint_background(&ctx, &places);
         if !classic {

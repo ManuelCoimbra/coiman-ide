@@ -52,6 +52,8 @@ pub enum Icon {
     Trash,
     /// A light bulb: quick fixes are on offer.
     Bulb,
+    /// A pin: keeps something where it is.
+    Pin,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -255,6 +257,10 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 pen.line(&[(0.26, y), (0.1, y - 0.06)]);
                 pen.line(&[(0.74, y), (0.9, y - 0.06)]);
             }
+        }
+        Icon::Pin => {
+            pen.closed(&[(0.36, 0.12), (0.64, 0.12), (0.6, 0.42), (0.74, 0.58), (0.26, 0.58), (0.4, 0.42)]);
+            pen.line(&[(0.5, 0.58), (0.5, 0.9)]);
         }
         Icon::Pause => {
             painter.rect_filled(Rect::from_min_max(pen.p(0.26, 0.2), pen.p(0.42, 0.8)), 1.0, color);

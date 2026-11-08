@@ -3,6 +3,7 @@
 pub(crate) mod app_log;
 pub(crate) mod config;
 pub(crate) mod dispatch;
+pub(crate) mod dock;
 pub(crate) mod file_buttons;
 pub(crate) mod frames;
 pub(crate) mod keys_ui;

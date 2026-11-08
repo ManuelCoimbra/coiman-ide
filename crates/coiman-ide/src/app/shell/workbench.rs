@@ -179,7 +179,8 @@ impl CodeApp {
         let badge = name.as_deref().map(project_tree::project_badge);
 
         // The project's color fading out behind the left of the bar.
-        if let Some((_, [r, g, b])) = badge {
+        let dockbar = theme::dock();
+        if let Some((_, [r, g, b])) = badge.clone().filter(|_| !dockbar) {
             let glow = Color32::from_rgba_unmultiplied(r, g, b, 50);
             let end = (bar.min.x + 460.0).min(bar.max.x);
             let mut mesh = egui::Mesh::default();
@@ -200,11 +201,20 @@ impl CodeApp {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 ui.add_space(8.0);
-                let menu = tool_button(ui, Icon::Menu, pal.text, "Main Menu");
+                let menu = if dockbar {
+                    crate::app::dock::logo_button(ui)
+                } else {
+                    tool_button(ui, Icon::Menu, pal.text, "Main Menu")
+                };
                 egui::Popup::menu(&menu).show(|ui| cmd = self.menus(ui).0);
 
-                let project = text_chip(ui, name.as_deref().unwrap_or("No Folder"), 30.0, |painter, rect| {
+                let lead = if dockbar { 16.0 } else { 30.0 };
+                let project = text_chip(ui, name.as_deref().unwrap_or("No Folder"), lead, |painter, rect| {
                     let (letters, [r, g, b]) = badge.clone().unwrap_or(("?".to_owned(), [0x80, 0x80, 0x80]));
+                    if dockbar {
+                        painter.circle_filled(rect.center(), 4.0, Color32::from_rgb(r, g, b));
+                        return;
+                    }
                     painter.rect_filled(rect, 5.0, Color32::from_rgb(r, g, b));
                     let font = egui::FontId::proportional(11.0);
                     painter.text(rect.center(), egui::Align2::CENTER_CENTER, letters, font, Color32::WHITE);
@@ -340,6 +350,10 @@ impl CodeApp {
                     let green = Color32::from_rgb(0x57, 0xC0, 0x6A);
                     // With no project and no file there is nothing to run: no Run controls.
                     let runnable = name.is_some() || !self.docs.is_empty();
+                    if dockbar && runnable {
+                        cmd = cmd.or(self.run_pill(ui));
+                    }
+                    let runnable = runnable && !dockbar;
                     // Run stays put whether or not this file can be debugged.
                     if runnable && !self.can_debug() {
                         ui.add_space(36.0);
@@ -367,7 +381,8 @@ impl CodeApp {
                     // the window when there's room, else in the gap; a magnifier when narrow.
                     if boxed {
                         let free = ui.available_rect_before_wrap();
-                        let width = 380.0_f32.min(free.width() - 32.0);
+                        let width = (if dockbar { 300.0_f32 } else { 380.0 }).min(free.width() - 32.0);
+                        let radius = if dockbar { 14.0 } else { 7.0 };
                         if width >= 170.0 {
                             let half = width / 2.0 + 16.0;
                             let x = bar.center().x.clamp(free.left() + half, free.right() - half);
@@ -378,8 +393,8 @@ impl CodeApp {
                             let hovered = theme::eased(ui.ctx(), resp.id.with("hover"), resp.hovered());
                             let fill = pal.widget_bg.lerp_to_gamma(pal.hover_bg, hovered);
                             let p = ui.painter();
-                            p.rect_filled(rect, 7.0, fill);
-                            p.rect_stroke(rect, 7.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+                            p.rect_filled(rect, radius, fill);
+                            p.rect_stroke(rect, radius, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
                             let icon = egui::Rect::from_center_size(
                                 rect.left_center() + egui::vec2(16.0, 0.0),
                                 egui::vec2(15.0, 15.0),
@@ -754,11 +769,25 @@ impl CodeApp {
             for (i, p) in self.plugins.panels.iter().enumerate() {
                 tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
             }
+            let pills = theme::dock();
             for (tab, label) in tabs {
                 let active = self.panel_tab == tab;
                 let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
-                let resp = ui.add(egui::Label::new(RichText::new(label).small().color(color)).sense(Sense::click()));
-                if active {
+                let resp = if pills {
+                    // Sentence case, in a pill that's lit when chosen.
+                    let label = crate::app::dock::sentence_case(&label);
+                    let fill = if active { theme::colors().accent.gamma_multiply(0.18) } else { Color32::TRANSPARENT };
+                    egui::Frame::new()
+                        .fill(fill)
+                        .corner_radius(10.0)
+                        .inner_margin(egui::Margin::symmetric(9, 3))
+                        .show(ui, |ui| ui.add(egui::Label::new(RichText::new(label).color(color)).selectable(false)))
+                        .response
+                        .interact(Sense::click())
+                } else {
+                    ui.add(egui::Label::new(RichText::new(label).small().color(color)).sense(Sense::click()))
+                };
+                if active && !pills {
                     let r = resp.rect;
                     ui.painter().hline(r.x_range(), r.bottom() + 2.0, Stroke::new(1.0, theme::colors().accent));
                 }
@@ -766,7 +795,7 @@ impl CodeApp {
                     self.panel_tab = tab;
                     self.terminal.focus_requested = tab == PanelTab::Terminal;
                 }
-                ui.add_space(8.0);
+                ui.add_space(if pills { 0.0 } else { 8.0 });
             }
             if !stacked {
                 action = self.panel_buttons(ui);
@@ -1088,13 +1117,29 @@ impl CodeApp {
             .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
+                    let cards = theme::dock();
+                    ui.spacing_mut().item_spacing.x = if cards { 6.0 } else { 0.0 };
+                    if cards {
+                        ui.add_space(8.0);
+                    }
                     for (i, doc) in self.docs.iter().enumerate() {
                         let active = i == self.active && !view_showing;
-                        let fill = if active { theme::colors().tab_active_bg } else { theme::colors().tab_inactive_bg };
-                        let resp = egui::Frame::new()
-                            .fill(fill)
-                            .inner_margin(egui::Margin::symmetric(10, 7))
+                        let pal = theme::colors();
+                        let frame = if cards {
+                            // A card: lit when it's the file in front, an outline otherwise.
+                            let fill = if active { pal.accent.gamma_multiply(0.18) } else { Color32::TRANSPARENT };
+                            let edge = if active { pal.accent.gamma_multiply(0.7) } else { pal.border };
+                            egui::Frame::new()
+                                .fill(fill)
+                                .stroke(Stroke::new(1.0, edge))
+                                .corner_radius(9.0)
+                                .inner_margin(egui::Margin::symmetric(11, 5))
+                                .outer_margin(egui::Margin::symmetric(0, 6))
+                        } else {
+                            let fill = if active { pal.tab_active_bg } else { pal.tab_inactive_bg };
+                            egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(10, 7))
+                        };
+                        let resp = frame
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     let color =
@@ -1144,7 +1189,9 @@ impl CodeApp {
                             .response;
                         tabs.push(resp.rect);
                         let r = resp.rect;
-                        if active && theme::islands() {
+                        if cards {
+                            // Cards need no line.
+                        } else if active && theme::islands() {
                             // A line under the tab, that slides over from the last one.
                             let ctx = ui.ctx().clone();
                             let time = ctx.global_style().animation_time;
@@ -1505,7 +1552,7 @@ impl CodeApp {
                     status_cmd = Some(Command::ShowCompileInfo);
                 }
             }
-            if let Some(text) = self.lsp_status_text() {
+            if let Some(text) = self.lsp_status_text().filter(|_| !theme::dock()) {
                 let resp = ui
                     .add(egui::Label::new(white(text)).sense(Sense::click()).selectable(false))
                     .on_hover_text("Language Servers: state, memory and controls");
@@ -1513,7 +1560,7 @@ impl CodeApp {
                     status_cmd = Some(Command::ShowLanguageServers);
                 }
             }
-            if let Some(msg) = &self.status {
+            if let Some(msg) = self.status.as_ref().filter(|_| !theme::dock()) {
                 // Long messages, like git's errors, would run into the right side.
                 const RIGHT_SIDE: f32 = 440.0;
                 let room = (ui.available_width() - RIGHT_SIDE).max(0.0);
