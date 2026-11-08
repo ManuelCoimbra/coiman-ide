@@ -19,6 +19,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Architecture window: the project's dependency graph by file or folder for eight languages,
+  import cycles, the most used and unused files, the impact of a change (files and tests),
+  SVG export and Mermaid copy. Commands: Architecture: Show Dependency Graph, Architecture:
+  Impact of Current File.
 - MIT license, contributing guide, this changelog, and CI on Windows (format, clippy, tests).
 - The Dock layout, now the default (`workbench.ui = "dock"`): tools in a dock at the bottom,
   opening as sheets over the code that can be pinned beside it; open files as cards; the

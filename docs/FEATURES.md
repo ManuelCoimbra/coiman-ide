@@ -674,6 +674,35 @@ default; `history.enabled`, `history.max_entries`, `history.max_days`, `history.
 - Restoring is an unsaved, undoable edit, and the text it replaces is kept as a "Before
   restore" version.
 
+## Architecture
+
+**Architecture: Show Dependency Graph** reads which file imports which, for Rust, Python,
+JavaScript and TypeScript, Java, C#, Go, and C and C++. It reads the import lines and finds
+them among the project's files, without a build or a language server, so a project of a few
+hundred files takes under a second. Libraries from outside the project are left out.
+
+- **Graph:** files, or folders (with **Folders**), in layers: what a file uses sits below it.
+  Imports in a cycle are red, test files green. Drag to move, scroll to zoom, **Fit** to see it
+  all. A click picks a file: what it uses lights blue and what uses it amber. A double click
+  opens the file.
+- **Cycles:** groups of files that import each other round in a circle, largest first.
+- **Most used:** files by how many others import them, with how many they import.
+- **Unused:** files nothing imports and that import nothing. Entry points and scripts show
+  here too.
+- **Impact:** what a change to the picked file reaches, the files that import it and those that
+  reach it through others, and the tests among them. **Architecture: Impact of Current File**
+  opens it on the file in front.
+- **Export SVG** saves the picture; **Copy Mermaid** copies it as a Mermaid flowchart for
+  Markdown and wikis.
+
+Rust: `mod x;` means a file contains another, not that it uses it, so it makes no edge.
+Paths through `crate::`, `super::`, `self::`, other crates of the workspace and child modules
+count. Python: absolute, relative and `from x import y` of a module. JavaScript and TypeScript:
+relative paths, `@/` and `~/` for `src`, `index` files, `require` and dynamic `import()`.
+Java: imports, wildcards, static imports and classes of the same package. C#: types through
+`using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
+project's own headers.
+
 ## Code structure
 
 From the tree-sitter syntax tree (Rust, JSON, TOML, YAML, Markdown); other files fold by

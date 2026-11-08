@@ -462,6 +462,8 @@ impl CodeApp {
             }
             Command::NextHiddenCharacter => self.next_hidden_char(),
             Command::ShowLanguageServers => self.show_lsp_room(),
+            Command::ShowArchitecture => self.show_architecture(ctx),
+            Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),
             Command::GitPush => self.git_remote(ctx, Command::GitPush),
             Command::GitPull => self.git_remote(ctx, Command::GitPull),
             Command::GitFetch => self.git_remote(ctx, Command::GitFetch),

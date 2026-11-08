@@ -265,3 +265,12 @@ The spec's order is kept, without AI.
 3. **Phase C: specialised areas.** Serial monitor and binary size, shaders, notebooks, ADB and logcat, Docker and Compose, GitHub Actions view.
 4. **Phase D: ecosystem.** Git rebase, cherry-pick, conflict editor, commit graph and worktrees. Terminal splits and profiles. Mermaid preview. Plugin templates and dev mode. Multi-root workspaces. SSH remote projects.
 5. **Phase E: experimental.** Project overview and health, flow views, session statistics.
+
+### 11.3 Phase A: architecture and impact
+
+| Item | Before | Now | Evidence | Status | Limits |
+|---|---|---|---|---|---|
+| Dependency graph, 8 languages | Nothing | `analysis::deps` reads import lines and resolves them against the project's files. `mod` declarations are containment, not edges. | 9 unit tests, one or more per language (Rust with workspace crates and child modules, Python relative and package-absolute, scripts with `index` and `@/`, Java wildcards and same package, C# `using`, Go modules, C includes). Real code: this repo (202 files, 656 imports, 0.5 s), two Maven projects, Python's `email` package (its known `message`/`policy` cycle), npm's own `lib` (135 files). | fixed | Only what the import lines say: reflection, dependency injection and macros that generate imports aren't seen. C# links by type names, so a name used in a comment counts. |
+| Cycles, coupling, unused | Nothing | Tarjan cycles (no recursion, 50,000-file chain tested), fan-in and fan-out, instability, isolated files | 5 unit tests | fixed | |
+| Impact and affected tests | Nothing | Files reaching a file directly and indirectly, and the tests among them | unit test; app: Impact of Current File on `buffer.rs` (94 files, 36 tests), double click on `settings.rs` (130 files, 66 tests) | fixed | Tests are found by name and folder, and Rust files holding `#[test]`. |
+| Graph view, folders, export | Nothing | Layered layout with wide layers wrapped, pan, zoom, fit, pick, open; folder graph; SVG; Mermaid | App: files and folders fitted, hover tip, pick lit uses and users, double click opened the file, Export SVG through the save dialog wrote 202 nodes | fixed | Large graphs (thousands of files) draw slowly; Folders is the readable view there. |
