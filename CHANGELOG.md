@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-08
+
 ### Changed
 
 - The project is a workspace of `crates/coiman-core`, `crates/coiman-ide` and `crates/rcplugin`,

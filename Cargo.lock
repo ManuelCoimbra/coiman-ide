@@ -739,7 +739,7 @@ dependencies = [
 
 [[package]]
 name = "coiman-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "alacritty_terminal",
  "base64 0.23.1",
@@ -795,7 +795,7 @@ dependencies = [
 
 [[package]]
 name = "coiman-ide"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "coiman-core",
  "eframe",
@@ -3987,7 +3987,7 @@ dependencies = [
 
 [[package]]
 name = "rcplugin"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "coiman-core",
  "getrandom 0.4.3",
