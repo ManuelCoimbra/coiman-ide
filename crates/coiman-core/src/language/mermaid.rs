@@ -99,9 +99,8 @@ pub fn png(source: &str, look: Look, scale: f32) -> Result<Vec<u8>, String> {
     let control = OperationControl::new();
     let mut svg = SvgRequest::default();
     svg.environment = svg.environment.with_native_font_context(fonts.clone()).map_err(|e| e.to_string())?;
-    let mut options = RasterOptions::default();
-    options.scale = scale.clamp(0.25, 4.0);
-    options.font_context = Some(fonts.clone());
+    let options =
+        RasterOptions { scale: scale.clamp(0.25, 4.0), font_context: Some(fonts.clone()), ..RasterOptions::default() };
     let source = themed(source, look);
     let request = RenderRequest::png(&source, control, PngRequest { svg, options });
     match Renderer::new().render(request).map_err(|e| first_line(&e.to_string()))? {

@@ -29,6 +29,10 @@ pub(crate) struct MdPreview {
     /// Blocks of this version of this document.
     parsed: Option<(u64, u64, Vec<Block>)>,
     pictures: HashMap<PathBuf, Picture>,
+    /// Mermaid diagrams, by a hash of their text, look and scale.
+    diagrams: HashMap<u64, Picture>,
+    /// The diagram each block showed last, kept on screen while an edited one is drawn.
+    shown_diagrams: HashMap<usize, u64>,
     /// Colors of code blocks, by a hash of their language and text.
     code: HashMap<u64, Option<Vec<Vec<coiman_core::language::highlight::Span>>>>,
     /// A heading to bring into view, by its anchor.
@@ -40,8 +44,16 @@ pub(crate) struct MdPreview {
 }
 
 fn is_markdown(doc: &crate::document::Document) -> bool {
-    matches!(doc.extension().as_str(), "md" | "markdown")
+    matches!(doc.extension().as_str(), "md" | "markdown") || is_mermaid(doc)
 }
+
+/// A Mermaid file: previewed as the one diagram it holds.
+fn is_mermaid(doc: &crate::document::Document) -> bool {
+    matches!(doc.extension().as_str(), "mmd" | "mermaid")
+}
+
+/// Diagrams remembered at once (each is a texture).
+const MAX_DIAGRAMS: usize = 32;
 
 /// What a frame of the preview needs to know, and what was clicked in it.
 struct Draw<'a> {
@@ -53,6 +65,10 @@ struct Draw<'a> {
     /// The longest side a texture can have here.
     max_side: usize,
     pictures: &'a mut HashMap<PathBuf, Picture>,
+    diagrams: &'a mut HashMap<u64, Picture>,
+    shown_diagrams: &'a mut HashMap<usize, u64>,
+    /// Pixels per point, for drawing diagrams sharp.
+    ppp: f32,
     code: &'a mut HashMap<u64, Option<Vec<Vec<coiman_core::language::highlight::Span>>>>,
     scroll_to: &'a mut Option<String>,
     clicked: Option<String>,
@@ -335,6 +351,90 @@ fn code_block(ui: &mut egui::Ui, d: &mut Draw, lang: &str, text: &str, salt: usi
     });
 }
 
+/// Light or dark diagrams, by the editor's background.
+fn diagram_look() -> coiman_core::language::mermaid::Look {
+    if !theme::colors().dark {
+        coiman_core::language::mermaid::Look::Light
+    } else {
+        coiman_core::language::mermaid::Look::Dark
+    }
+}
+
+/// Draws a Mermaid diagram in the background; the picture, and its size in points.
+fn draw_diagram(ctx: &egui::Context, text: String, ppp: f32) -> Picture {
+    let (tx, rx) = mpsc::channel();
+    let wake = repaint(ctx);
+    let look = diagram_look();
+    std::thread::spawn(move || {
+        let drawn = coiman_core::language::mermaid::png(&text, look, ppp).and_then(|png| {
+            let image =
+                image::load_from_memory_with_format(&png, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+            let rgba = image.to_rgba8();
+            let size = [rgba.width() as usize, rgba.height() as usize];
+            let natural = egui::vec2(size[0] as f32 / ppp, size[1] as f32 / ppp);
+            Ok((egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw()), natural))
+        });
+        let _ = tx.send(drawn);
+        wake();
+    });
+    Picture::Loading(rx)
+}
+
+/// A ```mermaid block as its diagram. While an edit is drawn, the last picture stays; a
+/// diagram that can't be drawn shows its text and why.
+fn mermaid_block(ui: &mut egui::Ui, d: &mut Draw, text: &str, salt: usize) {
+    let pal = theme::colors();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (text, diagram_look(), d.ppp.to_bits(), theme_generation()).hash(&mut hasher);
+    let key = hasher.finish();
+    let ctx = ui.ctx().clone();
+    if d.diagrams.len() > MAX_DIAGRAMS {
+        let keep: std::collections::HashSet<u64> = d.shown_diagrams.values().copied().collect();
+        d.diagrams.retain(|k, _| keep.contains(k));
+    }
+    let ppp = d.ppp;
+    let entry = d.diagrams.entry(key).or_insert_with(|| draw_diagram(&ctx, text.to_owned(), ppp));
+    if let Picture::Loading(rx) = entry
+        && let Ok(result) = rx.try_recv()
+    {
+        *entry = match result {
+            Ok((image, size)) => Picture::Ready(ctx.load_texture("mermaid", image, egui::TextureOptions::LINEAR), size),
+            Err(why) => Picture::Failed(why),
+        };
+    }
+    let now = match &d.diagrams[&key] {
+        Picture::Loading(_) => None,
+        _ => Some(key),
+    };
+    if let Some(k) = now {
+        d.shown_diagrams.insert(salt, k);
+    }
+    let showing = now.or_else(|| d.shown_diagrams.get(&salt).copied().filter(|k| d.diagrams.contains_key(k)));
+    match showing.and_then(|k| d.diagrams.get(&k)) {
+        Some(Picture::Ready(texture, natural)) => {
+            let width = natural.x.min(ui.available_width());
+            let size = egui::vec2(width, natural.y * width / natural.x.max(1.0));
+            ui.add(egui::Image::new((texture.id(), size)));
+        }
+        Some(Picture::Failed(why)) => {
+            let why = why.clone();
+            code_block(ui, d, "mermaid", text, salt);
+            ui.label(
+                egui::RichText::new(format!("Mermaid: {why}"))
+                    .font(FontId::proportional(d.size * 0.9))
+                    .color(pal.bracket_unexpected),
+            );
+        }
+        _ => {
+            ui.label(
+                egui::RichText::new("[drawing the diagram…]")
+                    .font(FontId::proportional(d.size * 0.9))
+                    .color(pal.text_dim),
+            );
+        }
+    }
+}
+
 fn theme_generation() -> u64 {
     coiman_core::appearance::theme::generation()
 }
@@ -517,6 +617,10 @@ fn one_block(ui: &mut egui::Ui, d: &mut Draw, block: &Block, i: usize, depth: us
             ui.painter().vline(r.left() + 3.0, r.y_range(), Stroke::new(3.0, pal.border));
             ui.add_space(4.0);
         }
+        Block::Code { lang, text } if lang.eq_ignore_ascii_case("mermaid") => {
+            mermaid_block(ui, d, text, salt);
+            ui.add_space(6.0);
+        }
         Block::Code { lang, text } => {
             code_block(ui, d, lang, text, salt);
             ui.add_space(6.0);
@@ -536,7 +640,7 @@ impl CodeApp {
         if self.docs.get(self.active).is_some_and(is_markdown) {
             self.md_preview.open = !self.md_preview.open;
         } else {
-            self.status = Some("Open a Markdown file to preview it".to_owned());
+            self.status = Some("Open a Markdown or Mermaid file to preview it".to_owned());
         }
     }
 
@@ -556,7 +660,13 @@ impl CodeApp {
             if self.md_preview.parsed.as_ref().is_some_and(|p| p.0 != uid) {
                 self.md_preview.pictures.clear();
             }
-            let blocks = if doc.large { Vec::new() } else { markdown::parse(&doc.text()) };
+            let blocks = if doc.large {
+                Vec::new()
+            } else if is_mermaid(doc) {
+                vec![Block::Code { lang: "mermaid".to_owned(), text: doc.text() }]
+            } else {
+                markdown::parse(&doc.text())
+            };
             self.md_preview.parsed = Some((uid, version, blocks));
         }
         let large = doc.large;
@@ -573,6 +683,9 @@ impl CodeApp {
             root: root.as_deref(),
             max_side,
             pictures: &mut preview.pictures,
+            diagrams: &mut preview.diagrams,
+            shown_diagrams: &mut preview.shown_diagrams,
+            ppp: ui.ctx().pixels_per_point(),
             code: &mut preview.code,
             scroll_to: &mut preview.scroll_to,
             clicked: None,

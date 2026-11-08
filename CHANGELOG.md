@@ -5,6 +5,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The Markdown preview draws ```mermaid blocks (flowchart, class, sequence, state, ER and more) with
+  merman, matching Mermaid's look without a browser; `.mmd` files preview too.
+
 ## [0.3.0] - 2026-11-08
 
 ### Changed
