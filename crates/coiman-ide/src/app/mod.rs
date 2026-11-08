@@ -1,84 +1,42 @@
 //! Main application state and the per-frame loop. The behaviour is split by
 //! area into submodules that each add methods to [`CodeApp`].
 
-mod app_log;
-mod at_cursor;
-mod autosave;
-mod bookmarks;
-mod bytes_view;
-mod cargo;
-mod color_preview;
-mod config;
-mod constant;
-mod coverage;
-mod cpp;
-mod debug;
-mod dispatch;
-mod doctor;
-mod environment;
-mod file_buttons;
-mod files;
-mod font_preview;
-mod frames;
-mod git;
-mod git_setup;
-mod hidden;
-mod history;
-mod image_view;
-mod keys_ui;
-mod light_colors;
-mod likely;
-mod live;
-mod logs;
-mod look;
-mod lsp;
-mod lsp_companion;
-mod lsp_extra;
-mod lsp_room;
-mod markup;
-mod maven;
-mod md_preview;
-mod outline;
-mod plugins;
-mod preview;
-mod prints;
-mod profile;
-mod recent_ui;
-mod repl;
-mod settings_ui;
-mod snippets_ui;
-mod split;
-mod svg_preview;
-mod tables;
-mod tag_rename;
-mod test_panel;
-mod tool_rails;
-mod tour;
-mod traces;
-mod tree_tools;
-mod view_tabs;
-mod vscode_import;
-mod web;
-mod welcome;
-mod window;
-mod workbench;
+mod editor;
+mod extensions;
+mod language;
+mod launch;
+mod project;
+mod shell;
+mod views;
+
+// Each file stays reachable as `crate::app::<file>`.
+use editor::{
+    at_cursor, autosave, bookmarks, color_preview, font_preview, hidden, history, light_colors, likely, markup,
+    outline, snippets_ui, split, tag_rename, tree_tools, web,
+};
+use extensions::plugins;
+use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room};
+use launch::{cargo, coverage, debug, live, maven, prints, repl, test_panel, traces};
+use project::{git, git_setup};
+use shell::{file_buttons, frames, keys_ui, look, recent_ui, settings_ui, tool_rails, tour, window, workbench};
+use views::{bytes_view, constant, image_view, logs, md_preview, preview, svg_preview, tables};
 
 use std::path::PathBuf;
 
 use egui::KeyboardShortcut;
 
 use crate::document::Document;
-use crate::editor_view;
-use crate::explorer::Explorer;
 use crate::finder::FileFinder;
-use crate::keymap::Keymap;
-use crate::palette::{InputKind, Palette, PaletteResult};
-use crate::search_panel::SearchPanel;
 use crate::session;
 use crate::settings::Settings;
 use crate::syntax::SyntaxWorker;
-use crate::terminal::{Terminals, strip_verbatim};
-use crate::theme;
+use crate::ui::editor_view;
+use crate::ui::explorer::Explorer;
+use crate::ui::keymap::Keymap;
+use crate::ui::palette::{InputKind, Palette, PaletteResult};
+use crate::ui::search_panel::SearchPanel;
+use crate::ui::terminal::{Terminals, strip_verbatim};
+use crate::ui::theme;
 use crate::watcher::FileWatcher;
 
 const DEFAULT_FONT_SIZE: f32 = 14.0;
@@ -169,7 +127,7 @@ pub struct CodeApp {
     sidebar_visible: bool,
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
-    double_shift: crate::palette::DoubleShift,
+    double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
     /// What the log last said about what's on screen, and last status.
     logged_ui: String,
@@ -867,7 +825,7 @@ impl CodeApp {
             Some(PaletteResult::WorkspaceSymbol(i)) => self.picked_workspace_symbol(i),
             Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
             Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
-            Some(PaletteResult::Remove(crate::palette::PickerKind::Recent, label)) => {
+            Some(PaletteResult::Remove(crate::ui::palette::PickerKind::Recent, label)) => {
                 self.remove_recent(std::path::Path::new(&label))
             }
             Some(PaletteResult::Remove(..)) => {}

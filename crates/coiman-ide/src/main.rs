@@ -3,17 +3,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app;
-mod editor_view;
-mod explorer;
-mod grid_view;
-mod icons;
-mod inspector;
-mod keymap;
-mod lsp_ui;
-mod palette;
-mod search_panel;
-mod terminal;
-mod theme;
+mod ui;
 
 use std::path::PathBuf;
 
