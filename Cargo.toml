@@ -23,5 +23,54 @@ debug = "line-tables-only"
 [profile.dev.package."*"]
 debug = false
 
+# Mermaid diagrams take seconds unoptimized: these build optimized in debug builds too.
+[profile.dev.package.merman]
+opt-level = 2
+
+[profile.dev.package.merman-core]
+opt-level = 2
+
+[profile.dev.package.merman-render]
+opt-level = 2
+
+[profile.dev.package.merman-export]
+opt-level = 2
+
+[profile.dev.package.merman-layout-elk]
+opt-level = 2
+
+[profile.dev.package.merman-elk-layered]
+opt-level = 2
+
+[profile.dev.package.merman-unicode-linebreak]
+opt-level = 2
+
+[profile.dev.package.manatee]
+opt-level = 2
+
+[profile.dev.package.resvg]
+opt-level = 2
+
+[profile.dev.package.usvg]
+opt-level = 2
+
+[profile.dev.package.tiny-skia]
+opt-level = 2
+
+[profile.dev.package.tiny-skia-path]
+opt-level = 2
+
+[profile.dev.package.rustybuzz]
+opt-level = 2
+
+[profile.dev.package.ttf-parser]
+opt-level = 2
+
+[profile.dev.package.fontdb]
+opt-level = 2
+
+[profile.dev.package.kurbo]
+opt-level = 2
+
 [profile.test]
 debug = "line-tables-only"

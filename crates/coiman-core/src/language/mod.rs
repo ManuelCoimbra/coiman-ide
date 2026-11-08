@@ -12,6 +12,7 @@ pub mod likely;
 pub mod lsp;
 pub mod markdown;
 pub mod markup;
+pub mod mermaid;
 pub mod null_check;
 pub mod path_complete;
 pub mod syntax;
