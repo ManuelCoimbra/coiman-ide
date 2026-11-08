@@ -33,9 +33,28 @@ pub fn enforce() {
     *TRUSTED.write().unwrap_or_else(|e| e.into_inner()) = Some(folders);
 }
 
+/// A path resolved as far as it exists: links, junctions, `..` and Windows short names
+/// (`RUNNER~1`) become the real names, and the part not made yet is added back as written.
+fn resolve(path: &Path) -> PathBuf {
+    let mut rest = Vec::new();
+    let mut at = path;
+    loop {
+        if let Ok(real) = at.canonicalize() {
+            return rest.iter().rev().fold(real, |p, part| p.join(part));
+        }
+        match (at.parent(), at.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                at = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
 /// The form paths are compared in: resolved, no `\\?\`, case-insensitive on Windows.
 fn normalize(path: &Path) -> PathBuf {
-    let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let path = resolve(path);
     let text = path.to_string_lossy();
     let text = text.strip_prefix(r"\\?\").unwrap_or(&text);
     PathBuf::from(if cfg!(windows) { text.to_lowercase() } else { text.to_owned() })
@@ -100,6 +119,21 @@ pub fn revoke(folder: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A path that doesn't exist yet, written another way than the trusted folder was (through
+    /// `..`, a junction, or a Windows short name like `RUNNER~1`), is still under it.
+    #[test]
+    fn a_missing_path_under_a_folder_written_another_way_is_covered() {
+        let base = std::env::temp_dir().join(format!("rust-code-trust-alias-{}", std::process::id()));
+        let repo = base.join("repo");
+        std::fs::create_dir_all(base.join("x")).unwrap();
+        std::fs::create_dir_all(&repo).unwrap();
+        let list = vec![repo.canonicalize().unwrap()];
+        let roundabout = base.join("x").join("..").join("repo").join("not-made-yet").join("file.rs");
+        assert!(covered(&list, &roundabout));
+        assert!(!covered(&list, &base.join("x").join("..").join("other").join("file.rs")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
 
     #[test]
     fn a_folder_covers_what_is_under_it_only() {

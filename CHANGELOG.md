@@ -11,6 +11,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   with plugins in `plugins/`. Core modules and app files are grouped in folders by area.
 - Docs split: features in `docs/FEATURES.md`, the layout in `docs/ARCHITECTURE.md`.
 
+### Fixed
+
+- Workspace trust: a file not created yet in a trusted folder counted as untrusted when the
+  folder's path was written another way (a junction, `..`, or a Windows short name such as
+  `RUNNER~1`).
+
 ### Added
 
 - MIT license, contributing guide, this changelog, and CI on Windows (format, clippy, tests).
