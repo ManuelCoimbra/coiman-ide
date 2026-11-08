@@ -81,6 +81,10 @@ pub enum PickerKind {
     Symbol,
     History,
     DebugTarget,
+    /// A running process, to attach the debugger to.
+    AttachProcess,
+    /// Which debugger attaches.
+    AttachDebugger,
     RunTarget,
     VsCodeImport,
     MavenGoal,

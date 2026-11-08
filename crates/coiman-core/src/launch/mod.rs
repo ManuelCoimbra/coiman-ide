@@ -1,5 +1,6 @@
 //! Running, testing and debugging programs, and reading what they print.
 
+pub mod breakpoints;
 pub mod constant_run;
 pub mod coverage;
 pub mod dap;

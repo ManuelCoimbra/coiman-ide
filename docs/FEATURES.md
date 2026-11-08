@@ -465,6 +465,24 @@ downloaded unless you click **Download**.
   Breakpoint...** pauses only when an expression is true. **Debug: Add Logpoint...**
   prints a message to the Debug Console without pausing. The BREAKPOINTS list enables,
   disables and removes them.
+- **Function breakpoints**: type a function's name under BREAKPOINTS (Enter) to pause when it
+  is entered, with debuggers that take them (gdb, CodeLLDB, debugpy, Delve, js-debug).
+- **Exception breakpoints**: the EXCEPTIONS list shows what the debugger offers, such as gdb's
+  C++ exceptions when thrown, re-thrown or caught, or debugpy's raised and uncaught exceptions.
+  Choices are kept for the next session.
+- **Data breakpoints**: while paused, **on change** beside a variable pauses when it is written.
+  CodeLLDB uses data breakpoints; gdb, whose adapter has none, uses its own watchpoint on the
+  variable's memory (`watch -location`), so only the names at the top of a scope offer it there.
+  They last for the session.
+- **Export and import**: **Debug: Export Breakpoints...** saves line, function and exception
+  breakpoints to a JSON file (paths inside the project are relative, so the file travels with
+  it); **Import Breakpoints...** adds a file's breakpoints to those set. Both are under
+  BREAKPOINTS too. Without exporting, each project's line, function and exception breakpoints
+  are kept between runs of the app.
+- **Attach to a process**: **Debug: Attach to Process...** (also in the Run menu) lists what's
+  running, then asks which debugger: gdb, CodeLLDB, debugpy, js-debug or Delve, the likeliest
+  first (debugpy for `python.exe`, js-debug for `node.exe`). Stop detaches and leaves the
+  program running. Attaching debugpy to a Python without it offers to install it first.
 - **Controls**: `F5` continue, `F10` step over, `F11` step into, `Shift+F11` step out,
   `F6` pause, `Shift+F5` stop, `Ctrl+Shift+F5` restart.
 - **Debug view** (`Ctrl+Shift+D`): variables, watch expressions, call stack and

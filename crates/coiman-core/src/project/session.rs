@@ -42,6 +42,9 @@ pub struct Session {
     /// The panel opens at the right, not the bottom.
     #[serde(default)]
     pub panel_right: bool,
+    /// Breakpoints by project folder, kept between runs.
+    #[serde(default)]
+    pub breakpoints: std::collections::BTreeMap<PathBuf, crate::launch::breakpoints::Saved>,
 }
 
 /// A pinned place, found again by its line's text if lines above it changed.
@@ -97,6 +100,7 @@ impl Session {
             cursor_info_beside: false,
             right_tools: Vec::new(),
             panel_right: false,
+            breakpoints: Default::default(),
         }
     }
 
@@ -208,6 +212,7 @@ mod tests {
             cursor_info_beside: false,
             right_tools: Vec::new(),
             panel_right: false,
+            breakpoints: Default::default(),
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

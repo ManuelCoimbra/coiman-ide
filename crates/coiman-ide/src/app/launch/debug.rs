@@ -12,6 +12,9 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use coiman_core::build::cargo::{self, FileTarget, TestItem};
 use coiman_core::data::hexdata;
 use coiman_core::language::lsp::registry;
+use coiman_core::launch::breakpoints::{
+    self as bpx, DataBreakpoint, DataInfo, ExceptionFilter, FunctionBreakpoint, Process, Support,
+};
 use coiman_core::launch::dap::{self, Adapter, DapClient, DapEvent, DebugKind};
 use coiman_core::launch::run;
 use egui::{Align, Color32, RichText, Sense};
@@ -48,6 +51,8 @@ struct Launch {
     program: PathBuf,
     args: Vec<String>,
     cwd: PathBuf,
+    /// A running process to attach to, in place of starting `program`.
+    attach: Option<u32>,
 }
 
 enum AdapterState {
@@ -61,6 +66,13 @@ enum Pending {
     Initialize,
     Launch,
     SetBreakpoints(PathBuf),
+    SetFunctionBreakpoints,
+    SetExceptionBreakpoints,
+    SetDataBreakpoints,
+    /// Whether a variable can be watched: its description.
+    DataInfo(String),
+    /// gdb's own watchpoint, for a variable: its description.
+    GdbWatch(String),
     ConfigurationDone,
     Threads,
     StackTrace,
@@ -125,6 +137,7 @@ struct Session {
     /// Bumped on every stop, so late answers from an earlier stop are ignored.
     stop_gen: u64,
     capabilities: hexdata::Capabilities,
+    support: Support,
 }
 
 /// Results of background work (finding binaries, building, installing).
@@ -134,6 +147,8 @@ enum Msg {
     /// A Python file's session, and whether debugpy is there.
     PythonChecked(Launch, bool),
     DebugpyInstalled(Launch, Result<(), String>),
+    /// The processes running here, to attach to.
+    Processes(Result<Vec<Process>, String>),
 }
 
 pub(crate) struct DebugState {
@@ -157,6 +172,20 @@ pub(crate) struct DebugState {
     installing_debugpy: bool,
     /// Breakpoint being given a condition or log message: (path, line).
     editing: Option<(PathBuf, usize)>,
+    /// Function breakpoints, and whether the debugger placed each.
+    functions: Vec<(FunctionBreakpoint, Option<bool>)>,
+    function_input: String,
+    /// Exception filters the user turned on or off, by id.
+    exceptions: HashMap<String, bool>,
+    /// The exception filters the last debugger offered.
+    filters: Vec<ExceptionFilter>,
+    /// Data breakpoints of this session.
+    data: Vec<DataBreakpoint>,
+    /// Processes listed for attaching, and the one chosen.
+    processes: Vec<Process>,
+    attach_to: Option<Process>,
+    /// Breakpoints of every project, as kept in the session (read when first needed).
+    kept: Option<BTreeMap<PathBuf, bpx::Saved>>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
 }
@@ -180,6 +209,14 @@ impl Default for DebugState {
             debugpy_offer: None,
             installing_debugpy: false,
             editing: None,
+            functions: Vec::new(),
+            function_input: String::new(),
+            exceptions: HashMap::new(),
+            filters: Vec::new(),
+            data: Vec::new(),
+            processes: Vec::new(),
+            attach_to: None,
+            kept: None,
             tx,
             rx,
         }
@@ -269,6 +306,13 @@ impl CodeApp {
                         Err(e) => self.refuse_run(ctx, format!("Could not install debugpy: {e}")),
                     }
                 }
+                Msg::Processes(Err(e)) => self.status = Some(format!("Could not list processes: {e}")),
+                Msg::Processes(Ok(list)) => {
+                    self.status = None;
+                    let names = list.iter().map(|p| format!("{} ({})", p.name, p.pid)).collect();
+                    self.debug.processes = list;
+                    self.palette.show_picker(PickerKind::AttachProcess, names, "", "Select a process to attach to");
+                }
                 Msg::Built(result) => {
                     self.debug.building = None;
                     match result {
@@ -327,6 +371,9 @@ impl CodeApp {
                             self.push_console(&format!("Could not start debugging: {msg}"));
                             self.end_session();
                         }
+                        Pending::DataInfo(what) | Pending::GdbWatch(what) => {
+                            self.status = Some(format!("Can't break when {what} changes: {msg}"));
+                        }
                         _ => self.push_console(&format!("[{msg}]")),
                     }
                     return;
@@ -348,7 +395,15 @@ impl CodeApp {
                     s.client.respond(seq, &command, false, Value::Null);
                 }
             }
-            DapEvent::Exited => self.end_session(),
+            DapEvent::Exited => {
+                if self.debug.session.as_ref().is_some_and(|s| s.state == RunState::Starting) {
+                    let name = self.debug.session.as_ref().map(|s| s.launch.kind.name()).unwrap_or_default();
+                    self.push_console(&format!("{name} ended before debugging started"));
+                    self.panel_visible = true;
+                    self.panel_tab = PanelTab::DebugConsole;
+                }
+                self.end_session();
+            }
         }
     }
 
@@ -367,6 +422,10 @@ impl CodeApp {
             Pending::Initialize => {
                 if let Some(s) = &mut self.debug.session {
                     s.capabilities = hexdata::Capabilities::parse(&body);
+                    s.support = Support::parse(&body);
+                    if !s.support.exceptions.is_empty() {
+                        self.debug.filters = s.support.exceptions.clone();
+                    }
                 }
                 // A session the adapter asked for runs what it was told to.
                 let asked = self.debug.session.as_mut().and_then(|s| s.asked_launch.take());
@@ -376,7 +435,13 @@ impl CodeApp {
                 }
                 let Some(s) = &self.debug.session else { return };
                 let l = &s.launch;
-                let args = l.kind.launch_args(&l.program, &l.args, &l.cwd, self.settings.debug.step_into_std);
+                let step_into_std = self.settings.debug.step_into_std;
+                if let Some(pid) = l.attach {
+                    let args = l.kind.attach_args(pid, step_into_std);
+                    self.request("attach", args, Pending::Launch);
+                    return;
+                }
+                let args = l.kind.launch_args(&l.program, &l.args, &l.cwd, step_into_std);
                 self.request("launch", args, Pending::Launch);
             }
             Pending::SetBreakpoints(path) => {
@@ -388,6 +453,48 @@ impl CodeApp {
                     for (bp, v) in bps.iter_mut().filter(|b| b.enabled).zip(verified) {
                         bp.verified = Some(v);
                     }
+                }
+            }
+            Pending::SetFunctionBreakpoints => {
+                let enabled = self.debug.functions.iter_mut().filter(|(f, _)| f.enabled);
+                for ((_, v), placed) in enabled.zip(bpx::verified(&body)) {
+                    *v = placed;
+                }
+            }
+            Pending::SetDataBreakpoints => {
+                let sent = self.debug.data.iter_mut().filter(|d| d.enabled && !d.id.starts_with("gdb:"));
+                for (d, placed) in sent.zip(bpx::verified(&body)) {
+                    d.verified = placed;
+                }
+            }
+            Pending::SetExceptionBreakpoints => {}
+            Pending::DataInfo(what) => match bpx::parse_data_info(&body) {
+                DataInfo::Watchable { id, description, access } => {
+                    if !self.debug.data.iter().any(|d| d.id == id) {
+                        let description = if description.is_empty() { what } else { description };
+                        let access = bpx::pick_access(&access);
+                        self.debug.data.push(DataBreakpoint { id, description, access, enabled: true, verified: None });
+                    }
+                    self.send_data_breakpoints();
+                }
+                DataInfo::No(why) => self.status = Some(format!("Can't break when {what} changes: {why}")),
+            },
+            Pending::GdbWatch(what) => {
+                // "Hardware watchpoint 2: -location n"
+                let said = body["result"].as_str().unwrap_or("");
+                let number = said
+                    .split(|c: char| !c.is_ascii_digit())
+                    .find(|w| !w.is_empty())
+                    .filter(|_| said.to_lowercase().contains("watchpoint"));
+                match number {
+                    Some(n) => self.debug.data.push(DataBreakpoint {
+                        id: format!("gdb:{n}"),
+                        description: what,
+                        access: "write".to_owned(),
+                        enabled: true,
+                        verified: Some(true),
+                    }),
+                    None => self.status = Some(format!("Can't break when {what} changes: {}", said.trim())),
                 }
             }
             Pending::ConfigurationDone => {
@@ -513,6 +620,8 @@ impl CodeApp {
                 for path in files {
                     self.send_breakpoints(&path);
                 }
+                self.send_function_breakpoints();
+                self.send_exception_breakpoints();
                 self.request("configurationDone", json!({}), Pending::ConfigurationDone);
             }
             "stopped" => {
@@ -564,7 +673,8 @@ impl CodeApp {
             // CodeLLDB reports the exit code in the console itself.
             "exited" => {}
             "terminated" => {
-                self.request("disconnect", json!({ "terminateDebuggee": true }), Pending::Other);
+                let terminate = self.debug.session.as_ref().is_none_or(|s| s.launch.attach.is_none());
+                self.request("disconnect", json!({ "terminateDebuggee": terminate }), Pending::Other);
                 self.end_session();
             }
             _ => {}
@@ -675,6 +785,264 @@ impl CodeApp {
         self.request("setBreakpoints", args, Pending::SetBreakpoints(path.to_path_buf()));
     }
 
+    fn send_function_breakpoints(&mut self) {
+        let supported = self.debug.session.as_ref().is_some_and(|s| s.support.functions);
+        if !self.debugging() || !supported {
+            return;
+        }
+        let list: Vec<FunctionBreakpoint> = self.debug.functions.iter().map(|(f, _)| f.clone()).collect();
+        self.request("setFunctionBreakpoints", bpx::function_args(&list), Pending::SetFunctionBreakpoints);
+    }
+
+    fn send_exception_breakpoints(&mut self) {
+        if !self.debugging() {
+            return;
+        }
+        let Some(s) = &self.debug.session else { return };
+        if s.support.exceptions.is_empty() {
+            return;
+        }
+        let on: Vec<String> = s
+            .support
+            .exceptions
+            .iter()
+            .filter(|f| self.debug.exceptions.get(&f.id).copied().unwrap_or(f.default))
+            .map(|f| f.id.clone())
+            .collect();
+        self.request("setExceptionBreakpoints", bpx::exception_args(&on), Pending::SetExceptionBreakpoints);
+    }
+
+    fn send_data_breakpoints(&mut self) {
+        let supported = self.debug.session.as_ref().is_some_and(|s| s.support.data);
+        if !self.debugging() || !supported {
+            return;
+        }
+        let list: Vec<DataBreakpoint> = self.debug.data.iter().filter(|d| !d.id.starts_with("gdb:")).cloned().collect();
+        self.request("setDataBreakpoints", bpx::data_args(&list), Pending::SetDataBreakpoints);
+    }
+
+    /// A gdb command, through its adapter's console.
+    fn gdb_command(&mut self, command: String, pending: Pending) {
+        let frame = self.debug.session.as_ref().and_then(|s| s.frames.get(s.selected).map(|f| f.id));
+        self.request("evaluate", json!({ "expression": command, "frameId": frame, "context": "repl" }), pending);
+    }
+
+    /// Break when variable `name` (in container `reference`) changes.
+    fn break_on_change(&mut self, reference: i64, name: &str) {
+        let Some(s) = &self.debug.session else { return };
+        if s.support.data {
+            let args = bpx::data_info_args(reference, name);
+            self.request("dataBreakpointInfo", args, Pending::DataInfo(name.to_owned()));
+        } else if s.launch.kind == DebugKind::Gdb {
+            // gdb's adapter has no data breakpoints: a watchpoint of gdb's own, on
+            // the variable's memory, so it outlives leaving the function.
+            self.gdb_command(format!("watch -location {name}"), Pending::GdbWatch(name.to_owned()));
+        }
+    }
+
+    /// Turns data breakpoint `i` on or off (`Some`), or removes it (`None`).
+    fn change_data_breakpoint(&mut self, i: usize, enable: Option<bool>) {
+        let Some(d) = self.debug.data.get_mut(i) else { return };
+        let gdb = d.id.strip_prefix("gdb:").map(str::to_owned);
+        match enable {
+            Some(on) => d.enabled = on,
+            None => {
+                self.debug.data.remove(i);
+            }
+        }
+        match (gdb, enable) {
+            (Some(n), Some(true)) => self.gdb_command(format!("enable {n}"), Pending::Other),
+            (Some(n), Some(false)) => self.gdb_command(format!("disable {n}"), Pending::Other),
+            (Some(n), None) => self.gdb_command(format!("delete {n}"), Pending::Other),
+            (None, _) => self.send_data_breakpoints(),
+        }
+    }
+
+    /// Debug: Attach to Process: lists what's running, to pick from.
+    pub(crate) fn attach_to_process(&mut self, ctx: &egui::Context) {
+        if self.debugging() {
+            self.status = Some("Stop debugging first, then attach".to_owned());
+            return;
+        }
+        let (tx, wake) = (self.debug.tx.clone(), repaint(ctx));
+        std::thread::spawn(move || {
+            let _ = tx.send(Msg::Processes(bpx::processes()));
+            wake();
+        });
+        self.status = Some("Listing processes…".to_owned());
+    }
+
+    pub(crate) fn picked_attach_process(&mut self, label: &str) {
+        let Some(p) = self.debug.processes.iter().find(|p| format!("{} ({})", p.name, p.pid) == label).cloned() else {
+            return;
+        };
+        let names = bpx::suggested_kinds(&p.name).into_iter().map(str::to_owned).collect();
+        self.debug.attach_to = Some(p);
+        self.palette.show_picker(PickerKind::AttachDebugger, names, "", "Attach with which debugger?");
+    }
+
+    pub(crate) fn picked_attach_debugger(&mut self, ctx: &egui::Context, label: &str) {
+        let Some(p) = self.debug.attach_to.take() else { return };
+        let which = coiman_core::language::lsp::servers::which;
+        let kind = match label {
+            "gdb" => DebugKind::Gdb,
+            "CodeLLDB" => DebugKind::Lldb,
+            "Delve" => DebugKind::Go,
+            "js-debug" => DebugKind::Js,
+            "debugpy" => match which("python").or_else(|| which("py")) {
+                Some(python) => DebugKind::Python { python, env: Vec::new() },
+                None => {
+                    self.refuse_run(ctx, "Attaching debugpy needs Python on PATH".to_owned());
+                    return;
+                }
+            },
+            _ => return,
+        };
+        let cwd = self.explorer.root.clone().unwrap_or_else(std::env::temp_dir);
+        let program = PathBuf::from(&p.name);
+        let launch = Launch { kind, name: p.name, program, args: Vec::new(), cwd, attach: Some(p.pid) };
+        // debugpy attaches only from a Python that has it: offer to install it first.
+        let DebugKind::Python { python, .. } = &launch.kind else {
+            self.start_session(ctx, launch);
+            return;
+        };
+        let python = python.clone();
+        let (tx, wake) = (self.debug.tx.clone(), repaint(ctx));
+        std::thread::spawn(move || {
+            let found = dap::python_has_debugpy(&python);
+            let _ = tx.send(Msg::PythonChecked(launch, found));
+            wake();
+        });
+    }
+
+    /// Every breakpoint, as an export.
+    fn saved_breakpoints(&self) -> bpx::Saved {
+        let root = self.explorer.root.as_deref();
+        let lines = self
+            .debug
+            .breakpoints
+            .values()
+            .flat_map(|(path, bps)| {
+                bps.iter().map(move |b| bpx::SavedLine {
+                    path: bpx::portable_path(path, root),
+                    line: b.line + 1,
+                    condition: b.condition.clone(),
+                    log: b.log.clone(),
+                    enabled: b.enabled,
+                })
+            })
+            .collect();
+        let mut exceptions: Vec<(String, bool)> = self.debug.exceptions.iter().map(|(k, v)| (k.clone(), *v)).collect();
+        exceptions.sort();
+        bpx::Saved { lines, functions: self.debug.functions.iter().map(|(f, _)| f.clone()).collect(), exceptions }
+    }
+
+    fn kept_breakpoints(&mut self) -> &mut BTreeMap<PathBuf, bpx::Saved> {
+        self.debug
+            .kept
+            .get_or_insert_with(|| coiman_core::project::session::load().map(|s| s.breakpoints).unwrap_or_default())
+    }
+
+    /// Keeps the open project's breakpoints with the others', for the session file.
+    fn keep_breakpoints(&mut self) {
+        let Some(root) = self.explorer.root.clone() else { return };
+        let saved = self.saved_breakpoints();
+        let kept = self.kept_breakpoints();
+        if saved.is_empty() {
+            kept.remove(&root);
+        } else {
+            kept.insert(root, saved);
+        }
+    }
+
+    /// Every project's breakpoints, the open one's as they are now.
+    pub(crate) fn breakpoints_by_project(&mut self) -> BTreeMap<PathBuf, bpx::Saved> {
+        self.keep_breakpoints();
+        self.kept_breakpoints().clone()
+    }
+
+    /// Opening folder `root`: the last one's breakpoints are kept, and `root`'s come back.
+    pub(crate) fn restore_breakpoints(&mut self, root: &Path) {
+        if self.explorer.root.as_deref() == Some(root) {
+            return;
+        }
+        self.keep_breakpoints();
+        self.debug.breakpoints.clear();
+        self.debug.functions.clear();
+        self.debug.exceptions.clear();
+        let saved = self.kept_breakpoints().get(root).cloned();
+        if let Some(saved) = saved {
+            self.merge_breakpoints(saved, Some(root));
+        }
+    }
+
+    /// Where breakpoint files are saved and read: the project's `.coiman` folder at first.
+    fn breakpoints_dialog(&self) -> rfd::FileDialog {
+        let dialog = self.file_dialog("breakpoints").add_filter("Breakpoints", &["json"]);
+        let coiman = self.explorer.root.as_ref().map(|r| r.join(".coiman")).filter(|d| d.is_dir());
+        match coiman {
+            Some(dir) if self.dialog_dirs.get("breakpoints").is_none() => dialog.set_directory(dir),
+            _ => dialog,
+        }
+    }
+
+    /// Debug: Export Breakpoints.
+    pub(crate) fn export_breakpoints(&mut self) {
+        let saved = self.saved_breakpoints();
+        let Some(path) = self.breakpoints_dialog().set_file_name(bpx::FILE_NAME).save_file() else { return };
+        self.dialog_chose("breakpoints", &path);
+        let count = saved.lines.len() + saved.functions.len();
+        self.status = Some(match std::fs::write(&path, saved.to_json()) {
+            Ok(()) => format!("Exported {} to {}", breakpoints_count(count), file_name(&path)),
+            Err(e) => format!("Could not export breakpoints: {e} ({})", path.display()),
+        });
+    }
+
+    /// Debug: Import Breakpoints: adds a file's breakpoints to those already set.
+    pub(crate) fn import_breakpoints(&mut self) {
+        let Some(path) = self.breakpoints_dialog().pick_file() else { return };
+        self.dialog_chose("breakpoints", &path);
+        let saved = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| bpx::Saved::from_json(&t));
+        match saved {
+            Ok(saved) => {
+                let root = self.explorer.root.clone();
+                let count = self.merge_breakpoints(saved, root.as_deref());
+                self.status = Some(format!("Imported {} from {}", breakpoints_count(count), file_name(&path)));
+            }
+            Err(e) => self.status = Some(format!("Could not import breakpoints: {e} ({})", file_name(&path))),
+        }
+    }
+
+    /// Adds `saved` to the breakpoints set (one on the same line or function is replaced),
+    /// and sends them to a session running. How many there were.
+    fn merge_breakpoints(&mut self, saved: bpx::Saved, root: Option<&Path>) -> usize {
+        let count = saved.lines.len() + saved.functions.len();
+        let mut files = Vec::new();
+        for l in saved.lines {
+            let path = bpx::local_path(&l.path, root);
+            let entry = self.debug.breakpoints.entry(key(&path)).or_insert_with(|| (path.clone(), Vec::new()));
+            let line = l.line - 1;
+            entry.1.retain(|b| b.line != line);
+            let bp = Breakpoint { line, condition: l.condition, log: l.log, enabled: l.enabled, verified: None };
+            entry.1.push(bp);
+            entry.1.sort_by_key(|b| b.line);
+            if !files.contains(&path) {
+                files.push(path);
+            }
+        }
+        for f in saved.functions {
+            self.debug.functions.retain(|(g, _)| g.name != f.name);
+            self.debug.functions.push((f, None));
+        }
+        self.debug.exceptions.extend(saved.exceptions);
+        for path in files {
+            self.send_breakpoints(&path);
+        }
+        self.send_function_breakpoints();
+        self.send_exception_breakpoints();
+        count
+    }
+
     // ----- starting -------------------------------------------------------------------------
 
     /// js-debug's way of running a program: another connection, which is then the session.
@@ -738,7 +1106,13 @@ impl CodeApp {
         };
         self.debug.session = None;
         self.debug.console.clear();
-        self.push_console(&format!("Debugging {} {}", launch.program.display(), launch.args.join(" ")));
+        match launch.attach {
+            Some(pid) => {
+                let how = format!("Attaching {} to {} (process {pid})", launch.kind.name(), launch.name);
+                self.push_console(&how);
+            }
+            None => self.push_console(&format!("Debugging {} {}", launch.program.display(), launch.args.join(" "))),
+        }
         if !self.allowed_to_run(&launch.cwd) {
             return;
         }
@@ -767,7 +1141,11 @@ impl CodeApp {
                     pending: HashMap::new(),
                     stop_gen: 0,
                     capabilities: Default::default(),
+                    support: Support::default(),
                 });
+                // A data breakpoint's id only means something to the session that gave it.
+                self.debug.data.clear();
+                self.debug.functions.iter_mut().for_each(|(_, v)| *v = None);
                 self.request("initialize", dap::initialize_args(), Pending::Initialize);
                 self.show_debug_view();
                 self.panel_visible = true;
@@ -875,11 +1253,19 @@ impl CodeApp {
             self.build_then_debug(ctx, format!("Building {name} for debugging..."), move || {
                 let built = coiman_core::build::c_build::debug_build(&file, root.as_deref())?;
                 let name = built.program.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or(name);
-                Ok(Launch { kind: DebugKind::Gdb, name, program: built.program, args: built.args, cwd: built.cwd })
+                Ok(Launch {
+                    kind: DebugKind::Gdb,
+                    name,
+                    program: built.program,
+                    args: built.args,
+                    cwd: built.cwd,
+                    attach: None,
+                })
             });
             return;
         }
-        let launch = Launch { kind: kind.clone(), name, program: file.to_path_buf(), args: Vec::new(), cwd };
+        let launch =
+            Launch { kind: kind.clone(), name, program: file.to_path_buf(), args: Vec::new(), cwd, attach: None };
         let DebugKind::Python { python, .. } = kind else {
             self.start_session(ctx, launch);
             return;
@@ -925,7 +1311,14 @@ impl CodeApp {
                 .into_iter()
                 .find(|a| a.kind == target.flag && same(&a.name) && a.test == (target.tool != "run"))
                 .ok_or_else(|| format!("cargo built no executable for {name}"))?;
-            Ok(Launch { kind: DebugKind::Lldb, name, program: exe.executable, args: Vec::new(), cwd: target.dir })
+            Ok(Launch {
+                kind: DebugKind::Lldb,
+                name,
+                program: exe.executable,
+                args: Vec::new(),
+                cwd: target.dir,
+                attach: None,
+            })
         });
     }
 
@@ -950,6 +1343,7 @@ impl CodeApp {
                 program: exe.executable,
                 args: run_args,
                 cwd: target.dir.clone(),
+                attach: None,
             })
         });
     }
@@ -1061,9 +1455,11 @@ impl CodeApp {
         }
     }
 
+    /// Stops debugging: ends a program that was started, leaves one attached to running.
     pub(crate) fn debug_stop(&mut self) {
-        if self.debug.session.is_some() {
-            self.request("disconnect", json!({ "terminateDebuggee": true }), Pending::Other);
+        if let Some(s) = &self.debug.session {
+            let terminate = s.launch.attach.is_none();
+            self.request("disconnect", json!({ "terminateDebuggee": terminate }), Pending::Other);
             self.end_session();
         }
     }
@@ -1293,6 +1689,13 @@ impl CodeApp {
         let mut remove_bp: Option<(PathBuf, usize)> = None;
         let mut resend = false;
         let mut memory_at = None;
+        let mut data_at: Option<(i64, String)> = None;
+        let mut functions_changed = false;
+        let mut remove_function = None;
+        let mut change_data: Option<(usize, Option<bool>)> = None;
+        let mut exceptions_changed = false;
+        let mut export = false;
+        let mut import = false;
         let mut low_level = None;
         if let Some(s) = self.debug.session.as_ref().filter(|s| matches!(s.state, RunState::Stopped { .. })) {
             ui.horizontal(|ui| {
@@ -1304,6 +1707,8 @@ impl CodeApp {
                 }
             });
         }
+        // A scroll bar of its own width: a floating one covers the rows' remove buttons.
+        ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             let mono = egui::TextStyle::Monospace.resolve(ui.style());
@@ -1320,7 +1725,13 @@ impl CodeApp {
                                 continue;
                             }
                             ui.label(RichText::new(name).color(pal.text_dim));
-                            var_rows(ui, s, *reference, name, 1, &mono, &mut toggle, &mut expand, &mut memory_at);
+                            let out = VarOut {
+                                toggle: &mut toggle,
+                                expand: &mut expand,
+                                memory_at: &mut memory_at,
+                                data_at: &mut data_at,
+                            };
+                            var_rows(ui, s, *reference, name, 1, &mono, out);
                         }
                     }
                     _ => {
@@ -1387,7 +1798,7 @@ impl CodeApp {
             egui::CollapsingHeader::new(RichText::new("BREAKPOINTS").small().strong()).default_open(true).show(
                 ui,
                 |ui| {
-                    if self.debug.breakpoints.is_empty() {
+                    if self.debug.breakpoints.is_empty() && self.debug.functions.is_empty() {
                         ui.label(RichText::new("F9 or click left of a line number to add one.").color(pal.text_dim));
                     }
                     for (path, bps) in self.debug.breakpoints.values_mut() {
@@ -1414,8 +1825,85 @@ impl CodeApp {
                             });
                         }
                     }
+                    for (i, (f, verified)) in self.debug.functions.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            functions_changed |= ui.checkbox(&mut f.enabled, "").changed();
+                            let mut text = format!("function {}", f.name);
+                            if let Some(c) = &f.condition {
+                                text.push_str(&format!("  if {c}"));
+                            }
+                            let color = if *verified == Some(false) { pal.text_dim } else { pal.text };
+                            let label = ui.label(RichText::new(text).color(color));
+                            if *verified == Some(false) {
+                                label.on_hover_text("The debugger found no function by this name");
+                            }
+                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                if icons::button(ui, Icon::Close, "Remove").clicked() {
+                                    remove_function = Some(i);
+                                }
+                            });
+                        });
+                    }
+                    for (i, d) in self.debug.data.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            let mut on = d.enabled;
+                            if ui.checkbox(&mut on, "").changed() {
+                                change_data = Some((i, Some(on)));
+                            }
+                            let color = if d.verified == Some(false) { pal.text_dim } else { pal.text };
+                            ui.label(RichText::new(format!("when {} changes", d.description)).color(color));
+                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                if icons::button(ui, Icon::Close, "Remove").clicked() {
+                                    change_data = Some((i, None));
+                                }
+                            });
+                        });
+                    }
+                    let edit = ui.add(
+                        egui::TextEdit::singleline(&mut self.debug.function_input)
+                            .hint_text("Break on a function, e.g. main (Enter)"),
+                    );
+                    if edit.lost_focus()
+                        && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                        && !self.debug.function_input.trim().is_empty()
+                    {
+                        let name = std::mem::take(&mut self.debug.function_input).trim().to_owned();
+                        if !self.debug.functions.iter().any(|(f, _)| f.name == name) {
+                            let f = FunctionBreakpoint { name, condition: None, enabled: true };
+                            self.debug.functions.push((f, None));
+                        }
+                        functions_changed = true;
+                    }
+                    ui.horizontal(|ui| {
+                        if ui.small_button("Export…").on_hover_text("Save every breakpoint to a file").clicked() {
+                            export = true;
+                        }
+                        if ui.small_button("Import…").on_hover_text("Add the breakpoints in a file").clicked() {
+                            import = true;
+                        }
+                    });
                 },
             );
+
+            if !self.debug.filters.is_empty() {
+                egui::CollapsingHeader::new(RichText::new("EXCEPTIONS").small().strong()).default_open(true).show(
+                    ui,
+                    |ui| {
+                        for f in &self.debug.filters {
+                            let mut on = self.debug.exceptions.get(&f.id).copied().unwrap_or(f.default);
+                            let check = ui.checkbox(&mut on, &f.label);
+                            let check = match &f.description {
+                                Some(d) => check.on_hover_text(d),
+                                None => check,
+                            };
+                            if check.changed() {
+                                self.debug.exceptions.insert(f.id.clone(), on);
+                                exceptions_changed = true;
+                            }
+                        }
+                    },
+                );
+            }
         });
 
         match low_level {
@@ -1425,6 +1913,28 @@ impl CodeApp {
         }
         if memory_at.is_some() {
             self.show_memory(memory_at);
+        }
+        if let Some((reference, name)) = data_at {
+            self.break_on_change(reference, &name);
+        }
+        if let Some(i) = remove_function {
+            self.debug.functions.remove(i);
+            functions_changed = true;
+        }
+        if functions_changed {
+            self.send_function_breakpoints();
+        }
+        if let Some((i, enable)) = change_data {
+            self.change_data_breakpoint(i, enable);
+        }
+        if exceptions_changed {
+            self.send_exception_breakpoints();
+        }
+        if export {
+            self.export_breakpoints();
+        }
+        if import {
+            self.import_breakpoints();
         }
         if let Some(i) = remove_watch {
             self.debug.watches.remove(i);
@@ -1516,9 +2026,29 @@ impl CodeApp {
     }
 }
 
+/// "1 breakpoint", "3 breakpoints".
+fn breakpoints_count(n: usize) -> String {
+    if n == 1 { "1 breakpoint".to_owned() } else { format!("{n} breakpoints") }
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
+}
+
+/// What clicks on variable rows ask for.
+struct VarOut<'a> {
+    /// A row opened or closed, by path.
+    toggle: &'a mut Option<String>,
+    /// Containers whose children should be read.
+    expand: &'a mut Vec<i64>,
+    /// Memory to show.
+    memory_at: &'a mut Option<String>,
+    /// A variable to break on when it changes: (container, name).
+    data_at: &'a mut Option<(i64, String)>,
+}
+
 /// Variable rows under `reference` (at `path`), recursively for expanded
 /// ones. Expanded rows whose children aren't loaded yet go into `expand`.
-#[allow(clippy::too_many_arguments)]
 fn var_rows(
     ui: &mut egui::Ui,
     s: &Session,
@@ -1526,10 +2056,11 @@ fn var_rows(
     path: &str,
     depth: usize,
     mono: &egui::FontId,
-    toggle: &mut Option<String>,
-    expand: &mut Vec<i64>,
-    memory_at: &mut Option<String>,
+    out: VarOut,
 ) {
+    let VarOut { toggle, expand, memory_at, data_at } = out;
+    // gdb's watchpoints take an expression: the names at the top are enough.
+    let watchable = s.support.data || (s.launch.kind == DebugKind::Gdb && depth == 1);
     let pal = theme::colors();
     let Some(vars) = s.vars.get(&reference) else {
         let requested = s.pending.values().any(|p| matches!(p, Pending::Variables(r) if *r == reference));
@@ -1556,12 +2087,23 @@ fn var_rows(
             {
                 *memory_at = Some(address.clone());
             }
+            if watchable
+                && ui.small_button("on change").on_hover_text(format!("Break when {} changes", v.name)).clicked()
+            {
+                *data_at = Some((reference, v.name.clone()));
+            }
         });
         if resp.clicked() && v.reference > 0 {
             *toggle = Some(child.clone());
         }
         if open {
-            var_rows(ui, s, v.reference, &child, depth + 1, mono, toggle, expand, memory_at);
+            let out = VarOut {
+                toggle: &mut *toggle,
+                expand: &mut *expand,
+                memory_at: &mut *memory_at,
+                data_at: &mut *data_at,
+            };
+            var_rows(ui, s, v.reference, &child, depth + 1, mono, out);
         }
     }
 }

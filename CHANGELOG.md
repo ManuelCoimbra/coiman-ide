@@ -5,8 +5,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Debug view's floating scroll bar covered the remove buttons of breakpoints.
+- A debugger that quit before starting ended the session without saying why.
+
 ### Added
 
+- Debugging: function breakpoints, exception breakpoints (the debugger's own filters, such as
+  C++ throw and catch in gdb), data breakpoints ("on change" beside a variable; gdb through its
+  watchpoints), export and import of breakpoints as JSON, and Debug: Attach to Process with
+  gdb, CodeLLDB, debugpy, js-debug or Delve. Breakpoints are kept per project between runs.
 - `scripts/tidy.ps1`: frees the space old builds leave in `target/` (it reached 38 GB here).
 
 ## [0.2.0] - 2026-11-08

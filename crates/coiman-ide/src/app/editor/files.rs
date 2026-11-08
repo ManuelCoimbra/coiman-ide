@@ -89,6 +89,7 @@ impl CodeApp {
         (session.cursor_pins, session.cursor_info_beside) = self.at_cursor_saved();
         session.right_tools = self.rails.saved();
         session.panel_right = self.rails.panel_right;
+        session.breakpoints = self.breakpoints_by_project();
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
@@ -494,6 +495,7 @@ impl CodeApp {
     }
 
     pub(crate) fn open_folder(&mut self, path: PathBuf) {
+        self.restore_breakpoints(&path);
         self.recent.add_project(&path, recent::now());
         self.remember_recent();
         self.finder.set_root(Some(path.clone()));

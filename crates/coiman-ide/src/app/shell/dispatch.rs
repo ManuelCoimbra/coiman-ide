@@ -190,6 +190,9 @@ impl CodeApp {
             Command::ToggleBreakpoint => self.toggle_breakpoint_at_cursor(),
             Command::ConditionalBreakpoint => self.edit_breakpoint(false),
             Command::AddLogpoint => self.edit_breakpoint(true),
+            Command::AttachToProcess => self.attach_to_process(ctx),
+            Command::ExportBreakpoints => self.export_breakpoints(),
+            Command::ImportBreakpoints => self.import_breakpoints(),
             Command::ShowDebug => {
                 self.sidebar_visible = true;
                 self.sidebar_view = SidebarView::Debug;
@@ -669,6 +672,8 @@ impl CodeApp {
             PickerKind::History => self.picked_history(label),
             PickerKind::RunTarget => self.picked_run_target(ctx, label),
             PickerKind::DebugTarget => self.picked_debug_target(ctx, label),
+            PickerKind::AttachProcess => self.picked_attach_process(label),
+            PickerKind::AttachDebugger => self.picked_attach_debugger(ctx, label),
             PickerKind::Recent => self.open_recent(label),
             PickerKind::GitHubVisibility => self.git_publish_visibility(ctx, label),
             PickerKind::ClearRecent => {

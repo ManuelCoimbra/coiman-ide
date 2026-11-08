@@ -648,6 +648,10 @@ impl CodeApp {
                     item(ui, "Remove dbg! from Workspace...", Command::RemoveDbgFromWorkspace);
                     ui.separator();
                 }
+                item(ui, "Attach to Process...", Command::AttachToProcess);
+                item(ui, "Export Breakpoints...", Command::ExportBreakpoints);
+                item(ui, "Import Breakpoints...", Command::ImportBreakpoints);
+                ui.separator();
                 item(ui, "Run Program", Command::RunProgram);
                 item(ui, "Run Current File", Command::RunCurrentFile);
                 item(ui, "Run Without Debugging", Command::RunWithoutDebugging);
