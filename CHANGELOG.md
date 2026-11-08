@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-08
+
 ### Changed
 
 - The last traces of the old name, Rust Code, are gone:
