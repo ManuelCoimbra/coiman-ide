@@ -214,3 +214,54 @@ After the fixes:
 | M11 Coiman IDE name and icon (§23) | Everything said Rust Code; no icon. | `assets/icon/` (new: SVG, PNGs 16–1024, ICO), `examples/make_icons.rs` (new), `build.rs` (new), `src/main.rs`, `Cargo.toml`, `core/src/settings.rs`, `core/src/applog.rs`, every user-visible string | The icon as briefed (hexagon, three linked nodes making a C (an L at first; changed at your word), a square for the editor; navy, electric blue, white), drawn as SVG and rendered to PNGs and a multi-size ICO by `make_icons`. The ICO is linked into the program by `build.rs` with `windres`; the window sets its icon from the 256-pixel PNG. The program is `coiman-ide.exe`; the name in titles, the Welcome page, messages and files written is Coiman IDE. The config folder is `coiman-ide`: an old `rust-code` folder is moved there once, with settings, plugins and downloaded tools. A project's folder is `.coiman`, an existing `.rust-code` still read. The log is `coiman-ide.log`. Language servers and debug adapters are told the client is Coiman IDE. The `rust-code-core` crate and `RUST_CODE_*` variables keep their names (internal). | 1 new test (the project folder, old and new). App: the old test settings folder was moved and logged; the taskbar showed the icon; Explorer's icon for coiman-ide.exe is the C icon; the Welcome page shows it. | fixed | |
 | Welcome page (§12) | A centered column of links with their keys, much like VS Code's. | `src/app/welcome.rs` (new), `src/app/workbench.rs`, `src/app/recent_ui.rs` | A greeting by the time of day with the icon; the tour offered in a banner until taken; four tiles to start from (Open Folder, Clone, Sample Project, New File) with their keys; recent projects as cards with their badges, a Git mark and an × on hover; recent files with their icons; the keys worth knowing along the bottom, each clickable. | App: shown fresh; the Sample Project tile opened the language list. | fixed | |
 | Coiman Dark theme | The default theme was VS Code's Dark Modern. | `core/src/theme.rs`, `core/src/settings.rs`, `src/app/dispatch.rs`, `src/app/config.rs` | **Coiman Dark**, built in and the default: the icon's navy behind everything (canvas, panels, editor in steps), its electric blue (#2F8CFF) for the accent, the status bar, selection and cursor, and a blue-tinted white for text; Dark Modern's code colors. First in the Color Theme list; a theme already chosen is kept. The Welcome page shows without the side panel; a rail button, Ctrl+B or a view command shows it there. | 1 test (the theme's colors, its code colors, text contrast; the canvas test covers it too). App: fresh start in Coiman Dark, Welcome page alone; the Project button showed the panel; a Rust file read clearly on the navy. | fixed | |
+
+## 11. Feature specification audit (2026-11-08)
+
+The source is `IDE Feature Specification.md`, a roadmap of 21 areas. Each item was checked against the code and `docs/FEATURES.md`.
+
+Two decisions shape the plan:
+
+- **No AI.** Section 1 and every AI item elsewhere are left out. The privacy promise (no AI, no network access, enforced by `scripts/check.ps1`) stays as it is.
+- **No sockets in the app.** An item that needs network access is marked "conflicts". It is built only where an existing tool on the user's computer (`git`, `psql`, `docker`, `ssh`, `curl`) does the networking, the same way Git push and pull already work. Live collaboration and plugin ratings can't be built this way.
+
+**Status values**
+
+- **done**: works and is documented.
+- **partial**: some of it exists.
+- **missing**: nothing yet.
+- **conflicts**: needs network access in the app itself.
+
+### 11.1 Per area
+
+| Area | Done | Partial | Missing | Conflicts |
+|---|---|---|---|---|
+| 2 Architecture and dependencies | Call and type hierarchies, references (LSP) | Maven dependency tree, Cargo crates in the project tree | Module and package dependency graphs, cycle detection, coupling, class diagrams (UML), SVG and PNG export, impact analysis (dependents, affected tests, removal impact) | |
+| 3 Debugging and performance | Breakpoints with conditions and hit counts, logpoints, threads, call stacks, memory and disassembly views (CodeLLDB), multi-adapter (debugpy, Delve, js-debug, gdb) | Watch and variables | Exception, function and data breakpoints, attach to a process, breakpoint export and import, CPU profiler and flame graphs, allocation tracking, benchmark history | Remote debugging over the network |
+| 4 Git | Commit, branches, stash, amend, blame, line staging, push, pull, fetch, file history, setup | Diff views | Interactive rebase, cherry-pick, merge conflict editor (three-way), commit graph, compare commits and branches, history search, worktrees, submodules, hooks, LFS | GitHub and GitLab integration, live collaboration, shared sessions |
+| 5 Build and dependencies | Cargo, Maven, CMake, Make, Ninja, npm scripts, compile databases, run configurations | Gradle, Meson, pnpm and yarn (Run only), Python environments | Unified build view, build history, failure analysis, dependency add, remove and update UI, outdated and vulnerable dependencies, licences, lockfile view, MSBuild and dotnet, Bazel, Poetry and uv | Private registries |
+| 6 Terminal | Tabs, PTY, search, pop-out window, problem matchers | Shell choice | Split panes, terminal profiles, session restore, file:line links in output, environment editor, command history | SSH terminals (possible through `ssh`) |
+| 7 Documentation | Markdown preview, doc comments, Doxygen | | Mermaid preview, PlantUML, LaTeX, undocumented public API report, documentation index and coverage | |
+| 8 Web | Live preview, page console, Emmet, Baseline, colors | Device sizes in preview | HTTP client (`.http` files), OpenAPI viewer, GraphQL, WebSocket, DOM and CSS inspector | HTTP client in the app (possible through `curl`) |
+| 9 Database | CSV and TSV tables | | SQLite browser and SQL runner, schema and ER diagram, query plans | PostgreSQL and MySQL in the app (possible through `psql` and `mysql`) |
+| 10 Data science | Python, R and Julia REPLs, Jupyter kernel sessions | Variables through the debugger | Notebook (`.ipynb`) view and run, DataFrame viewer, plot history | |
+| 11 Systems and embedded | gdb debugging, MinGW, compile databases | Registers in the debugger | Serial monitor, binary size and section analysis, OpenOCD, PlatformIO, Arduino, ESP-IDF, memory map | |
+| 12 Game | Image viewer, Godot language server | | Shader (GLSL, WGSL, HLSL) highlighting and checks, audio preview, sprite and texture details, frame time tools | |
+| 13 Mobile | Flutter and Dart run and stack traces | Android folders in the project tree | ADB devices, logcat viewer, APK inspection | |
+| 14 DevOps | Dockerfile run rule, YAML tree | | Docker containers and Compose panel, Kubernetes YAML checks, Terraform, GitHub Actions workflow view, devcontainers | Cloud resource explorer |
+| 15 Testing | Testing view for every language, coverage | Branch coverage data read, not shown | Test history, flaky detection, run comparison, rerun failed, timeline | |
+| 16 Security and quality | Workspace trust, plugin sandbox, likely problems, Clang-Tidy, hidden Unicode | | Secret detection, complexity metrics, duplicate code, licence report, `cargo audit` and `npm audit` results | |
+| 17 Accessibility and UX | Themes, zoom, layouts (Dock, Islands, Classic), rulers, keybinding editor, reduced motion | Screen reader (AccessKit is a dependency) | High contrast theme, minimap, ligatures, saved layouts | |
+| 18 Remote | | | SSH remote projects (through `ssh` and `sftp`) | Cloud workspaces |
+| 19 Plugins | WebAssembly runtime, permissions, signatures, registries, lockfile, updates, rcplugin | | Plugin templates (`rcplugin new`), dev mode with reload, plugin rollback, changelogs | Ratings and reviews |
+| 20 Workspace | Workspace settings, trust, recent projects, sample projects, Maven archetypes | | Multi-root workspaces, project keybindings, project templates for every language, workspace health | |
+| 21 Experimental | Syntax tree search, lint rules, structural edits, language Doctor | | Project overview and health, execution and data flow views, local session statistics | |
+
+### 11.2 Phases
+
+The spec's order is kept, without AI.
+
+1. **Phase A: architecture and impact.** A module dependency graph for each language (Rust, Python, JS and TS, Java, C#, Go, C and C++), cycles, coupling, a graph view that opens files, SVG export, and impact analysis (what depends on a file or symbol, and which tests).
+2. **Phase B: development tools.** A SQLite browser and SQL runner, then `psql` and `mysql`. Exception, function and data breakpoints, attach, and a profiler with flame graphs (through `perf`, `samply` or `py-spy` where they exist). Build history, test history and flaky tests. Secret detection, complexity, duplicate code, and audit results.
+3. **Phase C: specialised areas.** Serial monitor and binary size, shaders, notebooks, ADB and logcat, Docker and Compose, GitHub Actions view.
+4. **Phase D: ecosystem.** Git rebase, cherry-pick, conflict editor, commit graph and worktrees. Terminal splits and profiles. Mermaid preview. Plugin templates and dev mode. Multi-root workspaces. SSH remote projects.
+5. **Phase E: experimental.** Project overview and health, flow views, session statistics.
