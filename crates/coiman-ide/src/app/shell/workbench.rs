@@ -338,26 +338,30 @@ impl CodeApp {
                     }
                     ui.add_space(8.0);
                     let green = Color32::from_rgb(0x57, 0xC0, 0x6A);
+                    // With no project and no file there is nothing to run: no Run controls.
+                    let runnable = name.is_some() || !self.docs.is_empty();
                     // Run stays put whether or not this file can be debugged.
-                    if !self.can_debug() {
+                    if runnable && !self.can_debug() {
                         ui.add_space(36.0);
-                    } else if tool_button(ui, Icon::Bug, green, "Debug (F5)").clicked() {
+                    } else if runnable && tool_button(ui, Icon::Bug, green, "Debug (F5)").clicked() {
                         cmd = Some(Command::StartDebugging);
                     }
                     let mut run_spot = None;
-                    if self.run_button_visible() {
+                    if runnable && self.run_button_visible() {
                         let run = tool_button(ui, Icon::Play, green, &self.run_button_tip());
                         run_spot = Some(run.rect);
                         if run.clicked() {
                             cmd = Some(Command::RunProgram);
                         }
                     }
-                    let target = self.run_target_label().unwrap_or_else(|| "Current File".to_owned());
-                    let chip = text_chip(ui, &target, 0.0, |_, _| {});
-                    // What runs, and the arrow when a file can run.
-                    self.tour_spot("run", run_spot.map_or(chip.rect, |r| r.union(chip.rect)));
-                    if chip.on_hover_text("Choose what Run starts").clicked() {
-                        cmd = Some(Command::ChooseRunTarget);
+                    if runnable {
+                        let target = self.run_target_label().unwrap_or_else(|| "Current File".to_owned());
+                        let chip = text_chip(ui, &target, 0.0, |_, _| {});
+                        // What runs, and the arrow when a file can run.
+                        self.tour_spot("run", run_spot.map_or(chip.rect, |r| r.union(chip.rect)));
+                        if chip.on_hover_text("Choose what Run starts").clicked() {
+                            cmd = Some(Command::ChooseRunTarget);
+                        }
                     }
                     // The search box, in what's left between the project and Run: centered on
                     // the window when there's room, else in the gap; a magnifier when narrow.

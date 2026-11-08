@@ -532,7 +532,8 @@ impl CodeApp {
                         cmd = cmd.or(self.tool_rail(ui, false));
                     },
                 );
-                egui::Panel::right("tool_rail_right").exact_size(44.0).resizable(false).frame(rail_frame).show(
+                let right_w = if self.right_rail_used() { 44.0 } else { 10.0 };
+                egui::Panel::right("tool_rail_right").exact_size(right_w).resizable(false).frame(rail_frame).show(
                     ui,
                     |ui| {
                         cmd = cmd.or(self.tool_rail(ui, true));

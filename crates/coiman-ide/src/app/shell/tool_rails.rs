@@ -139,6 +139,11 @@ impl CodeApp {
     }
 
     /// One rail: its side tools from the top, the panel's from the bottom.
+    /// Whether the right rail has anything on it, or is where a dragged icon may land.
+    pub(crate) fn right_rail_used(&self) -> bool {
+        !self.rails.right_tools.is_empty() || self.rails.panel_right || self.rails.dragging.is_some()
+    }
+
     pub(crate) fn tool_rail(&mut self, ui: &mut egui::Ui, right: bool) -> Option<Command> {
         let mut cmd = None;
         let whole = ui.max_rect();

@@ -68,7 +68,7 @@ impl CodeApp {
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let width = WIDTH.min(ui.available_width() - 48.0);
             let side = ((ui.available_width() - width) / 2.0).max(24.0);
-            ui.add_space(40.0);
+            ui.add_space((ui.available_height() * 0.12).clamp(40.0, 140.0));
             ui.horizontal(|ui| {
                 ui.add_space(side);
                 ui.vertical(|ui| {
