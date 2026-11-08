@@ -24,6 +24,18 @@ It runs, and CI runs the same:
 - `cargo lint` (clippy, warnings are errors),
 - `cargo test --workspace`.
 
+## Disk space
+
+Cargo never deletes old builds, so `target/` grows by gigabytes as you work. Now and then:
+
+```
+powershell -File scripts/tidy.ps1
+```
+
+It removes old copies of this workspace's crates and the incremental caches, keeping
+dependencies built, so the next build only recompiles our crates. `-All` removes everything
+(`cargo clean`). Either way `target/release/coiman-ide.exe` is kept.
+
 ## Where code goes
 
 - Anything that works without a window goes in `crates/coiman-core`, with unit tests. The app

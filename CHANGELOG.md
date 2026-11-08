@@ -5,6 +5,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/tidy.ps1`: frees the space old builds leave in `target/` (it reached 38 GB here).
+
 ## [0.2.0] - 2026-11-08
 
 ### Changed
