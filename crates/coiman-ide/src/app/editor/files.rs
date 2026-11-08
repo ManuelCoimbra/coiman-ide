@@ -199,6 +199,11 @@ impl CodeApp {
             self.remember_recent();
         }
         self.hide_view_tabs();
+        // A SQLite database opens in the Database window, not as bytes.
+        if coiman_core::data::database::is_sqlite_file(path) {
+            self.open_database(path);
+            return;
+        }
         if self.open_image_file(path) {
             return;
         }

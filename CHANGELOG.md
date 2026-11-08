@@ -19,6 +19,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Database window for SQLite: tables, views, columns and foreign keys, SQL with a result
+  grid per statement, history, and running a `.sql` file or selection against it.
 - The Architecture window: the project's dependency graph by file or folder for eight languages,
   import cycles, the most used and unused files, the impact of a change (files and tests),
   SVG export and Mermaid copy. Commands: Architecture: Show Dependency Graph, Architecture:

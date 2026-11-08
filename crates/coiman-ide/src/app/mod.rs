@@ -19,7 +19,7 @@ use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room
 use launch::{cargo, coverage, debug, live, maven, prints, repl, test_panel, traces};
 use project::{architecture, git, git_setup};
 use shell::{dock, file_buttons, frames, keys_ui, look, recent_ui, settings_ui, tool_rails, tour, window, workbench};
-use views::{bytes_view, constant, image_view, logs, md_preview, preview, svg_preview, tables};
+use views::{bytes_view, constant, database, image_view, logs, md_preview, preview, svg_preview, tables};
 
 use std::path::PathBuf;
 
@@ -130,6 +130,7 @@ pub struct CodeApp {
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
     architecture: architecture::Architecture,
+    database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
     /// What the log last said about what's on screen, and last status.
@@ -304,6 +305,7 @@ impl CodeApp {
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
             architecture: Default::default(),
+            database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
             logged_ui: String::new(),
@@ -817,6 +819,7 @@ impl CodeApp {
         self.font_preview_ui(&ctx);
         self.lsp_room(&ctx);
         self.architecture_window(&ctx);
+        self.database_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);
         self.keys_window(&ctx);

@@ -703,6 +703,25 @@ Java: imports, wildcards, static imports and classes of the same package. C#: ty
 `using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
 project's own headers.
 
+## Databases (SQLite)
+
+A SQLite file opens in the **Database** window from the Explorer or Quick Open (it is
+recognised by its contents, whatever its name), or with **Database: Open SQLite File...**.
+
+- **Tables and views** on the left. A click shows the columns, with the primary key marked,
+  types, `not null`, and where a foreign key points (`→ customer.id`). A double click shows
+  the first 500 rows.
+- **SQL** in the box, one statement or several; **Run** or Ctrl+Enter. Each statement that
+  returns rows gets its own result, in a grid that only draws what's in view, with NULL
+  greyed. Statements that change rows say how many. The list of tables refreshes after a
+  change, and **History** keeps the last 30 runs.
+- **Database: Run SQL (Selection or File)** runs the selection, or the whole `.sql` file in
+  front, against the open database.
+
+It runs through the `sqlite3` program (on `PATH`, or MSYS2's), in its safe mode, so a
+`.sql` file can't reach the shell with dot-commands. No database code is built into the app,
+and it opens no connections of its own. Results keep 10,000 rows each.
+
 ## Code structure
 
 From the tree-sitter syntax tree (Rust, JSON, TOML, YAML, Markdown); other files fold by

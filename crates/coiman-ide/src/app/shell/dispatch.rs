@@ -464,6 +464,8 @@ impl CodeApp {
             Command::ShowLanguageServers => self.show_lsp_room(),
             Command::ShowArchitecture => self.show_architecture(ctx),
             Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),
+            Command::OpenDatabase => self.choose_database(),
+            Command::RunSqlInDatabase => self.run_database_sql(true),
             Command::GitPush => self.git_remote(ctx, Command::GitPush),
             Command::GitPull => self.git_remote(ctx, Command::GitPull),
             Command::GitFetch => self.git_remote(ctx, Command::GitFetch),

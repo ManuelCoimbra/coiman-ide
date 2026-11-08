@@ -26,7 +26,7 @@ portable-pty = "0.9.0"
 regex = "1.13.1"
 ropey = { version = "=1.6.1", default-features = false, features = ["simd"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.154"
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 sha2 = "0.11"
 similar = "2"

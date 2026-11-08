@@ -2,6 +2,7 @@
 
 pub(crate) mod bytes_view;
 pub(crate) mod constant;
+pub(crate) mod database;
 pub(crate) mod image_view;
 pub(crate) mod logs;
 pub(crate) mod md_preview;
