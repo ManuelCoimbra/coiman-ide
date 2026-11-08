@@ -1,0 +1,43 @@
+# Changelog
+
+All notable changes. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and versions follow [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Changed
+
+- The project is a workspace of `crates/coiman-core`, `crates/coiman-ide` and `crates/rcplugin`,
+  with plugins in `plugins/`. Core modules and app files are grouped in folders by area.
+- Docs split: features in `docs/FEATURES.md`, the layout in `docs/ARCHITECTURE.md`.
+
+### Added
+
+- MIT license, contributing guide, this changelog, and CI on Windows (format, clippy, tests).
+
+## [0.1.0] - 2026-11-07
+
+The first version, as Coiman IDE (it began as Rust Code on 2026-10-24).
+
+### Added
+
+- **Editor**: rope buffer, multiple cursors and column selection, find and replace, folding,
+  outline, smart selection, Vim and Helix modes, indentation by each language's blocks, tags and
+  quotes closed as you type, Emmet, snippets, bookmarks, split panes, local history, auto save.
+- **Languages**: tree-sitter and syntect highlighting, rainbow brackets, language servers for
+  Rust, Python, JavaScript and TypeScript, C and C++, Java, C# and Go and more, with completion,
+  navigation, inlay hints, semantic tokens, code lens and hierarchies; ESLint and Tailwind from
+  VS Code extensions; HTML, XML, Vue and Svelte checked while typing; a language Doctor.
+- **Run and debug**: Run for every language with project rules, run configurations, Cargo and
+  Maven, a Testing view, coverage, debugging with CodeLLDB, debugpy, Delve, js-debug and gdb,
+  REPLs and live sessions, print debugging, stack trace analysis, problem matchers.
+- **Project**: Explorer with a JetBrains-style tree, keyboard and file operations, Quick Open,
+  Search Everywhere, find in files, Git (status, staging lines, history, stash, push and pull,
+  setup), workspace trust, recent projects and files.
+- **Views**: Markdown and SVG previews, live preview in the browser, CSV tables, logs of any size,
+  bytes, memory and disassembly, images.
+- **Look**: Coiman Dark theme, VS Code themes, island layout, background pictures, themes by time
+  of day, file icons, a Welcome page and a tour.
+- **Extensions**: WebAssembly plugins with signed registries; import of VS Code themes, snippets
+  and languages; a VS Code compatibility report.
+- **Privacy**: no telemetry, no network access from the app, no account.
