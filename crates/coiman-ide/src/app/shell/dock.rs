@@ -162,8 +162,12 @@ impl CodeApp {
         p.rect_filled(pill, pill.height() / 2.0, pal.sidebar_bg);
         p.rect_stroke(pill, pill.height() / 2.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
         let mut x = pill.left() + 8.0;
+        let mut open_at = None;
         for (view, icon, tip, command) in side {
             let open = self.sidebar_shown() && self.sidebar_view == view;
+            if open {
+                open_at = Some(x + BUTTON.x / 2.0);
+            }
             let rect = egui::Rect::from_min_size(egui::pos2(x, pill.top() + 3.0), BUTTON);
             if self.dock_button(ui, rect, icon, tip, open) {
                 if open {
@@ -189,8 +193,12 @@ impl CodeApp {
         ui.painter()
             .line_segment([sep - egui::vec2(0.0, 9.0), sep + egui::vec2(0.0, 9.0)], egui::Stroke::new(1.0, pal.border));
         x += 12.0;
+        let mut panel_at = None;
         for (tab, icon, tip, command) in PANELS {
             let open = self.panel_visible && self.panel_tab == tab;
+            if open {
+                panel_at = Some(x + BUTTON.x / 2.0);
+            }
             let rect = egui::Rect::from_min_size(egui::pos2(x, pill.top() + 3.0), BUTTON);
             if self.dock_button(ui, rect, icon, tip, open) {
                 cmd = Some(command);
@@ -199,6 +207,23 @@ impl CodeApp {
                 self.tour_spot("terminal", rect);
             }
             x += BUTTON.x;
+        }
+        // The dots under what's open glide from one tool to the next.
+        let ctx = ui.ctx().clone();
+        let dot_y = pill.bottom() - 5.5;
+        for (at, name) in [(open_at, "dock_dot_side"), (panel_at, "dock_dot_panel")] {
+            let id = egui::Id::unique(name);
+            let shown = theme::eased(&ctx, id.with("shown"), at.is_some());
+            let x = match at {
+                Some(at) => theme::glide(&ctx, id, at),
+                None => ctx.data(|d| d.get_temp::<f32>(id.with("last"))).unwrap_or(0.0),
+            };
+            if at.is_some() {
+                ctx.data_mut(|d| d.insert_temp(id.with("last"), x));
+            }
+            if shown > 0.0 {
+                ui.painter().circle_filled(egui::pos2(x, dot_y), 2.0 * shown, pal.accent.gamma_multiply(shown));
+            }
         }
         // What's going on (servers starting, messages), left of the dock.
         let news = egui::Rect::from_min_max(strip.left_top(), egui::pos2(pill.left() - 16.0, strip.bottom()))
@@ -248,8 +273,6 @@ impl CodeApp {
         }
         if opened > 0.0 {
             ui.painter().rect_filled(tile, 9.0, pal.accent.gamma_multiply(0.16 * opened));
-            let dot = egui::pos2(rect.center().x, rect.bottom() - 2.5);
-            ui.painter().circle_filled(dot, 2.0 * opened, pal.accent);
         }
         let color = if open {
             pal.accent
@@ -258,7 +281,9 @@ impl CodeApp {
         } else {
             pal.text_dim
         };
-        let glyph = egui::Rect::from_center_size(rect.center() - egui::vec2(0.0, 1.5), egui::vec2(19.0, 19.0));
+        // Lifts a little under the pointer.
+        let lift = 1.5 + 2.0 * hovered;
+        let glyph = egui::Rect::from_center_size(rect.center() - egui::vec2(0.0, lift), egui::vec2(19.0, 19.0));
         icons::paint(ui.painter(), glyph, icon, color);
         response.clicked()
     }
@@ -272,18 +297,40 @@ impl CodeApp {
             self.sidebar_visible = false;
             return;
         }
-        let t = ctx.animate_bool_with_time(egui::Id::unique("side_sheet_open"), shown, 0.14);
+        let time = ctx.global_style().animation_time * 1.4;
+        let t = ctx.animate_bool_with_time(egui::Id::unique("side_sheet_open"), shown, time);
+        // Another tool in the same sheet: its content slides in, rather than swapping at once.
+        let view_id = egui::Id::unique("side_sheet_view");
+        let view = egui::Id::unique(format!("{:?}", self.sidebar_view));
+        let now = ctx.input(|i| i.time);
+        let since = ctx.data_mut(|d| {
+            let (last, at) = d.get_temp::<(egui::Id, f64)>(view_id).unwrap_or((view, 0.0));
+            if last != view {
+                d.insert_temp(view_id, (view, now));
+                0.0
+            } else {
+                d.insert_temp(view_id, (view, at));
+                now - at
+            }
+        });
+        let swap = if time > 0.0 { (since as f32 / time).clamp(0.0, 1.0) } else { 1.0 };
+        if swap < 1.0 {
+            ctx.request_repaint();
+        }
+        let swap = 1.0 - (1.0 - swap).powi(3);
         if t <= 0.0 {
             return;
         }
         let pal = theme::colors();
         let width = 320.0_f32.min(code.width() * 0.6);
+        // Slides in from the left edge, slowing as it arrives.
+        let eased = 1.0 - (1.0 - t).powi(3);
         let rect = egui::Rect::from_min_size(
-            code.left_top() + egui::vec2(SHEET_GAP - (1.0 - t) * 24.0, SHEET_GAP),
+            code.left_top() + egui::vec2(SHEET_GAP - (1.0 - eased) * (width + SHEET_GAP + 24.0), SHEET_GAP),
             egui::vec2(width, code.height() - 2.0 * SHEET_GAP),
         );
         let frame = egui::Frame::new()
-            .fill(pal.sidebar_bg.gamma_multiply(t.max(0.6)))
+            .fill(pal.sidebar_bg)
             .corner_radius(14.0)
             .stroke(egui::Stroke::new(1.0, pal.border))
             .shadow(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(110) })
@@ -293,11 +340,14 @@ impl CodeApp {
             .fixed_pos(rect.min)
             .interactable(shown)
             .show(ctx, |ui| {
-                ui.set_opacity(t);
+                ui.set_opacity(eased.max(0.35));
                 frame.show(ui, |ui| {
                     ui.set_width(rect.width() - 20.0);
                     ui.set_height(rect.height() - 16.0);
-                    self.sidebar(ui);
+                    let inner = ui.max_rect().translate(egui::vec2((1.0 - swap) * 16.0, 0.0));
+                    let mut content = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+                    content.set_opacity(swap);
+                    self.sidebar(&mut content);
                 });
             });
         let sheet = area.response.rect;

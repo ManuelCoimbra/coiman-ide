@@ -646,8 +646,11 @@ impl Palette {
                             let row = resp.response.rect.expand2(egui::vec2(0.0, ui.spacing().item_spacing.y / 2.0));
                             let row = ui.interact(row, ui.scope_id().with(("palette_row", i)), egui::Sense::click());
                             let pal = theme::colors();
-                            let fill =
-                                if selected { Some(pal.selection) } else { row.hovered().then_some(pal.hover_bg) };
+                            let fill = if selected {
+                                Some(pal.accent.gamma_multiply(0.2))
+                            } else {
+                                row.hovered().then_some(pal.hover_bg)
+                            };
                             if let Some(fill) = fill {
                                 let mut shapes = vec![egui::Shape::rect_filled(row.rect, 6.0, fill)];
                                 if selected {

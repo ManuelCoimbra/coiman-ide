@@ -65,6 +65,13 @@ pub fn set_motion(ctx: &egui::Context, reduced: bool) {
     ctx.global_style_mut(|style| style.animation_time = seconds);
 }
 
+/// A value that glides to `target`, a little slower than a fade so the eye can follow it.
+/// Jumps with reduced motion.
+pub fn glide(ctx: &egui::Context, id: egui::Id, target: f32) -> f32 {
+    let time = ctx.global_style().animation_time * 1.6;
+    ctx.animate_value_with_time(id, target, time)
+}
+
 /// From 0 to 1 as `on` turns true, and back, over the current motion time.
 pub fn eased(ctx: &egui::Context, id: egui::Id, on: bool) -> f32 {
     ctx.animate_bool(id, on)

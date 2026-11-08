@@ -536,6 +536,46 @@ pub(crate) struct SettingsUi {
     fonts: Vec<String>,
     fonts_loading: Option<Receiver<Vec<String>>>,
     fonts_loaded: bool,
+    /// A section picked in the row of sections, to scroll to.
+    jump: Option<&'static str>,
+}
+
+/// An on/off switch. Returns whether it was flipped.
+fn switch(ui: &mut egui::Ui, on: &mut bool) -> bool {
+    let pal = theme::colors();
+    let size = egui::vec2(36.0, 20.0);
+    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+    if resp.clicked() {
+        *on = !*on;
+    }
+    let t = ui.ctx().animate_bool_with_time(resp.id.with("switch"), *on, 0.12);
+    let track = pal.widget_bg.lerp_to_gamma(pal.accent, t);
+    let p = ui.painter();
+    p.rect_filled(rect, 10.0, track);
+    p.rect_stroke(rect, 10.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+    let x = egui::lerp(rect.left() + 10.0..=rect.right() - 10.0, t);
+    let knob = if resp.hovered() { egui::Color32::WHITE } else { pal.text };
+    p.circle_filled(egui::pos2(x, rect.center().y), 7.0, knob);
+    resp.clicked()
+}
+
+/// A section's rows sit on this card.
+fn card() -> egui::Frame {
+    let pal = theme::colors();
+    egui::Frame::new()
+        .fill(pal.sidebar_bg)
+        .stroke(egui::Stroke::new(1.0, pal.border))
+        .corner_radius(12.0)
+        .inner_margin(egui::Margin::symmetric(16, 10))
+}
+
+/// A section's title: small, in the accent color, above its card.
+fn section_title(ui: &mut egui::Ui, title: &str) -> egui::Response {
+    ui.add_space(6.0);
+    let text = RichText::new(title).size(14.0).strong().color(theme::colors().accent);
+    let resp = ui.label(text);
+    ui.add_space(2.0);
+    resp
 }
 
 enum Action {
@@ -563,7 +603,7 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
     match row.kind {
         Kind::Toggle => {
             let mut on = value.and_then(Value::as_bool).unwrap_or(false);
-            if ui.checkbox(&mut on, "").changed() {
+            if switch(ui, &mut on) {
                 *out = Some(Action::Set(table, key, literal(Value::Boolean(on))));
             }
         }
@@ -707,10 +747,18 @@ impl CodeApp {
         // As wide as its rows need, and most of the window's height. A new id, so a size saved before doesn't stay.
         let room = ctx.content_rect().size();
         let size = egui::vec2((room.x * 0.8).min(860.0), (room.y * 0.86).max(400.0));
-        egui::Window::new("Settings")
+        let pal = theme::colors();
+        egui::Window::new(RichText::new("Settings").size(17.0).strong())
             .id(egui::Id::unique("settings_window_fitted"))
             .open(&mut open)
             .collapsible(false)
+            .frame(
+                egui::Frame::window(&ctx.global_style())
+                    .fill(pal.editor_bg)
+                    .corner_radius(16.0)
+                    .stroke(egui::Stroke::new(1.0, pal.border))
+                    .inner_margin(egui::Margin::symmetric(18, 12)),
+            )
             .default_size(size)
             .default_pos(ctx.content_rect().center() - size / 2.0)
             .show(ctx, |ui| {
@@ -730,7 +778,6 @@ impl CodeApp {
                         action = Some(Action::OpenFile);
                     }
                 });
-                ui.separator();
                 let filter = state.filter.to_lowercase();
                 let matches = |r: &Row| {
                     filter.is_empty()
@@ -738,6 +785,29 @@ impl CodeApp {
                         || r.help.to_lowercase().contains(&filter)
                         || r.key.contains(&filter)
                 };
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                    for (title, rows) in SECTIONS {
+                        if !rows.iter().any(matches) {
+                            continue;
+                        }
+                        let picked = state.jump == Some(*title);
+                        let fill = if picked { pal.accent.gamma_multiply(0.18) } else { egui::Color32::TRANSPARENT };
+                        let resp = egui::Frame::new()
+                            .fill(fill)
+                            .stroke(egui::Stroke::new(1.0, pal.border))
+                            .corner_radius(11.0)
+                            .inner_margin(egui::Margin::symmetric(10, 3))
+                            .show(ui, |ui| ui.add(egui::Label::new(*title).selectable(false)))
+                            .response
+                            .interact(egui::Sense::click());
+                        if resp.clicked() {
+                            state.jump = Some(*title);
+                        }
+                    }
+                });
+                ui.add_space(8.0);
                 egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     // Larger than the rest of the workbench: this is a page for reading.
                     let style = ui.style_mut();
@@ -756,47 +826,70 @@ impl CodeApp {
                     style.spacing.icon_width_inner *= 1.3;
                     let help_size = ui.text_style_height(&egui::TextStyle::Body) * 0.82;
                     if filter.is_empty() || "color theme".contains(&filter) {
-                        ui.heading("Color theme");
-                        if ui.button(&self.settings.workbench.color_theme).clicked() {
-                            action = Some(Action::Theme);
-                        }
+                        section_title(ui, "Look");
+                        card().show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.horizontal(|ui| {
+                                ui.label("Color theme");
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.add_space(12.0);
+                                    let name = format!("{}  ▾", self.settings.workbench.color_theme);
+                                    if ui.button(name).clicked() {
+                                        action = Some(Action::Theme);
+                                    }
+                                });
+                            });
+                        });
                         ui.add_space(10.0);
                     }
                     for (title, rows) in SECTIONS {
                         if !rows.iter().any(matches) {
                             continue;
                         }
-                        ui.heading(*title);
-                        for row in rows.iter().filter(|r| matches(r)) {
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
-                                    ui.set_width((ui.available_width() - 320.0).max(200.0));
-                                    ui.label(row.label);
-                                    if !row.help.is_empty() {
-                                        let help =
-                                            RichText::new(row.help).size(help_size).color(theme::colors().text_dim);
-                                        ui.add(egui::Label::new(help).wrap());
-                                    }
-                                });
-                                let value = lookup(&current, row.table, row.key);
-                                let default = lookup(&defaults, row.table, row.key);
-                                let changed = match (value, default) {
-                                    (Some(v), Some(d)) => v != d,
-                                    (Some(v), None) => v.as_str() != Some(""),
-                                    _ => false,
-                                };
-                                // At the far edge, so options line up down the page.
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.add_space(12.0);
-                                    control(ui, state, row, value, &mut action);
-                                    if changed && ui.small_button("Reset").clicked() {
-                                        action = Some(Action::Reset(row.table, row.key));
-                                    }
-                                });
-                            });
-                            ui.add_space(8.0);
+                        let heading = section_title(ui, title);
+                        if state.jump == Some(*title) {
+                            heading.scroll_to_me(Some(egui::Align::TOP));
+                            state.jump = None;
                         }
-                        ui.add_space(12.0);
+                        let shown: Vec<&Row> = rows.iter().filter(|r| matches(r)).collect();
+                        card().show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            for (n, row) in shown.iter().enumerate() {
+                                if n > 0 {
+                                    let y = ui.cursor().top() - 4.0;
+                                    let x = ui.max_rect().x_range();
+                                    ui.painter().hline(x, y, egui::Stroke::new(1.0, pal.border.gamma_multiply(0.6)));
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.vertical(|ui| {
+                                        ui.set_width((ui.available_width() - 320.0).max(200.0));
+                                        ui.label(row.label);
+                                        if !row.help.is_empty() {
+                                            let help =
+                                                RichText::new(row.help).size(help_size).color(theme::colors().text_dim);
+                                            ui.add(egui::Label::new(help).wrap());
+                                        }
+                                    });
+                                    let value = lookup(&current, row.table, row.key);
+                                    let default = lookup(&defaults, row.table, row.key);
+                                    let changed = match (value, default) {
+                                        (Some(v), Some(d)) => v != d,
+                                        (Some(v), None) => v.as_str() != Some(""),
+                                        _ => false,
+                                    };
+                                    // At the far edge, so options line up down the page.
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        ui.add_space(12.0);
+                                        control(ui, state, row, value, &mut action);
+                                        if changed && ui.small_button("Reset").clicked() {
+                                            action = Some(Action::Reset(row.table, row.key));
+                                        }
+                                    });
+                                });
+                                ui.add_space(8.0);
+                            }
+                        });
+                        ui.add_space(14.0);
                     }
                 });
             });

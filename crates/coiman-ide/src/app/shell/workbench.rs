@@ -1122,15 +1122,16 @@ impl CodeApp {
                     if cards {
                         ui.add_space(8.0);
                     }
+                    // Painted under the cards once their places are known.
+                    let glow = ui.painter().add(egui::Shape::Noop);
+                    let mut lit = None;
                     for (i, doc) in self.docs.iter().enumerate() {
                         let active = i == self.active && !view_showing;
                         let pal = theme::colors();
                         let frame = if cards {
                             // A card: lit when it's the file in front, an outline otherwise.
-                            let fill = if active { pal.accent.gamma_multiply(0.18) } else { Color32::TRANSPARENT };
-                            let edge = if active { pal.accent.gamma_multiply(0.7) } else { pal.border };
+                            let edge = if active { Color32::TRANSPARENT } else { pal.border };
                             egui::Frame::new()
-                                .fill(fill)
                                 .stroke(Stroke::new(1.0, edge))
                                 .corner_radius(9.0)
                                 .inner_margin(egui::Margin::symmetric(11, 5))
@@ -1190,7 +1191,9 @@ impl CodeApp {
                         tabs.push(resp.rect);
                         let r = resp.rect;
                         if cards {
-                            // Cards need no line.
+                            if active {
+                                lit = Some(r);
+                            }
                         } else if active && theme::islands() {
                             // A line under the tab, that slides over from the last one.
                             let ctx = ui.ctx().clone();
@@ -1206,6 +1209,22 @@ impl CodeApp {
                         } else if !theme::islands() {
                             ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::colors().border));
                         }
+                    }
+                    if let Some(r) = lit {
+                        // The lit card glides over from the one before.
+                        let ctx = ui.ctx().clone();
+                        let left = theme::glide(&ctx, egui::Id::unique("card_left"), r.left());
+                        let right = theme::glide(&ctx, egui::Id::unique("card_right"), r.right());
+                        let at = egui::Rect::from_x_y_ranges(left..=right, r.shrink2(egui::vec2(0.0, 6.0)).y_range());
+                        let pal = theme::colors();
+                        let shape = egui::epaint::RectShape::new(
+                            at,
+                            9.0,
+                            pal.accent.gamma_multiply(0.18),
+                            Stroke::new(1.0, pal.accent.gamma_multiply(0.7)),
+                            egui::StrokeKind::Inside,
+                        );
+                        ui.painter().set(glow, shape);
                     }
                     for (tab, title, shown) in &view_tabs {
                         let pal = theme::colors();
