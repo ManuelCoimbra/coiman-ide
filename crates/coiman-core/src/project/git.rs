@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn identities_remotes_init_and_clone() {
-        let base = std::env::temp_dir().join(format!("rust-code-git-setup-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coiman-git-setup-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         assert!(installed().is_some_and(|v| v.starts_with("git version")));
@@ -820,7 +820,7 @@ mod tests {
 
     #[test]
     fn amends_stashes_and_reads_history() {
-        let dir = std::env::temp_dir().join(format!("rust-code-git-history-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-git-history-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let sh = |args: &[&str]| {
@@ -889,7 +889,7 @@ mod tests {
 
     #[test]
     fn pushes_fetches_and_pulls() {
-        let dir = std::env::temp_dir().join(format!("rust-code-git-remote-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-git-remote-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let (a, b, bare) = (dir.join("a"), dir.join("b"), dir.join("bare.git"));
         for d in [&a, &b, &bare] {
@@ -1010,7 +1010,7 @@ mod tests {
     /// Runs the real git CLI against a throwaway repository.
     #[test]
     fn stages_a_single_hunk_and_blames_lines() {
-        let dir = std::env::temp_dir().join(format!("rust-code-git-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-git-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let setup = |args: &[&str]| git(&dir, args, None).unwrap();

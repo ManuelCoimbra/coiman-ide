@@ -6,8 +6,8 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
-use rust_code::plugin::host;
-use rust_code::plugin::types::{Block, Decoration, Problem, Severity, TreeItem};
+use coiman::plugin::host;
+use coiman::plugin::types::{Block, Decoration, Problem, Severity, TreeItem};
 
 struct TestPlugin;
 

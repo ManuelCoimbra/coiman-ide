@@ -1,4 +1,4 @@
-id = "rust-code.trailing-spaces"
+id = "coiman.trailing-spaces"
 name = "Trailing Spaces"
 version = "1.0.0"
 description = "Marks spaces at the end of lines."

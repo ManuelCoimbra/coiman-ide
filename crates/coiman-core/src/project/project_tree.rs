@@ -761,13 +761,13 @@ mod tests {
 
     #[test]
     fn projects_get_lasting_badges() {
-        assert_eq!(project_badge("rust-code").0, "RC");
+        assert_eq!(project_badge("coiman-ide").0, "CI");
         assert_eq!(project_badge("spring_petclinic").0, "SP");
         assert_eq!(project_badge("PetClinic").0, "PC");
         assert_eq!(project_badge("proj").0, "PR");
         assert_eq!(project_badge("a b c").0, "AC");
         assert_eq!(project_badge("---").0, "?");
-        assert_eq!(project_badge("rust-code").1, project_badge("rust-code").1);
+        assert_eq!(project_badge("coiman-ide").1, project_badge("coiman-ide").1);
         let many: std::collections::HashSet<_> = ["a", "b", "c", "d", "e", "f"].map(|n| project_badge(n).1).into();
         assert!(many.len() > 1);
     }

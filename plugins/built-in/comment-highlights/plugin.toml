@@ -1,4 +1,4 @@
-id = "rust-code.comment-highlights"
+id = "coiman.comment-highlights"
 name = "Comment Highlights"
 version = "1.0.1"
 description = "Colors TODO, FIXME, NOTE and similar tags in comments, and comments starting with !, ? or *."

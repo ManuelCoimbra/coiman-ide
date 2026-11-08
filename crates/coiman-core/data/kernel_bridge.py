@@ -1,4 +1,4 @@
-"""Between Rust Code and a Jupyter kernel, whose wire protocol needs ZeroMQ.
+"""Between Coiman IDE and a Jupyter kernel, whose wire protocol needs ZeroMQ.
 
 Reads commands on stdin and writes events on stdout, a line each, with text in
 base64. With a connection file it attaches to a kernel already running, and leaves

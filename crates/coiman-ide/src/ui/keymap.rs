@@ -589,7 +589,7 @@ mod tests {
 
     #[test]
     fn editing_the_keybindings_file_round_trips() {
-        let dir = std::env::temp_dir().join(format!("rust-code-keys-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-keys-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("keybindings.toml");
         let id = command_id(Command::DeleteLines);
@@ -704,6 +704,11 @@ mod tests {
         for (cmd, _) in crate::commands::COMMANDS {
             assert!(!command_id(*cmd).is_empty(), "{cmd:?} has no VS Code id");
         }
+        // Keybindings saved before the rename still find their commands.
+        assert_eq!(command_from_id("rustCode.openLog"), Some(Command::OpenLog));
+        assert_eq!(command_from_id("rustcode.showLive"), Some(Command::ShowLive));
+        assert_eq!(command_from_id("rust-code.dbg.show"), Some(Command::ShowDbgOutput));
+        assert_eq!(command_from_id("rustCode.noSuchThing"), None);
     }
 
     #[test]
@@ -737,7 +742,7 @@ mod tests {
 
     #[test]
     fn user_file_adds_overrides_and_removes() {
-        let dir = std::env::temp_dir().join(format!("rust-code-keys-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-keys-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("keybindings.toml");
         std::fs::write(

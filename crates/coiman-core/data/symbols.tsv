@@ -1,4 +1,4 @@
-# Names typed after a backslash, and what they become. Written for Rust Code in the
+# Names typed after a backslash, and what they become. Written for Coiman IDE in the
 # style proof assistants use; [symbols] in settings adds to or replaces these.
 a	α
 alpha	α

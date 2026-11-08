@@ -66,7 +66,16 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 /// What a publisher signs.
 pub fn statement(id: &str, version: &str, manifest_sha256: &str, wasm_sha256: &str) -> Vec<u8> {
-    format!("rust-code-plugin-v1\n{id}\n{version}\n{manifest_sha256}\n{wasm_sha256}\n").into_bytes()
+    signed_as("coiman-plugin-v1", id, version, manifest_sha256, wasm_sha256)
+}
+
+/// What publishers signed before the rename, when the app was called Rust Code: still accepted.
+fn statement_before_rename(id: &str, version: &str, manifest_sha256: &str, wasm_sha256: &str) -> Vec<u8> {
+    signed_as("rust-code-plugin-v1", id, version, manifest_sha256, wasm_sha256)
+}
+
+fn signed_as(kind: &str, id: &str, version: &str, manifest_sha256: &str, wasm_sha256: &str) -> Vec<u8> {
+    format!("{kind}\n{id}\n{version}\n{manifest_sha256}\n{wasm_sha256}\n").into_bytes()
 }
 
 /// A short, readable form of a publisher key for prompts: `1a2b 3c4d 5e6f 7a8b`.
@@ -99,7 +108,9 @@ impl Entry {
         let key = verifying_key(&self.publisher_key)?;
         let sig = B64.decode(self.signature.trim()).map_err(|_| "the signature isn't base64".to_owned())?;
         let sig = Signature::from_slice(&sig).map_err(|_| "the signature is malformed".to_owned())?;
-        key.verify_strict(&statement(&self.id, &self.version, &self.manifest_sha256, &self.wasm_sha256), &sig)
+        let (id, version, manifest, wasm) = (&self.id, &self.version, &self.manifest_sha256, &self.wasm_sha256);
+        key.verify_strict(&statement(id, version, manifest, wasm), &sig)
+            .or_else(|_| key.verify_strict(&statement_before_rename(id, version, manifest, wasm), &sig))
             .map_err(|_| format!("{} {}: the signature doesn't match the publisher key", self.id, self.version))
     }
 }
@@ -257,7 +268,7 @@ mod tests {
 
     #[test]
     fn publishes_signs_verifies_and_rejects_tampering() {
-        let tmp = std::env::temp_dir().join(format!("rust-code-registry-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("coiman-registry-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         let (plugin, registry) = (tmp.join("plugin"), tmp.join("registry"));
         std::fs::create_dir_all(&plugin).unwrap();
@@ -287,6 +298,12 @@ mod tests {
         assert!(forged.verify_signature().is_err());
         assert!(fetch(&base, "../secret").is_err());
         assert_eq!(fingerprint(&public).len(), 19);
+        // Signed before the rename, as `rust-code-plugin-v1`: still good.
+        let secret_key = signing_key(&secret).unwrap();
+        let mut old = index.plugins[0].clone();
+        let said = statement_before_rename(&old.id, &old.version, &old.manifest_sha256, &old.wasm_sha256);
+        old.signature = B64.encode(secret_key.sign(&said).to_bytes());
+        assert!(old.verify_signature().is_ok());
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

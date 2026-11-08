@@ -1,13 +1,13 @@
-//! `rcplugin`: the publisher's side of Rust Code plugins.
+//! `coiman-plugin`: the publisher's side of Coiman IDE plugins.
 //!
 //! ```text
-//! rcplugin keygen <secret-key-file>
-//! rcplugin componentize <module.wasm> <plugin.wasm>
-//! rcplugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]
+//! coiman-plugin keygen <secret-key-file>
+//! coiman-plugin componentize <module.wasm> <plugin.wasm>
+//! coiman-plugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]
 //! ```
 //!
 //! A plugin is built for `wasm32-unknown-unknown` with `wit-bindgen`;
-//! `componentize` turns that module into the component Rust Code loads.
+//! `componentize` turns that module into the component Coiman IDE loads.
 //! `publish` signs the plugin folder (`plugin.toml` + `plugin.wasm`) and adds
 //! it to a registry folder, which can then be served over HTTP or shared as
 //! a folder.
@@ -28,16 +28,16 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("rcplugin: {e}");
+            eprintln!("coiman-plugin: {e}");
             ExitCode::FAILURE
         }
     }
 }
 
 const USAGE: &str = "usage:
-  rcplugin keygen <secret-key-file>
-  rcplugin componentize <module.wasm> <plugin.wasm>
-  rcplugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]";
+  coiman-plugin keygen <secret-key-file>
+  coiman-plugin componentize <module.wasm> <plugin.wasm>
+  coiman-plugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]";
 
 fn keygen(path: &Path) -> Result<(), String> {
     if path.exists() {

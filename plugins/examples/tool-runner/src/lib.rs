@@ -8,8 +8,8 @@ wit_bindgen::generate!({
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rust_code::plugin::host;
-use rust_code::plugin::types::{Block, JobResult, LineCoverage, ServerResponse, Span, Table};
+use coiman::plugin::host;
+use coiman::plugin::types::{Block, JobResult, LineCoverage, ServerResponse, Span, Table};
 
 /// The job the Cancel command stops.
 static LAST_JOB: AtomicU64 = AtomicU64::new(0);

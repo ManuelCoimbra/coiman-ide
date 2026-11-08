@@ -234,7 +234,7 @@ mod tests {
     }
 
     fn fixture() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("rust-code-search-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-search-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::create_dir_all(dir.join("target")).unwrap();

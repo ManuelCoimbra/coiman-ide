@@ -16,7 +16,7 @@ $exe = (Resolve-Path 'target\release\coiman-ide.exe').Path
 
 # Run the app against a throwaway config folder so the user's settings and
 # session are neither read nor written.
-$cfg = Join-Path $env:TEMP "rust-code-bench-$PID"
+$cfg = Join-Path $env:TEMP "coiman-bench-$PID"
 New-Item -ItemType Directory -Force $cfg | Out-Null
 $savedAppData = $env:APPDATA
 $env:APPDATA = $cfg

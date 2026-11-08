@@ -2,7 +2,7 @@
 //! While something keeps changing (a flood of terminal output, an animation) frames are
 //! held to the display's refresh rate: vsync alone didn't (231 frames a second on a
 //! 120 Hz display). `workbench.max_fps` sets a lower limit, to save power; 0 follows the
-//! display. `RUST_CODE_REPAINT_LOG=1` logs how often, and why, the window is drawn.
+//! display. `COIMAN_REPAINT_LOG=1` logs how often, and why, the window is drawn.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -116,7 +116,7 @@ impl CodeApp {
             let c = rect.center();
             self.frames.at = ((c.x * scale) as i32, (c.y * scale) as i32);
         }
-        if std::env::var_os("RUST_CODE_REPAINT_LOG").is_none() {
+        if std::env::var_os("COIMAN_REPAINT_LOG").is_none() {
             return;
         }
         let now = Instant::now();

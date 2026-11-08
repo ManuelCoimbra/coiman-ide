@@ -5,6 +5,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The last traces of the old name, Rust Code, are gone:
+  - `PRIVACY.md` names Coiman IDE and its folders.
+  - The publisher's tool is `coiman-plugin` (was `rcplugin`).
+  - The plugin API is `coiman:plugin@0.5.0`. Plugins built for the old package are told to
+    rebuild; registry signatures made before the rename are still accepted.
+  - Built-in extensions are `coiman.*`, keeping their on/off choice and permissions.
+  - Command ids are `coiman.*`. Keybindings saved with `rustCode.*`, `rustcode.*` or
+    `rust-code.*` still work.
+  - Development variables are `COIMAN_TEST_PANIC`, `COIMAN_REPAINT_LOG` and `COIMAN_VIM`.
+
 ### Fixed
 
 - The Debug view's floating scroll bar covered the remove buttons of breakpoints.

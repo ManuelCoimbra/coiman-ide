@@ -2,7 +2,7 @@
 //!
 //! Layers, lowest to highest priority:
 //! 1. built-in defaults,
-//! 2. user settings: `<config dir>/rust-code/settings.toml`,
+//! 2. user settings: `<config dir>/settings.toml`,
 //! 3. workspace settings: `<folder>/.coiman/settings.toml` (or `.rust-code`, from before).
 //!
 //! Each file may contain `extends = "other.toml"` (relative to the file) to
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn extends_and_platform_tables() {
-        let dir = std::env::temp_dir().join(format!("rust-code-settings-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-settings-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("base.toml"), "[editor]\nfont_size = 11\nword_wrap = true").unwrap();
         let platform = current_platform();
@@ -743,7 +743,7 @@ mod tests {
 
     #[test]
     fn extends_cycle_is_an_error_not_a_hang() {
-        let dir = std::env::temp_dir().join(format!("rust-code-cycle-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-cycle-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.toml"), "extends = \"a.toml\"").unwrap();
         assert!(load_file(&dir.join("a.toml"), 0).is_err());

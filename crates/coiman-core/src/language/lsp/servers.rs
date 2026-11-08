@@ -267,7 +267,7 @@ pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
     }
 }
 
-/// `<config>/rust-code/lsp/<id>`: servers Coiman IDE downloaded itself.
+/// `<config>/lsp/<id>`: servers Coiman IDE downloaded itself.
 pub fn install_dir(kind: ServerKind) -> Option<PathBuf> {
     crate::settings::config_dir().map(|d| d.join("lsp").join(kind.id()))
 }
@@ -688,7 +688,7 @@ mod tests {
         assert_eq!(ServerKind::for_language("xml"), None);
         assert!(ServerKind::for_language("html").is_some());
 
-        let tmp = std::env::temp_dir().join(format!("rust-code-roots-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("coiman-roots-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join("web/src")).unwrap();
         std::fs::create_dir_all(tmp.join("cs/App")).unwrap();

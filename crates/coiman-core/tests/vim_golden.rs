@@ -1,7 +1,7 @@
 //! Golden-file tests for the Vim and Helix modes (`tests/golden/*.txt`).
 //!
-//! Every Vim case runs through Rust Code's engine and, when Vim is installed
-//! (on PATH, in Git for Windows, or at `RUST_CODE_VIM`), through real Vim with
+//! Every Vim case runs through Coiman IDE's engine and, when Vim is installed
+//! (on PATH, in Git for Windows, or at `COIMAN_VIM`), through real Vim with
 //! `vim -u NONE`, so the expected results are checked against Vim itself.
 
 use std::path::{Path, PathBuf};
@@ -94,7 +94,7 @@ fn run_engine(flavor: Flavor, case: &Case) -> Buffer {
 
 fn find_vim() -> Option<PathBuf> {
     let candidates = [
-        std::env::var_os("RUST_CODE_VIM").map(PathBuf::from),
+        std::env::var_os("COIMAN_VIM").map(PathBuf::from),
         Some(PathBuf::from("vim")),
         Some(PathBuf::from(r"C:\Program Files\Git\usr\bin\vim.exe")),
     ];
@@ -166,7 +166,7 @@ fn vim_golden() {
     // The expectations themselves must match real Vim.
     match find_vim() {
         Some(vim) => {
-            let dir = std::env::temp_dir().join(format!("rust-code-vim-golden-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("coiman-vim-golden-{}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             for (n, case) in all.iter().enumerate() {
                 match run_real_vim(&vim, &dir, n, case) {
@@ -180,7 +180,7 @@ fn vim_golden() {
             }
             let _ = std::fs::remove_dir_all(&dir);
         }
-        None => eprintln!("Vim not found: golden expectations not cross-checked (set RUST_CODE_VIM)"),
+        None => eprintln!("Vim not found: golden expectations not cross-checked (set COIMAN_VIM)"),
     }
     assert!(failures.is_empty(), "{} failure(s):\n\n{}", failures.len(), failures.join("\n\n"));
 }

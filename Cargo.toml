@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/coiman-core", "crates/coiman-ide", "crates/rcplugin"]
+members = ["crates/coiman-core", "crates/coiman-ide", "crates/coiman-plugin"]
 # Plugins build on their own, for WebAssembly (scripts/build-plugins.ps1).
 exclude = ["plugins", "crates/coiman-core/tests/fixtures"]
 default-members = ["crates/coiman-ide"]

@@ -1,6 +1,6 @@
 # Vim golden cases. Each case: "=== name", the text with | before the cursor
 # char, "--- keys" (Vim notation), then the expected text and cursor.
-# The test runs every case through Rust Code's engine and, when Vim is
+# The test runs every case through Coiman IDE's engine and, when Vim is
 # installed, through real Vim (vim -u NONE) to check the expectations.
 # <sync> splits the keys into separate Vim commands (each its own undo step).
 

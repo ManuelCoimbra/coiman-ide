@@ -1,7 +1,7 @@
 //! Hot exit: remembers the open folder and tabs, including unsaved text, so
 //! nothing is lost on exit or crash (VS Code's `files.hotExit: "onExit"`).
 //!
-//! The session is written to `<config dir>/rust-code/session.json` on exit and
+//! The session is written to `<config dir>/session.json` on exit and
 //! periodically while editing, so a crash loses at most a second or two of typing.
 
 use std::path::{Path, PathBuf};
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn round_trip_keeps_unsaved_text() {
-        let dir = std::env::temp_dir().join(format!("rust-code-session-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-session-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("a.txt");
         std::fs::write(&file, "on disk").unwrap();

@@ -1,4 +1,4 @@
-id = "rust-code.color-preview"
+id = "coiman.color-preview"
 name = "Color Preview"
 version = "1.0.0"
 description = "Shows #rgb, #rrggbb and rgb() colors in their own color."

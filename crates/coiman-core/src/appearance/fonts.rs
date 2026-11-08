@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn reads_fonts_and_picks_a_regular_face() {
-        let dir = std::env::temp_dir().join(format!("rust-code-fonts-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-fonts-test-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("nested")).unwrap();
         std::fs::write(dir.join("a.ttf"), font("Code Mono", "Bold", true)).unwrap();
         std::fs::write(dir.join("nested/b.TTF"), font("Code Mono", "Regular", true)).unwrap();
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn reads_a_font_collection() {
-        let dir = std::env::temp_dir().join(format!("rust-code-ttc-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-ttc-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // Table offsets in a collection count from the start of the file.
         let inner = font("Inner", "Regular", true);

@@ -1,4 +1,4 @@
-//! The app's two logs, kept on this computer in `<config>/logs`: `rust-code.log` says what
+//! The app's two logs, kept on this computer in `<config>/logs`: `coiman-ide.log` says what
 //! the app did, and `crash.log` says why it stopped. Text typed into files is never logged.
 
 use std::collections::VecDeque;
@@ -142,7 +142,7 @@ fn write(level: &str, message: &str) {
     let Some(logger) = logger.as_mut() else { return };
     let path = log_path(&logger.dir);
     if fs::metadata(&path).is_ok_and(|m| m.len() >= MAX_LOG_BYTES) {
-        let _ = fs::rename(&path, logger.dir.join("rust-code.log.1"));
+        let _ = fs::rename(&path, logger.dir.join("coiman-ide.log.1"));
     }
     append(&path, &line);
     if logger.recent.len() == RECENT_LINES {
@@ -231,7 +231,7 @@ mod tests {
         let held = dir.join("running-2.marker");
         let lock = File::create(&held).unwrap();
         lock.try_lock().unwrap();
-        fs::write(dir.join("rust-code.log"), "kept").unwrap();
+        fs::write(dir.join("coiman-ide.log"), "kept").unwrap();
         assert_eq!(sessions_that_did_not_close(&dir), 1);
         assert!(!dir.join("running-1.marker").exists() && held.exists());
         assert_eq!(sessions_that_did_not_close(&dir), 0);

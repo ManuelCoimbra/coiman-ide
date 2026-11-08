@@ -811,6 +811,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "coiman-plugin"
+version = "0.2.0"
+dependencies = [
+ "coiman-core",
+ "getrandom 0.4.3",
+ "wit-component",
+]
+
+[[package]]
 name = "color"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3983,15 +3992,6 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
-]
-
-[[package]]
-name = "rcplugin"
-version = "0.2.0"
-dependencies = [
- "coiman-core",
- "getrandom 0.4.3",
- "wit-component",
 ]
 
 [[package]]

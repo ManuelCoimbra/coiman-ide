@@ -325,7 +325,7 @@ pub fn debug_build(file: &Path, root: Option<&Path>) -> Result<DebugBuild, Strin
         "Debugging C needs gcc (MinGW), not found"
     })?;
     let stem = file.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "prog".to_owned());
-    let out_dir = std::env::temp_dir().join("rust-code-run").join(format!("debug-{stem}"));
+    let out_dir = std::env::temp_dir().join("coiman-run").join(format!("debug-{stem}"));
     std::fs::create_dir_all(&out_dir).map_err(|e| e.to_string())?;
     let program = program_path(&out_dir, &stem);
     let args: Vec<String> = ["-g", "-O0", "-Wall", "-o"]
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn vscode_files_with_comments_and_linux_paths() {
-        let root = std::env::temp_dir().join(format!("rust-code-c-build-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("coiman-c-build-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".vscode")).unwrap();
         let launch = r#"{

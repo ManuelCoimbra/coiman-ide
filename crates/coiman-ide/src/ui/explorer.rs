@@ -1332,7 +1332,7 @@ mod tests {
 
     #[test]
     fn folders_are_read_off_the_ui_thread() {
-        let dir = std::env::temp_dir().join(format!("rust_code_explorer_read_{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman_explorer_read_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         std::fs::write(dir.join("a.txt"), "").unwrap();

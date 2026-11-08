@@ -5,7 +5,7 @@
 //!
 //! Until the user trusts a folder (or a parent of it), it is in Restricted
 //! Mode: every place that would run something checks [`is_trusted`] first.
-//! The list lives in `<config>/rust-code/trusted_folders.toml`, outside any
+//! The list lives in `<config>/trusted_folders.toml`, outside any
 //! project, so a project can't trust itself. An unreadable list trusts nothing.
 
 use std::path::{Path, PathBuf};
@@ -124,7 +124,7 @@ mod tests {
     /// `..`, a junction, or a Windows short name like `RUNNER~1`), is still under it.
     #[test]
     fn a_missing_path_under_a_folder_written_another_way_is_covered() {
-        let base = std::env::temp_dir().join(format!("rust-code-trust-alias-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coiman-trust-alias-{}", std::process::id()));
         let repo = base.join("repo");
         std::fs::create_dir_all(base.join("x")).unwrap();
         std::fs::create_dir_all(&repo).unwrap();
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn a_folder_covers_what_is_under_it_only() {
-        let base = std::env::temp_dir().join(format!("rust-code-trust-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coiman-trust-{}", std::process::id()));
         let (a, a_sub, ab) = (base.join("a"), base.join("a").join("sub"), base.join("ab"));
         for d in [&a_sub, &ab] {
             std::fs::create_dir_all(d).unwrap();

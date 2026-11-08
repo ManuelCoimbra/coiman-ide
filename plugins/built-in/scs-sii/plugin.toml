@@ -1,4 +1,4 @@
-id = "rust-code.scs-sii"
+id = "coiman.scs-sii"
 name = "SCS Units"
 version = "1.1.0"
 description = "Euro Truck Simulator 2 and American Truck Simulator .sii files: colors, a list of units, and checks for broken structure."

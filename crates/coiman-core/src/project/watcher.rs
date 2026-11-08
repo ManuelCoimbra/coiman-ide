@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn reports_modify_create_and_ignores_target() {
-        let dir = std::env::temp_dir().join(format!("rust-code-watch-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-watch-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("target")).unwrap();
         let file = dir.join("a.txt");

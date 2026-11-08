@@ -2,7 +2,7 @@
 //! another program), kept in the config folder independently of any version
 //! control, so earlier versions can be compared and restored.
 //!
-//! Layout: `<config>/rust-code/history/<path hash>/index.json` lists the
+//! Layout: `<config>/history/<path hash>/index.json` lists the
 //! entries; each entry's text is stored next to it as `<id>.txt`.
 
 use std::path::{Path, PathBuf};
@@ -77,7 +77,7 @@ pub struct History {
 }
 
 impl History {
-    /// History in `<config>/rust-code/history`.
+    /// History in `<config>/history`.
     pub fn open() -> Option<History> {
         crate::settings::config_dir().map(|d| History::at(d.join("history")))
     }
@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn records_lists_reads_and_prunes() {
-        let root = std::env::temp_dir().join(format!("rust-code-history-test-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("coiman-history-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let history = History::at(root.clone());
         let file = Path::new("C:/work/src/main.rs");

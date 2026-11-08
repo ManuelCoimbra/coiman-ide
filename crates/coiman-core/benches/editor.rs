@@ -136,7 +136,7 @@ fn main() {
 
     // ---- opening a large log file (scaled down; projected to 2 GB)
     let size_mb = if quick { 64 } else { 256 };
-    let path = std::env::temp_dir().join(format!("rust-code-bench-{}.log", std::process::id()));
+    let path = std::env::temp_dir().join(format!("coiman-bench-{}.log", std::process::id()));
     {
         let line = "2026-10-24 12:00:00 INFO request id=123456 path=/api/items/987654 status=200\n";
         let mut data = String::with_capacity(size_mb * 1024 * 1024);

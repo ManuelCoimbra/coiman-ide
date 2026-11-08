@@ -743,7 +743,7 @@ fn vscode_extension_dirs() -> Vec<PathBuf> {
 }
 
 /// Themes from installed VS Code (bundled + user extensions) and
-/// `<config dir>/rust-code/themes/*.json`, deduplicated by label.
+/// `<config dir>/themes/*.json`, deduplicated by label.
 pub fn discover() -> Vec<ThemeEntry> {
     let mut out: Vec<ThemeEntry> = Vec::new();
     for ext_root in vscode_extension_dirs() {
@@ -916,7 +916,7 @@ mod tests {
 
     #[test]
     fn vscode_theme_with_include_and_light_type() {
-        let dir = std::env::temp_dir().join(format!("rust-code-theme-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-theme-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("base.json"),

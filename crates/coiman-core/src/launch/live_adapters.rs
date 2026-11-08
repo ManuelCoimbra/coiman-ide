@@ -111,7 +111,7 @@ fn text_of(encoded: &str) -> String {
 /// Writes a bridge program where it can be run from. Named by what's running it, so
 /// sessions don't share one that another is using.
 fn write_bridge(name: &str, text: &str) -> Result<PathBuf, String> {
-    let dir = std::env::temp_dir().join("rust-code-bridge");
+    let dir = std::env::temp_dir().join("coiman-bridge");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let path = dir.join(format!("{}-{name}", std::process::id()));
     std::fs::write(&path, text.replace("\r\n", "\n")).map_err(|e| e.to_string())?;

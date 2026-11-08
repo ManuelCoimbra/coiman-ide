@@ -427,7 +427,7 @@ impl CodeApp {
     pub(crate) fn coverage_folder() -> PathBuf {
         use std::sync::atomic::{AtomicU32, Ordering};
         static NEXT: AtomicU32 = AtomicU32::new(0);
-        let dir = std::env::temp_dir().join("rust-code-tests").join(format!(
+        let dir = std::env::temp_dir().join("coiman-tests").join(format!(
             "cov-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)

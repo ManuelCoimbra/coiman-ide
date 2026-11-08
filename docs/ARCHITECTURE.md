@@ -44,7 +44,7 @@ Each file is also reachable as `crate::app::<file>`, so moving one between areas
 callers. `ui/` holds the widgets the workbench is built from: the editor view, the Explorer, the
 palette, the terminal, search, the keymap, icons and themes.
 
-## `crates/rcplugin`
+## `crates/coiman-plugin`
 
 The plugin publisher's tool: key generation, turning a built module into a component, signing and
 publishing to a registry folder.

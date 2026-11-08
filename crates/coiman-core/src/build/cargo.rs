@@ -35,7 +35,7 @@ struct LaunchFile {
     configurations: Vec<RunConfig>,
 }
 
-/// `<workspace>/.rust-code/launch.toml`: committed with the project so the
+/// `<workspace>/.coiman/launch.toml`: committed with the project so the
 /// whole team shares the same run configurations.
 pub fn launch_file(root: &Path) -> PathBuf {
     crate::settings::project_dir(root).join("launch.toml")
@@ -627,8 +627,8 @@ mod tests {
 
     #[test]
     fn only_cargo_folders_get_cargo_configurations() {
-        let dir = std::env::temp_dir().join(format!("rust-code-configs-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join(".rust-code")).unwrap();
+        let dir = std::env::temp_dir().join(format!("coiman-configs-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join(".coiman")).unwrap();
         assert!(default_configs(&dir).is_empty());
         // The file offered to a folder with none must accept what's added to it.
         let added = "\n[[configurations]]\nname = \"Serve\"\ncommand = \"npm start\"\n";
@@ -737,7 +737,7 @@ mod tests {
 
     #[test]
     fn maps_files_to_targets() {
-        let dir = std::env::temp_dir().join(format!("rust-code-cargo-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-cargo-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src/bin")).unwrap();
         std::fs::create_dir_all(dir.join("tests")).unwrap();

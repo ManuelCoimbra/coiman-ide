@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn missing_entries_stay_until_removed() {
         let here = std::env::temp_dir();
-        let gone = here.join("rust_code_recent_surely_not_here_42");
+        let gone = here.join("coiman_recent_surely_not_here_42");
         let mut recent = Recent::default();
         recent.add_project(&here, 1);
         recent.add_project(&gone, 2);

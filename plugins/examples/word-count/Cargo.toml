@@ -4,7 +4,7 @@ version = "1.0.0"
 edition = "2024"
 publish = false
 
-# Example Rust Code plugin. Build with scripts/build-plugins.ps1.
+# Example Coiman IDE plugin. Build with scripts/build-plugins.ps1.
 
 [lib]
 crate-type = ["cdylib"]

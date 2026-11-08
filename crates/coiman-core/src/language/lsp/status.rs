@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn sizes_a_folder_with_its_subfolders() {
-        let dir = std::env::temp_dir().join(format!("rust-code-size-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-size-test-{}", std::process::id()));
         let inner = dir.join("target").join("rust-analyzer");
         std::fs::create_dir_all(&inner).unwrap();
         std::fs::write(dir.join("target").join("a"), [0u8; 10]).unwrap();

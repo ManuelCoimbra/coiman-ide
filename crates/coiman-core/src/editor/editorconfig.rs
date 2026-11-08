@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn nearer_files_win_and_root_stops() {
-        let base = std::env::temp_dir().join(format!("rust-code-ec-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("coiman-ec-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         let inner = base.join("proj/sub");
         std::fs::create_dir_all(&inner).unwrap();

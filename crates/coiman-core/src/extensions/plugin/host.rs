@@ -30,7 +30,7 @@ wasmtime::component::bindgen!({
     world: "plugin",
 });
 
-pub use rust_code::plugin::types::{
+pub use coiman::plugin::types::{
     Block, Button, Decoration, Document, JobResult, Problem, ServerResponse, Severity, Span, Table, TreeItem,
 };
 
@@ -422,7 +422,8 @@ fn describe(e: &wasmtime::Error) -> String {
         };
     }
     let text = format!("{e:#}");
-    if text.contains("rust-code:plugin/") {
+    // Before 0.5 the package was `rust-code:plugin`, the app's first name.
+    if text.contains("rust-code:plugin/") || text.contains("coiman:plugin/") {
         return format!("was built for an older plugin API and needs rebuilding: {text}");
     }
     if text.contains("import") && text.contains("wasi") {
@@ -475,9 +476,9 @@ impl State {
     }
 }
 
-impl rust_code::plugin::types::Host for State {}
+impl coiman::plugin::types::Host for State {}
 
-impl rust_code::plugin::host::Host for State {
+impl coiman::plugin::host::Host for State {
     fn log(&mut self, message: String) {
         self.send(Update::Log { plugin: self.plugin.clone(), line: message });
     }
@@ -515,7 +516,7 @@ impl rust_code::plugin::host::Host for State {
         self.send(Update::Problems { plugin: self.plugin.clone(), path, items });
     }
 
-    fn set_coverage(&mut self, path: String, lines: Vec<rust_code::plugin::types::LineCoverage>) {
+    fn set_coverage(&mut self, path: String, lines: Vec<coiman::plugin::types::LineCoverage>) {
         let lines = lines
             .into_iter()
             .map(|l| crate::launch::coverage::LineCoverage { line: l.line, hits: l.hits, partial: l.partial })

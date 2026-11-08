@@ -252,7 +252,7 @@ Two decisions shape the plan:
 | 16 Security and quality | Workspace trust, plugin sandbox, likely problems, Clang-Tidy, hidden Unicode | | Secret detection, complexity metrics, duplicate code, licence report, `cargo audit` and `npm audit` results | |
 | 17 Accessibility and UX | Themes, zoom, layouts (Dock, Islands, Classic), rulers, keybinding editor, reduced motion | Screen reader (AccessKit is a dependency) | High contrast theme, minimap, ligatures, saved layouts | |
 | 18 Remote | | | SSH remote projects (through `ssh` and `sftp`) | Cloud workspaces |
-| 19 Plugins | WebAssembly runtime, permissions, signatures, registries, lockfile, updates, rcplugin | | Plugin templates (`rcplugin new`), dev mode with reload, plugin rollback, changelogs | Ratings and reviews |
+| 19 Plugins | WebAssembly runtime, permissions, signatures, registries, lockfile, updates, coiman-plugin | | Plugin templates (`coiman-plugin new`), dev mode with reload, plugin rollback, changelogs | Ratings and reviews |
 | 20 Workspace | Workspace settings, trust, recent projects, sample projects, Maven archetypes | | Multi-root workspaces, project keybindings, project templates for every language, workspace health | |
 | 21 Experimental | Syntax tree search, lint rules, structural edits, language Doctor | | Project overview and health, execution and data flow views, local session statistics | |
 

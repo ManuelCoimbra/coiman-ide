@@ -12,8 +12,8 @@ wit_bindgen::generate!({
 
 use std::collections::HashMap;
 
-use rust_code::plugin::host;
-use rust_code::plugin::types::{Block, Button, TreeItem};
+use coiman::plugin::host;
+use coiman::plugin::types::{Block, Button, TreeItem};
 
 struct WordCount;
 

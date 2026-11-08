@@ -43,12 +43,19 @@ const BUILT_IN: [(&str, &[u8]); 2] = [
 ];
 
 /// Ids of those. An extension that used to ship with the app can be uninstalled.
-const BUILT_IN_IDS: [&str; 2] = ["rust-code.comment-highlights", "rust-code.trailing-spaces"];
+const BUILT_IN_IDS: [&str; 2] = ["coiman.comment-highlights", "coiman.trailing-spaces"];
 
 /// Extensions that used to ship with the app and are now part of it: Color Preview is
 /// `editor.color_decorators`. A copy that came with the app goes; one the user
 /// installed stays.
 const RETIRED: [&str; 1] = ["rust-code.color-preview"];
+
+/// Built-in extensions' ids before the rename to Coiman IDE, and now. The old copy goes,
+/// and the new one keeps its on/off choice and permissions.
+const RENAMED: [(&str, &str); 2] = [
+    ("rust-code.comment-highlights", "coiman.comment-highlights"),
+    ("rust-code.trailing-spaces", "coiman.trailing-spaces"),
+];
 
 /// `Locked::source` of a built-in extension.
 const BUILT_IN_SOURCE: &str = "built-in";
@@ -211,6 +218,18 @@ impl CodeApp {
                 changed = true;
             }
         }
+        // What the user chose for each extension under its old name.
+        let mut before_rename = std::collections::HashMap::new();
+        for (old, new) in RENAMED {
+            let Some(was) = self.plugins.lock.get(old).filter(|l| l.source == BUILT_IN_SOURCE).cloned() else {
+                continue;
+            };
+            if store::uninstall(dir, &mut self.plugins.lock, old).is_ok() {
+                coiman_core::applog::info(&format!("the built-in extension {old} is now {new}"));
+                before_rename.insert(new, was);
+                changed = true;
+            }
+        }
         for (toml, wasm) in BUILT_IN {
             let Ok(manifest) = coiman_core::extensions::plugin::manifest::parse(toml) else { continue };
             let wasm_hash = registry::sha256_hex(wasm);
@@ -220,13 +239,19 @@ impl CodeApp {
             }) {
                 continue;
             }
+            let locked = locked.or_else(|| before_rename.get(manifest.id.as_str()));
             let granted = match locked {
                 Some(l) => l.granted.clone(),
                 None => manifest.permissions.clone(),
             };
+            let enabled = locked.is_none_or(|l| l.enabled);
+            let id = manifest.id.clone();
             let pkg = Package { manifest, manifest_bytes: toml.as_bytes().to_vec(), wasm: wasm.to_vec() };
             let programs = locked.map(|l| l.granted_programs.clone()).unwrap_or_default();
             if store::install(dir, &mut self.plugins.lock, &pkg, BUILT_IN_SOURCE, "", granted, programs).is_ok() {
+                if let Some(l) = self.plugins.lock.get_mut(&id) {
+                    l.enabled = enabled;
+                }
                 changed = true;
             }
         }

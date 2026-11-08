@@ -56,7 +56,7 @@ A Cargo workspace. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the
 crates/
   coiman-core/   everything that needs no UI, tested and benchmarked headlessly
   coiman-ide/    the egui app: the window, its panels and widgets
-  rcplugin/      the plugin publisher's tool: keys, components, signing, registries
+  coiman-plugin/ the plugin publisher's tool: keys, components, signing, registries
 plugins/
   built-in/      plugins shipped inside the app (WebAssembly)
   examples/      example plugins

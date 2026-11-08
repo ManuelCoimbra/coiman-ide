@@ -29,7 +29,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'cargo clean failed' }
     } else {
         foreach ($release in @($false, $true)) {
-            $cargoArgs = @('clean', '-p', 'coiman-core', '-p', 'coiman-ide', '-p', 'rcplugin')
+            $cargoArgs = @('clean', '-p', 'coiman-core', '-p', 'coiman-ide', '-p', 'coiman-plugin')
             if ($release) { $cargoArgs += '--release' }
             cargo @cargoArgs
             if ($LASTEXITCODE -ne 0) { throw "cargo $($cargoArgs -join ' ') failed" }

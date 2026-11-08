@@ -327,7 +327,7 @@ fn go_target(file: &Path) -> PathBuf {
 /// Where Delve's build goes. One killed along with Delve stays behind, so older ones go
 /// here; one still running can't be deleted, so another editor's is safe.
 fn go_build_path() -> PathBuf {
-    let dir = std::env::temp_dir().join("rust-code-run");
+    let dir = std::env::temp_dir().join("coiman-run");
     for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
         if entry.file_name().to_string_lossy().starts_with("dlv-") {
             let _ = std::fs::remove_file(entry.path());
@@ -548,7 +548,7 @@ fn exe(name: &str) -> String {
     format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
-/// Where Coiman IDE installs CodeLLDB: `<config>/rust-code/codelldb`.
+/// Where Coiman IDE installs CodeLLDB: `<config>/codelldb`.
 pub fn install_dir() -> Option<PathBuf> {
     crate::settings::config_dir().map(|d| d.join("codelldb"))
 }

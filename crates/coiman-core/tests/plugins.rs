@@ -52,7 +52,7 @@ fn message(host: &PluginHost, op: &str) -> String {
 
 #[test]
 fn host_api_permissions_sandbox_and_limits() {
-    let root = std::env::temp_dir().join(format!("rust-code-plugin-test-{}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("coiman-plugin-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("ws/src")).unwrap();
     std::fs::write(root.join("ws/src/a.txt"), "hello").unwrap();

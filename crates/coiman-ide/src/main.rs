@@ -46,14 +46,14 @@ fn main() -> eframe::Result {
         coiman_core::applog::info(&format!("MinGW not on PATH: added {}", dir.display()));
     }
     // Proves the crash log in the real app.
-    let test_panic = std::env::var("RUST_CODE_TEST_PANIC").ok();
+    let test_panic = std::env::var("COIMAN_TEST_PANIC").ok();
     if test_panic.as_deref() == Some("main") {
-        panic!("RUST_CODE_TEST_PANIC was set to main");
+        panic!("COIMAN_TEST_PANIC was set to main");
     }
     if test_panic.is_some() {
         std::thread::spawn(|| {
             std::thread::sleep(std::time::Duration::from_secs(2));
-            panic!("RUST_CODE_TEST_PANIC was set");
+            panic!("COIMAN_TEST_PANIC was set");
         });
     }
     let mut args: Vec<String> = std::env::args().skip(1).collect();

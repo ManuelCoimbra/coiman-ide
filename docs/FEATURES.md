@@ -556,8 +556,8 @@ view and commands. Build it with `scripts/build-plugins.ps1`, which needs
 `rustup target add wasm32-unknown-unknown`. Publish it with:
 
 ```
-rcplugin keygen my.key
-rcplugin publish plugins/examples/word-count <registry-folder> --key my.key --changelog "..."
+coiman-plugin keygen my.key
+coiman-plugin publish plugins/examples/word-count <registry-folder> --key my.key --changelog "..."
 ```
 
 ## Language servers
@@ -677,7 +677,7 @@ servers off.
 
 The engine (`crates/coiman-core/src/vim.rs`) is checked by golden files (`crates/coiman-core/tests/golden/`): every Vim
 case is also run in real Vim (`vim -u NONE`, found on `PATH`, in Git for Windows, or at
-`RUST_CODE_VIM`) and the test fails if Vim disagrees.
+`COIMAN_VIM`) and the test fails if Vim disagrees.
 
 ## Local history
 

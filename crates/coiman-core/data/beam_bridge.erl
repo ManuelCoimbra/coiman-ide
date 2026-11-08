@@ -1,12 +1,12 @@
 #!/usr/bin/env escript
-%% Between Rust Code and a running Erlang or Elixir node, joined as a hidden node.
+%% Between Coiman IDE and a running Erlang or Elixir node, joined as a hidden node.
 %% Reads commands on stdin and writes events on stdout, a line each, with text in
 %% base64. Code runs in a process of its own on that node, so it can be stopped.
 
 main([Node | Rest]) ->
     Target = list_to_atom(Node),
     Mode = case lists:member($., Node) of true -> longnames; false -> shortnames end,
-    Name = list_to_atom("rust_code_" ++ os:getpid()),
+    Name = list_to_atom("coiman_" ++ os:getpid()),
     case net_kernel:start([Name, Mode]) of
         {ok, _} -> ok;
         {error, Why} -> fatal(io_lib:format("Can't join as a node: ~tp. Is epmd running?", [Why]))

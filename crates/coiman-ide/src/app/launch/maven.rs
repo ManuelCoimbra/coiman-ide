@@ -386,7 +386,7 @@ impl CodeApp {
         let Some(project) = pom.and_then(|p| self.project_by_pom(&p)).or_else(|| self.need_project()) else { return };
         let dir = project.dir();
         let Some(mvn) = self.mvn_for(&dir) else { return };
-        let out = std::env::temp_dir().join("rust-code-maven");
+        let out = std::env::temp_dir().join("coiman-maven");
         let _ = std::fs::create_dir_all(&out);
         let file = out.join(format!("effective-pom-{}.xml", project.pom.artifact_id));
         let _ = std::fs::remove_file(&file);
@@ -407,7 +407,7 @@ impl CodeApp {
         let Some(project) = pom.and_then(|p| self.project_by_pom(&p)).or_else(|| self.need_project()) else { return };
         let dir = project.dir();
         let Some(mvn) = self.mvn_for(&dir) else { return };
-        let out = std::env::temp_dir().join("rust-code-maven");
+        let out = std::env::temp_dir().join("coiman-maven");
         let _ = std::fs::create_dir_all(&out);
         let file = out.join(format!("tree-{}.txt", project.pom.artifact_id));
         let _ = std::fs::remove_file(&file);

@@ -22,8 +22,8 @@ wit_bindgen::generate!({
 
 use std::collections::HashMap;
 
-use rust_code::plugin::host;
-use rust_code::plugin::types::{Decoration, Problem, Severity, TreeItem};
+use coiman::plugin::host;
+use coiman::plugin::types::{Decoration, Problem, Severity, TreeItem};
 
 const MAX_BYTES: usize = 8_000_000;
 const CLASS: u32 = 0x4EC9B0;

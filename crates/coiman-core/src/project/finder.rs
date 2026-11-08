@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn indexes_folder_respecting_gitignore_and_ranks_matches() {
-        let dir = std::env::temp_dir().join(format!("rust-code-finder-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-finder-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::create_dir_all(dir.join("target/debug")).unwrap();

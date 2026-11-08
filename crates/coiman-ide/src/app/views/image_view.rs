@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn reads_turns_and_refuses_pictures() {
-        let dir = std::env::temp_dir().join(format!("rust-code-images-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-images-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         // 3 wide, 2 high, then saved as a TIFF the test can mark as turned.
         let picture = image::RgbaImage::from_fn(3, 2, |x, _| image::Rgba([x as u8 * 100, 0, 0, 255]));

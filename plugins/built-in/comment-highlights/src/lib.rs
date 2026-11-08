@@ -6,8 +6,8 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
-use rust_code::plugin::host;
-use rust_code::plugin::types::Decoration;
+use coiman::plugin::host;
+use coiman::plugin::types::Decoration;
 
 const MAX_BYTES: usize = 2_000_000;
 const TAGS: [(&str, u32, u32); 6] = [

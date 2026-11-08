@@ -5,7 +5,7 @@ use coiman_core::{build::cargo, project::trust, settings};
 
 #[test]
 fn untrusted_folders_are_inert_until_trusted() {
-    let base = std::env::temp_dir().join(format!("rust-code-trust-it-{}", std::process::id()));
+    let base = std::env::temp_dir().join(format!("coiman-trust-it-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     let folder = base.join("repo");
     std::fs::create_dir_all(folder.join(".rust-code")).unwrap();

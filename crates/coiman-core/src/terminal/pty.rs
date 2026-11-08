@@ -348,17 +348,16 @@ mod tests {
 
     #[test]
     fn runs_a_program_and_reports_its_exit() {
-        let command =
-            if cfg!(windows) { "cmd.exe /c echo rust-code-pty-test" } else { "sh -c \"echo rust-code-pty-test\"" };
+        let command = if cfg!(windows) { "cmd.exe /c echo coiman-pty-test" } else { "sh -c \"echo coiman-pty-test\"" };
         let size = Size { columns: 80, lines: 10 };
         let mut session = Session::spawn(command, &std::env::temp_dir(), &[], size, 100, || {}).expect("spawn");
         let deadline = Instant::now() + Duration::from_secs(20);
         let mut exited = false;
-        while Instant::now() < deadline && !(exited && session.screen_text().contains("rust-code-pty-test")) {
+        while Instant::now() < deadline && !(exited && session.screen_text().contains("coiman-pty-test")) {
             exited |= session.poll().iter().any(|n| matches!(n, Notice::Exited(_)));
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(session.screen_text().contains("rust-code-pty-test"), "screen: {:?}", session.screen_text());
+        assert!(session.screen_text().contains("coiman-pty-test"), "screen: {:?}", session.screen_text());
         assert!(exited && session.has_exited());
     }
 }

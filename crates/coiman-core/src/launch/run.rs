@@ -53,7 +53,7 @@ fn exe_name(stem: &str) -> String {
 
 /// A folder for build output, outside the project.
 fn build_dir(stem: &str) -> PathBuf {
-    std::env::temp_dir().join("rust-code-run").join(stem)
+    std::env::temp_dir().join("coiman-run").join(stem)
 }
 
 /// Why a Maven project can't run: the app offers to fetch Maven when it sees this.
@@ -1375,7 +1375,7 @@ mod tests {
 
     #[test]
     fn a_makefile_builds_then_its_program_runs() {
-        let dir = std::env::temp_dir().join(format!("rust-code-run-makefile-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-run-makefile-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let main = "#include <stdio.h>
@@ -1444,7 +1444,7 @@ default:
 
     #[test]
     fn plans_rules_per_language() {
-        let tmp = std::env::temp_dir().join(format!("rust-code-run-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("coiman-run-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join("venvproj/.venv").join(if cfg!(windows) { "Scripts" } else { "bin" }))
             .unwrap();
@@ -1554,7 +1554,7 @@ default:
 
     #[test]
     fn project_files_answer_for_their_project() {
-        let tmp = std::env::temp_dir().join(format!("rust-code-run-files-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("coiman-run-files-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join("lib")).unwrap();
         let write = |rel: &str, text: &str| std::fs::write(tmp.join(rel), text).unwrap();

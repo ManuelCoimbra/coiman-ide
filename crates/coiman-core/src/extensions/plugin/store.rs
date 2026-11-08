@@ -1,4 +1,4 @@
-//! Installed plugins: `<config>/rust-code/plugins/<id>/` holds each plugin's
+//! Installed plugins: `<config>/plugins/<id>/` holds each plugin's
 //! files, and `plugins.lock` records exactly what was installed (version,
 //! source, publisher key, file hashes) and what the user granted. A plugin
 //! whose files no longer match the lockfile is not loaded.
@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::manifest::{self, Manifest, ManifestDiff, Permission};
 use super::registry::{self, Entry, Package};
 
-/// `<config>/rust-code/plugins`.
+/// `<config>/plugins`.
 pub fn plugins_dir() -> Option<PathBuf> {
     crate::settings::config_dir().map(|d| d.join("plugins"))
 }
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn installs_locks_detects_tampering_and_diffs_updates() {
-        let dir = std::env::temp_dir().join(format!("rust-code-store-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("coiman-store-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let toml = "id = \"me.demo\"\nname = \"Demo\"\nversion = \"1.0.0\"\npermissions = [\"editor-read\"]\n";
         let pkg =

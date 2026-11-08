@@ -32,7 +32,7 @@ impl CodeApp {
                 let dialog = self.file_dialog("vsix").add_filter("VS Code extension", &["vsix"]);
                 let Some(file) = dialog.pick_file() else { return };
                 self.dialog_chose("vsix", &file);
-                let temp = std::env::temp_dir().join(format!("rust-code-vsix-{}", std::process::id()));
+                let temp = std::env::temp_dir().join(format!("coiman-vsix-{}", std::process::id()));
                 let _ = std::fs::remove_dir_all(&temp);
                 let result = vscode_import::unpack_vsix(&file, &temp);
                 match result {

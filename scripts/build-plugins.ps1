@@ -1,13 +1,13 @@
 # Builds the built-in plugins, the example plugin and the test fixture: each is compiled
 # for wasm32-unknown-unknown and turned into a component (plugin.wasm next
-# to its plugin.toml) with rcplugin.
+# to its plugin.toml) with coiman-plugin.
 # Needs the wasm32 target: rustup target add wasm32-unknown-unknown
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
-cargo build -q -p rcplugin
-if ($LASTEXITCODE -ne 0) { throw 'rcplugin failed to build' }
-$tool = Join-Path $root 'target\debug\rcplugin.exe'
+cargo build -q -p coiman-plugin
+if ($LASTEXITCODE -ne 0) { throw 'coiman-plugin failed to build' }
+$tool = Join-Path $root 'target\debug\coiman-plugin.exe'
 # One shared build folder, so guests don't each keep their own copy of wit-bindgen.
 $env:CARGO_TARGET_DIR = Join-Path $root 'target\plugins'
 $dirs = 'plugins\built-in\comment-highlights', 'plugins\built-in\trailing-spaces', 'plugins\built-in\color-preview',

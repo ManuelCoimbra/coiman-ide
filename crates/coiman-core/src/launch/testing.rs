@@ -313,7 +313,7 @@ pub fn detect(root: &Path, files: &[PathBuf]) -> Result<Vec<Adapter>, String> {
 pub fn report_file(format: Format) -> PathBuf {
     use std::sync::atomic::{AtomicU32, Ordering};
     static NEXT: AtomicU32 = AtomicU32::new(0);
-    let dir = std::env::temp_dir().join("rust-code-tests");
+    let dir = std::env::temp_dir().join("coiman-tests");
     let _ = std::fs::create_dir_all(&dir);
     let ext = match format {
         Format::Trx => "trx",

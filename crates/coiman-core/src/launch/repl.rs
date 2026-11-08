@@ -129,14 +129,14 @@ pub fn remove_older_than(dir: &std::path::Path, age: std::time::Duration) {
 /// Clears up after earlier sessions: code sent to REPLs, and documents servers supplied.
 pub fn clean_old_files() {
     const DAY: u64 = 24 * 60 * 60;
-    remove_older_than(&std::env::temp_dir().join("rust-code-repl"), std::time::Duration::from_secs(DAY));
+    remove_older_than(&std::env::temp_dir().join("coiman-repl"), std::time::Duration::from_secs(DAY));
     if let Some(dir) = crate::language::lsp::convert::virtual_folder() {
         remove_older_than(&dir, std::time::Duration::from_secs(30 * DAY));
     }
 }
 
 fn temp_file(ext: &str) -> std::io::Result<PathBuf> {
-    let dir = std::env::temp_dir().join("rust-code-repl");
+    let dir = std::env::temp_dir().join("coiman-repl");
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join(format!("block-{}.{ext}", std::process::id())))
 }
