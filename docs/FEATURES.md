@@ -4,7 +4,7 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
 
 - Integrated title bar, as in VS Code: menus, the window title and the window buttons share
   one bar. Drag it to move the window, double-click it to maximize, resize from any edge.
-- File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons, and create, rename and delete in the Explorer (right-click; delete goes to the Recycle Bin)
+- File explorer (lazy folder tree), tabs with unsaved markers, breadcrumbs, file-type icons, and create, rename and delete in the Explorer (right-click; delete goes to the Recycle Bin). **New** makes files and folders in the selected folder, or next to the selected file.
 - The Explorer works from the keyboard, with VS Code's keys. A click selects a row and opens a file
   while the keyboard stays in the Explorer; Ctrl+click and Shift+click pick more rows; a double
   click or **Enter** takes the file to the editor, and **Space** opens it and stays. Arrows move,

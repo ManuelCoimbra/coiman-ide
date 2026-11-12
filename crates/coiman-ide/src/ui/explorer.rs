@@ -867,7 +867,8 @@ impl Explorer {
             let response = row(ui, 0, &name, &home_relative(&root), marks, Row::Folder(look));
             self.drawing.push(RowInfo { path: root.clone(), opens: true, expanded, is_dir: true, depth: 0 });
             response.context_menu(|ui| {
-                ui.menu_button("New", |ui| self.new_menu(ui, None));
+                let dir = self.target_folder();
+                ui.menu_button("New", |ui| self.new_menu(ui, dir));
                 if self.clipboard.is_some() && ui.button("Paste\tCtrl+V").clicked() {
                     self.action = Some(ExplorerAction::Paste(root.clone()));
                     ui.close();

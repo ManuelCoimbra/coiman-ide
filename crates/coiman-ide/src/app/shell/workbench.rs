@@ -1041,10 +1041,12 @@ impl CodeApp {
                                 self.finder.mark_stale();
                             }
                             if icons::button(ui, Icon::Folder, "New Folder...").clicked() {
-                                self.start_explorer_action(ExplorerAction::NewFolder(None));
+                                let dir = self.explorer.target_folder();
+                                self.start_explorer_action(ExplorerAction::NewFolder(dir));
                             }
                             let new = icons::button(ui, Icon::Plus, "New...");
-                            egui::Popup::menu(&new).show(|ui| self.explorer.new_menu(ui, None));
+                            let dir = self.explorer.target_folder();
+                            egui::Popup::menu(&new).show(|ui| self.explorer.new_menu(ui, dir));
                         }
                     });
                 });

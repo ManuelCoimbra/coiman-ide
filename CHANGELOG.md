@@ -18,6 +18,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Deleting many files or folders no longer freezes the window: the work runs in the
   background, unsaved tabs under the deleted paths are saved first, and the status bar
   reports how many items went to the Recycle Bin.
+- New File and New Folder make the item in the selected folder (or the selected file's
+  folder) from the Explorer's header and a folder's own New menu, not always in the project
+  root.
 
 ## [0.3.0] - 2026-11-08
 
