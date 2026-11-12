@@ -21,6 +21,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - New File and New Folder make the item in the selected folder (or the selected file's
   folder) from the Explorer's header and a folder's own New menu, not always in the project
   root.
+- Shift+Tab outdents the caret's line, or every selected line, as Tab indents them.
 
 ## [0.3.0] - 2026-11-08
 

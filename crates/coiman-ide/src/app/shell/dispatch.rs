@@ -833,6 +833,15 @@ impl CodeApp {
                 return;
             }
         }
+        // Shift+Tab takes one indent off the picked lines, the caret's line too.
+        if editor_focused
+            && self.chord.is_none()
+            && !self.completion_open()
+            && ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::Tab))
+        {
+            self.run_command(ctx, Command::OutdentLines);
+            return;
+        }
         let terminal_focused = self.terminal.has_focus(ctx);
         // While the delete prompt is up, Enter and Escape are its.
         let explorer_focused = crate::ui::explorer::Explorer::has_focus(ctx) && self.delete_pending.is_none();

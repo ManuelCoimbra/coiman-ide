@@ -772,7 +772,7 @@ shipped `workbench.desktop.main.js` and `nls.messages.json`.
 | Move Line Up / Down | `Alt+Up` / `Alt+Down` |
 | Copy Line Up / Down | `Shift+Alt+Up` / `Shift+Alt+Down` |
 | Delete Line | `Ctrl+Shift+K` |
-| Indent / Outdent Line | `Ctrl+]` / `Ctrl+[` (also `Tab` / `Shift+Tab` on a multi-line selection) |
+| Indent / Outdent Line | `Ctrl+]` / `Ctrl+[` (also `Tab` / `Shift+Tab` on a line or a selection) |
 | Add Selection to Next Find Match (single selection) | `Ctrl+D` |
 | Go to Bracket | `Ctrl+Shift+\` |
 | Toggle Word Wrap | `Alt+Z` |
