@@ -15,9 +15,21 @@ use std::path::{Path, PathBuf};
 use crate::app::{BACKUP_INTERVAL, CodeApp, PendingClose, SidebarView, repaint};
 
 impl CodeApp {
+    /// Takes in a deletion that finished in the background: the tree, then the status.
+    pub(crate) fn pump_deleting(&mut self) {
+        let Some(rx) = &self.deleting else { return };
+        let Ok((gone, message)) = rx.try_recv() else { return };
+        self.deleting = None;
+        self.explorer.forget(&gone);
+        self.explorer.refresh();
+        self.finder.mark_stale();
+        self.status = Some(message);
+    }
+
     /// Applies changes other programs made to files: reload clean tabs, flag
     /// conflicts and deletions, refresh the explorer and Quick Open index.
     pub(crate) fn pump_watcher(&mut self, ctx: &egui::Context) {
+        self.pump_deleting();
         let changes = self.watcher.drain();
         if changes.git || changes.structure || !changes.paths.is_empty() {
             self.git_refresh_soon(ctx, 0.3);
@@ -394,7 +406,7 @@ impl CodeApp {
             .any(|d| d.is_dirty() && d.path.as_ref().is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone))));
         let mut choice = ui.input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)).then_some(true);
         egui::Frame::new().fill(theme::colors().hover_bg).inner_margin(egui::Margin::symmetric(8, 6)).show(ui, |ui| {
-            let note = if unsaved { " Some have unsaved changes." } else { "" };
+            let note = if unsaved { " Their unsaved changes are saved first." } else { "" };
             if permanent {
                 ui.label(format!("Delete {what} for good? This can't be undone.{note}"));
             } else {
@@ -413,23 +425,53 @@ impl CodeApp {
         match choice {
             Some(true) => {
                 self.delete_pending = None;
-                let mut failed = Vec::new();
-                for path in &paths {
-                    let done = if permanent {
-                        coiman_core::project::file_ops::remove_all(path).map_err(|e| e.to_string())
-                    } else {
-                        trash::delete(path).map_err(|e| e.to_string())
-                    };
-                    if let Err(e) = done {
-                        failed.push(format!("{}: {e}", name_of(path)));
+                // Unsaved work goes to disk first, so the Recycle Bin holds what was shown.
+                for i in 0..self.docs.len() {
+                    let covered = self.docs[i]
+                        .path
+                        .as_ref()
+                        .is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone)));
+                    if covered && self.docs[i].is_dirty() {
+                        self.save_doc(i);
                     }
                 }
-                self.explorer.forget(&paths);
-                self.explorer.refresh();
-                self.finder.mark_stale();
-                if !failed.is_empty() {
-                    self.status = Some(format!("Could not delete {}", failed.join("; ")));
-                }
+                // Large trees take a while: the work goes to a thread, and the frame stays live.
+                let count = paths.len();
+                let (tx, rx) = std::sync::mpsc::channel();
+                let wake = repaint(ui.ctx());
+                let job = paths.clone();
+                std::thread::spawn(move || {
+                    let mut failed = Vec::new();
+                    for path in &job {
+                        let done = if permanent {
+                            coiman_core::project::file_ops::remove_all(path).map_err(|e| e.to_string())
+                        } else {
+                            trash::delete(path).map_err(|e| e.to_string())
+                        };
+                        if let Err(e) = done {
+                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                            failed.push(format!("{name}: {e}"));
+                        }
+                    }
+                    let message = if failed.is_empty() {
+                        let items = if count == 1 { "1 item".to_owned() } else { format!("{count} items") };
+                        if permanent {
+                            format!("Deleted {items}")
+                        } else {
+                            format!("Moved {items} to the Recycle Bin")
+                        }
+                    } else {
+                        format!("Could not delete {}", failed.join("; "))
+                    };
+                    let _ = tx.send((job, message));
+                    wake();
+                });
+                self.deleting = Some(rx);
+                self.status = Some(if count == 1 {
+                    "Deleting 1 item…".to_owned()
+                } else {
+                    format!("Deleting {count} items…")
+                });
             }
             Some(false) => self.delete_pending = None,
             None => {}

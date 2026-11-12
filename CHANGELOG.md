@@ -13,6 +13,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   read as syntax, marks tests green and cycles red, and falls back to the folder graph past
   Mermaid's 500-arrow limit. **Preview Mermaid** shows the diagram in a Markdown draft.
 
+### Fixed
+
+- Deleting many files or folders no longer freezes the window: the work runs in the
+  background, unsaved tabs under the deleted paths are saved first, and the status bar
+  reports how many items went to the Recycle Bin.
+
 ## [0.3.0] - 2026-11-08
 
 ### Changed

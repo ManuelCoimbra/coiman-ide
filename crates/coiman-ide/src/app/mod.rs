@@ -281,6 +281,8 @@ pub struct CodeApp {
     /// Asking before moving this to the Recycle Bin.
     /// Files and folders to delete once confirmed, and whether for good.
     delete_pending: Option<(Vec<PathBuf>, bool)>,
+    /// A deletion running in the background: the paths and what failed, when it ends.
+    deleting: Option<std::sync::mpsc::Receiver<(Vec<PathBuf>, String)>>,
 }
 impl CodeApp {
     pub fn new(start_path: Option<PathBuf>, ctx: &egui::Context) -> Self {
@@ -407,6 +409,7 @@ impl CodeApp {
             path_target: None,
             path_template: None,
             delete_pending: None,
+            deleting: None,
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
