@@ -137,6 +137,11 @@ impl Document {
         Self::from_text(None, index, "")
     }
 
+    /// A new document, not yet on disk, that starts with `text` (a report or an export).
+    pub fn untitled_with(index: usize, text: &str) -> Self {
+        Self::from_text(None, index, text)
+    }
+
     pub fn open(path: &Path) -> std::io::Result<Self> {
         let bytes = std::fs::read(path)?;
         let decoded = encoding::detect_and_decode(bytes);

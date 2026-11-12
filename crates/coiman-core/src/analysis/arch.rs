@@ -351,14 +351,103 @@ pub fn to_svg(graph: &Graph, layout: &Layout) -> String {
     svg
 }
 
-/// The graph as a Mermaid flowchart, for Markdown files and wikis.
-pub fn to_mermaid(graph: &Graph) -> String {
-    let mut text = String::from("flowchart TD\n");
-    for (i, node) in graph.nodes.iter().enumerate() {
-        text.push_str(&format!("  n{i}[\"{}\"]\n", node.path.replace('"', "'")));
+/// Mermaid stops drawing a diagram past this many arrows (GitHub's limit); the folder graph is
+/// the readable one there.
+pub const MERMAID_MAX_EDGES: usize = 500;
+
+/// The folder a relative path sits in, `.` at the project's root.
+fn folder_of(path: &str) -> &str {
+    path.rsplit_once('/').map_or(".", |(dir, _)| dir)
+}
+
+/// Text Mermaid reads as it is: `#` starts its entity codes, and quotes and brackets end a
+/// label or a box, so those become codes (Mermaid reads `#quot;` and friends back as the
+/// character).
+fn mermaid_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    for c in text.chars() {
+        match c {
+            '#' => out.push_str("#35;"),
+            '"' => out.push_str("#quot;"),
+            '&' => out.push_str("#38;"),
+            '<' => out.push_str("#lt;"),
+            '>' => out.push_str("#gt;"),
+            '[' => out.push_str("#91;"),
+            ']' => out.push_str("#93;"),
+            '(' => out.push_str("#40;"),
+            ')' => out.push_str("#41;"),
+            '{' => out.push_str("#123;"),
+            '}' => out.push_str("#125;"),
+            '|' => out.push_str("#124;"),
+            other => out.push(other),
+        }
     }
-    for e in &graph.edges {
+    out
+}
+
+/// The graph as a Mermaid flowchart, for Markdown files and wikis: files sit in a subgraph per
+/// folder, tests are green, imports in cycles are red, and the arrows point from the file to
+/// what it uses.
+pub fn to_mermaid(graph: &Graph) -> String {
+    let cyclic = cycle_edges(graph);
+    let mut in_cycle = vec![false; graph.nodes.len()];
+    for (from, to) in &cyclic {
+        in_cycle[*from] = true;
+        in_cycle[*to] = true;
+    }
+    let mut text = String::from("flowchart TD\n");
+    text.push_str(&format!("  %% {} files, {} imports\n", graph.nodes.len(), graph.edges.len()));
+    // Folders with more than one file become a subgraph, named by its path; a file alone in
+    // its folder stands on its own, and so do the files at the project's root.
+    let mut folders: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    for (i, node) in graph.nodes.iter().enumerate() {
+        folders.entry(folder_of(&node.path)).or_default().push(i);
+    }
+    let mut groups = 0;
+    for (folder, nodes) in &folders {
+        if nodes.len() < 2 || *folder == "." {
+            continue;
+        }
+        text.push_str(&format!("  subgraph g{groups}[\"{}\"]\n", mermaid_text(folder)));
+        for &i in nodes {
+            text.push_str(&format!("    n{i}[\"{}\"]\n", mermaid_text(short_name(&graph.nodes[i].path))));
+        }
+        text.push_str("  end\n");
+        groups += 1;
+    }
+    for nodes in folders.values().filter(|nodes| nodes.len() == 1) {
+        let i = nodes[0];
+        text.push_str(&format!("  n{i}[\"{}\"]\n", mermaid_text(&label(&graph.nodes[i].path))));
+    }
+    if let Some(root) = folders.get(".").filter(|nodes| nodes.len() > 1) {
+        for &i in root {
+            text.push_str(&format!("  n{i}[\"{}\"]\n", mermaid_text(&label(&graph.nodes[i].path))));
+        }
+    }
+    if graph.nodes.iter().any(|n| n.test) {
+        text.push_str("  classDef test fill:#1f3a2c,stroke:#57c06a,color:#e8eefc\n");
+    }
+    if in_cycle.iter().any(|&c| c) {
+        text.push_str("  classDef cycle stroke:#e5484d,stroke-width:2px\n");
+    }
+    for (i, node) in graph.nodes.iter().enumerate() {
+        if node.test {
+            text.push_str(&format!("  class n{i} test\n"));
+        }
+        if in_cycle[i] {
+            text.push_str(&format!("  class n{i} cycle\n"));
+        }
+    }
+    // The arrows, then the ones inside a cycle colored; linkStyle counts them from the first.
+    let mut in_cycle_edges = Vec::new();
+    for (k, e) in graph.edges.iter().enumerate() {
         text.push_str(&format!("  n{} --> n{}\n", e.from, e.to));
+        if cyclic.contains(&(e.from, e.to)) {
+            in_cycle_edges.push(k.to_string());
+        }
+    }
+    if !in_cycle_edges.is_empty() {
+        text.push_str(&format!("  linkStyle {} stroke:#e5484d,stroke-width:2px\n", in_cycle_edges.join(",")));
     }
     text
 }
@@ -444,6 +533,35 @@ mod tests {
         let svg = to_svg(&graph, &l);
         assert!(svg.starts_with("<svg") && svg.contains("#e5484d") && svg.matches("<rect x=").count() == 5);
         assert!(to_mermaid(&graph).contains("n0 --> n1"));
+    }
+
+    #[test]
+    fn mermaid_groups_folders_styles_cycles_and_escapes() {
+        let graph = g(
+            &["src/a.rs", "src/b.rs", "src/mod.rs", "lib/c.rs", "main.rs"],
+            &[(0, 1), (1, 0), (0, 2), (3, 0), (4, 3)],
+        );
+        let text = to_mermaid(&graph);
+        assert!(text.starts_with("flowchart TD\n"), "{text}");
+        // Files of one folder share a subgraph, named by the folder.
+        assert!(text.contains("subgraph g0[\"src\"]") && text.contains("    n0[\"a.rs\"]"), "{text}");
+        // A file alone in its folder, and one at the root, stand outside one.
+        assert!(text.contains("  n3[\"c.rs\"]") && text.contains("  n4[\"main.rs\"]"), "{text}");
+        // The first two imports are the two halves of a cycle; the third isn't.
+        assert!(text.contains("linkStyle 0,1 stroke:#e5484d"), "{text}");
+        assert!(text.contains("class n0 cycle") && text.contains("classDef cycle"), "{text}");
+        assert!(text.contains("n3 --> n0") && !text.contains("linkStyle 2"), "{text}");
+    }
+
+    #[test]
+    fn mermaid_escapes_what_it_would_read_as_syntax() {
+        let graph = g(&["a #1 (x) \"q\" [y].rs"], &[]);
+        let text = to_mermaid(&graph);
+        assert!(text.contains("n0[\"a #35;1 #40;x#41; #quot;q#quot; #91;y#93;.rs\"]"), "{text}");
+        // A folder named with any of those too.
+        let graph = g(&["src [old]/a.rs", "src [old]/b.rs"], &[(0, 1)]);
+        let text = to_mermaid(&graph);
+        assert!(text.contains("subgraph g0[\"src #91;old#93;\"]"), "{text}");
     }
 
     #[test]

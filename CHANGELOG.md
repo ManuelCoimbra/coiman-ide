@@ -9,6 +9,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 - The Markdown preview draws ```mermaid blocks (flowchart, class, sequence, state, ER and more) with
   merman, matching Mermaid's look without a browser; `.mmd` files preview too.
+- The Architecture window's Mermaid export groups files by folder, escapes names Mermaid would
+  read as syntax, marks tests green and cycles red, and falls back to the folder graph past
+  Mermaid's 500-arrow limit. **Preview Mermaid** shows the diagram in a Markdown draft.
 
 ## [0.3.0] - 2026-11-08
 

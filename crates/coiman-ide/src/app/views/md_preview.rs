@@ -26,6 +26,8 @@ enum Picture {
 #[derive(Default)]
 pub(crate) struct MdPreview {
     pub(crate) open: bool,
+    /// A document shown as Markdown though its name doesn't say so (an export, say).
+    pub(crate) forced: Option<u64>,
     /// Blocks of this version of this document.
     parsed: Option<(u64, u64, Vec<Block>)>,
     pictures: HashMap<PathBuf, Picture>,
@@ -637,7 +639,7 @@ fn one_block(ui: &mut egui::Ui, d: &mut Draw, block: &Block, i: usize, depth: us
 
 impl CodeApp {
     pub(crate) fn toggle_markdown_preview(&mut self) {
-        if self.docs.get(self.active).is_some_and(is_markdown) {
+        if self.active_is_markdown() {
             self.md_preview.open = !self.md_preview.open;
         } else {
             self.status = Some("Open a Markdown or Mermaid file to preview it".to_owned());
@@ -645,7 +647,7 @@ impl CodeApp {
     }
 
     pub(crate) fn active_is_markdown(&self) -> bool {
-        self.docs.get(self.active).is_some_and(is_markdown)
+        self.docs.get(self.active).is_some_and(|doc| is_markdown(doc) || self.md_preview.forced == Some(doc.uid))
     }
 
     /// The preview panel, to the right of the editor, for a Markdown file.

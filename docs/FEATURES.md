@@ -711,7 +711,9 @@ hundred files takes under a second. Libraries from outside the project are left 
   reach it through others, and the tests among them. **Architecture: Impact of Current File**
   opens it on the file in front.
 - **Export SVG** saves the picture; **Copy Mermaid** copies it as a Mermaid flowchart for
-  Markdown and wikis.
+  Markdown and wikis, and **Preview Mermaid** shows that diagram in a Markdown draft. Files of
+  one folder share a subgraph, tests are green, imports in a cycle are red, and past Mermaid's
+  500-arrow limit the folders are exported instead, which stays readable.
 
 Rust: `mod x;` means a file contains another, not that it uses it, so it makes no edge.
 Paths through `crate::`, `super::`, `self::`, other crates of the workspace and child modules

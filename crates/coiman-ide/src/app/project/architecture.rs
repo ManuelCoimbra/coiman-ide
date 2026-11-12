@@ -9,9 +9,11 @@ use std::sync::mpsc::{self, Receiver};
 
 use coiman_core::analysis::arch::{self, Coupling, Impact, Layout};
 use coiman_core::analysis::deps::{self, Graph};
+use coiman_core::editor::buffer::Selection;
 use egui::{Color32, Pos2, Rect, RichText, Sense, Stroke, Vec2};
 
 use crate::app::CodeApp;
+use crate::document::Document;
 use crate::ui::theme;
 
 const NODE: Vec2 = egui::vec2(170.0, 30.0);
@@ -166,12 +168,8 @@ impl CodeApp {
                 self.jump_to_symbol_line(line.saturating_sub(1));
             }
             Some(Action::ExportSvg) => self.export_architecture_svg(),
-            Some(Action::CopyMermaid) => {
-                if let Some(view) = self.architecture_view() {
-                    ctx.copy_text(arch::to_mermaid(&view.graph));
-                    self.status = Some("Copied the graph as Mermaid".to_owned());
-                }
-            }
+            Some(Action::CopyMermaid) => self.copy_architecture_mermaid(ctx),
+            Some(Action::PreviewMermaid) => self.preview_architecture_mermaid(),
             None => {}
         }
     }
@@ -179,6 +177,60 @@ impl CodeApp {
     fn architecture_view(&self) -> Option<&View> {
         let a = self.architecture.analysis.as_ref()?;
         Some(if self.architecture.by_folder { &a.folders } else { &a.files })
+    }
+
+    /// The graph as Mermaid, and how many imports it had when they were too many to draw and
+    /// the folders were used instead.
+    fn architecture_mermaid(&self) -> Option<(String, Option<usize>)> {
+        let analysis = self.architecture.analysis.as_ref()?;
+        let view = if self.architecture.by_folder { &analysis.folders } else { &analysis.files };
+        if !self.architecture.by_folder && view.graph.edges.len() > arch::MERMAID_MAX_EDGES {
+            let edges = view.graph.edges.len();
+            return Some((arch::to_mermaid(&analysis.folders.graph), Some(edges)));
+        }
+        Some((arch::to_mermaid(&view.graph), None))
+    }
+
+    fn copy_architecture_mermaid(&mut self, ctx: &egui::Context) {
+        let Some((text, too_many)) = self.architecture_mermaid() else { return };
+        ctx.copy_text(text);
+        self.status = Some(match too_many {
+            Some(edges) => format!(
+                "Copied the folders: {edges} imports is over Mermaid's {}; Folders is the readable view",
+                arch::MERMAID_MAX_EDGES
+            ),
+            None => "Copied the graph as Mermaid".to_owned(),
+        });
+    }
+
+    /// Shows the exported diagram rendered, in a Markdown draft with one ```mermaid block.
+    fn preview_architecture_mermaid(&mut self) {
+        let Some((text, too_many)) = self.architecture_mermaid() else { return };
+        let markdown = format!("```mermaid\n{text}```\n");
+        // The draft the last preview made, if it's still open and hasn't been saved.
+        let draft = self
+            .md_preview
+            .forced
+            .and_then(|uid| self.docs.iter().position(|doc| doc.uid == uid && doc.path.is_none()));
+        match draft {
+            Some(i) => {
+                self.docs[i].buffer.replace_all(&markdown, Selection::cursor(0));
+                self.active = i;
+            }
+            None => {
+                self.untitled_counter += 1;
+                let doc = Document::untitled_with(self.untitled_counter, &markdown);
+                self.add_doc(doc);
+            }
+        }
+        self.md_preview.open = true;
+        self.md_preview.forced = Some(self.docs[self.active].uid);
+        self.status = Some(match too_many {
+            Some(edges) => {
+                format!("Previewing the folders: {edges} imports is over Mermaid's {}", arch::MERMAID_MAX_EDGES)
+            }
+            None => "Previewing the graph as Mermaid".to_owned(),
+        });
     }
 
     fn export_architecture_svg(&mut self) {
@@ -230,6 +282,9 @@ impl CodeApp {
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let ready = self.architecture.analysis.is_some();
+                if ui.add_enabled(ready, egui::Button::new("Preview Mermaid")).clicked() {
+                    action = Some(Action::PreviewMermaid);
+                }
                 if ui.add_enabled(ready, egui::Button::new("Copy Mermaid")).clicked() {
                     action = Some(Action::CopyMermaid);
                 }
@@ -280,6 +335,7 @@ enum Action {
     Open(PathBuf, usize),
     ExportSvg,
     CopyMermaid,
+    PreviewMermaid,
 }
 
 fn pill(ui: &mut egui::Ui, label: &str, on: bool) -> egui::Response {
