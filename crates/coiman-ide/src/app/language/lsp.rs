@@ -891,7 +891,8 @@ impl CodeApp {
         all.extend(self.baseline_problems(&k));
         all.extend(self.tree_rule_problems(&k));
         all.extend(self.test_problems(&k));
-        for d in self.cargo.diagnostics.get(&k).into_iter().flat_map(|(_, d)| d) {
+        let fresh = !self.cargo.stale_problems.contains(&k);
+        for d in self.cargo.diagnostics.get(&k).filter(|_| fresh).into_iter().flat_map(|(_, d)| d) {
             // The same compiler message may come from rust-analyzer's own check.
             let first = |m: &str| m.lines().next().unwrap_or("").to_owned();
             let same_code =

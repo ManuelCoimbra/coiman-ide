@@ -301,15 +301,22 @@ impl CodeApp {
                 problems.entry(path_key(&path)).or_insert_with(|| (path, Vec::new())).1.push(problem);
             }
         }
+        for k in problems.keys() {
+            self.cargo.stale_problems.remove(k);
+        }
         self.tests.problems = problems;
     }
 
     pub(crate) fn test_problems(&self, file: &Path) -> Vec<lt::Diagnostic> {
+        if self.cargo.stale_problems.contains(file) {
+            return Vec::new();
+        }
         self.tests.problems.get(file).map(|(_, d)| d.clone()).unwrap_or_default()
     }
 
     pub(crate) fn test_problem_paths(&self) -> Vec<(PathBuf, PathBuf)> {
-        self.tests.problems.iter().map(|(k, (p, _))| (k.clone(), p.clone())).collect()
+        let fresh = self.tests.problems.iter().filter(|(k, _)| !self.cargo.stale_problems.contains(*k));
+        fresh.map(|(k, (p, _))| (k.clone(), p.clone())).collect()
     }
 
     /// Runs a project's tests in full, or one of them.
@@ -319,6 +326,7 @@ impl CodeApp {
 
     fn start_tests(&mut self, ctx: &egui::Context, adapter: usize, one: Option<OneTest>, with_coverage: bool) {
         self.cancel_test_run();
+        self.cargo.stale_problems.clear();
         let Some(spec) = self.tests.adapters.get(adapter).cloned() else { return };
         if !self.allowed_to_run(&spec.cwd) {
             return;

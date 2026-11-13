@@ -17,6 +17,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The error count drops as errors are fixed: what a cargo check, a run or a test run said
+  about a file stops counting once the file is edited, and counts again at the next run.
 - Git: branches pushed by others appear in Checkout after Fetch or Pull (as `origin/name`),
   and picking one makes a local branch that tracks it. Fetch and Pull drop branches deleted
   on the remote. The branch label shows only what there is to pull (↓) and push (↑).

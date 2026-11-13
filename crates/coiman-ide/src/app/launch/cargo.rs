@@ -123,6 +123,11 @@ pub(crate) struct CargoState {
     run_preview_seen: Option<(u64, u64, f64)>,
     /// What the programs run from here reported, by terminal tab.
     tab_problems: HashMap<u64, Vec<(PathBuf, lt::Diagnostic)>>,
+    /// Files edited since a cargo check, a run or a test run reported on them: those reports
+    /// describe the file as it was, so they stop counting until the next run says otherwise.
+    pub(crate) stale_problems: HashSet<PathBuf>,
+    /// Each open document's version last frame, to see edits.
+    seen_versions: HashMap<u64, u64>,
     next_problem_scan: f64,
     /// Why Run did nothing, when it was refused, and for which tab.
     run_refusal: Option<(String, f64, Option<u64>)>,
@@ -172,6 +177,8 @@ impl Default for CargoState {
             run_preview_job: None,
             run_preview_seen: None,
             tab_problems: HashMap::new(),
+            stale_problems: HashSet::new(),
+            seen_versions: HashMap::new(),
             next_problem_scan: 0.0,
             run_refusal: None,
             tests: HashMap::new(),
@@ -459,6 +466,7 @@ impl CodeApp {
     /// Starts `cargo <args>` in `cwd` as the background job (replacing any).
     fn start_job(&mut self, ctx: &egui::Context, kind: JobKind, args: Vec<String>, cwd: &Path) {
         self.cancel_job();
+        self.cargo.stale_problems.clear();
         if !self.allowed_to_run(cwd) {
             return;
         }
@@ -611,6 +619,7 @@ impl CodeApp {
                 message: d.message,
                 ..Default::default()
             };
+            self.cargo.stale_problems.remove(&key(&d.path));
             let entry = self.cargo.diagnostics.entry(key(&d.path)).or_insert_with(|| (d.path.clone(), Vec::new()));
             if !entry.1.contains(&diag) {
                 entry.1.push(diag);
@@ -1198,10 +1207,16 @@ impl CodeApp {
                 None => matchers::scan(&output.lines),
             };
             let bases = [output.cwd.to_path_buf()];
-            let placed = found
+            let placed: Vec<(PathBuf, lt::Diagnostic)> = found
                 .into_iter()
                 .filter_map(|p| Some((crate::app::prints::resolve(&p.file, &bases)?, problem_diagnostic(p))))
                 .collect();
+            // A run that reports something new about a file speaks for it again.
+            if self.cargo.tab_problems.get(&output.id) != Some(&placed) {
+                for (path, _) in &placed {
+                    self.cargo.stale_problems.remove(&key(path));
+                }
+            }
             self.cargo.tab_problems.insert(output.id, placed);
         }
         self.cargo.tab_problems.retain(|id, _| live.contains(id));
@@ -1215,6 +1230,9 @@ impl CodeApp {
 
     /// What running programs reported about `file` (by [`key`]).
     pub(crate) fn run_problems(&self, file: &Path) -> Vec<lt::Diagnostic> {
+        if self.cargo.stale_problems.contains(file) {
+            return Vec::new();
+        }
         let found = self.cargo.tab_problems.values().flatten();
         found.filter(|(path, _)| key(path) == file).map(|(_, d)| d.clone()).collect()
     }
@@ -1222,7 +1240,26 @@ impl CodeApp {
     /// Files running programs reported about: (key, path).
     pub(crate) fn run_problem_paths(&self) -> Vec<(PathBuf, PathBuf)> {
         let found = self.cargo.tab_problems.values().flatten();
-        found.map(|(path, _)| (key(path), path.clone())).collect()
+        found
+            .map(|(path, _)| (key(path), path.clone()))
+            .filter(|(k, _)| !self.cargo.stale_problems.contains(k))
+            .collect()
+    }
+
+    /// Marks files edited since a check, a run or a test run reported on them, so the
+    /// count of problems drops as they're fixed rather than at the next run. What the
+    /// language server and the checks made while typing say about the file still counts.
+    pub(crate) fn pump_stale_problems(&mut self) {
+        let mut seen = HashMap::with_capacity(self.docs.len());
+        for doc in &self.docs {
+            let version = doc.buffer.version();
+            seen.insert(doc.uid, version);
+            let edited = self.cargo.seen_versions.get(&doc.uid).is_some_and(|v| *v != version);
+            if edited && let Some(path) = &doc.path {
+                self.cargo.stale_problems.insert(key(path));
+            }
+        }
+        self.cargo.seen_versions = seen;
     }
 
     /// Says why Run did nothing, beside the button: the status bar may be hidden.
@@ -1359,6 +1396,8 @@ impl CodeApp {
     /// there or else the active file.
     pub(crate) fn run_program(&mut self, ctx: &egui::Context) {
         self.cargo.run_refusal = None;
+        // A new run speaks for the files again, even if it prints the same as the last.
+        self.cargo.stale_problems.clear();
         if let Some(config) = self.pinned_config().cloned() {
             if self.save_before_run(ctx) {
                 self.run_config(ctx, &config);
@@ -1372,6 +1411,7 @@ impl CodeApp {
     /// set to. With no file open, the folder's Cargo project.
     pub(crate) fn run_current_file(&mut self, ctx: &egui::Context) {
         self.cargo.run_refusal = None;
+        self.cargo.stale_problems.clear();
         if !self.save_before_run(ctx) {
             return;
         }

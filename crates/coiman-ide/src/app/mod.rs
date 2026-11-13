@@ -483,6 +483,7 @@ impl CodeApp {
         self.pump_tag_rename();
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
+        self.pump_stale_problems();
         self.pump_maven(&ctx);
         self.pump_vscode_report();
         self.pump_debug(&ctx);
