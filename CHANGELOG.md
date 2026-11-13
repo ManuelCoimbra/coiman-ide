@@ -17,6 +17,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Git: branches pushed by others appear in Checkout after Fetch or Pull (as `origin/name`),
+  and picking one makes a local branch that tracks it. Fetch and Pull drop branches deleted
+  on the remote. The branch label shows only what there is to pull (↓) and push (↑).
 - Renaming or moving an open file with unsaved edits no longer says it changed on disk, and
   saving writes to the new name. A change on disk now counts only when the file no longer
   holds what it held when last read or saved.

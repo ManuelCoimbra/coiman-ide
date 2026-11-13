@@ -1119,8 +1119,12 @@ impl CodeApp {
         let s = self.git.status.as_ref()?;
         let dirty = if s.staged.is_empty() && s.unstaged.is_empty() { "" } else { "*" };
         let mut label = format!("{}{dirty}", s.branch);
-        if s.ahead > 0 || s.behind > 0 {
-            label.push_str(&format!("  {}↓ {}↑", s.behind, s.ahead));
+        // Only what there is to pull and to push.
+        if s.behind > 0 {
+            label.push_str(&format!("  {}↓", s.behind));
+        }
+        if s.ahead > 0 {
+            label.push_str(&format!("  {}↑", s.ahead));
         }
         Some(label)
     }

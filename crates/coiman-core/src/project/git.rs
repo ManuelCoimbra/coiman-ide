@@ -445,14 +445,17 @@ impl Repo {
         remotes.lines().next().map(str::to_owned).ok_or_else(|| "This repository has no remote".to_owned())
     }
 
+    /// Fetches, dropping remote branches that are gone from the remote.
     pub fn fetch(&self) -> Result<(), String> {
         self.first_remote()?;
-        self.run(&["fetch"]).map(drop)
+        self.run(&["fetch", "--prune"]).map(drop)
     }
 
+    /// A plain pull: it never throws local work away. Git refuses when local changes would be
+    /// overwritten, and its message says which files.
     pub fn pull(&self) -> Result<(), String> {
         self.first_remote()?;
-        self.run(&["pull"]).map(drop)
+        self.run(&["pull", "--prune"]).map(drop)
     }
 
     /// Pushes the current branch, publishing it if it isn't on a remote yet.
@@ -469,14 +472,37 @@ impl Repo {
     }
 
     /// Local branch names.
+    /// Local branches, then the remote ones with no local branch of their name yet
+    /// (`origin/feature`), so a branch someone pushed can be switched to.
     pub fn branches(&self) -> Result<Vec<String>, String> {
-        let out = self.run(&["branch", "--format=%(refname:short)"])?;
-        Ok(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect())
+        let names = |out: String| -> Vec<String> {
+            out.lines().map(str::trim).filter(|l| !l.is_empty()).map(str::to_owned).collect()
+        };
+        let local = names(self.run(&["branch", "--format=%(refname:short)"])?);
+        let remote = names(self.run(&["branch", "-r", "--format=%(refname:short)"])?);
+        let mut all = local.clone();
+        for r in remote {
+            // `origin/HEAD` (and a bare `origin`) only point at another branch.
+            let Some((_, name)) = r.split_once('/') else { continue };
+            if name == "HEAD" || local.iter().any(|l| l == name) {
+                continue;
+            }
+            all.push(r);
+        }
+        Ok(all)
     }
 
+    /// Switches branch. A remote branch (`origin/feature`) gets a local branch that tracks it.
     pub fn switch(&self, branch: &str, create: bool) -> Result<(), String> {
-        let args: &[&str] = if create { &["switch", "-q", "-c", branch] } else { &["switch", "-q", branch] };
-        self.run(args).map(drop)
+        if create {
+            return self.run(&["switch", "-q", "-c", branch]).map(drop);
+        }
+        let is_local = self.run(&["show-ref", "--verify", "--quiet", &format!("refs/heads/{branch}")]).is_ok();
+        let is_remote = self.run(&["show-ref", "--verify", "--quiet", &format!("refs/remotes/{branch}")]).is_ok();
+        if !is_local && is_remote {
+            return self.run(&["switch", "-q", "--track", branch]).map(drop);
+        }
+        self.run(&["switch", "-q", branch]).map(drop)
     }
 
     pub fn user_name(&self) -> Option<String> {
@@ -944,6 +970,62 @@ mod tests {
         repo.stage(&["."]).unwrap();
         repo.commit("four").unwrap();
         assert!(repo.push().unwrap_err().contains("rejected"));
+
+        // A branch pushed from elsewhere shows after fetch, and switching to it tracks it.
+        let main = repo.status().unwrap().branch;
+        sh(&b, &["switch", "-q", "-c", "feature"]);
+        std::fs::write(
+            b.join("h"),
+            "f
+",
+        )
+        .unwrap();
+        other.stage(&["."]).unwrap();
+        other.commit("feature work").unwrap();
+        sh(&b, &["push", "-q", "-u", "origin", "feature"]);
+        repo.fetch().unwrap();
+        let branches = repo.branches().unwrap();
+        assert!(branches.iter().any(|b| b == "origin/feature"), "{branches:?}");
+        assert!(!branches.iter().any(|b| b.ends_with("/HEAD")), "{branches:?}");
+        sh(&a, &["reset", "-q", "--hard", &format!("origin/{main}")]);
+        repo.switch("origin/feature", false).unwrap();
+        let s = repo.status().unwrap();
+        assert_eq!((s.branch.as_str(), s.upstream.as_deref()), ("feature", Some("origin/feature")));
+        assert!(!repo.branches().unwrap().iter().any(|b| b == "origin/feature"), "now local");
+
+        // A branch deleted on the remote leaves the list at the next fetch.
+        sh(&b, &["push", "-q", "origin", "--delete", "feature"]);
+        sh(&a, &["switch", "-q", &main]);
+        sh(&a, &["branch", "-q", "-D", "feature"]);
+        repo.fetch().unwrap();
+        assert!(!repo.branches().unwrap().iter().any(|b| b.contains("feature")));
+
+        // A pull that would overwrite local edits is refused with git's reason, and the
+        // edits stay.
+        std::fs::write(
+            b.join("f"),
+            "from b
+",
+        )
+        .unwrap();
+        other.stage(&["."]).unwrap();
+        other.commit("five").unwrap();
+        sh(&b, &["switch", "-q", &main]);
+        sh(&b, &["merge", "-q", "feature"]);
+        sh(&b, &["push", "-q", "origin", &main]);
+        std::fs::write(
+            a.join("f"),
+            "mine, not saved anywhere
+",
+        )
+        .unwrap();
+        let err = repo.pull().unwrap_err();
+        assert!(err.contains("would be overwritten") || err.contains("overwritten by merge"), "{err}");
+        assert_eq!(
+            std::fs::read_to_string(a.join("f")).unwrap(),
+            "mine, not saved anywhere
+"
+        );
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
