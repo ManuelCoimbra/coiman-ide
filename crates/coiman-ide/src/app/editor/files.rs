@@ -81,6 +81,10 @@ impl CodeApp {
         self.restore_log_views(saved.log_views.iter().filter(|p| p.is_file()).cloned().collect());
         self.at_cursor_restore(&saved.cursor_pins, saved.cursor_info_beside);
         self.rails.restore(&saved.right_tools, saved.panel_right);
+        // Opening the folder shows the side bar; a session that had it hidden keeps it so.
+        if saved.sidebar_hidden {
+            self.sidebar_visible = false;
+        }
         let active = saved.active;
         for doc in saved.restore_docs() {
             self.untitled_counter = self.untitled_counter.max(doc.untitled_index());
@@ -101,6 +105,7 @@ impl CodeApp {
         (session.cursor_pins, session.cursor_info_beside) = self.at_cursor_saved();
         session.right_tools = self.rails.saved();
         session.panel_right = self.rails.panel_right;
+        session.sidebar_hidden = !self.sidebar_visible;
         session.breakpoints = self.breakpoints_by_project();
         let json = session::to_json(&session);
         if json == self.last_session_json {

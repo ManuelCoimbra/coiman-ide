@@ -705,8 +705,10 @@ impl CodeApp {
                 glyph,
                 color,
             );
+            // The open tool's icon hides the side bar, as in VS Code; it keeps the tool for
+            // the next time it shows.
             if resp.on_hover_text(tip).clicked() {
-                cmd = Some(c);
+                cmd = Some(if active { Command::ToggleSidebar } else { c });
             }
         };
         let side = self.sidebar_visible.then_some(self.sidebar_view);
