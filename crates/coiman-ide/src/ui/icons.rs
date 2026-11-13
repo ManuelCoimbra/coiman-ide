@@ -364,6 +364,7 @@ pub fn paint_source(painter: &egui::Painter, rect: Rect, path: &str, role: FileR
 fn paint_class(painter: &egui::Painter, rect: Rect, kind: ClassKind) {
     let (letter, color) = match kind {
         ClassKind::Class => ("C", Color32::from_rgb(0x54, 0x8A, 0xF7)),
+        ClassKind::Struct => ("S", Color32::from_rgb(0x3F, 0xA8, 0xC4)),
         ClassKind::Abstract => ("A", Color32::from_rgb(0x7F, 0x9A, 0xC9)),
         ClassKind::Interface => ("I", Color32::from_rgb(0x57, 0x96, 0x5C)),
         ClassKind::Enum => ("E", Color32::from_rgb(0xB1, 0x89, 0xF5)),

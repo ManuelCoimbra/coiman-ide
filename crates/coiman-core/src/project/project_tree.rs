@@ -178,6 +178,8 @@ pub fn folder_kind(relative: &str, children: &[(&str, bool)]) -> FolderKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClassKind {
     Class,
+    /// A struct or union: C, C++, Rust, Go, C# and Swift, where it isn't a class.
+    Struct,
     Abstract,
     Interface,
     Enum,
@@ -356,12 +358,38 @@ fn plain_name(name: &str) -> String {
     name.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect()
 }
 
+/// Languages whose keywords mean different things.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Family {
+    /// C and C++, headers included.
+    C,
+    Rust,
+    Go,
+    Swift,
+    CSharp,
+    Other,
+}
+
+impl Family {
+    fn of(extension: &str) -> Self {
+        match extension {
+            "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" | "ino" => Self::C,
+            "rs" => Self::Rust,
+            "go" => Self::Go,
+            "swift" => Self::Swift,
+            "cs" => Self::CSharp,
+            _ => Self::Other,
+        }
+    }
+}
+
 /// The type a file declares under its own name, in any language.
 fn class_kind(extension: &str, stem: &str, source: &str) -> Option<ClassKind> {
     if !crate::appearance::file_icons::is_code(extension) {
         return None;
     }
     let wanted = plain_name(stem);
+    let family = Family::of(extension);
     let mut comment = false;
     for line in source.lines() {
         let line = line.trim();
@@ -385,22 +413,34 @@ fn class_kind(extension: &str, stem: &str, source: &str) -> Option<ClassKind> {
                 continue;
             }
             let before = &words[..at];
-            let kind = match *word {
-                "class" if before.contains(&"abstract") => ClassKind::Abstract,
-                "class" if before.contains(&"enum") => ClassKind::Enum,
-                "class" if before.contains(&"annotation") => ClassKind::Annotation,
-                "class" | "struct" | "union" => ClassKind::Class,
-                "interface" | "protocol" => ClassKind::Interface,
-                "@interface" => ClassKind::Annotation,
-                "enum" => ClassKind::Enum,
-                "record" => ClassKind::Record,
-                "object" | "defmodule" | "module" => ClassKind::Object,
-                "trait" | "mixin" => ClassKind::Trait,
-                // Go: `type Name struct`.
-                "type" => match words.get(at + 2).copied() {
+            // Only what declares a type in this language: `struct` isn't a class in C, `type`
+            // is an alias in TypeScript, and `typedef`, functions and macros declare no type.
+            if before.contains(&"typedef") {
+                continue;
+            }
+            let kind = match (family, *word) {
+                (_, "class") if before.contains(&"abstract") => ClassKind::Abstract,
+                (_, "class") if before.contains(&"enum") => ClassKind::Enum,
+                (_, "class") if before.contains(&"annotation") => ClassKind::Annotation,
+                (Family::C, "class") => ClassKind::Class,
+                (Family::C | Family::Rust | Family::Swift | Family::CSharp, "struct" | "union") => ClassKind::Struct,
+                (Family::Rust, "trait") => ClassKind::Trait,
+                (_, "enum") => ClassKind::Enum,
+                // Go: `type Name struct` or `type Name interface`; other types are aliases.
+                (Family::Go, "type") => match words.get(at + 2).copied() {
                     Some("interface" | "interface{") => ClassKind::Interface,
-                    _ => ClassKind::Class,
+                    Some("struct" | "struct{") => ClassKind::Struct,
+                    _ => continue,
                 },
+                (_, "type") => continue,
+                (Family::C | Family::Rust | Family::Go, _) => continue,
+                (_, "class") => ClassKind::Class,
+                (_, "interface" | "protocol") => ClassKind::Interface,
+                (_, "@interface") => ClassKind::Annotation,
+                (_, "record") => ClassKind::Record,
+                (_, "object" | "defmodule" | "module") => ClassKind::Object,
+                (_, "trait" | "mixin") => ClassKind::Trait,
+                (_, "struct") => ClassKind::Struct,
                 _ => continue,
             };
             return Some(kind);
@@ -688,23 +728,41 @@ mod tests {
             ("A.kt", "enum class A { X }", K::Enum),
             ("A.kt", "object A {", K::Object),
             ("A.scala", "trait A {", K::Trait),
-            ("A.cs", "public struct A {", K::Class),
+            ("A.cs", "public struct A {", K::Struct),
         ] {
             assert_eq!(FileRole::of(file, source).class, Some(kind), "{source}");
         }
         for (file, source, kind) in [
             ("user.py", "class User(Base):", K::Class),
-            ("user_store.rs", "pub struct UserStore {", K::Class),
+            ("user_store.rs", "pub struct UserStore {", K::Struct),
             ("shape.rs", "pub trait Shape {", K::Trait),
             ("color.ts", "export enum Color {", K::Enum),
             ("shape.ts", "export default interface Shape {", K::Interface),
-            ("user.go", "type User struct {", K::Class),
+            ("user.go", "type User struct {", K::Struct),
             ("shape.go", "type Shape interface {", K::Interface),
             ("shape.swift", "protocol Shape {", K::Interface),
             ("user.hpp", "class User : public Base {", K::Class),
             ("user.rb", "class User < Base", K::Class),
             ("user.php", "abstract class User {", K::Abstract),
             ("user.ex", "defmodule User do", K::Object),
+            // C: a struct or union is a struct; C++ classes stay classes.
+            (
+                "list.h",
+                "#ifndef LIST_H
+struct list {
+  int n;
+};",
+                K::Struct,
+            ),
+            (
+                "point.c",
+                "struct point make(void);
+struct point { int x; };",
+                K::Struct,
+            ),
+            ("shape.hpp", "struct Shape { virtual ~Shape(); };", K::Struct),
+            ("color.h", "enum color { RED };", K::Enum),
+            ("value.rs", "pub enum Value {", K::Enum),
         ] {
             assert_eq!(FileRole::of(file, source).class, Some(kind), "{source}");
         }
@@ -714,6 +772,23 @@ mod tests {
             ("main.rs", "fn main() {}"),
             ("A.java", ""),
             ("a.txt", "class A"),
+            // Functions, typedefs and aliases declare no type.
+            (
+                "list.h",
+                "#ifndef LIST_H
+int list(int n);
+void list_free(void);",
+            ),
+            ("list.c", "int list(int n) { return n; }"),
+            ("node.h", "typedef struct node node;"),
+            ("user.ts", "export type User = { name: string };"),
+            ("id.go", "type Id = string"),
+            ("handler.go", "type Handler func(int)"),
+            (
+                "main.rs",
+                "mod main;
+fn main() {}",
+            ),
         ] {
             assert_eq!(FileRole::of(file, source).class, None, "{source}");
         }
