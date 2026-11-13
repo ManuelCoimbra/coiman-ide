@@ -17,6 +17,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The dock's icons line up and its open-tool dot no longer sits squeezed on the tile's edge.
+- The Explorer's type badges follow each language: C, Rust and Go structs show S, not C;
+  headers with only functions, typedefs and type aliases show no type.
+- Classic layout: clicking the open tool's icon hides the side bar, and that is remembered.
 - Up and Down move by rows on screen when lines wrap or folds hide some, keeping the column,
   instead of skipping a wrapped line's rows or landing in a fold. Typing on an empty line
   inside a block starts at the block's indentation.
