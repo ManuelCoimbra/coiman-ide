@@ -44,6 +44,7 @@ const DEFAULTS: &[(&str, Command, bool)] = &[
     ("ctrl+`", Command::ToggleTerminal, false),
     ("ctrl+shift+e", Command::ShowExplorer, false),
     ("ctrl+shift+f", Command::ShowSearch, false),
+    ("ctrl+shift+h", Command::ReplaceInFiles, false),
     ("ctrl+f", Command::Find, false),
     ("ctrl+h", Command::Replace, false),
     ("ctrl+g", Command::GoToLine, false),

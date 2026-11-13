@@ -284,6 +284,14 @@ impl Palette {
         }
     }
 
+    /// What Search Everywhere has typed, closing it: for carrying a search over to the
+    /// search sheet. None when Search Everywhere isn't showing.
+    pub fn take_everywhere_query(&mut self) -> Option<String> {
+        self.everywhere_tab()?;
+        self.open = false;
+        Some(self.query.trim().to_owned())
+    }
+
     /// Search Everywhere's tab, unless a prefix has taken the query over.
     fn everywhere_tab(&self) -> Option<EverywhereTab> {
         self.everywhere.filter(|_| !self.query.starts_with(['>', '#', ':']))
@@ -510,6 +518,7 @@ impl Palette {
         }
 
         let mut result = None;
+        let mut replace_clicked = false;
         // Shift+Delete takes the picked item out of a removable list. Windows sends it as
         // Cut, which would cut the query instead.
         let removable = self.picker.as_ref().is_some_and(|p| p.removable);
@@ -574,6 +583,19 @@ impl Palette {
                                     self.selected = 0;
                                 }
                             }
+                            // Replacing goes on in the search sheet, which takes what's typed along.
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let keys = keymap.shortcut_text(Command::ReplaceInFiles);
+                                let tip = if keys.is_empty() {
+                                    "Replace in files".to_owned()
+                                } else {
+                                    format!("Replace in files ({keys})")
+                                };
+                                let replace = ui.add(egui::Button::new("Replace…").small()).on_hover_text(tip);
+                                if replace.clicked() {
+                                    replace_clicked = true;
+                                }
+                            });
                         });
                         ui.separator();
                     }
@@ -709,6 +731,10 @@ impl Palette {
         {
             self.selected = i.min(items.len().saturating_sub(1));
             return Some(PaletteResult::Remove(kind, label));
+        }
+        if replace_clicked {
+            // Left open: the command takes what's typed, then closes it.
+            return Some(PaletteResult::Run(Command::ReplaceInFiles));
         }
         self.close_on_click_outside(ctx, area.response.rect);
         let picked = result.map(|i| items.swap_remove(i).2);

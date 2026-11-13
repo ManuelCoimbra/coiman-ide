@@ -43,6 +43,8 @@ pub struct SearchPanel {
     confirming: bool,
     /// Confirmed: the app carries it out.
     pub replace_requested: bool,
+    /// The cursor goes to the replace box next time it's drawn.
+    focus_replace: bool,
 }
 
 /// What Replace All works on.
@@ -53,6 +55,21 @@ pub struct ProjectReplace {
 }
 
 impl SearchPanel {
+    /// Shows the replace row, searching for `text` when there is some.
+    pub fn open_replace(&mut self, text: Option<String>) {
+        // With something to search for, what's left to type is the replacement.
+        match text.filter(|t| !t.trim().is_empty()) {
+            Some(text) => {
+                self.query.text = text;
+                self.edited_at = Some(0.0);
+                self.focus_replace = true;
+            }
+            None => self.focus_requested = true,
+        }
+        self.show_replace = true;
+        self.confirming = false;
+    }
+
     /// Draws the panel. Returns where to jump when the user clicks a result.
     pub fn ui(&mut self, ui: &mut egui::Ui, root: Option<&Path>) -> Option<Jump> {
         let Some(root) = root else {
@@ -149,7 +166,10 @@ impl SearchPanel {
             return;
         }
         let hint = if self.query.regex { "Replace ($1 for groups)" } else { "Replace" };
-        ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text(hint));
+        let edit = ui.add(egui::TextEdit::singleline(&mut self.replacement).hint_text(hint));
+        if std::mem::take(&mut self.focus_replace) {
+            edit.request_focus();
+        }
         let matches: usize = self.results.iter().map(|f| f.matches.len()).sum();
         let files = self.results.len();
         if self.confirming {

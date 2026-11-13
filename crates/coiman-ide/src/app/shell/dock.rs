@@ -20,9 +20,10 @@ const DOT_BELOW: f32 = 10.0;
 /// Room between the sheet and the edges of the code.
 const SHEET_GAP: f32 = 8.0;
 
-const SIDE: [(SidebarView, Icon, &str, Command); 6] = [
+// No Search here: the top bar's search box is the one way in (Ctrl+Shift+F and Ctrl+Shift+H
+// still open the search sheet, and Search Everywhere's Replace… button does too).
+const SIDE: [(SidebarView, Icon, &str, Command); 5] = [
     (SidebarView::Explorer, Icon::Files, "Project (Ctrl+Shift+E)", Command::ShowExplorer),
-    (SidebarView::Search, Icon::Search, "Search (Ctrl+Shift+F)", Command::ShowSearch),
     (SidebarView::Git, Icon::SourceControl, "Source Control (Ctrl+Shift+G)", Command::ShowSourceControl),
     (SidebarView::Testing, Icon::Beaker, "Testing", Command::ShowTesting),
     (SidebarView::Debug, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", Command::ShowDebug),

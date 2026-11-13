@@ -315,6 +315,14 @@ impl CodeApp {
                 self.sidebar_view = SidebarView::Search;
                 self.search.focus_requested = true;
             }
+            Command::ReplaceInFiles => {
+                // From Search Everywhere, what was typed comes along.
+                let typed = self.palette.take_everywhere_query();
+                self.welcome_sidebar = true;
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Search;
+                self.search.open_replace(typed);
+            }
             Command::Find => {
                 self.find.open = true;
                 self.find.focus_requested = true;

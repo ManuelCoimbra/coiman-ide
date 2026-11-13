@@ -17,6 +17,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Dragging a tab works like a browser: the tab follows the pointer and the others slide aside
   to show where it will land. Dragged off the bar, a card follows the pointer, and over the
   right half of the editor a band says it will open beside the current file.
+- **Replace in files** (`Ctrl+Shift+H`) opens the search sheet with its replace row, and
+  Search Everywhere has a **Replace…** button that takes what was typed along.
+
+### Changed
+
+- One search button: the dock's magnifier is gone, as it did what the top bar's search box
+  does. `Ctrl+Shift+F` still opens the search sheet.
 
 ### Fixed
 

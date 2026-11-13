@@ -28,6 +28,8 @@ pub enum Command {
     ToggleTerminal,
     ShowExplorer,
     ShowSearch,
+    /// The search sheet, with its replace row open.
+    ReplaceInFiles,
     Find,
     Replace,
     GoToLine,
@@ -288,6 +290,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ToggleTerminal, "View: Toggle Terminal"),
     (Command::ShowExplorer, "View: Show Explorer"),
     (Command::ShowSearch, "View: Show Search"),
+    (Command::ReplaceInFiles, "Search: Replace in Files"),
     (Command::Find, "Find"),
     (Command::Replace, "Replace"),
     (Command::GoToLine, "Go to Line..."),
@@ -560,6 +563,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ToggleTerminal, "workbench.action.terminal.toggleTerminal"),
     (Command::ShowExplorer, "workbench.view.explorer"),
     (Command::ShowSearch, "workbench.view.search"),
+    (Command::ReplaceInFiles, "workbench.action.replaceInFiles"),
     (Command::Find, "actions.find"),
     (Command::Replace, "editor.action.startFindReplaceAction"),
     (Command::GoToLine, "workbench.action.gotoLine"),
@@ -807,6 +811,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | NewTerminal
             | ShowExplorer
             | ShowSearch
+            | ReplaceInFiles
             | ShowProblems
             | ShowSourceControl
             | ShowTesting

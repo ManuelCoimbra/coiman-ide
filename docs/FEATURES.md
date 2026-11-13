@@ -104,7 +104,9 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   Command Palette (`Ctrl+Shift+P`), Go to Line (`Ctrl+G`)
 - Find in file (`Ctrl+F`); Find in files (`Ctrl+Shift+F`) with the ripgrep crates: search as
   you type, results stream in grouped by file, match case / whole word / regex, files to
-  include/exclude globs, binary files skipped; clicking a result selects the match
+  include/exclude globs, binary files skipped; clicking a result selects the match.
+  Replace in files (`Ctrl+Shift+H`, or **Replace…** in Search Everywhere, which brings what
+  was typed) opens the same sheet with its replace row
 - External changes: files edited by other programs reload automatically when the tab has no
   unsaved changes; otherwise a bar offers Reload or Keep mine. Deleted files are flagged
   (saving recreates them). The explorer and Quick Open index follow created/deleted files
@@ -386,7 +388,8 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   until it's been taken. **Help: New Sample Project...** makes a small Python, C, Java,
   JavaScript or Rust project and opens it, ready to run with Ctrl+Shift+F10.
 - **Search in the top bar**: the box in the middle opens Search Everywhere (or press Shift
-  twice). `workbench.search_in_top_bar = false` puts a magnifier on the right instead.
+  twice). `workbench.search_in_top_bar = false` puts a magnifier on the right instead. It is
+  the one search button: the dock has none.
 - **Frame rate**: nothing is drawn while nothing changes. While something does, frames
   keep to the refresh rate of the display the window is on; `workbench.max_fps` sets a
   lower limit to save power (0 follows the display).
