@@ -14,6 +14,9 @@ use crate::app::{CodeApp, PanelTab, SidebarView};
 pub(crate) const STRIP_HEIGHT: f32 = 46.0;
 /// One dock button.
 const BUTTON: egui::Vec2 = egui::vec2(38.0, 34.0);
+/// How far the icon sits above its tile's middle, and the open-tool dot below it.
+const ICON_ABOVE: f32 = 2.0;
+const DOT_BELOW: f32 = 10.0;
 /// Room between the sheet and the edges of the code.
 const SHEET_GAP: f32 = 8.0;
 
@@ -210,7 +213,8 @@ impl CodeApp {
         }
         // The dots under what's open glide from one tool to the next.
         let ctx = ui.ctx().clone();
-        let dot_y = pill.bottom() - 5.5;
+        // Inside the tile, under its icon (see `dock_button`).
+        let dot_y = pill.top() + 3.0 + BUTTON.y / 2.0 + DOT_BELOW;
         for (at, name) in [(open_at, "dock_dot_side"), (panel_at, "dock_dot_panel")] {
             let id = egui::Id::unique(name);
             let shown = theme::eased(&ctx, id.with("shown"), at.is_some());
@@ -267,7 +271,7 @@ impl CodeApp {
         let response = ui.interact(rect, ui.scope_id().with(("dock", tip)), Sense::click()).on_hover_text(tip);
         let hovered = theme::eased(ui.ctx(), response.id.with("hover"), response.hovered());
         let opened = theme::eased(ui.ctx(), response.id.with("open"), open);
-        let tile = rect.shrink2(egui::vec2(3.0, 2.0));
+        let tile = rect.shrink(3.0);
         if hovered > 0.0 {
             ui.painter().rect_filled(tile, 9.0, pal.hover_bg.gamma_multiply(hovered));
         }
@@ -281,9 +285,9 @@ impl CodeApp {
         } else {
             pal.text_dim
         };
-        // Lifts a little under the pointer.
-        let lift = 1.5 + 2.0 * hovered;
-        let glyph = egui::Rect::from_center_size(rect.center() - egui::vec2(0.0, lift), egui::vec2(19.0, 19.0));
+        // The icon sits a little above the tile's middle in every state, leaving the dot room
+        // below it, so icons line up across the dock whether their tool is open or not.
+        let glyph = egui::Rect::from_center_size(tile.center() - egui::vec2(0.0, ICON_ABOVE), egui::vec2(17.0, 17.0));
         icons::paint(ui.painter(), glyph, icon, color);
         response.clicked()
     }
