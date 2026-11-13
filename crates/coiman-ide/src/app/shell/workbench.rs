@@ -1746,11 +1746,13 @@ impl CodeApp {
         }
         let room = ui.available_width() - 8.0;
         let mut kept = Vec::new();
+        // Strictly by priority: once one doesn't fit, nothing after it shows either.
         for (fit, w) in items {
-            if used + w + gap <= room {
-                used += w + gap;
-                kept.push(fit);
+            if used + w + gap > room {
+                break;
             }
+            used += w + gap;
+            kept.push(fit);
         }
         kept
     }

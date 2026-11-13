@@ -1170,6 +1170,81 @@ fn handle_events(
     moved
 }
 
+/// Up and Down by what's on screen when lines wrap or folds hide some: each cursor moves to
+/// the next visual row and keeps its column within the row, instead of skipping a wrapped
+/// line's other rows or landing inside a fold. Returns false (move by lines instead) when
+/// nothing wraps or is hidden, or the row map is from before this frame's edits.
+fn move_by_rows(b: &mut Buffer, rows: Option<&RowMap>, by: isize, extend: bool) -> bool {
+    let Some(map) = rows.filter(|m| m.version == b.version()) else { return false };
+    let wrap = (map.cols != usize::MAX).then_some(map.cols);
+    let total = map.first_row.last().copied().unwrap_or(0);
+    if total == 0 {
+        return false;
+    }
+    // A row's char range, by the same rules the layout draws with.
+    let row_range = |b: &Buffer, row: usize| -> (usize, usize, bool) {
+        let line = map.first_row.partition_point(|&r| r <= row).saturating_sub(1).min(b.len_lines() - 1);
+        let (ls, le) = (b.line_start(line), b.line_end(line));
+        match wrap {
+            Some(cols) => {
+                let starts = wrap_segments(&b.line_text(line), cols);
+                let seg = (row - map.first_row[line]).min(starts.len() - 1);
+                let end = starts.get(seg + 1).map_or(le, |s| ls + s);
+                (ls + starts[seg], end, seg + 1 == starts.len())
+            }
+            None => (ls, le, true),
+        }
+    };
+    let row_of = |b: &Buffer, pos: usize| -> usize {
+        let mut line = b.char_to_line(pos);
+        let mut col = pos - b.line_start(line);
+        if let Some((first, _)) = hidden_range(&map.hidden, line) {
+            line = first.saturating_sub(1);
+            col = 0;
+        }
+        let seg = match wrap {
+            Some(cols) => wrap_segments(&b.line_text(line), cols).partition_point(|&s| s <= col).saturating_sub(1),
+            None => 0,
+        };
+        map.first_row[line] + seg
+    };
+    let primary = b.primary();
+    let moved: Vec<Selection> = b
+        .selections()
+        .iter()
+        .map(|s| {
+            let row = row_of(b, s.head);
+            let (start, _, _) = row_range(b, row);
+            let goal = s.goal.unwrap_or_else(|| visual_width(b.rope().slice(start..s.head.max(start)).chars()));
+            let target = row as isize + by;
+            let head = if target < 0 {
+                0
+            } else if target as usize >= total {
+                b.len_chars()
+            } else {
+                let (start, end, last) = row_range(b, target as usize);
+                // A wrapped row's end is the next row's start: stop just before it.
+                let end = if last { end } else { end.saturating_sub(1).max(start) };
+                let mut col = 0;
+                let mut at = end;
+                for (i, c) in b.rope().slice(start..end).chars().enumerate() {
+                    let w = char_width(c, col);
+                    if goal < col + w {
+                        at = start + i + usize::from(w > 1 && (goal - col) * 2 >= w);
+                        break;
+                    }
+                    col += w;
+                }
+                at
+            };
+            Selection { anchor: if extend { s.anchor } else { head }, head, goal: Some(goal) }
+        })
+        .collect();
+    let primary_index = b.selections().iter().position(|s| *s == primary).unwrap_or(0);
+    b.set_selections(moved, primary_index);
+    true
+}
+
 fn handle_key(
     doc: &mut Document,
     view: &mut ViewState,
@@ -1189,11 +1264,15 @@ fn handle_key(
                 view.scroll.y += dir * m.row_h;
                 return false;
             }
-            b.move_vertical(dir as isize, shift);
+            if !move_by_rows(b, view.rows.as_ref(), dir as isize, shift) {
+                b.move_vertical(dir as isize, shift);
+            }
         }
         Key::PageUp | Key::PageDown => {
             let dir: isize = if key == Key::PageDown { 1 } else { -1 };
-            b.move_vertical(dir * visible_rows as isize, shift);
+            if !move_by_rows(b, view.rows.as_ref(), dir * visible_rows as isize, shift) {
+                b.move_vertical(dir * visible_rows as isize, shift);
+            }
             view.scroll.y += dir as f32 * visible_rows as f32 * m.row_h;
         }
         Key::Home if ctrl => b.move_doc_edge(false, shift),
@@ -2127,7 +2206,41 @@ fn paint_scrollbars(ui: &mut egui::Ui, view: &ViewState, rect: Rect, text_rect: 
 
 #[cfg(test)]
 mod tests {
-    use super::{WordShift, shifted, unshift, wrap_segments};
+    use super::{Layout, ViewState, WordShift, move_by_rows, shifted, unshift, wrap_segments};
+    use crate::buffer::Selection;
+    use crate::document::Document;
+
+    /// Up and Down go row by row through a wrapped line, keeping the column, and step over a
+    /// fold instead of into it.
+    #[test]
+    fn arrows_move_by_rows_when_lines_wrap_or_fold() {
+        let mut doc = Document::untitled_with(
+            1,
+            "aaaa bbbb cccc dddd
+xy
+folded
+last line
+",
+        );
+        let mut view = ViewState::default();
+        // Wrapped at 10 columns: "aaaa bbbb " and "cccc dddd" are two rows of line 0.
+        Layout::new(&doc, &mut view, Some(10), &[]);
+        doc.buffer.set_single(Selection::cursor(2));
+        assert!(move_by_rows(&mut doc.buffer, view.rows.as_ref(), 1, false));
+        assert_eq!(doc.buffer.primary().head, 12, "same column on the line's second row");
+        assert!(move_by_rows(&mut doc.buffer, view.rows.as_ref(), 1, false));
+        assert_eq!(doc.buffer.primary().head, doc.buffer.line_start(1) + 2, "column 2 of \"xy\" is its end");
+        assert!(move_by_rows(&mut doc.buffer, view.rows.as_ref(), -1, false));
+        assert_eq!(doc.buffer.primary().head, 12, "back, with the goal kept");
+        // Line 2 folded away: Down from line 1 lands on line 3.
+        Layout::new(&doc, &mut view, None, &[(2, 2)]);
+        doc.buffer.set_single(Selection::cursor(doc.buffer.line_start(1) + 1));
+        assert!(move_by_rows(&mut doc.buffer, view.rows.as_ref(), 1, false));
+        assert_eq!(doc.buffer.char_to_line(doc.buffer.primary().head), 3);
+        // Nothing wraps or folds: lines are rows, and the caller moves by lines.
+        Layout::new(&doc, &mut view, None, &[]);
+        assert!(!move_by_rows(&mut doc.buffer, view.rows.as_ref(), 1, false));
+    }
 
     #[test]
     fn words_drawn_narrower_close_up_the_row() {

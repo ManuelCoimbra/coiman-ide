@@ -1223,7 +1223,60 @@ impl Buffer {
     /// Typing: like [`insert`](Self::insert), with brackets and quotes in pairs.
     /// Typing a closer that is already next steps over it, a selection gets
     /// surrounded, and a pair only opens where it can't swallow following text.
+    /// Typing on an empty line inside a block starts at the block's indentation, as if the
+    /// line had been made with Enter: arrows down onto a blank line put the cursor at column 0,
+    /// and the first thing typed there shouldn't land at the left edge. The indentation is the
+    /// smaller of what the line above would give and what the next code line has, so a blank
+    /// line before a top-level `def` or after a closing `}` stays at column 0. Prose is left alone.
+    fn indent_blank_lines_for(&mut self, text: &str) {
+        if self.indent_rules == IndentRules::Plain || text.starts_with(char::is_whitespace) || text.is_empty() {
+            return;
+        }
+        let on_empty = |b: &Self, s: &Selection| {
+            s.is_empty() && b.line_start(b.char_to_line(s.head)) == b.line_end(b.char_to_line(s.head))
+        };
+        if !self.selections.iter().all(|s| on_empty(self, s)) {
+            return;
+        }
+        let changes: Vec<Change> = self
+            .selections
+            .iter()
+            .filter_map(|s| {
+                let indent = self.blank_line_indent(self.char_to_line(s.head));
+                (!indent.is_empty()).then_some(Change { start: s.head, end: s.head, text: indent, cursor_offset: None })
+            })
+            .collect();
+        if changes.len() == self.selections.len() {
+            self.apply_changes(changes, true);
+        }
+    }
+
+    /// The indentation a blank `line` would get: see [`Self::indent_blank_lines_for`].
+    pub fn blank_line_indent(&self, line: usize) -> String {
+        let non_blank = |l: usize| !self.line_text(l).trim().is_empty();
+        let Some(above) = (0..line).rev().find(|&l| non_blank(l)) else { return String::new() };
+        let text = self.line_text(above);
+        let trimmed = text.trim_end();
+        let indent = leading_whitespace(&text);
+        let rules = self.indent_rules;
+        let expected = if rules.opens(trimmed) {
+            format!("{indent}{}", self.indent.unit())
+        } else if rules.ends_block(trimmed) {
+            self.indent.outdented(&indent)
+        } else {
+            indent
+        };
+        match (line + 1..self.len_lines()).find(|&l| non_blank(l)) {
+            Some(below) => {
+                let next = leading_whitespace(&self.line_text(below));
+                if visual_width(next.chars()) < visual_width(expected.chars()) { next } else { expected }
+            }
+            None => expected,
+        }
+    }
+
     pub fn type_text(&mut self, text: &str) {
+        self.indent_blank_lines_for(text);
         if let (Some(c), 1) = (text.chars().next(), text.chars().count())
             && (self.type_tag(c) || self.type_outdenting(c))
         {
@@ -1749,6 +1802,86 @@ mod tests {
         // Inside a wide char, the nearer side.
         assert_eq!(b.pos_at_visual_col(0, 5), 3);
         assert_eq!(b.pos_at_visual_col(0, 4), 2);
+    }
+
+    #[test]
+    fn typing_on_a_blank_line_starts_at_the_blocks_indent() {
+        // Inside a block: the block's indentation.
+        let mut b = Buffer::new(
+            "fn f() {
+    let a = 1;
+
+    let b = 2;
+}
+",
+        );
+        b.indent_rules = IndentRules::Brackets;
+        let blank = b.line_start(2);
+        b.set_single(Selection::cursor(blank));
+        b.type_text("x");
+        assert_eq!(b.line_text(2), "    x");
+        assert_eq!(b.primary().head, b.line_start(2) + 5);
+        // After an opener: one level in.
+        let mut b = Buffer::new(
+            "fn f() {
+
+    a();
+}
+",
+        );
+        b.indent_rules = IndentRules::Brackets;
+        b.set_single(Selection::cursor(b.line_start(1)));
+        b.type_text("b");
+        assert_eq!(b.line_text(1), "    b");
+        // Python: after a function's body, before the next top-level def, column 0.
+        let mut b = Buffer::new(
+            "def f():
+    return 1
+
+def g():
+    pass
+",
+        );
+        b.indent_rules = IndentRules::Python;
+        b.set_single(Selection::cursor(b.line_start(2)));
+        b.type_text("x");
+        assert_eq!(b.line_text(2), "x");
+        // Inside a Python block: its indentation.
+        let mut b = Buffer::new(
+            "def f():
+    a = 1
+
+    return a
+",
+        );
+        b.indent_rules = IndentRules::Python;
+        b.set_single(Selection::cursor(b.line_start(2)));
+        b.type_text("b");
+        assert_eq!(b.line_text(2), "    b");
+        // Prose and spaces are left alone.
+        let mut b = Buffer::new(
+            "- item
+  more
+
+  next
+",
+        );
+        b.indent_rules = IndentRules::Plain;
+        b.set_single(Selection::cursor(b.line_start(2)));
+        b.type_text("x");
+        assert_eq!(b.line_text(2), "x");
+        let mut b = Buffer::new(
+            "fn f() {
+    a();
+
+    b();
+}
+",
+        );
+        b.indent_rules = IndentRules::Brackets;
+        b.set_single(Selection::cursor(b.line_start(2)));
+        b.type_text(" ");
+        assert_eq!(b.line_text(2), " ");
     }
 
     #[test]

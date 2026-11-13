@@ -17,6 +17,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Up and Down move by rows on screen when lines wrap or folds hide some, keeping the column,
+  instead of skipping a wrapped line's rows or landing in a fold. Typing on an empty line
+  inside a block starts at the block's indentation.
 - The bottom panel's tabs no longer run under its buttons: they scroll sideways in the room
   the buttons leave. The status bar's right side keeps what fits, by priority (line and
   column first), instead of running over the left side.
