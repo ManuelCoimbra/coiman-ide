@@ -18,7 +18,9 @@ use extensions::plugins;
 use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room};
 use launch::{cargo, coverage, debug, live, maven, prints, repl, test_panel, traces};
 use project::{architecture, git, git_setup};
-use shell::{dock, file_buttons, frames, keys_ui, look, recent_ui, settings_ui, tool_rails, tour, window, workbench};
+use shell::{
+    dock, file_buttons, frames, keys_ui, layout, look, recent_ui, settings_ui, tool_rails, tour, window, workbench,
+};
 use views::{bytes_view, constant, database, image_view, logs, md_preview, preview, svg_preview, tables};
 
 use std::path::PathBuf;
@@ -129,6 +131,8 @@ pub struct CodeApp {
     sheet_pinned: bool,
     sidebar_view: SidebarView,
     rails: tool_rails::ToolRails,
+    /// Where the side bar and panel are, and their sizes.
+    layout: layout::Layout,
     architecture: architecture::Architecture,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
@@ -308,6 +312,7 @@ impl CodeApp {
             sheet_pinned: false,
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
+            layout: layout::Layout::default(),
             architecture: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
@@ -584,8 +589,10 @@ impl CodeApp {
             // Slides away, with what it was showing.
             let gaps = theme::island_gaps(false, true, false, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
-            let side = egui::Panel::left("side_bar")
-                .default_size(260.0)
+            let side = self
+                .layout
+                .side_panel("side_bar")
+                .default_size(self.layout.side_width())
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
@@ -599,13 +606,18 @@ impl CodeApp {
             let max_side = (ui.available_width() * 0.5).max(200.0);
             let gaps = theme::island_gaps(false, true, false, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
-            let side = egui::Panel::left("side_bar")
-                .default_size(260.0)
+            let side = self
+                .layout
+                .side_panel("side_bar")
+                .default_size(self.layout.side_width())
                 .size_range(160.0..=max_side)
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut true, |ui| self.sidebar(ui));
+            if let Some(side) = &side {
+                self.layout.saw_side(side.response.rect.width());
+            }
             let place = side.map(|side| side.response.rect - gaps);
             if let Some(place) = place.filter(|_| dock)
                 && self.pin_chip(&ctx, place, true)
@@ -639,25 +651,30 @@ impl CodeApp {
             sides.extend(place);
             islands.extend(place);
         }
-        let panel_right = self.rails.panel_right && !classic && !dock;
+        let panel_floating = self.layout.saved.panel_floating;
+        let panel_right = self.rails.panel_right && !panel_floating;
         // A terminal doesn't slide: each step would resize it, and the program in it would redraw.
         let panel_slides = self.panel_tab != PanelTab::Terminal;
         let panel_open = self.panel_visible && !zen;
-        if panel_right && (panel_open || panel_slides) {
+        let panel_docked = !panel_floating;
+        if panel_docked && panel_right && (panel_open || panel_slides) {
             let gaps = theme::island_gaps(false, false, false, true);
             let max_side = (ui.available_width() * 0.7).max(200.0);
-            let panel = egui::Panel::right("panel_right")
-                .default_size(420.0)
+            let panel = egui::Panel::right(self.layout.id("panel_right"))
+                .default_size(self.layout.panel_width())
                 .size_range(200.0..=max_side)
                 .resizable(true)
-                .show_separator_line(false)
+                .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
+            if let Some(panel) = panel.as_ref().filter(|_| panel_open) {
+                self.layout.saw_panel(panel.response.rect.size(), true);
+            }
             let place = panel.map(|panel| panel.response.rect - gaps);
             panels.extend(place);
             islands.extend(place);
         }
-        if !panel_right && (panel_open || panel_slides) {
+        if panel_docked && !panel_right && (panel_open || panel_slides) {
             let gaps = if dock {
                 egui::Margin { left: 8, right: 8, top: 6, bottom: 0 }
             } else {
@@ -668,12 +685,15 @@ impl CodeApp {
             } else {
                 theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps)
             };
-            let panel = egui::Panel::bottom("panel")
-                .default_size(240.0)
+            let panel = egui::Panel::bottom(self.layout.id("panel"))
+                .default_size(self.layout.panel_height())
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(frame)
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
+            if let Some(panel) = panel.as_ref().filter(|_| panel_open) {
+                self.layout.saw_panel(panel.response.rect.size(), false);
+            }
             let place = panel.map(|panel| panel.response.rect - gaps);
             panels.extend(place);
             islands.extend(place);
@@ -815,6 +835,9 @@ impl CodeApp {
         });
         if floating && !zen {
             self.side_sheet(&ctx, central.response.rect - gaps, left_open);
+        }
+        if panel_floating && panel_open {
+            self.panel_window(&ctx, central.response.rect - gaps);
         }
         let places = look::Places { editor: central.response.rect - gaps, sides, panels };
         self.paint_background(&ctx, &places);

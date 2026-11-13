@@ -7,6 +7,7 @@ pub(crate) mod dock;
 pub(crate) mod file_buttons;
 pub(crate) mod frames;
 pub(crate) mod keys_ui;
+pub(crate) mod layout;
 pub(crate) mod look;
 pub(crate) mod recent_ui;
 pub(crate) mod settings_ui;

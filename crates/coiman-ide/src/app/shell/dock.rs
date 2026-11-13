@@ -328,10 +328,16 @@ impl CodeApp {
         }
         let pal = theme::colors();
         let width = 320.0_f32.min(code.width() * 0.6);
-        // Slides in from the left edge, slowing as it arrives.
+        // Slides in from its edge, slowing as it arrives.
         let eased = 1.0 - (1.0 - t).powi(3);
+        let away = (1.0 - eased) * (width + SHEET_GAP + 24.0);
+        let left = if self.layout.side_right() {
+            code.right() - SHEET_GAP - width + away
+        } else {
+            code.left() + SHEET_GAP - away
+        };
         let rect = egui::Rect::from_min_size(
-            code.left_top() + egui::vec2(SHEET_GAP - (1.0 - eased) * (width + SHEET_GAP + 24.0), SHEET_GAP),
+            egui::pos2(left, code.top() + SHEET_GAP),
             egui::vec2(width, code.height() - 2.0 * SHEET_GAP),
         );
         let frame = egui::Frame::new()
@@ -375,11 +381,16 @@ impl CodeApp {
         }
     }
 
-    /// The round button on a sheet's right edge that pins it beside the code, or lets it float
-    /// again. Returns whether it was clicked.
+    /// The round button on a sheet's edge toward the code that pins it beside the code, or
+    /// lets it float again. Returns whether it was clicked.
     pub(crate) fn pin_chip(&mut self, ctx: &egui::Context, sheet: egui::Rect, pinned: bool) -> bool {
         let pal = theme::colors();
-        let center = egui::pos2(sheet.right() + 16.0, sheet.top() + 22.0);
+        // On the right it sits at the bottom corner, clear of a panel's buttons beside it.
+        let center = if self.layout.side_right() {
+            egui::pos2(sheet.left() - 16.0, sheet.bottom() - 22.0)
+        } else {
+            egui::pos2(sheet.right() + 16.0, sheet.top() + 22.0)
+        };
         let mut clicked = false;
         egui::Area::new(egui::Id::unique("sheet_pin"))
             .order(egui::Order::Foreground)

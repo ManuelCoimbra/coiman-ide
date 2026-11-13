@@ -304,6 +304,11 @@ impl CodeApp {
                 self.restart_lsp();
                 self.status = Some("Restarting language servers…".to_owned());
             }
+            Command::ToggleSidebarPosition
+            | Command::PanelBottom
+            | Command::PanelRight
+            | Command::PanelFloat
+            | Command::ResetLayout => self.layout_command(cmd),
             Command::ShowExplorer => {
                 self.welcome_sidebar = true;
                 self.sidebar_visible = true;

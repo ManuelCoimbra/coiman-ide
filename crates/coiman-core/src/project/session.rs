@@ -45,9 +45,38 @@ pub struct Session {
     /// The side bar was hidden (Ctrl+B, or the open tool's icon).
     #[serde(default)]
     pub sidebar_hidden: bool,
+    /// Where the side bar and panel were moved, and how big they were made.
+    #[serde(default)]
+    pub layout: SavedLayout,
     /// Breakpoints by project folder, kept between runs.
     #[serde(default)]
     pub breakpoints: std::collections::BTreeMap<PathBuf, crate::launch::breakpoints::Saved>,
+}
+
+/// Where the side bar and panel are, and their sizes. Sizes are None until changed by hand.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default)]
+pub struct SavedLayout {
+    /// The side bar is right of the editor.
+    #[serde(default)]
+    pub side_right: bool,
+    /// In the Dock layout, the side bar is pinned beside the code rather than floating over it.
+    #[serde(default)]
+    pub side_pinned: bool,
+    /// The panel is in a window of its own.
+    #[serde(default)]
+    pub panel_floating: bool,
+    /// The side bar's width.
+    #[serde(default)]
+    pub side_size: Option<f32>,
+    /// The panel's height at the bottom.
+    #[serde(default)]
+    pub panel_height: Option<f32>,
+    /// The panel's width at the right.
+    #[serde(default)]
+    pub panel_width: Option<f32>,
+    /// The panel's window: left, top, width, height.
+    #[serde(default)]
+    pub panel_window: Option<[f32; 4]>,
 }
 
 /// A pinned place, found again by its line's text if lines above it changed.
@@ -104,6 +133,7 @@ impl Session {
             right_tools: Vec::new(),
             panel_right: false,
             sidebar_hidden: false,
+            layout: SavedLayout::default(),
             breakpoints: Default::default(),
         }
     }
@@ -217,6 +247,7 @@ mod tests {
             right_tools: Vec::new(),
             panel_right: false,
             sidebar_hidden: false,
+            layout: SavedLayout::default(),
             breakpoints: Default::default(),
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },

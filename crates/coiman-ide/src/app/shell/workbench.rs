@@ -857,6 +857,9 @@ impl CodeApp {
                 if icons::button(ui, Icon::Close, "Close Panel").clicked() {
                     self.panel_visible = false;
                 }
+                if let Some(cmd) = self.panel_layout_button(ui) {
+                    self.layout_command(cmd);
+                }
                 if self.panel_tab == PanelTab::Terminal {
                     ui.add_space(8.0);
                     action = self.terminal.header(ui);

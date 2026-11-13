@@ -19,6 +19,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   right half of the editor a band says it will open beside the current file.
 - **Replace in files** (`Ctrl+Shift+H`) opens the search sheet with its replace row, and
   Search Everywhere has a **Replace…** button that takes what was typed along.
+- Movable panels: the panel's ≡ menu puts it at the bottom, at the right or in a window of
+  its own (dragged to the editor's bottom or right edge, it docks there again). The side bar
+  can go right of the editor. Positions, sizes and a pinned sheet are kept with the session;
+  **View: Reset Layout** puts everything back.
 
 ### Changed
 

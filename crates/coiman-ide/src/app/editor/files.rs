@@ -85,6 +85,8 @@ impl CodeApp {
         if saved.sidebar_hidden {
             self.sidebar_visible = false;
         }
+        self.layout.saved = saved.layout.clone();
+        self.sheet_pinned = saved.layout.side_pinned;
         let active = saved.active;
         for doc in saved.restore_docs() {
             self.untitled_counter = self.untitled_counter.max(doc.untitled_index());
@@ -106,6 +108,8 @@ impl CodeApp {
         session.right_tools = self.rails.saved();
         session.panel_right = self.rails.panel_right;
         session.sidebar_hidden = !self.sidebar_visible;
+        session.layout = self.layout.saved.clone();
+        session.layout.side_pinned = self.sheet_pinned;
         session.breakpoints = self.breakpoints_by_project();
         let json = session::to_json(&session);
         if json == self.last_session_json {
