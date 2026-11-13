@@ -12,9 +12,16 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - The Architecture window's Mermaid export groups files by folder, escapes names Mermaid would
   read as syntax, marks tests green and cycles red, and falls back to the folder graph past
   Mermaid's 500-arrow limit. **Preview Mermaid** shows the diagram in a Markdown draft.
+- Files and folders can be dragged onto a folder in the Explorer (or the project row) to move
+  them there, with open tabs following and name conflicts reported.
 
 ### Fixed
 
+- Renaming or moving an open file with unsaved edits no longer says it changed on disk, and
+  saving writes to the new name. A change on disk now counts only when the file no longer
+  holds what it held when last read or saved.
+- Mermaid diagrams too big for merman's default layout budget (a project's folder graph)
+  draw instead of showing their text.
 - Deleting many files or folders no longer freezes the window: the work runs in the
   background, unsaved tabs under the deleted paths are saved first, and the status bar
   reports how many items went to the Recycle Bin.

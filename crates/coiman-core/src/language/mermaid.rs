@@ -6,6 +6,12 @@ use std::sync::OnceLock;
 
 use merman::{OperationControl, PngRequest, RenderOutput, RenderRequest, Renderer, SvgRequest};
 use merman_export::{NativeFontContext, NativeFontOptions, RasterOptions};
+use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
+
+/// How much layout work a diagram may take. merman's interactive budget (14.1 million units)
+/// stops at a project's folder graph of a few dozen folders; these diagrams are the user's own
+/// or made here, so they get ten times that, still with a ceiling.
+const LAYOUT_WORK: usize = 150_000_000;
 
 /// Light or dark: Mermaid's `default` or `dark` theme, unless the diagram picks its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -99,6 +105,10 @@ pub fn png(source: &str, look: Look, scale: f32) -> Result<Vec<u8>, String> {
     let control = OperationControl::new();
     let mut svg = SvgRequest::default();
     svg.environment = svg.environment.with_native_font_context(fonts.clone()).map_err(|e| e.to_string())?;
+    let budget = RenderResourcePolicy::trusted_native()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, LAYOUT_WORK)
+        .map_err(|e| e.to_string())?;
+    svg.environment = svg.environment.with_resource_policy(budget);
     let options =
         RasterOptions { scale: scale.clamp(0.25, 4.0), font_context: Some(fonts.clone()), ..RasterOptions::default() };
     let source = themed(source, look);

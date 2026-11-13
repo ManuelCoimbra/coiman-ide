@@ -388,7 +388,7 @@ fn mermaid_text(text: &str) -> String {
 /// The graph as a Mermaid flowchart, for Markdown files and wikis: files sit in a subgraph per
 /// folder, tests are green, imports in cycles are red, and the arrows point from the file to
 /// what it uses.
-pub fn to_mermaid(graph: &Graph) -> String {
+pub fn to_mermaid(graph: &Graph, nodes_are: &str) -> String {
     let cyclic = cycle_edges(graph);
     let mut in_cycle = vec![false; graph.nodes.len()];
     for (from, to) in &cyclic {
@@ -396,36 +396,57 @@ pub fn to_mermaid(graph: &Graph) -> String {
         in_cycle[*to] = true;
     }
     let mut text = String::from("flowchart TD\n");
-    text.push_str(&format!("  %% {} files, {} imports\n", graph.nodes.len(), graph.edges.len()));
-    // Folders with more than one file become a subgraph, named by its path; a file alone in
-    // its folder stands on its own, and so do the files at the project's root.
-    let mut folders: BTreeMap<&str, Vec<usize>> = BTreeMap::new();
+    text.push_str(&format!("  %% {} {nodes_are}, {} imports\n", graph.nodes.len(), graph.edges.len()));
+    // Folders nest as subgraphs, as they do on disk, so each name is read inside its folder.
+    // A folder holding no files and one subfolder shares its box ("crates/coiman-core").
+    let mut files_in: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut subfolders: BTreeMap<String, std::collections::BTreeSet<String>> = BTreeMap::new();
     for (i, node) in graph.nodes.iter().enumerate() {
-        folders.entry(folder_of(&node.path)).or_default().push(i);
+        let folder = folder_of(&node.path);
+        let folder = if folder == "." { String::new() } else { folder.to_owned() };
+        files_in.entry(folder.clone()).or_default().push(i);
+        let mut here = folder;
+        while !here.is_empty() {
+            let parent = here.rsplit_once('/').map_or(String::new(), |(p, _)| p.to_owned());
+            subfolders.entry(parent.clone()).or_default().insert(here);
+            here = parent;
+        }
     }
     let mut groups = 0;
-    for (folder, nodes) in &folders {
-        if nodes.len() < 2 || *folder == "." {
-            continue;
+    fn emit(
+        text: &mut String,
+        graph: &Graph,
+        files_in: &BTreeMap<String, Vec<usize>>,
+        subfolders: &BTreeMap<String, std::collections::BTreeSet<String>>,
+        groups: &mut usize,
+        folder: &str,
+        depth: usize,
+    ) {
+        let pad = "  ".repeat(depth);
+        for &i in files_in.get(folder).into_iter().flatten() {
+            text.push_str(&format!("{pad}n{i}[\"{}\"]\n", mermaid_text(short_name(&graph.nodes[i].path))));
         }
-        text.push_str(&format!("  subgraph g{groups}[\"{}\"]\n", mermaid_text(folder)));
-        for &i in nodes {
-            text.push_str(&format!("    n{i}[\"{}\"]\n", mermaid_text(short_name(&graph.nodes[i].path))));
+        for child in subfolders.get(folder).into_iter().flatten() {
+            // Down through folders that only hold one folder.
+            let mut inner = child.clone();
+            loop {
+                let only = subfolders.get(&inner).filter(|s| s.len() == 1 && !files_in.contains_key(&inner));
+                match only.and_then(|s| s.iter().next()) {
+                    Some(next) => inner = next.clone(),
+                    None => break,
+                }
+            }
+            let name = inner.strip_prefix(folder).unwrap_or(&inner).trim_start_matches('/');
+            text.push_str(&format!("{pad}subgraph g{}[\"{}\"]\n", *groups, mermaid_text(name)));
+            *groups += 1;
+            emit(text, graph, files_in, subfolders, groups, &inner, depth + 1);
+            text.push_str(&format!("{pad}end\n"));
         }
-        text.push_str("  end\n");
-        groups += 1;
     }
-    for nodes in folders.values().filter(|nodes| nodes.len() == 1) {
-        let i = nodes[0];
-        text.push_str(&format!("  n{i}[\"{}\"]\n", mermaid_text(&label(&graph.nodes[i].path))));
-    }
-    if let Some(root) = folders.get(".").filter(|nodes| nodes.len() > 1) {
-        for &i in root {
-            text.push_str(&format!("  n{i}[\"{}\"]\n", mermaid_text(&label(&graph.nodes[i].path))));
-        }
-    }
+    emit(&mut text, graph, &files_in, &subfolders, &mut groups, "", 1);
+    // Colors that read in Mermaid's light and dark themes alike: the text color is set too.
     if graph.nodes.iter().any(|n| n.test) {
-        text.push_str("  classDef test fill:#1f3a2c,stroke:#57c06a,color:#e8eefc\n");
+        text.push_str("  classDef test fill:#d3f9d8,stroke:#2f9e44,color:#0b2e13\n");
     }
     if in_cycle.iter().any(|&c| c) {
         text.push_str("  classDef cycle stroke:#e5484d,stroke-width:2px\n");
@@ -532,7 +553,7 @@ mod tests {
         assert!(wide.pos[0].1 > wide.pos[100].1, "the shared import stays below them all");
         let svg = to_svg(&graph, &l);
         assert!(svg.starts_with("<svg") && svg.contains("#e5484d") && svg.matches("<rect x=").count() == 5);
-        assert!(to_mermaid(&graph).contains("n0 --> n1"));
+        assert!(to_mermaid(&graph, "files").contains("n0 --> n1"));
     }
 
     #[test]
@@ -541,12 +562,12 @@ mod tests {
             &["src/a.rs", "src/b.rs", "src/mod.rs", "lib/c.rs", "main.rs"],
             &[(0, 1), (1, 0), (0, 2), (3, 0), (4, 3)],
         );
-        let text = to_mermaid(&graph);
-        assert!(text.starts_with("flowchart TD\n"), "{text}");
-        // Files of one folder share a subgraph, named by the folder.
-        assert!(text.contains("subgraph g0[\"src\"]") && text.contains("    n0[\"a.rs\"]"), "{text}");
-        // A file alone in its folder, and one at the root, stand outside one.
-        assert!(text.contains("  n3[\"c.rs\"]") && text.contains("  n4[\"main.rs\"]"), "{text}");
+        let text = to_mermaid(&graph, "files");
+        assert!(text.starts_with("flowchart TD\n  %% 5 files, 5 imports\n"), "{text}");
+        // Files of one folder share a subgraph, named by the folder; root files stand outside.
+        assert!(text.contains("  subgraph g1[\"src\"]\n    n0[\"a.rs\"]"), "{text}");
+        assert!(text.contains("  subgraph g0[\"lib\"]\n    n3[\"c.rs\"]"), "{text}");
+        assert!(text.contains("\n  n4[\"main.rs\"]"), "{text}");
         // The first two imports are the two halves of a cycle; the third isn't.
         assert!(text.contains("linkStyle 0,1 stroke:#e5484d"), "{text}");
         assert!(text.contains("class n0 cycle") && text.contains("classDef cycle"), "{text}");
@@ -556,12 +577,29 @@ mod tests {
     #[test]
     fn mermaid_escapes_what_it_would_read_as_syntax() {
         let graph = g(&["a #1 (x) \"q\" [y].rs"], &[]);
-        let text = to_mermaid(&graph);
+        let text = to_mermaid(&graph, "files");
         assert!(text.contains("n0[\"a #35;1 #40;x#41; #quot;q#quot; #91;y#93;.rs\"]"), "{text}");
         // A folder named with any of those too.
         let graph = g(&["src [old]/a.rs", "src [old]/b.rs"], &[(0, 1)]);
-        let text = to_mermaid(&graph);
+        let text = to_mermaid(&graph, "files");
         assert!(text.contains("subgraph g0[\"src #91;old#93;\"]"), "{text}");
+    }
+
+    #[test]
+    fn mermaid_nests_folders_as_on_disk() {
+        let graph = g(
+            &["crates/core/src/a.rs", "crates/core/src/x/b.rs", "crates/core/tests/t.rs", "plugins/p/src/lib.rs"],
+            &[(0, 1)],
+        );
+        let text = to_mermaid(&graph, "files");
+        // crates/core holds no files and two folders: one box, with src and tests inside.
+        assert!(text.contains("subgraph g0[\"crates/core\"]\n    subgraph g1[\"src\"]\n      n0[\"a.rs\"]"), "{text}");
+        assert!(text.contains("      subgraph g2[\"x\"]\n        n1[\"b.rs\"]"), "{text}");
+        // A chain of single folders is one box, named by the whole chain.
+        assert!(text.contains("subgraph g4[\"plugins/p/src\"]\n    n3[\"lib.rs\"]"), "{text}");
+        assert_eq!(text.matches("subgraph").count(), text.matches("\n  end\n").count() + 3, "{text}");
+        // Tests read on light and dark backgrounds.
+        assert!(text.contains("classDef test fill:#d3f9d8,stroke:#2f9e44,color:#0b2e13"), "{text}");
     }
 
     #[test]

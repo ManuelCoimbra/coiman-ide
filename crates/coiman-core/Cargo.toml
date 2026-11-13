@@ -30,6 +30,8 @@ serde_json = { version = "1.0.154", features = ["preserve_order"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Mermaid diagrams without a browser. No `math` (LaTeX in labels): it would add a TeX engine.
 merman = { version = "0.9.3", default-features = false, features = ["svg", "png", "native-fonts", "all-diagrams", "layout-cytoscape", "layout-elk"] }
+# The layout budget merman applies (it doesn't re-export it); same version merman uses.
+merman-render = { version = "0.9.3", default-features = false }
 merman-export = { version = "0.9.3", default-features = false, features = ["png", "native-fonts", "system-fonts"] }
 # Finds the few font files Mermaid needs (the version merman already uses).
 fontdb = { version = "0.23", default-features = false, features = ["fs"] }

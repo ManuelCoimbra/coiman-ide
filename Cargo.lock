@@ -775,6 +775,7 @@ dependencies = [
  "lsp-types",
  "merman",
  "merman-export",
+ "merman-render",
  "notify",
  "nucleo",
  "oxc_allocator",

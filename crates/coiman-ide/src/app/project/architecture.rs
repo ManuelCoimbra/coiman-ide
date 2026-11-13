@@ -186,9 +186,17 @@ impl CodeApp {
         let view = if self.architecture.by_folder { &analysis.folders } else { &analysis.files };
         if !self.architecture.by_folder && view.graph.edges.len() > arch::MERMAID_MAX_EDGES {
             let edges = view.graph.edges.len();
-            return Some((arch::to_mermaid(&analysis.folders.graph), Some(edges)));
+            let mut text = arch::to_mermaid(&analysis.folders.graph, "folders");
+            let why = format!(
+                "  %% By folder: {edges} imports between files are past Mermaid's {} arrows\n",
+                arch::MERMAID_MAX_EDGES
+            );
+            let at = text.find('\n').map_or(text.len(), |i| i + 1);
+            text.insert_str(at, &why);
+            return Some((text, Some(edges)));
         }
-        Some((arch::to_mermaid(&view.graph), None))
+        let nodes_are = if self.architecture.by_folder { "folders" } else { "files" };
+        Some((arch::to_mermaid(&view.graph, nodes_are), None))
     }
 
     fn copy_architecture_mermaid(&mut self, ctx: &egui::Context) {
@@ -264,22 +272,6 @@ impl CodeApp {
                     self.architecture.zoom = 0.0;
                 }
             }
-            ui.add_space(10.0);
-            if let Some(a) = &self.architecture.analysis {
-                let view = if self.architecture.by_folder { &a.folders } else { &a.files };
-                let mut text = format!(
-                    "{} {} · {} imports · {} cycles · {:.1} s",
-                    view.graph.nodes.len(),
-                    if self.architecture.by_folder { "folders" } else { "files" },
-                    view.graph.edges.len(),
-                    view.cycles.len(),
-                    a.seconds
-                );
-                if view.graph.truncated {
-                    text.push_str(&format!(" · first {} files only", deps::MAX_FILES));
-                }
-                ui.label(RichText::new(text).color(pal.text_dim));
-            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let ready = self.architecture.analysis.is_some();
                 if ui.add_enabled(ready, egui::Button::new("Preview Mermaid")).clicked() {
@@ -299,6 +291,22 @@ impl CodeApp {
                 }
             });
         });
+        // What was found, on a line of its own: beside the buttons it ran under them.
+        if let Some(a) = &self.architecture.analysis {
+            let view = if self.architecture.by_folder { &a.folders } else { &a.files };
+            let mut text = format!(
+                "{} {} · {} imports · {} cycles · {:.1} s",
+                view.graph.nodes.len(),
+                if self.architecture.by_folder { "folders" } else { "files" },
+                view.graph.edges.len(),
+                view.cycles.len(),
+                a.seconds
+            );
+            if view.graph.truncated {
+                text.push_str(&format!(" · first {} files only", deps::MAX_FILES));
+            }
+            ui.label(RichText::new(text).color(pal.text_dim));
+        }
         ui.add_space(6.0);
         if self.architecture.loading.is_some() && self.architecture.analysis.is_none() {
             ui.horizontal(|ui| {
@@ -654,13 +662,13 @@ fn graph_canvas(
         );
         at.x = g.right() + 14.0;
     }
-    painter.text(
-        rect.right_bottom() - egui::vec2(12.0, 14.0),
-        egui::Align2::RIGHT_CENTER,
-        "Drag to move · scroll to zoom · double click to open",
-        egui::FontId::proportional(11.0),
-        pal.text_dim,
-    );
+    // The hint beside the legend when there's room, else on the line above it.
+    let hint = "Drag to move · scroll to zoom · double click to open";
+    let font = egui::FontId::proportional(11.0);
+    let hint_width = painter.layout_no_wrap(hint.to_owned(), font.clone(), pal.text_dim).size().x;
+    let fits = at.x + 12.0 + hint_width <= rect.right() - 12.0;
+    let y = if fits { rect.bottom() - 14.0 } else { rect.bottom() - 30.0 };
+    painter.text(egui::pos2(rect.right() - 12.0, y), egui::Align2::RIGHT_CENTER, hint, font, pal.text_dim);
     action
 }
 
