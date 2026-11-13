@@ -27,6 +27,14 @@ pub fn is_within(path: &Path, folder: &Path) -> bool {
     path.starts_with(folder)
 }
 
+/// Where `path` is after `from` moved to `to`: `to` itself, or the same place inside it.
+/// `None` when `path` wasn't `from` or inside it. (Joining an empty rest would leave a
+/// trailing separator, which Windows refuses as a file name.)
+pub fn moved_path(path: &Path, from: &Path, to: &Path) -> Option<PathBuf> {
+    let rest = path.strip_prefix(from).ok()?;
+    Some(if rest.as_os_str().is_empty() { to.to_path_buf() } else { to.join(rest) })
+}
+
 /// Copies a file, or a folder with everything in it, to `to`.
 pub fn copy_all(from: &Path, to: &Path) -> io::Result<()> {
     if from.is_dir() {
@@ -58,6 +66,16 @@ pub fn remove_all(path: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn open_files_follow_a_move() {
+        let (from, to) = (Path::new("root").join("notes.txt"), Path::new("root").join("docs").join("notes.txt"));
+        assert_eq!(moved_path(&from, &from, &to), Some(to.clone()));
+        assert!(!moved_path(&from, &from, &to).unwrap().to_string_lossy().ends_with(std::path::MAIN_SEPARATOR));
+        let (dir, new_dir) = (Path::new("root").join("src"), Path::new("root").join("lib"));
+        assert_eq!(moved_path(&dir.join("a").join("b.rs"), &dir, &new_dir), Some(new_dir.join("a").join("b.rs")));
+        assert_eq!(moved_path(Path::new("elsewhere"), &dir, &new_dir), None);
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("coiman_file_ops_{name}_{}", std::process::id()));

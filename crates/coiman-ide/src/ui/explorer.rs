@@ -138,6 +138,10 @@ fn filter_rows(relative: &[&str], root: &Path) -> Vec<(usize, PathBuf, bool)> {
     rows
 }
 
+/// Files and folders being dragged in the Explorer, to drop into a folder.
+#[derive(Clone, Debug)]
+pub struct DraggedFiles(pub Vec<PathBuf>);
+
 /// What the Explorer's context menu or keys ask for (`None`: the open folder).
 pub enum ExplorerAction {
     NewFile(Option<PathBuf>),
@@ -149,6 +153,8 @@ pub enum ExplorerAction {
     Delete(Vec<PathBuf>, bool),
     /// The copied or cut files into this folder.
     Paste(PathBuf),
+    /// These files and folders into this folder, dragged and dropped.
+    Move(Vec<PathBuf>, PathBuf),
 }
 
 /// A row as last drawn, for the keyboard to move through.
@@ -366,6 +372,22 @@ impl Explorer {
         }
         if let Some((files, _)) = &mut self.clipboard {
             files.retain(alive);
+        }
+    }
+
+    /// Marks a row while dragged files are held over it, and moves them into `dir` when
+    /// they're dropped there.
+    fn drop_here(&mut self, ui: &egui::Ui, response: &egui::Response, dir: &Path) {
+        if response.dnd_hover_payload::<DraggedFiles>().is_some() {
+            ui.painter().rect_stroke(
+                response.rect.shrink(1.0),
+                4.0,
+                egui::Stroke::new(1.0, theme::colors().accent),
+                egui::StrokeKind::Inside,
+            );
+        }
+        if let Some(files) = response.dnd_release_payload::<DraggedFiles>() {
+            self.action = Some(ExplorerAction::Move(files.0.clone(), dir.to_path_buf()));
         }
     }
 
@@ -874,6 +896,8 @@ impl Explorer {
                     ui.close();
                 }
             });
+            // Files dropped on the project row go back to the project's root.
+            self.drop_here(ui, &response, &root);
             if response.clicked() && self.click_row(ui, &root) {
                 if expanded {
                     self.expanded.remove(&root);
@@ -1050,6 +1074,12 @@ impl Explorer {
                 ui.close();
             }
         });
+        // A dragged row carries the picked rows; a folder, or the folder holding a file,
+        // takes what's dropped on it.
+        let carried = if self.selection.contains(&path) { self.picked_rows() } else { vec![path.clone()] };
+        response.dnd_set_drag_payload(DraggedFiles(carried));
+        let folder = if is_dir { path.clone() } else { path.parent().unwrap_or(&path).to_path_buf() };
+        self.drop_here(ui, &response, &folder);
         let plain_click = response.clicked() && self.click_row(ui, &path);
         if response.double_clicked() && !is_dir {
             self.picked = Some((path.clone(), true));
@@ -1087,7 +1117,7 @@ enum Row<'a> {
 fn row(ui: &mut egui::Ui, depth: usize, text: &str, hint: &str, marks: Marks, what: Row) -> egui::Response {
     let font = egui::TextStyle::Body.resolve(ui.style());
     let height = (font.size * 1.7).round();
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::click_and_drag());
     // Rows scrolled out of sight take their place but draw nothing: a folder of thousands
     // costs little more than what fits on screen.
     if !ui.is_rect_visible(rect) {

@@ -313,6 +313,7 @@ impl CodeApp {
             }
             ExplorerAction::Delete(paths, permanent) => self.delete_pending = Some((paths, permanent)),
             ExplorerAction::Paste(dir) => self.paste_into(&dir),
+            ExplorerAction::Move(paths, dir) => self.move_into(&paths, &dir),
         }
     }
 
@@ -373,8 +374,10 @@ impl CodeApp {
             Ok(()) => {
                 // Open files follow, including those inside a renamed folder.
                 for i in 0..self.docs.len() {
-                    let moved =
-                        self.docs[i].path.as_ref().and_then(|p| p.strip_prefix(&old).ok()).map(|rest| new.join(rest));
+                    let moved = self.docs[i]
+                        .path
+                        .as_ref()
+                        .and_then(|p| coiman_core::project::file_ops::moved_path(p, &old, &new));
                     if let Some(path) = moved {
                         self.watcher.watch_file(&path);
                         self.docs[i].path = Some(path);
@@ -427,10 +430,8 @@ impl CodeApp {
                 self.delete_pending = None;
                 // Unsaved work goes to disk first, so the Recycle Bin holds what was shown.
                 for i in 0..self.docs.len() {
-                    let covered = self.docs[i]
-                        .path
-                        .as_ref()
-                        .is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone)));
+                    let covered =
+                        self.docs[i].path.as_ref().is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone)));
                     if covered && self.docs[i].is_dirty() {
                         self.save_doc(i);
                     }
@@ -455,11 +456,7 @@ impl CodeApp {
                     }
                     let message = if failed.is_empty() {
                         let items = if count == 1 { "1 item".to_owned() } else { format!("{count} items") };
-                        if permanent {
-                            format!("Deleted {items}")
-                        } else {
-                            format!("Moved {items} to the Recycle Bin")
-                        }
+                        if permanent { format!("Deleted {items}") } else { format!("Moved {items} to the Recycle Bin") }
                     } else {
                         format!("Could not delete {}", failed.join("; "))
                     };
@@ -484,43 +481,22 @@ impl CodeApp {
         use coiman_core::project::file_ops;
         let Some((files, cut)) = self.explorer.clipboard.clone() else { return };
         let mut failed = Vec::new();
-        let mut moved = Vec::new();
-        for from in &files {
-            let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            if from.is_dir() && file_ops::is_within(dir, from) {
-                failed.push(format!("{name}: a folder can't go inside itself"));
-                continue;
-            }
-            if cut {
-                let to = dir.join(&name);
-                if to == *from {
-                    continue;
-                }
-                if to.exists() {
-                    failed.push(format!("{name} already exists there"));
-                    continue;
-                }
-                match file_ops::move_to(from, &to) {
-                    Ok(()) => {
-                        for doc in &mut self.docs {
-                            let follows =
-                                doc.path.as_ref().and_then(|p| p.strip_prefix(from).ok()).map(|rest| to.join(rest));
-                            if let Some(path) = follows {
-                                self.watcher.watch_file(&path);
-                                doc.path = Some(path);
-                            }
-                        }
-                        moved.push(from.clone());
-                    }
-                    Err(e) => failed.push(format!("{name}: {e}")),
-                }
-            } else if let Err(e) = file_ops::copy_all(from, &file_ops::free_copy_name(dir, &name)) {
-                failed.push(format!("{name}: {e}"));
-            }
-        }
         if cut {
+            let (moved, why) = self.move_into_paths(&files, dir);
+            failed = why;
             self.explorer.clipboard = None;
             self.explorer.forget(&moved);
+        } else {
+            for from in &files {
+                let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                if from.is_dir() && file_ops::is_within(dir, from) {
+                    failed.push(format!("{name}: a folder can't go inside itself"));
+                    continue;
+                }
+                if let Err(e) = file_ops::copy_all(from, &file_ops::free_copy_name(dir, &name)) {
+                    failed.push(format!("{name}: {e}"));
+                }
+            }
         }
         self.explorer.refresh();
         self.finder.mark_stale();
@@ -534,6 +510,58 @@ impl CodeApp {
         } else {
             format!("Could not paste {}", failed.join("; "))
         });
+    }
+
+    /// Moves what was dragged onto a folder there, with open files following it.
+    fn move_into(&mut self, files: &[PathBuf], dir: &Path) {
+        let (moved, failed) = self.move_into_paths(files, dir);
+        self.explorer.forget(&moved);
+        self.explorer.refresh();
+        self.finder.mark_stale();
+        self.status = Some(if !failed.is_empty() {
+            format!("Could not move: {}", failed.join("; "))
+        } else if moved.is_empty() {
+            "Already in that folder".to_owned()
+        } else {
+            let to =
+                dir.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| dir.display().to_string());
+            format!("Moved {} item{} to {to}", moved.len(), if moved.len() == 1 { "" } else { "s" })
+        });
+    }
+
+    /// Moves `files` into `dir`; returns what moved and what couldn't be, with why.
+    fn move_into_paths(&mut self, files: &[PathBuf], dir: &Path) -> (Vec<PathBuf>, Vec<String>) {
+        use coiman_core::project::file_ops;
+        let (mut moved, mut failed) = (Vec::new(), Vec::new());
+        for from in files {
+            let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if from.parent().is_some_and(|parent| same_path(parent, dir)) {
+                continue;
+            }
+            if from.is_dir() && file_ops::is_within(dir, from) {
+                failed.push(format!("{name}: a folder can't go inside itself"));
+                continue;
+            }
+            let to = dir.join(&name);
+            if to.exists() {
+                failed.push(format!("{name} already exists there"));
+                continue;
+            }
+            match file_ops::move_to(from, &to) {
+                Ok(()) => {
+                    for doc in &mut self.docs {
+                        let follows = doc.path.as_ref().and_then(|p| file_ops::moved_path(p, from, &to));
+                        if let Some(path) = follows {
+                            self.watcher.watch_file(&path);
+                            doc.path = Some(path);
+                        }
+                    }
+                    moved.push(from.clone());
+                }
+                Err(e) => failed.push(format!("{name}: {e}")),
+            }
+        }
+        (moved, failed)
     }
 
     pub(crate) fn open_folder(&mut self, path: PathBuf) {

@@ -55,6 +55,10 @@ pub struct Document {
     /// Scroll the primary cursor into view the next time it is shown.
     pub reveal: bool,
     pub disk: DiskState,
+    /// A hash of what the file held when last read or saved. A change on disk counts only
+    /// when the file no longer matches it: the app's own rename or move of a file with
+    /// unsaved edits, or a save that wrote the same text, isn't someone else's change.
+    disk_hash: Option<u64>,
     /// Encoding the file is read and saved with.
     pub encoding: &'static Encoding,
     /// Whether the file starts with a byte order mark.
@@ -116,6 +120,7 @@ impl Document {
             request_focus: false,
             reveal: false,
             disk: DiskState::InSync,
+            disk_hash: None,
             encoding: UTF_8,
             bom: false,
             structure: Structure::default(),
@@ -146,6 +151,7 @@ impl Document {
         let bytes = std::fs::read(path)?;
         let decoded = encoding::detect_and_decode(bytes);
         let mut doc = Self::from_text(Some(path.to_path_buf()), 0, &decoded.text);
+        doc.disk_hash = Some(text_hash([decoded.text.as_str()]));
         doc.encoding = decoded.encoding;
         doc.bom = decoded.bom;
         Ok(doc)
@@ -155,6 +161,7 @@ impl Document {
     /// (empty for untitled buffers); `text` is the backed-up buffer content.
     pub fn restored(path: Option<PathBuf>, untitled_index: usize, saved_text: String, text: String) -> Self {
         let mut doc = Self::from_text(path, untitled_index, &text);
+        doc.disk_hash = doc.path.is_some().then(|| text_hash([saved_text.as_str()]));
         if saved_text != text {
             // Mark dirty: no buffer version will ever equal this.
             doc.saved_version = u64::MAX;
@@ -248,6 +255,7 @@ impl Document {
         }
         self.saved_version = self.buffer.version();
         self.disk = DiskState::InSync;
+        self.disk_hash = Some(text_hash(self.buffer.rope().chunks()));
         Ok(true)
     }
 
@@ -259,8 +267,15 @@ impl Document {
         match std::fs::read(path) {
             Ok(bytes) => {
                 let text = encoding::decode_with(&bytes, self.encoding).text;
-                if *self.buffer.rope() == *text {
+                let hash = text_hash([text.as_str()]);
+                if self.disk_hash == Some(hash) {
+                    // What it held when last read or saved: nobody else changed it.
+                    if self.disk == DiskState::Deleted {
+                        self.disk = DiskState::InSync;
+                    }
+                } else if *self.buffer.rope() == *text {
                     self.disk = DiskState::InSync;
+                    self.disk_hash = Some(hash);
                 } else if self.is_dirty() {
                     self.disk = DiskState::Changed;
                 } else {
@@ -337,6 +352,7 @@ impl Document {
         self.buffer.replace_all(text, Selection::new(anchor.min(len), head.min(len)));
         self.saved_version = self.buffer.version();
         self.disk = DiskState::InSync;
+        self.disk_hash = Some(text_hash([text]));
     }
 
     pub fn save_as(&mut self, path: PathBuf) -> std::io::Result<()> {
@@ -458,9 +474,65 @@ fn built_in_language_name(ext: &str) -> &'static str {
     }
 }
 
+/// A hash of text given in pieces; the same text hashes the same however it is cut.
+fn text_hash<'a>(pieces: impl IntoIterator<Item = &'a str>) -> u64 {
+    use std::hash::Hasher;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for piece in pieces {
+        hasher.write(piece.as_bytes());
+    }
+    hasher.finish()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Renaming or moving a file with unsaved edits, or a write of the same text, isn't a
+    /// change by someone else; a real one still is.
+    #[test]
+    fn only_other_programs_changes_count_as_changed_on_disk() {
+        let dir = std::env::temp_dir().join(format!("coiman_disk_hash_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (old, new) = (dir.join("notes.txt"), dir.join("renamed.txt"));
+        std::fs::write(
+            &old, "hello
+",
+        )
+        .unwrap();
+        let mut doc = Document::open(&old).unwrap();
+        doc.buffer.insert("edit ");
+        assert!(doc.is_dirty());
+        // The app renames it; the watcher reports the new path.
+        std::fs::rename(&old, &new).unwrap();
+        doc.path = Some(new.clone());
+        doc.check_disk();
+        assert_eq!(doc.disk, DiskState::InSync, "the app's own rename");
+        // Something rewrites the same text.
+        std::fs::write(
+            &new, "hello
+",
+        )
+        .unwrap();
+        doc.check_disk();
+        assert_eq!(doc.disk, DiskState::InSync, "same text");
+        // Another program really changes it.
+        std::fs::write(
+            &new,
+            "changed elsewhere
+",
+        )
+        .unwrap();
+        doc.check_disk();
+        assert_eq!(doc.disk, DiskState::Changed);
+        assert!(doc.is_dirty(), "the edit is kept");
+        // Saving takes the new text as the baseline.
+        doc.save().unwrap();
+        doc.check_disk();
+        assert_eq!(doc.disk, DiskState::InSync);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn brackets_in_strings_neither_match_nor_count() {

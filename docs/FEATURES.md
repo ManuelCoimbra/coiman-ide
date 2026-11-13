@@ -13,7 +13,10 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   **Shift+Delete** deletes them for good, each after asking (Enter confirms, Escape cancels).
   **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste files and folders ("a copy.txt" when the
   name is taken; open files follow a move), **Shift+Alt+C** copies paths, **Ctrl+A** selects all
-  and Escape drops the selection and a pending cut. The open folder itself is never deleted, cut or
+  and Escape drops the selection and a pending cut. Drag a file or folder onto a folder to move
+  it there, or onto the project row to bring it back to the root; open files follow. Conflicting
+  names are left where they are, with the reason in the status bar. The open folder itself is
+  never deleted, cut or
   renamed. These keys are commands in **Keyboard Shortcuts**, marked Explorer, and can be changed
   there or in the keybindings file with `when = "filesExplorerFocus"`.
 - **Filter Files** (`Ctrl+Alt+F`, or the magnifier in the Explorer's header) filters the whole
