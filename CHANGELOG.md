@@ -17,6 +17,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The bottom panel's tabs no longer run under its buttons: they scroll sideways in the room
+  the buttons leave. The status bar's right side keeps what fits, by priority (line and
+  column first), instead of running over the left side.
 - The error count drops as errors are fixed: what a cargo check, a run or a test run said
   about a file stops counting once the file is edited, and counts again at the next run.
 - Git: branches pushed by others appear in Checkout after Fetch or Pull (as `origin/name`),

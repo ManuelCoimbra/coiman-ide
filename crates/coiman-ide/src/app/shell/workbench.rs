@@ -731,9 +731,14 @@ impl CodeApp {
 
     /// The bottom panel: Problems, References and Terminal tabs.
     pub(crate) fn panel(&mut self, ui: &mut egui::Ui) {
-        let mut action = None;
-        // Docked at the side there's no room for the tabs and the buttons on one line.
-        let stacked = ui.available_width() < 760.0;
+        // The buttons first, at the right; the tabs scroll sideways in what's left, so neither
+        // runs over the other however narrow the panel gets.
+        let text = ui.text_style_height(&egui::TextStyle::Body);
+        let full = ui.available_rect_before_wrap();
+        let row = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), (text + 10.0).max(26.0)));
+        let mut right =
+            ui.new_child(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::right_to_left(Align::Center)));
+        let (mut action, used) = self.panel_buttons(&mut right);
         let header = |ui: &mut egui::Ui| {
             let mut tabs = vec![
                 (PanelTab::Problems, self.problems_tab_label()),
@@ -801,16 +806,17 @@ impl CodeApp {
                 }
                 ui.add_space(if pills { 0.0 } else { 8.0 });
             }
-            if !stacked {
-                action = self.panel_buttons(ui);
-            }
         };
-        if stacked {
-            ui.horizontal_wrapped(header);
-            ui.horizontal(|ui| action = self.panel_buttons(ui));
-        } else {
-            ui.horizontal(header);
-        }
+        let tabs_rect = row.with_max_x((row.right() - used - 12.0).max(row.left() + 60.0));
+        let mut left =
+            ui.new_child(egui::UiBuilder::new().max_rect(tabs_rect).layout(egui::Layout::left_to_right(Align::Center)));
+        egui::ScrollArea::horizontal()
+            .id_salt("panel_tabs")
+            .max_width(tabs_rect.width())
+            .auto_shrink([false, true])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+            .show(&mut left, |ui| ui.horizontal(header));
+        ui.allocate_rect(row, Sense::hover());
         ui.add_space(4.0);
         match self.panel_tab {
             PanelTab::Problems => self.problems_panel(ui),
@@ -841,18 +847,22 @@ impl CodeApp {
     }
 
     /// Closing the panel, and the terminal's own buttons, at the right.
-    fn panel_buttons(&mut self, ui: &mut egui::Ui) -> Option<TerminalAction> {
+    /// The panel's buttons, at the right; also how wide they came out.
+    fn panel_buttons(&mut self, ui: &mut egui::Ui) -> (Option<TerminalAction>, f32) {
         let mut action = None;
-        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-            if icons::button(ui, Icon::Close, "Close Panel").clicked() {
-                self.panel_visible = false;
-            }
-            if self.panel_tab == PanelTab::Terminal {
-                ui.add_space(8.0);
-                action = self.terminal.header(ui);
-            }
-        });
-        action
+        let width = ui
+            .with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                if icons::button(ui, Icon::Close, "Close Panel").clicked() {
+                    self.panel_visible = false;
+                }
+                if self.panel_tab == PanelTab::Terminal {
+                    ui.add_space(8.0);
+                    action = self.terminal.header(ui);
+                }
+                ui.min_rect().width()
+            })
+            .inner;
+        (action, width)
     }
 
     /// Applies a button from the terminal header.
@@ -1597,6 +1607,10 @@ impl CodeApp {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                // What fits, by priority: the right side never runs over the left (in the Dock
+                // layout it only has what's right of the dock). The rest drops out, least
+                // useful first.
+                let fit = self.status_fit(ui, size);
                 if self.shown_image().is_some() {
                     ui.label(white("Image".to_owned()));
                 } else if let Some(doc) = self.docs.get(self.active) {
@@ -1614,10 +1628,12 @@ impl CodeApp {
                             .on_hover_text(tip)
                             .clicked()
                     };
-                    if clickable(ui, doc.line_ending().to_owned(), "Select End of Line Sequence") {
+                    if fit.contains(&Fit::LineEnding)
+                        && clickable(ui, doc.line_ending().to_owned(), "Select End of Line Sequence")
+                    {
                         status_cmd = Some(Command::ChangeLineEnding);
                     }
-                    if clickable(ui, doc.encoding_name(), "Select Encoding") {
+                    if fit.contains(&Fit::Encoding) && clickable(ui, doc.encoding_name(), "Select Encoding") {
                         status_cmd = Some(Command::ChangeEncoding);
                     }
                     let indent = doc.buffer.indent;
@@ -1626,7 +1642,7 @@ impl CodeApp {
                     } else {
                         format!("Spaces: {}", indent.size)
                     };
-                    if clickable(ui, label, "Select Indentation") {
+                    if fit.contains(&Fit::Indent) && clickable(ui, label, "Select Indentation") {
                         status_cmd = Some(Command::ChangeIndentation);
                     }
                     let (line, col) = doc.cursor();
@@ -1636,25 +1652,29 @@ impl CodeApp {
                         (1, n) => format!(" ({n} selected)"),
                         (n, _) => format!(" ({n} selections)"),
                     };
-                    ui.label(white(format!("Ln {line}, Col {col}{sel}")));
+                    if fit.contains(&Fit::Cursor) {
+                        ui.label(white(format!("Ln {line}, Col {col}{sel}")));
+                    }
                 }
-                let zoom = ui
-                    .horizontal(|ui| {
-                        ui.spacing_mut().item_spacing.x = 4.0;
-                        ui.add(
-                            egui::Label::new(white(format!("{:.0}%", self.zoom * 100.0)))
-                                .sense(Sense::hover())
-                                .selectable(false),
-                        );
-                        icons::show(ui, Icon::ZoomIn, size, theme::colors().status_fg);
-                    })
-                    .response
-                    .interact(Sense::click())
-                    .on_hover_text("Zoom");
-                egui::Popup::menu(&zoom)
-                    .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                    .show(|ui| self.zoom_menu(ui));
-                if let Some((label, tip)) = self.python_label()
+                if fit.contains(&Fit::Zoom) {
+                    let zoom = ui
+                        .horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 4.0;
+                            ui.add(
+                                egui::Label::new(white(format!("{:.0}%", self.zoom * 100.0)))
+                                    .sense(Sense::hover())
+                                    .selectable(false),
+                            );
+                            icons::show(ui, Icon::ZoomIn, size, theme::colors().status_fg);
+                        })
+                        .response
+                        .interact(Sense::click())
+                        .on_hover_text("Zoom");
+                    egui::Popup::menu(&zoom)
+                        .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                        .show(|ui| self.zoom_menu(ui));
+                }
+                if let Some((label, tip)) = self.python_label().filter(|_| fit.contains(&Fit::Python))
                     && ui
                         .add(egui::Label::new(white(label)).sense(Sense::click()).selectable(false))
                         .on_hover_text(tip)
@@ -1662,7 +1682,7 @@ impl CodeApp {
                 {
                     status_cmd = Some(Command::ChoosePython);
                 }
-                if let Some(url) = self.dev_url()
+                if let Some(url) = self.dev_url().filter(|_| fit.contains(&Fit::DevUrl))
                     && ui
                         .add(egui::Label::new(white(format!("Open {url}"))).sense(Sense::click()).selectable(false))
                         .on_hover_text("Open the dev server in your browser")
@@ -1671,6 +1691,7 @@ impl CodeApp {
                     ui.ctx().open_url(egui::OpenUrl::new_tab(url));
                 }
                 if self.preview_running()
+                    && fit.contains(&Fit::Preview)
                     && ui
                         .add(egui::Label::new(white("Live Preview".to_owned())).sense(Sense::click()).selectable(false))
                         .on_hover_text("Open the page's console")
@@ -1683,6 +1704,55 @@ impl CodeApp {
             });
         });
         status_cmd
+    }
+
+    /// Which of the status bar's right-hand items fit in the room left, chosen by priority.
+    fn status_fit(&self, ui: &egui::Ui, size: f32) -> Vec<Fit> {
+        let font = egui::FontId::proportional(size);
+        let width = |text: String| ui.fonts_mut(|f| f.layout_no_wrap(text, font.clone(), Color32::WHITE).size().x);
+        let gap = ui.spacing().item_spacing.x;
+        // The language and the plugins' items are always drawn: count them first.
+        let mut used = 0.0;
+        let mut items: Vec<(Fit, f32)> = Vec::new();
+        if let Some(doc) = self.docs.get(self.active).filter(|_| self.shown_image().is_none()) {
+            used += width(doc.language_name().to_owned()) + gap;
+            if doc.buffer.read_only {
+                used += width("Read-only".to_owned()) + gap;
+            }
+            if doc.large {
+                used += width("Large file mode".to_owned()) + gap;
+            }
+            let (line, col) = doc.cursor();
+            let sel = match (doc.buffer.selections().len(), doc.selection_len()) {
+                (1, 0) => String::new(),
+                (1, n) => format!(" ({n} selected)"),
+                (n, _) => format!(" ({n} selections)"),
+            };
+            items.push((Fit::Cursor, width(format!("Ln {line}, Col {col}{sel}"))));
+            let indent = doc.buffer.indent;
+            items.push((Fit::Indent, width(format!("Spaces: {}", indent.size))));
+            items.push((Fit::Encoding, width(doc.encoding_name())));
+            items.push((Fit::LineEnding, width(doc.line_ending().to_owned())));
+        }
+        if let Some((label, _)) = self.python_label() {
+            items.insert(1.min(items.len()), (Fit::Python, width(label)));
+        }
+        items.push((Fit::Zoom, width(format!("{:.0}%", self.zoom * 100.0)) + 4.0 + size));
+        if let Some(url) = self.dev_url() {
+            items.push((Fit::DevUrl, width(format!("Open {url}"))));
+        }
+        if self.preview_running() {
+            items.push((Fit::Preview, width("Live Preview".to_owned())));
+        }
+        let room = ui.available_width() - 8.0;
+        let mut kept = Vec::new();
+        for (fit, w) in items {
+            if used + w + gap <= room {
+                used += w + gap;
+                kept.push(fit);
+            }
+        }
+        kept
     }
 
     pub(crate) fn close_dialog(&mut self, ctx: &egui::Context) {
@@ -1946,6 +2016,19 @@ fn text_chip(
         Stroke::NONE,
     ));
     response
+}
+
+/// The status bar's right-hand items that make way when there's no room.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Fit {
+    Cursor,
+    Python,
+    Indent,
+    Encoding,
+    LineEnding,
+    Zoom,
+    DevUrl,
+    Preview,
 }
 
 fn small_size(ui: &egui::Ui) -> f32 {
