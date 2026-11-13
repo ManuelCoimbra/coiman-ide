@@ -153,6 +153,8 @@ pub struct CodeApp {
     split: Option<split::Split>,
     /// Tab being dragged.
     tab_drag: Option<u64>,
+    /// Where on the dragged tab it was picked up, from its left edge.
+    tab_grab: f32,
     bookmarks: bookmarks::BookmarkState,
     prints: prints::Prints,
     preview: preview::Preview,
@@ -323,6 +325,7 @@ impl CodeApp {
             closed_editors: Vec::new(),
             split: None,
             tab_drag: None,
+            tab_grab: 0.0,
             bookmarks: Default::default(),
             prints: Default::default(),
             preview: Default::default(),

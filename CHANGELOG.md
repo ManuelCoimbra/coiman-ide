@@ -14,6 +14,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
   Mermaid's 500-arrow limit. **Preview Mermaid** shows the diagram in a Markdown draft.
 - Files and folders can be dragged onto a folder in the Explorer (or the project row) to move
   them there, with open tabs following and name conflicts reported.
+- Dragging a tab works like a browser: the tab follows the pointer and the others slide aside
+  to show where it will land. Dragged off the bar, a card follows the pointer, and over the
+  right half of the editor a band says it will open beside the current file.
 
 ### Fixed
 

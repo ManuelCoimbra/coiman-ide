@@ -198,17 +198,64 @@ impl CodeApp {
         }
         ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
         let Some(from) = self.docs.iter().position(|d| d.uid == uid) else { return };
-        let Some(to) = tabs.iter().position(|r| r.x_range().contains(p.x)) else { return };
-        if to == from || !bar.y_range().contains(p.y) {
+        self.paint_tab_drag(ui, from, bar, p);
+        if !bar.y_range().contains(p.y) {
             return;
         }
-        // Past the middle only, so a wide tab doesn't swap straight back.
-        let middle = tabs[to].center().x;
-        if (to > from && p.x > middle) || (to < from && p.x < middle) {
+        // The tab swaps with a neighbour once its edge passes that neighbour's middle,
+        // so the neighbour is pushed aside before the pointer gets there.
+        let Some(width) = tabs.get(from).map(|r| r.width()) else { return };
+        let left = p.x - self.tab_grab;
+        let to = if tabs.get(from + 1).is_some_and(|r| left + width > r.center().x) {
+            from + 1
+        } else if from > 0 && tabs.get(from - 1).is_some_and(|r| left < r.center().x) {
+            from - 1
+        } else {
+            return;
+        };
+        {
             let active = self.docs.get(self.active).map(|d| d.uid);
             let doc = self.docs.remove(from);
             self.docs.insert(to, doc);
             self.active = self.docs.iter().position(|d| Some(d.uid) == active).unwrap_or(to);
         }
+    }
+
+    /// What a tab drag will do, beyond the tab sliding along the bar: over the right half of
+    /// the editor a band says it will open beside the current file, and off the bar a card
+    /// follows the pointer.
+    fn paint_tab_drag(&self, ui: &egui::Ui, from: usize, bar: Rect, p: egui::Pos2) {
+        let pal = crate::ui::theme::colors();
+        let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::unique("tab_drag")));
+        // Beside the current file, when let go here.
+        let content = ui.ctx().content_rect();
+        let beside = p.y > bar.bottom() && p.x > bar.center().x && p.x < bar.right();
+        if beside {
+            let zone = Rect::from_min_max(
+                egui::pos2(bar.center().x + 4.0, bar.bottom() + 4.0),
+                egui::pos2(bar.right() - 4.0, content.bottom() - 60.0),
+            );
+            painter.rect_filled(zone, 12.0, pal.accent.gamma_multiply(0.10));
+            painter.rect_stroke(zone, 12.0, egui::Stroke::new(1.5, pal.accent), egui::StrokeKind::Inside);
+            painter.text(
+                zone.center() - egui::vec2(0.0, 40.0),
+                egui::Align2::CENTER_CENTER,
+                "Open beside",
+                egui::FontId::proportional(15.0),
+                pal.text,
+            );
+        }
+        if bar.y_range().contains(p.y) {
+            return;
+        }
+        // Off the bar, the tab as a card under the pointer.
+        let title = self.docs.get(from).map(|d| d.title()).unwrap_or_default();
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let galley = painter.layout_no_wrap(title, font, pal.text);
+        let size = egui::vec2(galley.size().x + 24.0, galley.size().y + 12.0);
+        let ghost = Rect::from_min_size(p + egui::vec2(10.0, 10.0), size);
+        painter.rect_filled(ghost, 9.0, pal.sidebar_bg.gamma_multiply(0.95));
+        painter.rect_stroke(ghost, 9.0, egui::Stroke::new(1.0, pal.accent), egui::StrokeKind::Inside);
+        painter.galley(ghost.center() - galley.size() / 2.0, galley, pal.text);
     }
 }

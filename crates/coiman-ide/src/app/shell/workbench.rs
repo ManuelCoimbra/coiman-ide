@@ -1123,11 +1123,15 @@ impl CodeApp {
         let mut close = None;
         let mut tabs = Vec::with_capacity(self.docs.len());
         let mut drag_started = None;
+        let mut grab = None;
         let view_tabs = self.view_tabs();
         let view_showing = view_tabs.iter().any(|t| t.2);
         let (mut view_select, mut view_close) = (None, None);
         let bar_height = ui.spacing().interact_size.y.max(ui.text_style_height(&egui::TextStyle::Body)) + 14.0;
         let buttons_width = if view_showing { 0.0 } else { self.file_buttons_ui(ui, bar_height) };
+        // The bar's rows (a horizontal scroll area doesn't clip up and down).
+        let top = ui.max_rect().top();
+        let rows = egui::Rangef::new(top, top + bar_height);
         egui::ScrollArea::horizontal()
             .id_salt("tabs")
             .max_width((ui.available_width() - buttons_width).max(80.0))
@@ -1143,13 +1147,38 @@ impl CodeApp {
                     // Painted under the cards once their places are known.
                     let glow = ui.painter().add(egui::Shape::Noop);
                     let mut lit = None;
+                    // Each tab is painted on a layer of its own so it can slide: the dragged one
+                    // under the pointer, the others over to their new places, as in a browser.
+                    // Off the bar, the tab goes back to its place and a card follows the pointer instead.
+                    let pointer_x = ui.input(|i| i.pointer.latest_pos()).filter(|p| rows.contains(p.y)).map(|p| p.x);
+                    let parent = ui.layer_id();
+                    let span = ui.clip_rect().x_range();
                     for (i, doc) in self.docs.iter().enumerate() {
+                        let dragged = self.tab_drag == Some(doc.uid);
+                        let order = if dragged { egui::Order::Foreground } else { parent.order };
+                        let layer = egui::LayerId::new(order, egui::Id::unique(("tab_layer", doc.uid)));
                         let active = i == self.active && !view_showing;
                         let pal = theme::colors();
                         let frame = if cards {
                             // A card: lit when it's the file in front, an outline otherwise.
                             let edge = if active { Color32::TRANSPARENT } else { pal.border };
+                            // Picked up, a card is solid and lifted, so the ones it passes don't show through.
+                            let (fill, edge, shadow) = if dragged {
+                                let bg = theme::tab_bar_bg();
+                                let fill = if active { bg.lerp_to_gamma(pal.accent, 0.18) } else { bg };
+                                let shadow = egui::Shadow {
+                                    offset: [0, 2],
+                                    blur: 8,
+                                    spread: 0,
+                                    color: Color32::from_black_alpha(90),
+                                };
+                                (fill, pal.accent, shadow)
+                            } else {
+                                (Color32::TRANSPARENT, edge, egui::Shadow::NONE)
+                            };
                             egui::Frame::new()
+                                .fill(fill)
+                                .shadow(shadow)
                                 .stroke(Stroke::new(1.0, edge))
                                 .corner_radius(9.0)
                                 .inner_margin(egui::Margin::symmetric(11, 5))
@@ -1158,59 +1187,94 @@ impl CodeApp {
                             let fill = if active { pal.tab_active_bg } else { pal.tab_inactive_bg };
                             egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(10, 7))
                         };
-                        let resp = frame
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    let color =
-                                        if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
-                                    let icon_size = ui.text_style_height(&egui::TextStyle::Body);
-                                    let inside = doc.path.as_deref().zip(self.explorer.root.as_deref());
-                                    let place = inside.and_then(|(p, r)| p.strip_prefix(r).ok());
-                                    let place = place.map_or_else(|| doc.title(), |p| p.to_string_lossy().into_owned());
-                                    let role = match &doc.path {
-                                        Some(path) => self.explorer.role_of(path, &place),
-                                        None => FileRole::of_name(&place),
-                                    };
-                                    icons::show_source(ui, &place, role, icon_size);
-                                    ui.add_space(4.0);
-                                    let label = ui.add(
-                                        egui::Label::new(RichText::new(doc.title()).color(color))
-                                            .sense(Sense::click_and_drag())
-                                            .selectable(false),
-                                    );
-                                    if label.clicked() {
-                                        select = Some(i);
-                                    }
-                                    if label.drag_started() {
-                                        drag_started = Some(doc.uid);
-                                    }
-                                    if label.middle_clicked() {
-                                        close = Some(i);
-                                    }
-                                    // Unsaved: a dot that turns into × on hover, like VS Code.
-                                    let size = ui.text_style_height(&egui::TextStyle::Body);
-                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
-                                    let hovered = resp.hovered();
-                                    if hovered {
-                                        ui.painter().rect_filled(rect, 3.0, theme::colors().hover_bg);
-                                    }
-                                    let (glyph, color) = match (doc.is_dirty(), hovered) {
-                                        (true, false) => (Icon::Dot, theme::colors().modified),
-                                        (_, true) => (Icon::Close, theme::colors().tab_active_fg),
-                                        _ => (Icon::Close, theme::colors().text_dim),
-                                    };
-                                    icons::paint(ui.painter(), rect.shrink(size * 0.12), glyph, color);
-                                    if resp.on_hover_text("Close (Ctrl+W)").clicked() {
-                                        close = Some(i);
-                                    }
-                                });
+                        let resp = ui
+                            .scope_builder(egui::UiBuilder::new().layer_id(layer), |ui| {
+                                frame
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            let color = if active {
+                                                theme::colors().tab_active_fg
+                                            } else {
+                                                theme::colors().text_dim
+                                            };
+                                            let icon_size = ui.text_style_height(&egui::TextStyle::Body);
+                                            let inside = doc.path.as_deref().zip(self.explorer.root.as_deref());
+                                            let place = inside.and_then(|(p, r)| p.strip_prefix(r).ok());
+                                            let place =
+                                                place.map_or_else(|| doc.title(), |p| p.to_string_lossy().into_owned());
+                                            let role = match &doc.path {
+                                                Some(path) => self.explorer.role_of(path, &place),
+                                                None => FileRole::of_name(&place),
+                                            };
+                                            icons::show_source(ui, &place, role, icon_size);
+                                            ui.add_space(4.0);
+                                            let label = ui.add(
+                                                egui::Label::new(RichText::new(doc.title()).color(color))
+                                                    .sense(Sense::click_and_drag())
+                                                    .selectable(false),
+                                            );
+                                            if label.clicked() {
+                                                select = Some(i);
+                                            }
+                                            if label.drag_started() {
+                                                drag_started = Some(doc.uid);
+                                            }
+                                            if label.middle_clicked() {
+                                                close = Some(i);
+                                            }
+                                            // Unsaved: a dot that turns into × on hover, like VS Code.
+                                            let size = ui.text_style_height(&egui::TextStyle::Body);
+                                            let (rect, resp) =
+                                                ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+                                            let hovered = resp.hovered();
+                                            if hovered {
+                                                ui.painter().rect_filled(rect, 3.0, theme::colors().hover_bg);
+                                            }
+                                            let (glyph, color) = match (doc.is_dirty(), hovered) {
+                                                (true, false) => (Icon::Dot, theme::colors().modified),
+                                                (_, true) => (Icon::Close, theme::colors().tab_active_fg),
+                                                _ => (Icon::Close, theme::colors().text_dim),
+                                            };
+                                            icons::paint(ui.painter(), rect.shrink(size * 0.12), glyph, color);
+                                            if resp.on_hover_text("Close (Ctrl+W)").clicked() {
+                                                close = Some(i);
+                                            }
+                                        });
+                                    })
+                                    .response
                             })
-                            .response;
+                            .inner;
                         tabs.push(resp.rect);
-                        let r = resp.rect;
+                        let natural = resp.rect;
+                        if drag_started == Some(doc.uid) {
+                            let from = ui.input(|i| i.pointer.press_origin()).map_or(natural.left(), |p| p.x);
+                            grab = Some(from - natural.left());
+                        }
+                        let ctx = ui.ctx().clone();
+                        let slide = egui::Id::unique(("tab_x", doc.uid));
+                        let x = match (dragged, pointer_x) {
+                            (true, Some(px)) => {
+                                let left =
+                                    (px - self.tab_grab).clamp(span.min, (span.max - natural.width()).max(span.min));
+                                ctx.animate_value_with_time(slide, left, 0.0)
+                            }
+                            _ => ctx.animate_value_with_time(slide, natural.left(), 0.14),
+                        };
+                        let dx = x - natural.left();
+                        if layer.order == parent.order {
+                            ctx.set_sublayer(parent, layer);
+                        }
+                        ctx.transform_layer_shapes(
+                            layer,
+                            egui::emath::TSTransform::from_translation(egui::vec2(dx, 0.0)),
+                        );
+                        if dx != 0.0 {
+                            ctx.request_repaint();
+                        }
+                        let r = natural.translate(egui::vec2(dx, 0.0));
                         if cards {
                             if active {
-                                lit = Some(r);
+                                lit = Some((r, dragged));
                             }
                         } else if active && theme::islands() {
                             // A line under the tab, that slides over from the last one.
@@ -1228,11 +1292,19 @@ impl CodeApp {
                             ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::colors().border));
                         }
                     }
-                    if let Some(r) = lit {
-                        // The lit card glides over from the one before.
+                    if let Some((r, dragged)) = lit {
+                        // The lit card glides over from the one before. A card being dragged is lit
+                        // itself, so the glow stays with it instead of trailing behind.
                         let ctx = ui.ctx().clone();
-                        let left = theme::glide(&ctx, egui::Id::unique("card_left"), r.left());
-                        let right = theme::glide(&ctx, egui::Id::unique("card_right"), r.right());
+                        let (left_id, right_id) = (egui::Id::unique("card_left"), egui::Id::unique("card_right"));
+                        let (left, right) = if dragged {
+                            (
+                                ctx.animate_value_with_time(left_id, r.left(), 0.0),
+                                ctx.animate_value_with_time(right_id, r.right(), 0.0),
+                            )
+                        } else {
+                            (theme::glide(&ctx, left_id, r.left()), theme::glide(&ctx, right_id, r.right()))
+                        };
                         let at = egui::Rect::from_x_y_ranges(left..=right, r.shrink2(egui::vec2(0.0, 6.0)).y_range());
                         let pal = theme::colors();
                         let shape = egui::epaint::RectShape::new(
@@ -1301,6 +1373,9 @@ impl CodeApp {
         }
         if let Some(i) = close {
             self.request_close_tab(i);
+        }
+        if let Some(grab) = grab {
+            self.tab_grab = grab;
         }
         self.tab_drag = drag_started.or(self.tab_drag);
         if let Some(uid) = self.tab_drag {
