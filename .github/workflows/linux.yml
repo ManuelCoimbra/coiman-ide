@@ -227,6 +227,9 @@ jobs:
   flatpak:
     name: Flatpak (${{ matrix.arch }})
     needs: build
+    # Flathub's runtime updates fail now and then on the runners ("Invalid cross-device
+    # link"): a failed Flatpak doesn't hold the other packages back from the release.
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
