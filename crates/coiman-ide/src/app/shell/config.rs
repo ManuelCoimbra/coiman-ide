@@ -173,11 +173,15 @@ impl CodeApp {
 
     /// Reloads settings, keybindings and the color theme, applying what changed.
     pub(crate) fn reload_settings(&mut self, ctx: &egui::Context) {
+        use crate::app::slow_step;
+        let mut clock = std::time::Instant::now();
         let loaded = settings::load(self.explorer.root.as_deref());
+        slow_step("reading settings", &mut clock);
         let (keymap, key_problems) = Keymap::load(settings::user_keybindings_path().as_deref());
         let mut problems = loaded.problems;
         problems.extend(key_problems);
         let (language_problem, languages_changed) = registry::reload();
+        slow_step("reading keybindings and languages", &mut clock);
         problems.extend(language_problem);
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
@@ -207,8 +211,12 @@ impl CodeApp {
         if first || new.editor.font_family != old.editor.font_family {
             self.apply_font_family(ctx, first, &new.editor.font_family);
         }
+        slow_step("loading fonts", &mut clock);
         if first || new.editor.font_size != old.editor.font_size {
             self.font_size = new.editor.font_size.clamp(6.0, 72.0);
+        }
+        if first || new.terminal.profiles != old.terminal.profiles {
+            self.terminal.profiles = coiman_core::terminal::profiles::all(&new.terminal.profiles);
         }
         if first || new.terminal.font_size != old.terminal.font_size {
             self.terminal_font_size = new.terminal.font_size.clamp(0.0, 72.0);
@@ -230,6 +238,7 @@ impl CodeApp {
             theme::set(ctx, t);
             problems.extend(err);
         }
+        slow_step("loading the color theme", &mut clock);
         if (first || new.workbench.icon_theme != old.workbench.icon_theme)
             && let Err(e) = coiman_core::appearance::file_icons::set_pack(new.workbench.icon_theme.trim())
         {
@@ -332,6 +341,29 @@ impl CodeApp {
         let value = toml::Value::String(id.clone()).to_string();
         if let Err(e) = self.write_user_setting(ctx, "workbench", "icon_theme", &value) {
             self.status = Some(e);
+        }
+    }
+
+    /// In the color theme picker, a theme the pointer rests on for a second is shown, without
+    /// being chosen; leaving the picker without choosing brings the chosen theme back.
+    pub(crate) fn preview_theme(&mut self, ctx: &egui::Context) {
+        let lingering = self
+            .palette
+            .lingering(ctx, 1.0)
+            .and_then(|(kind, label)| (kind == crate::ui::palette::PickerKind::Theme).then(|| label.to_owned()));
+        if let Some(label) = lingering {
+            if self.theme_preview.as_deref() != Some(label.as_str()) {
+                if self.themes.is_empty() {
+                    self.themes = theme::discover();
+                }
+                let (t, _) = theme::resolve(&label, &self.themes);
+                theme::set(ctx, t);
+                self.theme_preview = Some(label);
+            }
+        } else if self.theme_preview.is_some() && !self.palette.open {
+            self.theme_preview = None;
+            let (t, _) = theme::resolve(&self.settings.workbench.color_theme, &self.themes);
+            theme::set(ctx, t);
         }
     }
 

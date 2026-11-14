@@ -248,6 +248,11 @@ pub struct TerminalSettings {
     pub scrollback: usize,
     /// Font size of the terminal; 0 follows `editor.font_size`.
     pub font_size: f32,
+    /// Shells to offer besides those found on the computer: `[[terminal.profiles]]` with
+    /// `name` and `command`.
+    pub profiles: Vec<crate::terminal::profiles::Profile>,
+    /// Start the shells that were open again (in their folders) when Coiman starts.
+    pub restore: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -327,7 +332,7 @@ impl Default for GitSettings {
 
 impl Default for TerminalSettings {
     fn default() -> Self {
-        Self { shell: String::new(), scrollback: 10_000, font_size: 0.0 }
+        Self { shell: String::new(), scrollback: 10_000, font_size: 0.0, profiles: Vec::new(), restore: true }
     }
 }
 

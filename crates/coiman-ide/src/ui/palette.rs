@@ -59,6 +59,7 @@ pub enum PickerKind {
     Glyph,
     Theme,
     IconTheme,
+    TerminalProfile,
     LineEnding,
     Bookmark,
     Snippet,
@@ -250,6 +251,8 @@ pub struct Palette {
     /// Every setting: (label, section).
     setting_rows: Vec<(String, String)>,
     text_search: TextSearch,
+    /// The picker item under the pointer, and since when (egui's time).
+    hover: Option<(PickerKind, String, f64)>,
 }
 
 impl Palette {
@@ -306,6 +309,12 @@ impl Palette {
 
     /// Opens the Color Theme picker with `current` preselected.
     /// Opens a picker over `items` with `current` preselected.
+    /// The picker item the pointer has rested on for `seconds`, without it being chosen.
+    pub fn lingering(&self, ctx: &egui::Context, seconds: f64) -> Option<(PickerKind, &str)> {
+        let (kind, label, since) = self.hover.as_ref().filter(|_| self.open)?;
+        (ctx.input(|i| i.time) - since >= seconds).then_some((*kind, label.as_str()))
+    }
+
     pub fn show_picker(&mut self, kind: PickerKind, items: Vec<String>, current: &str, placeholder: &'static str) {
         self.show_with("");
         self.selected = items.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
@@ -524,6 +533,7 @@ impl Palette {
         // Cut, which would cut the query instead.
         let removable = self.picker.as_ref().is_some_and(|p| p.removable);
         let mut remove = None;
+        let mut hovered_now: Option<(PickerKind, String)> = None;
         if removable && !items.is_empty() {
             let shift_delete = ctx.input_mut(|i| {
                 let cut = i.modifiers.shift && !i.modifiers.ctrl;
@@ -709,6 +719,11 @@ impl Palette {
                             }
                             let on_cross =
                                 cross.is_some_and(|c| row.interact_pointer_pos().is_some_and(|p| c.contains(p)));
+                            if row.hovered()
+                                && let PaletteResult::Picked(kind, label) = &items[i].2
+                            {
+                                hovered_now = Some((*kind, label.clone()));
+                            }
                             if row.clicked() && on_cross {
                                 remove = Some(i);
                             } else if row.clicked() {
@@ -725,6 +740,17 @@ impl Palette {
 
         if enter && !items.is_empty() {
             result = Some(self.selected);
+        }
+        // Since when the pointer has rested on the same item.
+        let now = ctx.input(|i| i.time);
+        match hovered_now {
+            Some((kind, label)) => {
+                if self.hover.as_ref().is_none_or(|h| h.1 != label) {
+                    self.hover = Some((kind, label, now));
+                    ctx.request_repaint_after(std::time::Duration::from_millis(1050));
+                }
+            }
+            None => self.hover = None,
         }
         // Taken out: the app redraws the list without it, and the palette stays.
         if let Some(i) = remove.filter(|&i| i < items.len())

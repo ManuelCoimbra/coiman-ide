@@ -51,6 +51,29 @@ pub struct Session {
     /// Breakpoints by project folder, kept between runs.
     #[serde(default)]
     pub breakpoints: std::collections::BTreeMap<PathBuf, crate::launch::breakpoints::Saved>,
+    /// The shells that were open in the terminal, started again in their folders.
+    #[serde(default)]
+    pub terminals: SavedTerminals,
+}
+
+/// The terminal's shells (not the programs run in it), to start again next time.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Default)]
+pub struct SavedTerminals {
+    pub shells: Vec<SavedShell>,
+    /// Which was active, and which was beside it.
+    pub active: usize,
+    #[serde(default)]
+    pub split: Option<usize>,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct SavedShell {
+    /// The command line it started with.
+    pub command: String,
+    pub cwd: PathBuf,
+    /// A profile's name, when it came from one.
+    #[serde(default)]
+    pub title: Option<String>,
 }
 
 /// Where the side bar and panel are, and their sizes. Sizes are None until changed by hand.
@@ -135,6 +158,7 @@ impl Session {
             sidebar_hidden: false,
             layout: SavedLayout::default(),
             breakpoints: Default::default(),
+            terminals: Default::default(),
         }
     }
 
@@ -249,6 +273,11 @@ mod tests {
             sidebar_hidden: false,
             layout: SavedLayout::default(),
             breakpoints: Default::default(),
+            terminals: SavedTerminals {
+                shells: vec![SavedShell { command: "bash -l".into(), cwd: "/p".into(), title: Some("Bash".into()) }],
+                active: 0,
+                split: None,
+            },
             docs: vec![
                 SessionDoc { path: Some("Z:/does/not/exist.txt".into()), untitled_index: 0, backup: None },
                 SessionDoc {

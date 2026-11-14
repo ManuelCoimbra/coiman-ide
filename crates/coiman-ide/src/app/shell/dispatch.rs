@@ -148,6 +148,11 @@ impl CodeApp {
                 }
             }
             Command::NewTerminal => self.new_terminal(ctx),
+            Command::SplitTerminal => self.split_terminal(ctx),
+            Command::NewTerminalWithProfile => {
+                let names = self.terminal.profiles.iter().map(|p| p.name.clone()).collect();
+                self.palette.show_picker(PickerKind::TerminalProfile, names, "", "Select a terminal profile");
+            }
             Command::KillTerminal => self.terminal.kill_active(),
             Command::ClearTerminal => self.terminal.clear_active(),
             Command::DetachTerminal => {
@@ -658,9 +663,50 @@ impl CodeApp {
 
     /// Starts a terminal with the configured shell and shows it.
     pub(crate) fn new_terminal(&mut self, ctx: &egui::Context) {
-        let (shell, scrollback) = (self.settings.terminal.shell.clone(), self.settings.terminal.scrollback);
+        let shell = self.settings.terminal.shell.clone();
+        self.new_terminal_with(ctx, &shell, None);
+    }
+
+    /// Starts the shells of the last session again, in their folders, without showing the
+    /// panel for them.
+    pub(crate) fn restore_terminals(&mut self, ctx: &egui::Context) {
+        let Some(saved) = self.terminals_to_restore.take() else { return };
+        if !self.settings.terminal.restore || saved.shells.is_empty() {
+            return;
+        }
+        let (scrollback, env) = (self.settings.terminal.scrollback, self.environment_variables());
+        let mut started = 0;
+        for shell in &saved.shells {
+            let cwd = if shell.cwd.is_dir() { shell.cwd.clone() } else { std::env::current_dir().unwrap_or_default() };
+            match self.terminal.new_tab_in(ctx, &shell.command, &env, scrollback, shell.title.clone(), &cwd) {
+                Ok(()) => started += 1,
+                Err(e) => coiman_core::applog::warn(&format!("couldn't start terminal `{}` again: {e}", shell.command)),
+            }
+        }
+        if started == saved.shells.len() {
+            self.terminal.arrange(saved.active, saved.split);
+        }
+        self.terminal.focus_requested = false;
+    }
+
+    /// A second terminal beside the active one, or one terminal again.
+    pub(crate) fn split_terminal(&mut self, ctx: &egui::Context) {
+        if self.terminal.is_split() {
+            self.terminal.unsplit();
+            return;
+        }
+        let before = if self.terminal.is_empty() { None } else { Some(self.terminal.active_index()) };
+        self.new_terminal(ctx);
+        if let Some(before) = before {
+            self.terminal.split_with_previous(before);
+        }
+    }
+
+    /// A new terminal running `shell` (empty: the default), named `title` when given.
+    pub(crate) fn new_terminal_with(&mut self, ctx: &egui::Context, shell: &str, title: Option<String>) {
+        let scrollback = self.settings.terminal.scrollback;
         let env = self.environment_variables();
-        match self.terminal.new_tab(ctx, &shell, &env, scrollback) {
+        match self.terminal.new_tab(ctx, shell, &env, scrollback, title) {
             Ok(()) => {
                 if !self.terminal.detached {
                     self.panel_visible = true;
@@ -709,6 +755,11 @@ impl CodeApp {
         match kind {
             PickerKind::Theme => self.set_color_theme(ctx, label),
             PickerKind::IconTheme => self.set_icon_theme(ctx, label),
+            PickerKind::TerminalProfile => {
+                if let Some(profile) = self.terminal.profiles.iter().find(|p| p.name == label).cloned() {
+                    self.new_terminal_with(ctx, &profile.command, Some(profile.name));
+                }
+            }
             PickerKind::CodeAction => self.pick_code_action(label),
             PickerKind::CodeLens => self.pick_code_lens(ctx, label),
             PickerKind::Branch => self.pick_branch(ctx, label),

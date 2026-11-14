@@ -196,6 +196,10 @@ pub struct CodeApp {
     /// The panel fills the room the editor had (the terminal full size), until restored.
     panel_maximized: bool,
     open_vsx: extensions::open_vsx::OpenVsxUi,
+    /// A color theme shown for a moment from the theme picker, by label.
+    theme_preview: Option<String>,
+    /// The shells to start again, from the last session.
+    terminals_to_restore: Option<coiman_core::project::session::SavedTerminals>,
     /// Just restored: the panel goes back to its saved size (egui would keep the big one).
     panel_restoring: bool,
     /// What's being pasted this frame, for what follows the editor.
@@ -263,6 +267,8 @@ pub struct CodeApp {
     /// Set by `--measure-startup`: process start, time the window was ready,
     /// and where to write the timings.
     pub(crate) startup_probe: Option<(std::time::Instant, std::time::Duration, PathBuf)>,
+    /// When the program started, until its first frame is logged.
+    pub(crate) first_frame_from: Option<std::time::Instant>,
     /// Background tree-sitter parser, started on the first frame.
     syntax: Option<SyntaxWorker>,
     /// Language servers and the state of their features.
@@ -376,6 +382,8 @@ impl CodeApp {
             editor_menu: None,
             panel_maximized: false,
             open_vsx: Default::default(),
+            theme_preview: None,
+            terminals_to_restore: None,
             panel_restoring: false,
             pasted: None,
             tests: Default::default(),
@@ -419,6 +427,7 @@ impl CodeApp {
             last_backup_time: 0.0,
             last_title: String::new(),
             startup_probe: None,
+            first_frame_from: None,
             syntax: None,
             lsp: lsp::LspState::default(),
             git: git::GitState::default(),
@@ -441,11 +450,13 @@ impl CodeApp {
         };
         // Always restore the previous session first so unsaved work is never
         // dropped; a path given on the command line then opens on top of it.
+        let mut clock = std::time::Instant::now();
         if let Some(saved) = session::load() {
             app.window = saved.window;
             app.cargo.run_pins = saved.run_pins.clone();
             app.restore_session(saved);
         }
+        slow_step("restoring the session", &mut clock);
         if let Some(path) = start_path {
             let path = path.canonicalize().map(strip_verbatim).unwrap_or(path);
             if path.is_dir() {
@@ -454,7 +465,9 @@ impl CodeApp {
                 app.open_file(&path);
             }
         }
+        slow_step("opening the folder or file asked for", &mut clock);
         app.reload_settings(ctx);
+        slow_step("applying the settings", &mut clock);
         app
     }
 }
@@ -691,9 +704,9 @@ impl CodeApp {
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps));
-            // Maximized: all the width but a strip of the editor.
+            // Maximized: all the width.
             let panel = if self.panel_maximized && panel_open {
-                panel.exact_size((ui.available_width() - 80.0).max(200.0))
+                panel.exact_size(ui.available_width().max(200.0))
             } else if restoring {
                 panel.exact_size(self.layout.panel_width())
             } else {
@@ -726,9 +739,9 @@ impl CodeApp {
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(frame);
-            // Maximized: all the height but the editor's tabs.
+            // Maximized: all the height.
             let panel = if self.panel_maximized && panel_open {
-                panel.exact_size((ui.available_height() - 44.0).max(120.0))
+                panel.exact_size(ui.available_height().max(120.0))
             } else if restoring {
                 panel.exact_size(self.layout.panel_height())
             } else {
@@ -952,7 +965,13 @@ impl CodeApp {
             Some(PaletteResult::Run(c)) => cmd = Some(c),
             Some(PaletteResult::WorkspaceSymbol(i)) => self.picked_workspace_symbol(i),
             Some(PaletteResult::RunPlugin(key)) => self.run_plugin_command(&key),
-            Some(PaletteResult::Picked(kind, label)) => self.handle_pick(&ctx, kind, &label),
+            Some(PaletteResult::Picked(kind, label)) => {
+                // What's chosen applies from the settings; the preview needn't be undone.
+                if kind == crate::ui::palette::PickerKind::Theme {
+                    self.theme_preview = None;
+                }
+                self.handle_pick(&ctx, kind, &label)
+            }
             Some(PaletteResult::Remove(crate::ui::palette::PickerKind::Recent, label)) => {
                 self.remove_recent(std::path::Path::new(&label))
             }
@@ -980,6 +999,8 @@ impl CodeApp {
             _ => {}
         }
 
+        self.preview_theme(&ctx);
+        self.restore_terminals(&ctx);
         self.close_dialog(&ctx);
         self.run_refusal_ui(&ctx);
         cmd = cmd.or(self.tour_ui(&ctx));
@@ -994,6 +1015,9 @@ impl CodeApp {
             ctx.request_repaint();
         }
         self.update_title(&ctx);
+        if let Some(started) = self.first_frame_from.take() {
+            coiman_core::applog::info(&format!("startup: first frame after {} ms", started.elapsed().as_millis()));
+        }
         if let Some((started, window_ready, file)) = self.startup_probe.take() {
             // "<ms until window ready> <ms until first frame>"
             let _ = std::fs::write(file, format!("{} {}", window_ready.as_millis(), started.elapsed().as_millis()));
@@ -1001,6 +1025,15 @@ impl CodeApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+}
+
+/// Logs a step of starting that took 50 ms or more, so a slow start shows where.
+pub(crate) fn slow_step(what: &str, clock: &mut std::time::Instant) {
+    let took = clock.elapsed();
+    if took.as_millis() >= 50 {
+        coiman_core::applog::info(&format!("startup: {what} took {} ms", took.as_millis()));
+    }
+    *clock = std::time::Instant::now();
 }
 
 /// A callback that wakes the UI from a background thread.

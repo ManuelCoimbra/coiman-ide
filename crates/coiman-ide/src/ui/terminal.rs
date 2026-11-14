@@ -59,6 +59,10 @@ struct Tab {
     /// Read this tab's output for problems.
     scan: Option<Scan>,
     started: std::time::Instant,
+    /// The folder it started in: where its output's relative file names are looked up.
+    cwd: PathBuf,
+    /// The shell's command line, for a shell (not a program run in a tab).
+    command: Option<String>,
 }
 
 /// How to look for problems in a tab's output.
@@ -124,6 +128,10 @@ pub struct Task<'a> {
 /// What the terminal header asks the app to do.
 pub enum Action {
     New,
+    /// A new terminal beside the active one, or back to one.
+    Split,
+    /// A new terminal with this profile.
+    NewWith(coiman_core::terminal::profiles::Profile),
     Kill,
     Detach,
     Attach,
@@ -135,6 +143,13 @@ pub struct Terminals {
     next_id: u64,
     cwd: PathBuf,
     pub focus_requested: bool,
+    /// The terminal shown beside the active one, by id.
+    split: Option<u64>,
+    /// Shells offered by the ▾ beside +: found and the user's.
+    pub profiles: Vec<coiman_core::terminal::profiles::Profile>,
+    /// A file and place (1-based line and column) Ctrl+clicked in the output, for the app
+    /// to open.
+    pub open_request: Option<(PathBuf, u32, u32)>,
     /// Shown in its own window instead of the bottom panel.
     pub detached: bool,
     search: Option<Search>,
@@ -157,7 +172,18 @@ struct Search {
 
 impl Terminals {
     pub fn new(cwd: PathBuf) -> Self {
-        Self { tabs: Vec::new(), active: 0, next_id: 1, cwd, focus_requested: false, detached: false, search: None }
+        Self {
+            tabs: Vec::new(),
+            active: 0,
+            next_id: 1,
+            cwd,
+            focus_requested: false,
+            split: None,
+            profiles: Vec::new(),
+            open_request: None,
+            detached: false,
+            search: None,
+        }
     }
 
     /// Shows the find bar, ready for typing.
@@ -181,12 +207,27 @@ impl Terminals {
         shell: &str,
         env: &[(String, String)],
         scrollback: usize,
+        title: Option<String>,
+    ) -> Result<(), String> {
+        let cwd = self.cwd.clone();
+        self.new_tab_in(ctx, shell, env, scrollback, title, &cwd)
+    }
+
+    /// Like [`Terminals::new_tab`], in folder `cwd`.
+    pub fn new_tab_in(
+        &mut self,
+        ctx: &egui::Context,
+        shell: &str,
+        env: &[(String, String)],
+        scrollback: usize,
+        title: Option<String>,
+        cwd: &Path,
     ) -> Result<(), String> {
         let shell = if shell.trim().is_empty() { default_shell() } else { shell.to_owned() };
         let ctx = ctx.clone();
         let size = Size { columns: 80, lines: 24 };
-        let session = Session::spawn(&shell, &self.cwd, env, size, scrollback, move || ctx.request_repaint())?;
-        self.push(session, None, false);
+        let session = Session::spawn(&shell, cwd, env, size, scrollback, move || ctx.request_repaint())?;
+        self.push(session, title, false, cwd.to_path_buf(), Some(shell));
         Ok(())
     }
 
@@ -199,7 +240,7 @@ impl Terminals {
             ctx.request_repaint()
         })?;
         let scan = task.scan.map(|matcher| Scan { cwd: task.cwd.to_path_buf(), matcher, done: false });
-        self.push(session, Some(task.title.to_owned()), true);
+        self.push(session, Some(task.title.to_owned()), true, task.cwd.to_path_buf(), None);
         if let Some(tab) = self.tabs.last_mut() {
             tab.scan = scan;
         }
@@ -273,8 +314,10 @@ impl Terminals {
         self.tabs.len() != before
     }
 
-    fn push(&mut self, session: Session, title: Option<String>, task: bool) {
+    fn push(&mut self, session: Session, title: Option<String>, task: bool, cwd: PathBuf, command: Option<String>) {
         self.tabs.push(Tab {
+            cwd,
+            command,
             id: self.next_id,
             session,
             title,
@@ -419,12 +462,29 @@ impl Terminals {
         if crate::ui::icons::button(ui, crate::ui::icons::Icon::Search, "Find (Ctrl+F)").clicked() {
             self.open_search();
         }
+        let (icon, tip) = if self.split.is_some() {
+            (crate::ui::icons::Icon::Restore, "Show One Terminal")
+        } else {
+            (crate::ui::icons::Icon::SplitRight, "Split Terminal (Ctrl+Shift+5)")
+        };
+        if crate::ui::icons::button(ui, icon, tip).clicked() {
+            action = Some(Action::Split);
+        }
+        // Right to left: the ▾ of profiles, then the + it belongs to.
+        let more = crate::ui::icons::button(ui, crate::ui::icons::Icon::ChevronDown, "New Terminal With Profile");
+        egui::Popup::menu(&more).show(|ui| {
+            for profile in &self.profiles {
+                if ui.button(&profile.name).on_hover_text(&profile.command).clicked() {
+                    action = Some(Action::NewWith(profile.clone()));
+                }
+            }
+        });
         if crate::ui::icons::button(ui, crate::ui::icons::Icon::Plus, "New Terminal (Ctrl+Shift+`)").clicked() {
             action = Some(Action::New);
         }
         // Right-to-left layout: list tabs last-first so they read left to right.
         for i in (0..self.tabs.len()).rev() {
-            let selected = i == self.active;
+            let selected = i == self.active || self.split == Some(self.tabs[i].id);
             if ui.selectable_label(selected, small(&self.tabs[i].label(i))).clicked() {
                 self.active = i;
                 self.focus_requested = true;
@@ -436,20 +496,55 @@ impl Terminals {
     /// Draws the active terminal in all remaining space and handles its input.
     pub fn body(&mut self, ui: &mut egui::Ui, font_size: f32) {
         let focus_requested = std::mem::take(&mut self.focus_requested);
-        let Some(tab) = self.tabs.get_mut(self.active) else {
+        if self.tabs.is_empty() {
             ui.label(
                 egui::RichText::new("No terminal is running. Press + to start one.").color(theme::colors().text_dim),
             );
             return;
-        };
+        }
         let rect = ui.available_rect_before_wrap();
         ui.allocate_rect(rect, Sense::hover());
+        // Split: the active terminal and the other beside it, the older on the left.
+        let other = self.split.and_then(|id| self.tabs.iter().position(|t| t.id == id)).filter(|&i| i != self.active);
+        if self.split.is_some() && other.is_none() {
+            self.split = None;
+        }
+        match other {
+            Some(other) => {
+                let (left, right) = if other < self.active { (other, self.active) } else { (self.active, other) };
+                let half = (rect.width() - SPLIT_GAP) / 2.0;
+                let a = Rect::from_min_size(rect.min, egui::vec2(half, rect.height()));
+                let b = Rect::from_min_max(Pos2::new(a.right() + SPLIT_GAP, rect.top()), rect.max);
+                let x = a.right() + SPLIT_GAP / 2.0;
+                ui.painter().vline(x, rect.y_range(), Stroke::new(1.0, theme::colors().border));
+                self.pane(ui, left, a, font_size, focus_requested && left == self.active, true);
+                self.pane(ui, right, b, font_size, focus_requested && right == self.active, true);
+            }
+            None => self.pane(ui, self.active, rect, font_size, focus_requested, false),
+        }
+    }
+
+    /// One terminal drawn in `rect`, taking its keys when focused. In a split, a click on it
+    /// makes it the active one.
+    fn pane(
+        &mut self,
+        ui: &mut egui::Ui,
+        index: usize,
+        rect: Rect,
+        font_size: f32,
+        focus_requested: bool,
+        split: bool,
+    ) {
+        let Some(tab) = self.tabs.get_mut(index) else { return };
         let id = tab.focus_id();
         let response = ui.interact(rect, id, Sense::click_and_drag());
         if focus_requested || response.clicked() || response.drag_started() {
             response.request_focus();
         }
         let focused = response.has_focus();
+        if focused && index != self.active {
+            self.active = index;
+        }
         if focused {
             ui.memory_mut(|m| {
                 m.set_focus_lock_filter(
@@ -477,16 +572,87 @@ impl Terminals {
             }
             handle_keys(ui, &tab.session);
         }
-        handle_mouse(ui, tab, &response, &grid);
+        let project = self.cwd.clone();
+        if let Some(open) = handle_mouse(ui, tab, &response, &grid, &project) {
+            self.open_request = Some(open);
+        }
         paint(ui, &tab.session, &grid, &font, focused, rect);
-        if let Some(search) = &mut self.search
+        underline_link(ui, tab, &response, &grid, &project);
+        // In a split the one with the keyboard is marked.
+        if split && focused {
+            ui.painter().rect_stroke(
+                rect,
+                2.0,
+                Stroke::new(1.0, theme::colors().accent.gamma_multiply(0.6)),
+                egui::StrokeKind::Inside,
+            );
+        }
+        if index == self.active
+            && let Some(search) = &mut self.search
             && !search_bar(ui, tab, search, &grid, rect)
         {
             self.search = None;
             self.focus_requested = true;
         }
     }
+
+    /// Starts showing the newest terminal beside the one that was active: a split.
+    pub fn split_with_previous(&mut self, previous: usize) {
+        if let Some(tab) = self.tabs.get(previous)
+            && previous != self.active
+        {
+            self.split = Some(tab.id);
+        }
+    }
+
+    /// The shells still running, to start again next time.
+    pub fn saved(&self) -> coiman_core::project::session::SavedTerminals {
+        use coiman_core::project::session::{SavedShell, SavedTerminals};
+        let shells: Vec<(usize, SavedShell)> = self
+            .tabs
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| t.exited.is_none())
+            .filter_map(|(i, t)| {
+                let command = t.command.clone()?;
+                Some((i, SavedShell { command, cwd: t.cwd.clone(), title: t.title.clone() }))
+            })
+            .collect();
+        let position = |index: usize| shells.iter().position(|(i, _)| *i == index);
+        let split = self.split.and_then(|id| self.tabs.iter().position(|t| t.id == id)).and_then(position);
+        SavedTerminals {
+            active: position(self.active).unwrap_or(0),
+            split,
+            shells: shells.into_iter().map(|(_, s)| s).collect(),
+        }
+    }
+
+    /// Makes the `active`-th terminal active and shows the `split`-th beside it, after
+    /// starting saved shells.
+    pub fn arrange(&mut self, active: usize, split: Option<usize>) {
+        if active < self.tabs.len() {
+            self.active = active;
+        }
+        self.split = split.filter(|&s| s != self.active).and_then(|s| self.tabs.get(s)).map(|t| t.id);
+    }
+
+    /// Which terminal is active, by position.
+    pub fn active_index(&self) -> usize {
+        self.active
+    }
+
+    /// Shows one terminal again.
+    pub fn unsplit(&mut self) {
+        self.split = None;
+    }
+
+    pub fn is_split(&self) -> bool {
+        self.split.is_some()
+    }
 }
+
+/// Space between two terminals side by side.
+const SPLIT_GAP: f32 = 9.0;
 
 /// Screen geometry of the character grid.
 struct Grid {
@@ -824,7 +990,61 @@ fn handle_keys(ui: &mut egui::Ui, session: &Session) {
     }
 }
 
-fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, grid: &Grid) {
+/// A file named in the output, as a path that exists: absolute, or from the tab's folder or
+/// the project's.
+fn existing_file(file: &str, tab_cwd: &Path, project: &Path) -> Option<PathBuf> {
+    let path = Path::new(file);
+    let candidates =
+        if path.is_absolute() { vec![path.to_path_buf()] } else { vec![tab_cwd.join(path), project.join(path)] };
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// The file reference under the pointer, with Ctrl held: its place on screen (line, first
+/// and last column of the logical line) and where it leads.
+fn link_under(ui: &egui::Ui, tab: &Tab, grid: &Grid, project: &Path) -> Option<(i32, usize, usize, PathBuf, u32, u32)> {
+    if !ui.input(|i| i.modifiers.command) {
+        return None;
+    }
+    let p = ui.input(|i| i.pointer.hover_pos())?;
+    if !grid.rect.contains(p) {
+        return None;
+    }
+    let size = tab.session.size();
+    let offset = tab.session.term().grid().display_offset();
+    let (point, _) = grid.point_at(p, offset, size);
+    let (start, text) = logical_line(&tab.session, point.line.0);
+    let col = (point.line.0 - start) as usize * size.columns + point.column.0;
+    let found = coiman_core::launch::matchers::file_ref_at(&text, col)?;
+    let path = existing_file(&found.file, &tab.cwd, project)?;
+    Some((start, found.start, found.end, path, found.line, found.col))
+}
+
+/// Underlines the file reference under the pointer while Ctrl is held, with a hand.
+fn underline_link(ui: &mut egui::Ui, tab: &Tab, response: &egui::Response, grid: &Grid, project: &Path) {
+    if !response.hovered() {
+        return;
+    }
+    let Some((start, from, to, ..)) = link_under(ui, tab, grid, project) else { return };
+    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    let size = tab.session.size();
+    let offset = tab.session.term().grid().display_offset() as i32;
+    let color = theme::colors().accent;
+    for c in from..to {
+        let row = start + (c / size.columns) as i32 + offset;
+        let x = grid.rect.left() + (c % size.columns) as f32 * grid.char_w;
+        let y = grid.rect.top() + (row as f32 + 1.0) * grid.row_h - 1.0;
+        ui.painter().line_segment([Pos2::new(x, y), Pos2::new(x + grid.char_w, y)], Stroke::new(1.0, color));
+    }
+}
+
+/// Returns a file and place to open when one was Ctrl+clicked.
+fn handle_mouse(
+    ui: &mut egui::Ui,
+    tab: &mut Tab,
+    response: &egui::Response,
+    grid: &Grid,
+    project: &Path,
+) -> Option<(PathBuf, u32, u32)> {
     let size = tab.session.size();
     // Wheel: scroll back through history, or send arrow keys to full-screen
     // programs (less, vim) that use the alternate screen.
@@ -850,16 +1070,19 @@ fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, gri
         }
     }
 
-    let Some(p) = ui.input(|i| i.pointer.interact_pos()) else { return };
+    let p = ui.input(|i| i.pointer.interact_pos())?;
     let offset = tab.session.term().grid().display_offset();
     let (point, side) = grid.point_at(p, offset, size);
-    // Ctrl+click opens the web address under the pointer.
+    // Ctrl+click opens the web address or the file named under the pointer.
     if response.clicked() && ui.input(|i| i.modifiers.command) {
         let (start, text) = logical_line(&tab.session, point.line.0);
         let col = (point.line.0 - start) as usize * size.columns + point.column.0;
         if let Some(url) = coiman_core::launch::matchers::url_at(&text, col) {
             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-            return;
+            return None;
+        }
+        if let Some((.., path, line, column)) = link_under(ui, tab, grid, project) {
+            return Some((path, line, column));
         }
     }
     if response.secondary_clicked() {
@@ -869,7 +1092,7 @@ fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, gri
             ui.ctx().copy_text(text);
             tab.session.term().selection = None;
         }
-        return;
+        return None;
     }
     let mut term = tab.session.term();
     if response.triple_clicked() {
@@ -889,6 +1112,7 @@ fn handle_mouse(ui: &mut egui::Ui, tab: &mut Tab, response: &egui::Response, gri
     } else if response.clicked() {
         term.selection = None;
     }
+    None
 }
 
 /// Resolves a cell color: the program's palette overrides, else the theme.

@@ -5,6 +5,27 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Terminal: Ctrl+click on `file:line[:col]` in the output opens the file there; profiles
+  (the shells found, and `[[terminal.profiles]]`) from a ▾ beside +; a split showing two
+  terminals side by side (`Ctrl+Shift+5`); the shells open at closing start again next
+  time, in their folders (`terminal.restore`).
+- The color theme picker shows a theme the pointer rests on for a second, without choosing it.
+- The log says how long starting took, and names any step of it that took 50 ms or more.
+
+### Changed
+
+- `editor.smooth_scrolling` off makes the mouse wheel move the text at once, three lines a
+  notch, as VS Code does; before, it only stopped keys from gliding.
+
+### Fixed
+
+- Linux: opening a project with tens of thousands of folders (an Android SDK, `vendor`)
+  could hold the window up for many seconds while it was watched for changes; that now
+  happens in the background.
+- A maximized panel left a strip of the editor at the top.
+
 ## [0.4.2] - 2026-11-14
 
 ### Added

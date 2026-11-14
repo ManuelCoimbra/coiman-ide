@@ -49,7 +49,8 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   asks first. The list lives in `recent.json` in the config folder; the old folders-only list
   still reads.
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
-- The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
+- The view glides when the wheel or keys move it (`editor.smooth_scrolling`, Settings > Smooth
+  scrolling); off, the wheel and keys move it at once, as VS Code does. Long jumps cut straight there
 - **Minimap** (`editor.minimap`, off by default, or **View: Toggle Minimap**): the whole file
   drawn small in place of the scrollbar, the part in view under a lighter band. Click it to
   bring that part to the middle; drag to scroll. A long file's minimap moves with the view
@@ -122,7 +123,16 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   less, htop) work. Several terminals as tabs (`` Ctrl+Shift+` `` for a new one), 10,000 lines
   of scrollback (wheel, `Shift+PageUp/Down`), drag to select, `Ctrl+C` copies a selection or
   interrupts, right-click copies, `Ctrl+V` pastes (bracketed paste). **Pop Out** moves the
-  terminal into its own window; closing that window puts it back in the panel. **Maximize
+  terminal into its own window; closing that window puts it back in the panel. Ctrl+click
+  on `file:line[:col]` in the output (`src/main.rs:12:5`, `File "a.py", line 3`,
+  `Program.cs(10,7)`, `at x.js:4:2`) opens the file there; with Ctrl held, a file that
+  exists is underlined. **Profiles**: the ▾ beside + (or **Terminal: New Terminal With
+  Profile...**) starts any shell found (Windows: PowerShell, PowerShell 7, Command Prompt,
+  Git Bash, MSYS2, WSL; elsewhere the shells in `/etc/shells`) or one of your own,
+  `[[terminal.profiles]]` with `name` and `command`. **Split** (the split button or
+  `Ctrl+Shift+5`) shows a second terminal beside the active one; a click gives one the
+  keyboard. The shells open when Coiman closes start again next time, in their folders,
+  with the split (`terminal.restore`); programs run in a tab don't. **Maximize
   Panel** (the corners button, or **View: Toggle Maximized Panel**) gives the panel all the
   room the editor had, and restores it. The shell is
   `terminal.shell` (default: PowerShell on Windows, `$SHELL` elsewhere)
@@ -894,7 +904,8 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
 - **Keybindings** (`Ctrl+K Ctrl+S`): `<config>\keybindings.toml` with VS Code
   command IDs, two-key chords, `when = "editorTextFocus"`, and `-command` to remove a
   default. Menus and the palette show the active shortcuts.
-- **Color themes** (`Ctrl+K Ctrl+T`): any VS Code theme. The picker lists themes from the
+- **Color themes** (`Ctrl+K Ctrl+T`): any VS Code theme. In the picker, a theme the pointer
+  rests on for a second is shown without being chosen; leaving brings the chosen one back. The picker lists themes from the
   installed VS Code (bundled and `~/.vscode/extensions`) and `<config>\themes`;
   `workbench.color_theme` also accepts a path to a theme `.json`. Theme files may use
   comments and `include`; token colors apply to tree-sitter and syntect highlighting.

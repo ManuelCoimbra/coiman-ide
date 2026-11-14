@@ -86,6 +86,8 @@ impl CodeApp {
             self.sidebar_visible = false;
         }
         self.layout.saved = saved.layout.clone();
+        // Started once there's a window to draw them in.
+        self.terminals_to_restore = Some(saved.terminals.clone());
         self.sheet_pinned = saved.layout.side_pinned;
         let active = saved.active;
         for doc in saved.restore_docs() {
@@ -111,6 +113,9 @@ impl CodeApp {
         session.layout = self.layout.saved.clone();
         session.layout.side_pinned = self.sheet_pinned;
         session.breakpoints = self.breakpoints_by_project();
+        if self.settings.terminal.restore {
+            session.terminals = self.terminal.saved();
+        }
         let json = session::to_json(&session);
         if json == self.last_session_json {
             return true;
@@ -584,11 +589,17 @@ impl CodeApp {
     }
 
     pub(crate) fn open_folder(&mut self, path: PathBuf) {
+        use crate::app::slow_step;
+        let mut clock = std::time::Instant::now();
         self.restore_breakpoints(&path);
+        slow_step("reading breakpoints", &mut clock);
         self.recent.add_project(&path, recent::now());
         self.remember_recent();
+        slow_step("recording the recent project", &mut clock);
         self.finder.set_root(Some(path.clone()));
+        slow_step("starting the file index", &mut clock);
         self.watcher.set_root(Some(&path));
+        slow_step("watching the folder for changes", &mut clock);
         // The workspace settings layer depends on the folder.
         self.settings_reload = true;
         self.terminal.set_cwd(&path);

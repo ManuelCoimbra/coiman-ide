@@ -114,7 +114,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 Kind::Toggle,
             ),
             row("editor", "code_lens", "Code lens", "Show what servers report about a line at its end.", Kind::Toggle),
-            row("editor", "smooth_scrolling", "Smooth scrolling", "Glide when keys move the view.", Kind::Toggle),
+            row(
+                "editor",
+                "smooth_scrolling",
+                "Smooth scrolling",
+                "Glide when the wheel or keys move the text. Off, it jumps at once, as VS Code does by default.",
+                Kind::Toggle,
+            ),
             row(
                 "editor",
                 "minimap",
@@ -407,6 +413,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row("terminal", "scrollback", "Scrollback", "Lines kept per terminal.", Kind::Whole(100, 1_000_000)),
             row("terminal", "font_size", "Font size", "0 follows the code's size.", Kind::Decimal(0.0, 72.0)),
+            row(
+                "terminal",
+                "restore",
+                "Reopen terminals",
+                "Start the shells that were open again, in their folders, when Coiman starts.",
+                Kind::Toggle,
+            ),
+            row(
+                "terminal",
+                "profiles",
+                "Profiles",
+                "The shells found here, plus any [[terminal.profiles]] with a name and a command.",
+                Kind::Button("New Terminal With Profile...", Command::NewTerminalWithProfile),
+            ),
         ],
     ),
     (

@@ -4,6 +4,7 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
+use std::sync::{Arc, Mutex};
 
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -23,7 +24,9 @@ pub struct Changes {
 }
 
 pub struct FileWatcher {
-    watcher: Option<RecommendedWatcher>,
+    /// Shared with the threads that add watches: on Linux a folder of tens of thousands of
+    /// folders takes inotify seconds to watch, which mustn't hold up the window.
+    watcher: Option<Arc<Mutex<RecommendedWatcher>>>,
     rx: Receiver<notify::Result<Event>>,
     root: Option<PathBuf>,
     /// Folders watched non-recursively for open files outside the root.
@@ -38,7 +41,8 @@ impl FileWatcher {
             let _ = tx.send(res);
             notify();
         })
-        .ok();
+        .ok()
+        .map(|w| Arc::new(Mutex::new(w)));
         Self { watcher, rx, root: None, extra_dirs: HashSet::new() }
     }
 
@@ -46,15 +50,27 @@ impl FileWatcher {
         if self.root.as_deref() == root {
             return;
         }
-        let Some(w) = &mut self.watcher else { return };
-        if let Some(old) = self.root.take() {
-            let _ = w.unwatch(&old);
-        }
-        if let Some(root) = root
-            && w.watch(root, RecursiveMode::Recursive).is_ok()
-        {
-            self.root = Some(root.to_path_buf());
-        }
+        let Some(w) = &self.watcher else { return };
+        let old = self.root.take();
+        self.root = root.map(Path::to_path_buf);
+        let (w, new) = (Arc::clone(w), self.root.clone());
+        // In the background: events start coming once it's done.
+        std::thread::spawn(move || {
+            let started = std::time::Instant::now();
+            let mut w = w.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(old) = old {
+                let _ = w.unwatch(&old);
+            }
+            if let Some(new) = new {
+                if let Err(e) = w.watch(&new, RecursiveMode::Recursive) {
+                    crate::applog::warn(&format!("couldn't watch {} for changes: {e}", new.display()));
+                }
+                let took = started.elapsed().as_millis();
+                if took >= 500 {
+                    crate::applog::info(&format!("watching {} for changes took {took} ms", new.display()));
+                }
+            }
+        });
     }
 
     /// Makes sure changes to `path` are reported, also outside the open folder.
@@ -66,11 +82,13 @@ impl FileWatcher {
         if self.extra_dirs.contains(dir) {
             return;
         }
-        if let Some(w) = &mut self.watcher
-            && w.watch(dir, RecursiveMode::NonRecursive).is_ok()
-        {
-            self.extra_dirs.insert(dir.to_path_buf());
-        }
+        let Some(w) = &self.watcher else { return };
+        self.extra_dirs.insert(dir.to_path_buf());
+        let (w, dir) = (Arc::clone(w), dir.to_path_buf());
+        // Not on the window's thread: the folder's watch may still be being set up.
+        std::thread::spawn(move || {
+            let _ = w.lock().unwrap_or_else(|e| e.into_inner()).watch(&dir, RecursiveMode::NonRecursive);
+        });
     }
 
     /// Collects events since the last call. Changes inside ignored folders

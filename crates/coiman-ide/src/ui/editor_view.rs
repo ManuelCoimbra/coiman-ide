@@ -593,7 +593,7 @@ pub fn show(
     let line_before = doc.buffer.char_to_line(doc.buffer.primary().head);
     let lines_before = doc.buffer.len_lines();
 
-    handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response, opts.minimap);
+    handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response, opts.minimap, opts.smooth_scrolling);
     let scroll_before = view.scroll.y;
     reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response, deco);
     if has_focus {
@@ -860,15 +860,35 @@ fn handle_scrolling(
     text_rect: Rect,
     response: &egui::Response,
     minimap: bool,
+    smooth: bool,
 ) {
     if response.contains_pointer() {
         ZoomPart::Code.mark_hovered(ui.ctx());
-        let delta = ui.input(|i| i.smooth_scroll_delta);
+        // Without smooth scrolling the wheel moves the text at once, three lines a notch, as
+        // VS Code does; egui's own delta glides.
+        let delta = if smooth {
+            ui.input(|i| i.smooth_scroll_delta)
+        } else {
+            let page = text_rect.height();
+            ui.input(|i| {
+                i.events
+                    .iter()
+                    .filter_map(|e| match e {
+                        Event::MouseWheel { unit, delta, modifiers, .. } if !modifiers.command => Some(match unit {
+                            egui::MouseWheelUnit::Point => *delta,
+                            egui::MouseWheelUnit::Line => *delta * m.row_h * 3.0,
+                            egui::MouseWheelUnit::Page => *delta * page,
+                        }),
+                        _ => None,
+                    })
+                    .fold(Vec2::ZERO, |a, b| a + b)
+            })
+        };
         if delta != Vec2::ZERO {
             view.scroll -= delta;
-            // Don't let parent scroll areas also react.
-            ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
         }
+        // Don't let parent scroll areas also react, nor a glide carry on.
+        ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
     }
 
     // Scrollbar dragging: decide on press whether the drag belongs to a scrollbar.

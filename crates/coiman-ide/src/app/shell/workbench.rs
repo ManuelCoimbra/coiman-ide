@@ -843,6 +843,7 @@ impl CodeApp {
             PanelTab::Terminal => {
                 let font_size = self.terminal_font();
                 self.terminal.body(ui, font_size);
+                self.open_terminal_link();
             }
         }
         self.terminal_action(ui.ctx(), action);
@@ -885,10 +886,27 @@ impl CodeApp {
         self.panel_maximized = !self.panel_maximized;
     }
 
+    /// Opens the file Ctrl+clicked in the terminal's output, at its line and column.
+    pub(crate) fn open_terminal_link(&mut self) {
+        let Some((path, line, col)) = self.terminal.open_request.take() else { return };
+        self.open_file(&path);
+        if let Some(doc) = self.docs.get_mut(self.active)
+            && doc.path.as_deref().is_some_and(|p| coiman_core::project::watcher::same_path(p, &path))
+        {
+            let line = (line.max(1) as usize - 1).min(doc.buffer.len_lines() - 1);
+            let (start, end) = (doc.buffer.line_start(line), doc.buffer.line_end(line));
+            let at = (start + (col.max(1) as usize - 1)).min(end);
+            doc.select(at, at);
+            doc.request_focus = true;
+        }
+    }
+
     /// Applies a button from the terminal header.
     pub(crate) fn terminal_action(&mut self, ctx: &egui::Context, action: Option<TerminalAction>) {
         match action {
             Some(TerminalAction::New) => self.new_terminal(ctx),
+            Some(TerminalAction::Split) => self.split_terminal(ctx),
+            Some(TerminalAction::NewWith(profile)) => self.new_terminal_with(ctx, &profile.command, Some(profile.name)),
             Some(TerminalAction::Kill) => self.terminal.kill_active(),
             Some(TerminalAction::Detach) => self.run_command(ctx, Command::DetachTerminal),
             Some(TerminalAction::Attach) => {
@@ -932,6 +950,7 @@ impl CodeApp {
         if closed {
             action = Some(TerminalAction::Attach);
         }
+        self.open_terminal_link();
         self.terminal_action(ctx, action);
     }
 

@@ -245,9 +245,96 @@ pub fn url_at(text: &str, col: usize) -> Option<String> {
     })
 }
 
+/// A place in a file named in a program's output: `src/main.rs:12:5`, `File "a.py", line 3`,
+/// `Foo.cs(10,7)`, `at x.js:4:2`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FileRef {
+    /// Where it is in the text, in characters: `start..end`.
+    pub start: usize,
+    pub end: usize,
+    /// As printed: absolute, or relative to somewhere the caller must work out.
+    pub file: String,
+    /// From 1.
+    pub line: u32,
+    /// From 1; 0 when not given.
+    pub col: u32,
+}
+
+/// `path:line[:col]`, the path ending in a name with an extension (or a drive letter first).
+static PATH_LINE: LazyLock<Regex> =
+    LazyLock::new(|| regex(r"(?:[A-Za-z]:[\\/])?[\w.~@+\-\\/]*[\w\-]\.[A-Za-z0-9]{1,10}:(\d+)(?::(\d+))?"));
+/// `path(line[,col])`, as MSBuild and the C# compiler write.
+static PATH_PAREN: LazyLock<Regex> =
+    LazyLock::new(|| regex(r"(?:[A-Za-z]:[\\/])?[\w.~@+\-\\/]*[\w\-]\.[A-Za-z0-9]{1,10}\((\d+)(?:,(\d+))?\)"));
+/// Python's `File "path", line N`.
+static PY_REF: LazyLock<Regex> = LazyLock::new(|| regex(r#"File "([^"]+)", line (\d+)"#));
+
+/// Every place in a file `text` names, left to right.
+pub fn file_refs(text: &str) -> Vec<FileRef> {
+    let chars = |byte: usize| text[..byte].chars().count();
+    let mut out: Vec<FileRef> = Vec::new();
+    // Inside a web address nothing is a file.
+    let urls: Vec<(usize, usize)> = URL.find_iter(text).map(|m| (m.start(), m.end())).collect();
+    for caps in PY_REF.captures_iter(text) {
+        let (whole, file) = (caps.get(0).unwrap_or_else(|| unreachable!()), &caps[1]);
+        out.push(FileRef {
+            start: chars(whole.start()),
+            end: chars(whole.end()),
+            file: file.to_owned(),
+            line: caps[2].parse().unwrap_or(1),
+            col: 0,
+        });
+    }
+    for pattern in [&*PATH_LINE, &*PATH_PAREN] {
+        for caps in pattern.captures_iter(text) {
+            let Some(whole) = caps.get(0) else { continue };
+            let (start, end) = (chars(whole.start()), chars(whole.end()));
+            if out.iter().any(|r| start < r.end && r.start < end) {
+                continue;
+            }
+            // The path is what comes before `:line` or `(line`.
+            let at = caps.get(1).map_or(whole.end(), |m| m.start() - 1);
+            let file = text[whole.start()..at].to_owned();
+            if urls.iter().any(|&(a, b)| whole.start() < b && a < whole.end()) {
+                continue;
+            }
+            out.push(FileRef {
+                start,
+                end,
+                file,
+                line: caps[1].parse().unwrap_or(1),
+                col: caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0),
+            });
+        }
+    }
+    out.sort_by_key(|r| r.start);
+    out
+}
+
+/// The place in a file around character `col` of `text`.
+pub fn file_ref_at(text: &str, col: usize) -> Option<FileRef> {
+    file_refs(text).into_iter().find(|r| (r.start..r.end).contains(&col))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn finds_places_in_files_in_output() {
+        let at = |text: &str| file_refs(text).into_iter().map(|r| (r.file, r.line, r.col)).collect::<Vec<_>>();
+        assert_eq!(at("  --> src/main.rs:12:5"), [("src/main.rs".to_owned(), 12, 5)]);
+        assert_eq!(at(r"C:\proj\a.c:3: error"), [(r"C:\proj\a.c".to_owned(), 3, 0)]);
+        assert_eq!(at(r#"  File "app/x.py", line 41, in run"#), [("app/x.py".to_owned(), 41, 0)]);
+        assert_eq!(at("Program.cs(10,7): error CS1002"), [("Program.cs".to_owned(), 10, 7)]);
+        assert_eq!(at("    at f (/srv/a.js:4:2)"), [("/srv/a.js".to_owned(), 4, 2)]);
+        assert_eq!(at("a.rs:1 and b/c.go:2:3"), [("a.rs".to_owned(), 1, 0), ("b/c.go".to_owned(), 2, 3)]);
+        assert!(at("see https://example.com:8080/x.html:3 now").is_empty(), "web addresses aren't files");
+        assert!(at("at 12:30 it ran").is_empty(), "a time is no file");
+        let r = file_ref_at("error at lib/x.ts:9:1!", 12).unwrap();
+        assert_eq!((r.start, r.end, r.file.as_str()), (9, 21, "lib/x.ts"));
+        assert!(file_ref_at("error at lib/x.ts:9:1!", 3).is_none());
+    }
 
     fn one(text: &str) -> Problem {
         let lines: Vec<&str> = text.lines().collect();

@@ -54,6 +54,8 @@ pub enum Icon {
     Bulb,
     /// A pin: keeps something where it is.
     Pin,
+    /// A box cut in two side by side: split.
+    SplitRight,
     /// Corners pointing out: fill the room.
     Maximize,
     /// Corners pointing in: back to the size before.
@@ -261,6 +263,10 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 pen.line(&[(0.26, y), (0.1, y - 0.06)]);
                 pen.line(&[(0.74, y), (0.9, y - 0.06)]);
             }
+        }
+        Icon::SplitRight => {
+            pen.closed(&[(0.14, 0.2), (0.86, 0.2), (0.86, 0.8), (0.14, 0.8)]);
+            pen.line(&[(0.5, 0.2), (0.5, 0.8)]);
         }
         Icon::Maximize => {
             pen.line(&[(0.18, 0.4), (0.18, 0.18), (0.4, 0.18)]);

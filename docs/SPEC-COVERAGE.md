@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 81, partial 107,
-missing 281, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 86, partial 106,
+missing 277, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -21,7 +21,7 @@ specification is right: every row in it exists.
 | 3 Debugging and performance | 8 | 3 | 27 | |
 | 4 Git and collaboration | 1 | 2 | 15 | 9 |
 | 5 Build and dependencies | 8 | 15 | 15 | 1 |
-| 6 Terminal | 3 | 3 | 12 | |
+| 6 Terminal | 8 | 2 | 8 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 9 | 5 | 9 | |
@@ -215,11 +215,11 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Item | Status | Note |
 |---|---|---|
 | Multiple terminal sessions | Done | Tabs |
-| Terminal profiles | Missing | |
-| Custom shell configurations | Partial | Shell choice setting |
-| Persistent terminal sessions | Missing | |
-| Terminal session restoration | Missing | |
-| Split terminal panes | Missing | |
+| Terminal profiles | Done | Shells found, plus `[[terminal.profiles]]` |
+| Custom shell configurations | Done | Shell setting and profiles |
+| Persistent terminal sessions | Partial | Shells start again in their folders; running programs don't survive |
+| Terminal session restoration | Done | Shells, the active one and the split |
+| Split terminal panes | Done | Two side by side |
 | Terminal tabs | Done | |
 | Terminal command history | Missing | The shell's own only |
 | Command autocomplete | Missing | The shell's own only |
@@ -230,7 +230,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | SSH terminal integration | Missing | `ssh` runs in a tab, without integration |
 | Remote shell support | Missing | |
 | Task automation through terminal commands | Partial | Run configurations |
-| Terminal output linked to source locations | Partial | Errors go to Problems; `file:line` isn't clickable in the terminal |
+| Terminal output linked to source locations | Done | Ctrl+click `file:line[:col]`; errors also go to Problems |
 | Detect compiler errors in terminal output | Done | Problem matchers |
 
 ## 7. Documentation and developer knowledge

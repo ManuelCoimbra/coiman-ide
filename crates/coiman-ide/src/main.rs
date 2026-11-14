@@ -146,6 +146,13 @@ fn main() -> eframe::Result {
             // Time until here is window + GPU context creation inside eframe.
             let window_ready = started.elapsed();
             let mut app = app::CodeApp::new(start_path, &cc.egui_ctx);
+            // How long starting took, step by step, for a slow start to be told apart.
+            coiman_core::applog::info(&format!(
+                "startup: window ready after {} ms, app ready after {} ms",
+                window_ready.as_millis(),
+                started.elapsed().as_millis()
+            ));
+            app.first_frame_from = Some(started);
             app.startup_probe = startup_probe.map(|(t, file)| (t, window_ready, file));
             Ok(Box::new(app))
         }),
