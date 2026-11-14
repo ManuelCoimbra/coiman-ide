@@ -6,7 +6,8 @@ set -eu
 
 bin=$1
 dest=$2
-prefix=${3:-/usr}
+# An empty prefix (the portable archive) is kept as empty.
+prefix=${3-/usr}
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 id=io.github.manuelcoimbra.CoimanIde

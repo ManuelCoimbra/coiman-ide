@@ -22,8 +22,8 @@ id=io.github.manuelcoimbra.CoimanIde
 
 # Libraries the window loads at run time (not linked, so no tool finds them on its own):
 # OpenGL through EGL or GLX, and X11 or Wayland with the keyboard map.
-deb_libs="libc6, libgl1, libegl1, libxkbcommon0, libwayland-client0, libx11-6, libxcursor1, libxrandr2, libxi6"
-rpm_libs="libEGL.so.1()(64bit) libGL.so.1()(64bit) libxkbcommon.so.0()(64bit) libwayland-client.so.0()(64bit) libX11.so.6()(64bit) libXcursor.so.1()(64bit) libXrandr.so.2()(64bit) libXi.so.6()(64bit)"
+deb_libs="libc6, libgl1, libegl1, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libxcursor1, libxrandr2, libxi6"
+rpm_libs="libEGL.so.1()(64bit) libGL.so.1()(64bit) libxkbcommon.so.0()(64bit) libxkbcommon-x11.so.0()(64bit) libwayland-client.so.0()(64bit) libX11.so.6()(64bit) libXcursor.so.1()(64bit) libXrandr.so.2()(64bit) libXi.so.6()(64bit)"
 
 # Portable archive: the tree under no prefix, with install.sh and uninstall.sh.
 name=coiman-ide-$version-linux-$arch

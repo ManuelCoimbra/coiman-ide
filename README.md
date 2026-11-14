@@ -15,6 +15,12 @@ is needed; **Edit as File** still opens the TOML behind them.
 `<config>` below is your config folder: `%APPDATA%\coiman-ide` on Windows (a `rust-code` folder from before the rename is moved there on first start),
 `$XDG_CONFIG_HOME/coiman-ide` or `~/.config/coiman-ide` elsewhere.
 
+## Install
+
+Windows: the zip on the [releases page](https://github.com/ManuelCoimbra/coiman-ide/releases).
+Linux: deb, rpm, AppImage, Flatpak, Snap, Arch PKGBUILDs and a tar.gz, for x86_64 and ARM64;
+see [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) for installing, updating and removing each.
+
 ## Build, run and test
 
 You need Rust (stable, edition 2024). On Windows the GNU toolchain is used, and MinGW's
@@ -25,7 +31,11 @@ program; without it the program builds without its icon in the file.
 cargo run --release -- [folder-or-file]
 ```
 
-The program is `target/release/coiman-ide.exe`. Tests and lints, as the checks run them:
+On Linux, the build needs a C compiler, `pkg-config` and the Wayland, xkbcommon, X11 and
+OpenGL development files (Debian and Ubuntu: `build-essential pkg-config libwayland-dev
+libxkbcommon-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev`).
+
+The program is `target/release/coiman-ide.exe` (`coiman-ide` on Linux). Tests and lints, as the checks run them:
 
 ```
 cargo test --workspace

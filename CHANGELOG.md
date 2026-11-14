@@ -23,6 +23,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   its own (dragged to the editor's bottom or right edge, it docks there again). The side bar
   can go right of the editor. Positions, sizes and a pinned sheet are kept with the session;
   **View: Reset Layout** puts everything back.
+- Linux packages for x86_64 and ARM64: deb, rpm, AppImage, Flatpak, Snap, Arch PKGBUILDs
+  (from source and prebuilt) and a tar.gz with install and uninstall scripts. Each installs a
+  launcher with the icon and the file types it opens, and CI installs and starts each one on
+  Debian, Ubuntu, Fedora, openSUSE and Arch before a release. See `docs/INSTALL-LINUX.md`.
+- `coiman-ide --version` prints the version.
 
 ### Changed
 

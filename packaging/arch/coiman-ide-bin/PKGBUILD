@@ -7,7 +7,7 @@ pkgdesc="Code editor and IDE written in Rust (prebuilt)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/ManuelCoimbra/coiman-ide"
 license=('MIT')
-depends=('glibc' 'gcc-libs' 'libglvnd' 'libxkbcommon' 'wayland' 'libx11' 'libxcursor' 'libxrandr' 'libxi')
+depends=('glibc' 'gcc-libs' 'libglvnd' 'libxkbcommon' 'libxkbcommon-x11' 'wayland' 'libx11' 'libxcursor' 'libxrandr' 'libxi')
 optdepends=('git: version control'
             'xdg-desktop-portal: file dialogs')
 provides=('coiman-ide')

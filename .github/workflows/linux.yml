@@ -132,7 +132,7 @@ jobs:
           if command -v dnf; then
             dnf install -y ./dist/*.rpm xorg-x11-server-Xvfb xauth mesa-dri-drivers which
           else
-            zypper --non-interactive install --allow-unsigned-rpm ./dist/*.rpm xvfb-run Mesa-dri which
+            zypper --non-interactive install --allow-unsigned-rpm ./dist/*.rpm xvfb-run Mesa-dri which gawk
           fi
           test -f /usr/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
       - name: Start
