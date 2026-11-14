@@ -1,6 +1,6 @@
 [package]
 name = "coiman-plugin"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 description = "Builds, signs and publishes Coiman IDE plugins"
 

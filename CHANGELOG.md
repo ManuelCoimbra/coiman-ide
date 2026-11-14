@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-14
+
 ### Added
 
 - **Code Health** window: secrets left in files (shown masked), each function's complexity,
