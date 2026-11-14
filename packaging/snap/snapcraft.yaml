@@ -1,0 +1,40 @@
+# Snap of Coiman IDE, made from the Linux tar.gz (CI unpacks its bin and share beside this
+# file into payload/ and sets the version). Classic confinement, like other IDEs: it
+# runs the computer's own compilers, debuggers and git, which a strict snap can't reach.
+name: coiman-ide
+base: core22
+version: '0.0.0'
+summary: Code editor and IDE written in Rust
+description: |
+  Coiman IDE edits, runs, tests and debugs code, and works with Git. It has no AI features
+  and opens no network connections of its own.
+license: MIT
+grade: stable
+confinement: classic
+
+apps:
+  coiman-ide:
+    command: usr/bin/coiman-ide
+    desktop: usr/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
+    common-id: io.github.manuelcoimbra.CoimanIde
+
+parts:
+  coiman-ide:
+    plugin: dump
+    source: payload
+    organize:
+      bin: usr/bin
+      share: usr/share
+    stage:
+      - usr
+    # Built against an older glibc than any supported distribution, it runs on the computer's
+    # own libraries (OpenGL, X11, Wayland) as classic snaps can.
+    build-attributes:
+      - no-patchelf
+    override-build: |
+      craftctl default
+      for f in "$CRAFT_PART_INSTALL"/share/applications/*.desktop "$CRAFT_PART_INSTALL"/usr/share/applications/*.desktop; do
+        if [ -f "$f" ]; then
+          sed -i 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/scalable/apps/io.github.manuelcoimbra.CoimanIde.svg|' "$f"
+        fi
+      done

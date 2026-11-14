@@ -57,6 +57,10 @@ fn main() -> eframe::Result {
         });
     }
     let mut args: Vec<String> = std::env::args().skip(1).collect();
+    if matches!(args.first().map(String::as_str), Some("--version" | "-V")) {
+        println!("coiman-ide {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
     // `--measure-startup <file>`: write the time to the first frame to <file>
     // and exit (used by scripts/bench.ps1).
     let startup_probe = match args.first().map(String::as_str) {
@@ -75,6 +79,9 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Coiman IDE")
+            // What Linux desktops match against the launcher (its StartupWMClass) and the
+            // Wayland app id, so the window gets the launcher's icon and grouping.
+            .with_app_id("io.github.manuelcoimbra.CoimanIde")
             .with_icon(std::sync::Arc::new(app_icon()))
             .with_inner_size(size)
             .with_maximized(saved_window.is_some_and(|w| w.maximized))

@@ -1,0 +1,26 @@
+# Flatpak of Coiman IDE, made from the Linux tar.gz (CI puts it beside this file as
+# coiman-ide-linux.tar.gz). The SDK is the runtime so git, gcc, make and python are there
+# for the IDE to run; tools of the computer outside are reached with flatpak-spawn --host.
+# No network permission: the IDE opens no connections of its own.
+id: io.github.manuelcoimbra.CoimanIde
+runtime: org.freedesktop.Sdk
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: coiman-ide
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # An IDE edits projects wherever they are.
+  - --filesystem=host
+  # For flatpak-spawn --host.
+  - --talk-name=org.freedesktop.Flatpak
+modules:
+  - name: coiman-ide
+    buildsystem: simple
+    build-commands:
+      - cp -R bin share /app/
+    sources:
+      - type: archive
+        path: coiman-ide-linux.tar.gz

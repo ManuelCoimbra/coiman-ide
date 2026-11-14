@@ -1,0 +1,335 @@
+name: Linux packages
+
+# Builds Coiman IDE for Linux (x86_64 and ARM64) as tar.gz, deb, rpm, AppImage, Flatpak and
+# Snap, plus Arch PKGBUILDs, then installs each on representative distributions and starts it
+# on a virtual screen. A v* tag also attaches the packages to that release.
+on:
+  push:
+    tags: ["v*"]
+    branches: ["**"]
+    paths:
+      - "packaging/**"
+      - ".github/workflows/linux.yml"
+      - "crates/coiman-ide/Cargo.toml"
+      - "crates/coiman-ide/src/main.rs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-22.04
+          - arch: aarch64
+            runner: ubuntu-22.04-arm
+    # Ubuntu 22.04's glibc (2.35) is older than every distribution tested below, so the program
+    # built here runs on all of them.
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build tools and libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config \
+            libwayland-dev libxkbcommon-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
+            libgl1-mesa-dev libegl1-mesa-dev rpm desktop-file-utils appstream
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-${{ matrix.arch }}-${{ hashFiles('Cargo.lock') }}
+      - name: Build
+        run: cargo build --release --locked -p coiman-ide
+      - name: Libraries it links
+        run: ldd target/release/coiman-ide
+      - name: Check the launcher and metadata
+        run: |
+          desktop-file-validate packaging/linux/io.github.manuelcoimbra.CoimanIde.desktop
+          appstreamcli validate --no-net --pedantic packaging/linux/io.github.manuelcoimbra.CoimanIde.metainfo.xml || \
+            appstreamcli validate --no-net packaging/linux/io.github.manuelcoimbra.CoimanIde.metainfo.xml
+      - name: appimagetool
+        run: |
+          curl -fsSL -o appimagetool "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${{ matrix.arch }}.AppImage"
+          chmod +x appimagetool
+      - name: Packages
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/coiman-ide/Cargo.toml | head -1)
+          echo "version $version"
+          APPIMAGETOOL=$PWD/appimagetool sh packaging/linux/build-packages.sh target/release/coiman-ide "$version" dist
+          ls -l dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  deb:
+    name: deb on ${{ matrix.image }} (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12", "ubuntu:22.04", "ubuntu:24.04"]
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist
+      - name: Install
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y ./dist/*.deb xvfb xauth libgl1-mesa-dri
+          test -f /usr/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
+          test -f /usr/share/icons/hicolor/256x256/apps/io.github.manuelcoimbra.CoimanIde.png
+      - name: Start
+        run: sh packaging/linux/smoke.sh
+      - name: Remove, keeping settings
+        run: |
+          mkdir -p ~/.config/coiman-ide && touch ~/.config/coiman-ide/keep
+          apt-get remove -y coiman-ide
+          if command -v coiman-ide; then echo still installed; exit 1; fi
+          test -f ~/.config/coiman-ide/keep
+
+  rpm:
+    name: rpm on ${{ matrix.image }} (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["fedora:41", "opensuse/tumbleweed"]
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    container: ${{ matrix.image }}
+    steps:
+      - name: Tools the actions need
+        run: |
+          if command -v dnf; then dnf install -y tar gzip findutils; else zypper --non-interactive install tar gzip findutils; fi
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist
+      - name: Install
+        run: |
+          if command -v dnf; then
+            dnf install -y ./dist/*.rpm xorg-x11-server-Xvfb xauth mesa-dri-drivers which
+          else
+            zypper --non-interactive install --allow-unsigned-rpm ./dist/*.rpm xvfb-run Mesa-dri which
+          fi
+          test -f /usr/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
+      - name: Start
+        run: sh packaging/linux/smoke.sh
+      - name: Remove, keeping settings
+        run: |
+          mkdir -p ~/.config/coiman-ide && touch ~/.config/coiman-ide/keep
+          if command -v dnf; then dnf remove -y coiman-ide; else zypper --non-interactive remove coiman-ide; fi
+          if command -v coiman-ide; then echo still installed; exit 1; fi
+          test -f ~/.config/coiman-ide/keep
+
+  appimage-and-tar:
+    name: AppImage and tar.gz (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist
+      - name: Screen and GL for the test
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgl1-mesa-dri libfuse2t64
+      - name: AppImage starts
+        run: |
+          chmod +x dist/*.AppImage
+          sh packaging/linux/smoke.sh "$(ls dist/*.AppImage)"
+      - name: tar.gz installs for one user, starts, and uninstalls keeping settings
+        run: |
+          mkdir unpacked && tar -C unpacked -xzf dist/*.tar.gz
+          sh unpacked/*/install.sh
+          test -f ~/.local/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
+          grep -q "^Exec=$HOME/.local/bin/coiman-ide" ~/.local/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
+          sh packaging/linux/smoke.sh ~/.local/bin/coiman-ide
+          mkdir -p ~/.config/coiman-ide && touch ~/.config/coiman-ide/keep
+          sh unpacked/*/uninstall.sh
+          test ! -e ~/.local/bin/coiman-ide
+          test -f ~/.config/coiman-ide/keep
+
+  arch:
+    name: Arch Linux PKGBUILDs (x86_64)
+    needs: build
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    steps:
+      - name: Tools
+        run: pacman -Syu --noconfirm --needed base-devel git rust xorg-server-xvfb xorg-xauth mesa sudo
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist
+      - name: A builder (makepkg doesn't run as root)
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/builder
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: coiman-ide-bin from the release archive
+        run: |
+          version=$(sed -n 's/^pkgver=//p' packaging/arch/coiman-ide-bin/PKGBUILD)
+          work=/home/builder/bin && mkdir -p $work
+          cp packaging/arch/coiman-ide-bin/PKGBUILD $work/
+          cp dist/*.tar.gz $work/coiman-ide-$version-linux-x86_64.tar.gz
+          chown -R builder $work
+          su builder -c "cd $work && makepkg --noconfirm -s"
+          pacman -U --noconfirm $work/coiman-ide-bin-*.pkg.tar.zst
+          sh packaging/linux/smoke.sh
+          pacman -R --noconfirm coiman-ide-bin
+      - name: coiman-ide built from source
+        run: |
+          version=$(sed -n 's/^pkgver=//p' packaging/arch/coiman-ide/PKGBUILD)
+          work=/home/builder/src && mkdir -p $work
+          cp packaging/arch/coiman-ide/PKGBUILD $work/
+          git archive --format=tar.gz --prefix=coiman-ide-$version/ -o $work/coiman-ide-$version.tar.gz HEAD
+          chown -R builder $work
+          su builder -c "cd $work && makepkg --noconfirm -s"
+          pacman -U --noconfirm $work/coiman-ide-$version-*.pkg.tar.zst
+          sh packaging/linux/smoke.sh
+          pacman -R --noconfirm coiman-ide
+
+  flatpak:
+    name: Flatpak (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist
+      - name: Archive beside the manifest
+        run: cp dist/*.tar.gz packaging/flatpak/coiman-ide-linux.tar.gz
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: coiman-ide-${{ matrix.arch }}.flatpak
+          manifest-path: packaging/flatpak/io.github.manuelcoimbra.CoimanIde.yml
+          arch: ${{ matrix.arch }}
+          cache-key: flatpak-${{ matrix.arch }}-${{ github.sha }}
+          upload-artifact: false
+      - name: Install and start
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive coiman-ide-${{ matrix.arch }}.flatpak
+          flatpak run --user io.github.manuelcoimbra.CoimanIde --version
+          flatpak uninstall --user -y --noninteractive io.github.manuelcoimbra.CoimanIde
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: coiman-ide-${{ matrix.arch }}.flatpak
+
+  snap:
+    name: Snap (${{ matrix.arch }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist
+      - name: Payload and version
+        run: |
+          mkdir -p unpacked packaging/snap/payload
+          tar -C unpacked -xzf dist/*.tar.gz
+          cp -R unpacked/*/bin unpacked/*/share packaging/snap/payload/
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/coiman-ide/Cargo.toml | head -1)
+          sed -i "s/^version: .*/version: '$version'/" packaging/snap/snapcraft.yaml
+      - uses: snapcore/action-build@v1
+        id: snap
+        with:
+          path: packaging/snap
+      - name: Install, start, remove
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb xauth libgl1-mesa-dri
+          sudo snap install --dangerous --classic ${{ steps.snap.outputs.snap }}
+          sh packaging/linux/smoke.sh /snap/bin/coiman-ide
+          sudo snap remove coiman-ide
+          cp ${{ steps.snap.outputs.snap }} coiman-ide-${{ matrix.arch }}.snap
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snap-${{ matrix.arch }}
+          path: coiman-ide-${{ matrix.arch }}.snap
+
+  publish:
+    name: Attach to the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [deb, rpm, appimage-and-tar, arch, flatpak, snap]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: PKGBUILDs with this version and its checksums
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          mkdir -p arch
+          x86=$(sha256sum artifacts/coiman-ide-$version-linux-x86_64.tar.gz | cut -d' ' -f1)
+          arm=$(sha256sum artifacts/coiman-ide-$version-linux-aarch64.tar.gz | cut -d' ' -f1)
+          sed -e "s/^pkgver=.*/pkgver=$version/" -e "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$x86')/" \
+              -e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$arm')/" packaging/arch/coiman-ide-bin/PKGBUILD > arch/PKGBUILD-coiman-ide-bin
+          curl -fsSL -o source.tar.gz "https://github.com/${GITHUB_REPOSITORY}/archive/$GITHUB_REF_NAME.tar.gz"
+          src=$(sha256sum source.tar.gz | cut -d' ' -f1)
+          sed -e "s/^pkgver=.*/pkgver=$version/" -e "s/^sha256sums=.*/sha256sums=('$src')/" \
+              packaging/arch/coiman-ide/PKGBUILD > arch/PKGBUILD-coiman-ide
+      - name: Upload (once the Windows job has made the release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 60); do
+            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+            sleep 30
+          done
+          gh release upload "$GITHUB_REF_NAME" artifacts/* arch/* --clobber
