@@ -191,6 +191,12 @@ pub struct CodeApp {
     logs: logs::Logs,
     /// A file that asked for the log view, on its way there.
     log_to_open: Option<std::path::PathBuf>,
+    /// The editor's right-click menu, while open.
+    editor_menu: Option<editor::context_menu::EditorMenu>,
+    /// The panel fills the room the editor had (the terminal full size), until restored.
+    panel_maximized: bool,
+    /// Just restored: the panel goes back to its saved size (egui would keep the big one).
+    panel_restoring: bool,
     /// What's being pasted this frame, for what follows the editor.
     pasted: Option<String>,
     tests: test_panel::Tests,
@@ -366,6 +372,9 @@ impl CodeApp {
             bytes: Default::default(),
             logs: Default::default(),
             log_to_open: None,
+            editor_menu: None,
+            panel_maximized: false,
+            panel_restoring: false,
             pasted: None,
             tests: Default::default(),
             tables: Default::default(),
@@ -669,6 +678,8 @@ impl CodeApp {
         let panel_slides = self.panel_tab != PanelTab::Terminal;
         let panel_open = self.panel_visible && !zen;
         let panel_docked = !panel_floating;
+        // Set by the panel's button, drawn inside the panel: it applies from the next frame.
+        let restoring = std::mem::take(&mut self.panel_restoring);
         if panel_docked && panel_right && (panel_open || panel_slides) {
             let gaps = theme::island_gaps(false, false, false, gap_below);
             let max_side = (ui.available_width() * 0.7).max(200.0);
@@ -677,9 +688,19 @@ impl CodeApp {
                 .size_range(200.0..=max_side)
                 .resizable(true)
                 .show_separator_line(classic)
-                .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
-                .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
-            if let Some(panel) = panel.as_ref().filter(|_| panel_open) {
+                .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps));
+            // Maximized: all the width but a strip of the editor.
+            let panel = if self.panel_maximized && panel_open {
+                panel.exact_size((ui.available_width() - 80.0).max(200.0))
+            } else if restoring {
+                panel.exact_size(self.layout.panel_width())
+            } else {
+                panel
+            };
+            // Its button may restore it during this frame: the big size isn't the one to keep.
+            let was_maximized = self.panel_maximized;
+            let panel = panel.show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
+            if let Some(panel) = panel.as_ref().filter(|_| panel_open && !was_maximized && !self.panel_maximized) {
                 self.layout.saw_panel(&ctx, panel.response.rect.size(), true);
             }
             let place = panel.map(|panel| panel.response.rect - gaps);
@@ -702,9 +723,19 @@ impl CodeApp {
                 .size_range(120.0..=f32::INFINITY)
                 .resizable(true)
                 .show_separator_line(classic)
-                .frame(frame)
-                .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
-            if let Some(panel) = panel.as_ref().filter(|_| panel_open) {
+                .frame(frame);
+            // Maximized: all the height but the editor's tabs.
+            let panel = if self.panel_maximized && panel_open {
+                panel.exact_size((ui.available_height() - 44.0).max(120.0))
+            } else if restoring {
+                panel.exact_size(self.layout.panel_height())
+            } else {
+                panel
+            };
+            // Its button may restore it during this frame: the big size isn't the one to keep.
+            let was_maximized = self.panel_maximized;
+            let panel = panel.show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
+            if let Some(panel) = panel.as_ref().filter(|_| panel_open && !was_maximized && !self.panel_maximized) {
                 self.layout.saw_panel(&ctx, panel.response.rect.size(), false);
             }
             let place = panel.map(|panel| panel.response.rect - gaps);
@@ -765,6 +796,7 @@ impl CodeApp {
                 bracket_pair_guides: self.settings.editor.bracket_pair_guides,
                 block_cursor: false,
                 smooth_scrolling: self.settings.editor.smooth_scrolling,
+                minimap: self.settings.editor.minimap,
                 pane: 0,
                 active: true,
             };
@@ -830,6 +862,9 @@ impl CodeApp {
                 if let Some(line) = out.run_click {
                     self.run_test_at_line(&ctx, line);
                 }
+                if let Some(at) = out.context_click {
+                    self.open_editor_menu(at);
+                }
                 if out.bulb_click {
                     self.request_code_actions();
                 }
@@ -878,6 +913,7 @@ impl CodeApp {
         self.cpp_window(&ctx);
         self.prints_window(&ctx);
         self.git_popups(&ctx);
+        self.editor_menu_ui(&ctx);
         self.terminal_window(&ctx);
 
         if self.palette.open {

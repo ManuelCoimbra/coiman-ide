@@ -4,6 +4,7 @@ pub(crate) mod at_cursor;
 pub(crate) mod autosave;
 pub(crate) mod bookmarks;
 pub(crate) mod color_preview;
+pub(crate) mod context_menu;
 pub(crate) mod files;
 pub(crate) mod font_preview;
 pub(crate) mod hidden;

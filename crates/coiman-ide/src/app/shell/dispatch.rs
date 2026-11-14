@@ -440,6 +440,16 @@ impl CodeApp {
             }
 
             Command::ToggleWordWrap => self.word_wrap = !self.word_wrap,
+            Command::ToggleMaximizedPanel => {
+                self.toggle_panel_maximized();
+                self.panel_visible = true;
+            }
+            Command::ToggleMinimap => {
+                let on = if self.settings.editor.minimap { "false" } else { "true" };
+                if let Err(e) = self.change_setting(ctx, false, "editor", "minimap", Some(on)) {
+                    self.status = Some(e);
+                }
+            }
             Command::ToggleZenMode => {
                 self.zen_mode = !self.zen_mode;
                 ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.zen_mode));

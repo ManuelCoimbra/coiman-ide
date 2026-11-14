@@ -124,6 +124,8 @@ pub struct EditorSettings {
     pub code_lens: bool,
     /// Glide to the new position when keys move the view, instead of jumping.
     pub smooth_scrolling: bool,
+    /// A small picture of the whole file in place of the scrollbar, as Kate and VS Code have.
+    pub minimap: bool,
     /// Mark bidi controls and invisible or private use characters, and warn about them.
     pub unicode_warnings: bool,
     pub trim_trailing_whitespace: bool,
@@ -386,6 +388,7 @@ impl Default for EditorSettings {
             include_paths: Vec::new(),
             code_lens: true,
             smooth_scrolling: true,
+            minimap: false,
             unicode_warnings: true,
             trim_trailing_whitespace: false,
             insert_final_newline: false,

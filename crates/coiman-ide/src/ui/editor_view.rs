@@ -10,6 +10,11 @@ use crate::document::Document;
 use crate::ui::theme;
 
 const SCROLLBAR: f32 = 12.0;
+/// The minimap's width, when it stands in for the scrollbar.
+const MINIMAP: f32 = 96.0;
+/// Height of one row and width of one column in the minimap.
+const MINI_ROW: f32 = 2.0;
+const MINI_COL: f32 = 1.0;
 /// Width of the gutter strip (left of the text) where change markers sit.
 const CHANGE_ZONE: f32 = 12.0;
 /// Width of the strip at the gutter's left edge for test run buttons.
@@ -17,7 +22,7 @@ const RUN_ZONE: f32 = 14.0;
 /// Width of the strip (left of the change markers) for fold chevrons.
 const FOLD_ZONE: f32 = 14.0;
 /// Width of the strip after the run buttons for the quick fix light bulb.
-const BULB_ZONE: f32 = 16.0;
+const BULB_ZONE: f32 = 14.0;
 /// How far to look for a matching bracket around the cursor.
 const BRACKET_SEARCH_LIMIT: usize = 20_000;
 /// How far to look for a non-blank line when sizing indent guides on blank lines.
@@ -62,6 +67,8 @@ pub struct Options {
     /// Draw the cursor as a block (Vim/Helix normal mode).
     pub block_cursor: bool,
     pub smooth_scrolling: bool,
+    /// A picture of the whole file in place of the vertical scrollbar.
+    pub minimap: bool,
     /// Which pane this is, when the editor is split.
     pub pane: u8,
     /// Whether this is the focused pane; the other one leaves focus requests alone.
@@ -266,6 +273,8 @@ pub struct Output {
     pub breakpoint_click: Option<usize>,
     /// The light bulb was clicked.
     pub bulb_click: bool,
+    /// The text was right-clicked here: the app shows its menu.
+    pub context_click: Option<Pos2>,
     /// What Vim/Helix mode asked for this frame (`:w`, `:q`, clipboard).
     pub vim_effects: Vec<coiman_core::editor::vim::Effect>,
     /// Screen rectangle of the primary cursor.
@@ -531,9 +540,10 @@ pub fn show(
     let font_id = FontId::monospace(font_size);
     let row_h = ui.fonts_mut(|f| f.row_height(&font_id));
     let char_w = ui.fonts_mut(|f| f.glyph_width(&font_id, '0'));
-    let digits = doc.buffer.len_lines().to_string().len().max(3);
+    let digits = doc.buffer.len_lines().to_string().len().max(2);
     let m = Metrics {
-        gutter_w: digits as f32 * char_w + 28.0 + RUN_ZONE + BULB_ZONE + FOLD_ZONE,
+        // The numbers, 3 px either side, then the Git bar and the fold chevrons.
+        gutter_w: digits as f32 * char_w + 6.0 + CHANGE_ZONE + RUN_ZONE + BULB_ZONE + FOLD_ZONE,
         font_id,
         row_h,
         char_w,
@@ -542,7 +552,7 @@ pub fn show(
     };
     let text_rect = Rect::from_min_max(
         Pos2::new(rect.left() + m.gutter_w, rect.top()),
-        Pos2::new(rect.right() - SCROLLBAR, rect.bottom()),
+        Pos2::new(rect.right() - if opts.minimap { MINIMAP } else { SCROLLBAR }, rect.bottom()),
     );
     let wrap_cols = word_wrap.then(|| ((text_rect.width() - char_w) / char_w).floor().max(20.0) as usize);
 
@@ -583,7 +593,7 @@ pub fn show(
     let line_before = doc.buffer.char_to_line(doc.buffer.primary().head);
     let lines_before = doc.buffer.len_lines();
 
-    handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response);
+    handle_scrolling(ui, view, &layout, &m, rect, text_rect, &response, opts.minimap);
     let scroll_before = view.scroll.y;
     reveal |= handle_mouse(ui, doc, view, &layout, &m, text_rect, &response, deco);
     if has_focus {
@@ -663,7 +673,10 @@ pub fn show(
 
     // ----- paint ---------------------------------------------------------------
     paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts, deco });
-    paint_scrollbars(ui, view, rect, text_rect, content_h, max_x);
+    if opts.minimap {
+        paint_minimap(ui, doc, view, &layout, &m, rect, text_rect);
+    }
+    paint_scrollbars(ui, view, rect, text_rect, if opts.minimap { 0.0 } else { content_h }, max_x);
 
     let row_y = text_rect.top() + cursor_row as f32 * row_h - view.scroll.y;
     let x = text_rect.left() + cursor_x - view.scroll.x;
@@ -690,8 +703,23 @@ pub fn show(
         let end_x = text_rect.left() + col_x(&doc.buffer, row.start, row.end, &m) - view.scroll.x;
         (p.x < end_x).then_some((pos, p))
     });
+    // Right click: the cursor moves there, unless it's inside a selection (so the menu acts
+    // on that), and the app shows the menu.
+    let context_click = if response.secondary_clicked() {
+        ui.input(|i| i.pointer.interact_pos()).filter(|p| text_rect.contains(*p)).inspect(|&p| {
+            let pos = pos_at(doc, view, &layout, &m, text_rect, p);
+            let inside = doc.buffer.selections().iter().any(|s| !s.is_empty() && s.start() <= pos && pos <= s.end());
+            if !inside {
+                doc.buffer.set_selections(vec![Selection::cursor(pos)], 0);
+            }
+            response.request_focus();
+        })
+    } else {
+        None
+    };
     Output {
         hover,
+        context_click,
         ctrl_click: view.ctrl_click.take(),
         change_click: view.change_click.take(),
         run_click: view.run_click.take(),
@@ -822,6 +850,7 @@ fn glide(ui: &egui::Ui, view: &mut ViewState, smooth: bool, jump: f32, view_h: f
     }
 }
 
+#[allow(clippy::too_many_arguments)] // the editor's per-frame geometry, passed through
 fn handle_scrolling(
     ui: &mut egui::Ui,
     view: &mut ViewState,
@@ -830,6 +859,7 @@ fn handle_scrolling(
     rect: Rect,
     text_rect: Rect,
     response: &egui::Response,
+    minimap: bool,
 ) {
     if response.contains_pointer() {
         ZoomPart::Code.mark_hovered(ui.ctx());
@@ -843,6 +873,18 @@ fn handle_scrolling(
 
     // Scrollbar dragging: decide on press whether the drag belongs to a scrollbar.
     let pointer = ui.input(|i| i.pointer.interact_pos());
+    let content_h = layout.total_rows as f32 * m.row_h;
+    let view_h = text_rect.height();
+    // A click on the minimap brings that part of the file to the middle of the view.
+    if minimap
+        && response.clicked()
+        && let Some(p) = pointer.filter(|p| p.x >= text_rect.right())
+    {
+        let first = minimap_first(layout.total_rows, rect.height(), view.scroll.y, m.row_h);
+        let row = first + (p.y - rect.top()) / MINI_ROW;
+        view.scroll.y = (row * m.row_h - view_h / 2.0).max(0.0);
+        return;
+    }
     if response.drag_started() {
         view.dragging_scrollbar = pointer.and_then(|p| {
             if p.x >= text_rect.right() {
@@ -860,10 +902,14 @@ fn handle_scrolling(
         }
         return;
     }
-    let content_h = layout.total_rows as f32 * m.row_h;
     let d = response.drag_delta();
     match view.dragging_scrollbar {
-        Some(true) => view.scroll.y += d.y * content_h.max(text_rect.height()) / text_rect.height(),
+        // A minimap that shows the whole file moves with its rows; a longer one by its height.
+        Some(true) if minimap => {
+            let whole = layout.total_rows as f32 * MINI_ROW <= rect.height();
+            view.scroll.y += if whole { d.y * m.row_h / MINI_ROW } else { d.y * content_h / rect.height() };
+        }
+        Some(true) => view.scroll.y += d.y * content_h.max(view_h) / view_h,
         Some(false) => {
             let content_w = view.max_cols_seen as f32 * m.char_w;
             view.scroll.x += d.x * content_w.max(text_rect.width()) / text_rect.width();
@@ -1869,7 +1915,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             let color =
                 if row.line == primary_line { theme::colors().line_number_active } else { theme::colors().line_number };
             painter.text(
-                Pos2::new(text_rect.left() - 18.0 - FOLD_ZONE, y),
+                Pos2::new(text_rect.left() - CHANGE_ZONE - FOLD_ZONE - 3.0, y),
                 egui::Align2::RIGHT_TOP,
                 (row.line + 1).to_string(),
                 m.font_id.clone(),
@@ -2174,6 +2220,96 @@ fn row_job(
     }
     job.wrap.max_width = f32::INFINITY;
     job
+}
+
+/// The first row the minimap shows (fractional): 0 while the whole file fits, else moving
+/// through the file as the view scrolls, as VS Code's does.
+fn minimap_first(total_rows: usize, track_h: f32, scroll_y: f32, row_h: f32) -> f32 {
+    let shown = track_h / MINI_ROW;
+    let total = total_rows as f32;
+    if total <= shown {
+        return 0.0;
+    }
+    let max_scroll = (total * row_h - row_h).max(1.0);
+    (scroll_y / max_scroll).clamp(0.0, 1.0) * (total - shown)
+}
+
+/// The file drawn small beside the text: each run of characters a bar in the text's colour,
+/// the part in view under a lighter band.
+fn paint_minimap(
+    ui: &mut egui::Ui,
+    doc: &Document,
+    view: &ViewState,
+    layout: &Layout,
+    m: &Metrics,
+    rect: Rect,
+    text_rect: Rect,
+) {
+    let pal = theme::colors();
+    let track = Rect::from_min_max(Pos2::new(text_rect.right(), rect.top()), rect.max);
+    let painter = ui.painter_at(track);
+    painter.line_segment([track.left_top(), track.left_bottom()], Stroke::new(1.0, pal.border.gamma_multiply(0.6)));
+    let view_h = text_rect.height();
+    let first = minimap_first(layout.total_rows, track.height(), view.scroll.y, m.row_h);
+    let start = first.floor() as usize;
+    let shift = (first - start as f32) * MINI_ROW;
+    let rows = (track.height() / MINI_ROW).ceil() as usize + 1;
+    let max_cols = ((track.width() - 8.0) / MINI_COL) as usize;
+    let ink = pal.text.gamma_multiply(0.45);
+    let buf = &doc.buffer;
+    let mut cached: Option<(usize, Vec<char>, usize)> = None;
+    for k in 0..rows {
+        let r = start + k;
+        if r >= layout.total_rows {
+            break;
+        }
+        let row = layout.row(doc, view, r);
+        if cached.as_ref().is_none_or(|c| c.0 != row.line) {
+            cached = Some((row.line, buf.line_text(row.line).chars().collect(), buf.line_start(row.line)));
+        }
+        let Some((_, chars, line_start)) = cached.as_ref() else { continue };
+        let y = track.top() + k as f32 * MINI_ROW - shift;
+        let (a, b) = (row.start - line_start, (row.end - line_start).min(chars.len()));
+        let mut col = 0usize;
+        let mut run: Option<usize> = None;
+        let flush = |from: usize, to: usize| {
+            let from = from.min(max_cols);
+            let to = to.min(max_cols);
+            if to > from {
+                let x = track.left() + 5.0 + from as f32 * MINI_COL;
+                painter.rect_filled(
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new((to - from) as f32 * MINI_COL, MINI_ROW * 0.7)),
+                    0.0,
+                    ink,
+                );
+            }
+        };
+        for &c in chars.get(a..b).unwrap_or(&[]) {
+            let w = if c == '\t' { 4 - col % 4 } else { 1 };
+            if c.is_whitespace() {
+                if let Some(from) = run.take() {
+                    flush(from, col);
+                }
+            } else if run.is_none() {
+                run = Some(col);
+            }
+            col += w;
+            if col >= max_cols {
+                break;
+            }
+        }
+        if let Some(from) = run {
+            flush(from, col);
+        }
+    }
+    // The part in view.
+    let top = track.top() + (view.scroll.y / m.row_h - first) * MINI_ROW;
+    let band = Rect::from_min_size(
+        Pos2::new(track.left() + 1.0, top),
+        Vec2::new(track.width() - 1.0, view_h / m.row_h * MINI_ROW),
+    );
+    let hovered = ui.rect_contains_pointer(track);
+    painter.rect_filled(band, 0.0, pal.text.gamma_multiply(if hovered { 0.16 } else { 0.09 }));
 }
 
 fn paint_scrollbars(ui: &mut egui::Ui, view: &ViewState, rect: Rect, text_rect: Rect, content_h: f32, max_x: f32) {

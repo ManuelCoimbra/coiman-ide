@@ -54,6 +54,10 @@ pub enum Icon {
     Bulb,
     /// A pin: keeps something where it is.
     Pin,
+    /// Corners pointing out: fill the room.
+    Maximize,
+    /// Corners pointing in: back to the size before.
+    Restore,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -257,6 +261,18 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
                 pen.line(&[(0.26, y), (0.1, y - 0.06)]);
                 pen.line(&[(0.74, y), (0.9, y - 0.06)]);
             }
+        }
+        Icon::Maximize => {
+            pen.line(&[(0.18, 0.4), (0.18, 0.18), (0.4, 0.18)]);
+            pen.line(&[(0.6, 0.18), (0.82, 0.18), (0.82, 0.4)]);
+            pen.line(&[(0.82, 0.6), (0.82, 0.82), (0.6, 0.82)]);
+            pen.line(&[(0.4, 0.82), (0.18, 0.82), (0.18, 0.6)]);
+        }
+        Icon::Restore => {
+            pen.line(&[(0.18, 0.4), (0.4, 0.4), (0.4, 0.18)]);
+            pen.line(&[(0.6, 0.18), (0.6, 0.4), (0.82, 0.4)]);
+            pen.line(&[(0.82, 0.6), (0.6, 0.6), (0.6, 0.82)]);
+            pen.line(&[(0.4, 0.82), (0.4, 0.6), (0.18, 0.6)]);
         }
         Icon::Pin => {
             pen.closed(&[(0.36, 0.12), (0.64, 0.12), (0.6, 0.42), (0.74, 0.58), (0.26, 0.58), (0.4, 0.42)]);

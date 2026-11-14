@@ -117,6 +117,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("editor", "smooth_scrolling", "Smooth scrolling", "Glide when keys move the view.", Kind::Toggle),
             row(
                 "editor",
+                "minimap",
+                "Minimap",
+                "A small picture of the whole file in place of the scrollbar. Click or drag it to move.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "unicode_warnings",
                 "Hidden character warnings",
                 "Mark bidi controls and invisible or private use characters.",
@@ -761,10 +768,16 @@ impl CodeApp {
         }
         // As wide as its rows need, and most of the window's height. A new id, so a size saved before doesn't stay.
         let room = ctx.content_rect().size();
-        let size = egui::vec2((room.x * 0.8).min(860.0), (room.y * 0.86).max(400.0));
+        // Narrow screens (a phone, a small window) get nearly all the width. The size follows
+        // the window each frame, so shrinking the window never leaves Settings cut off.
+        // The content's width: the frame adds its margins (18 each side) and the gap to the edge.
+        let width = if room.x < 700.0 { room.x - 52.0 } else { (room.x * 0.8).min(860.0) };
+        let size = egui::vec2(width.max(200.0), (room.y * 0.86).clamp(200.0, room.y - 80.0));
+        let narrow = size.x < 600.0;
         let pal = theme::colors();
         egui::Window::new(RichText::new("Settings").size(17.0).strong())
-            .id(egui::Id::unique("settings_window_fitted"))
+            // egui keeps a window as wide as its content was, so a new width is a new window.
+            .id(egui::Id::unique(("settings_window_fitted", size.x.round() as i32)))
             .open(&mut open)
             .collapsible(false)
             .frame(
@@ -774,12 +787,19 @@ impl CodeApp {
                     .stroke(egui::Stroke::new(1.0, pal.border))
                     .inner_margin(egui::Margin::symmetric(18, 12)),
             )
-            .default_size(size)
+            .fixed_size(size)
             .default_pos(ctx.content_rect().center() - size / 2.0)
+            .constrain(true)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                // Its first frame lays out unbounded, and egui keeps a window as wide as its
+                // content was: hold the content to the size wanted.
+                ui.set_max_width(size.x);
+                ui.horizontal_wrapped(|ui| {
+                    let search_w = (ui.available_width() - 16.0).clamp(120.0, 240.0);
                     ui.add(
-                        egui::TextEdit::singleline(&mut state.filter).hint_text("Search settings").desired_width(240.0),
+                        egui::TextEdit::singleline(&mut state.filter)
+                            .hint_text("Search settings")
+                            .desired_width(search_w),
                     );
                     ui.selectable_value(&mut state.workspace, false, "User");
                     ui.add_enabled_ui(workspace_allowed, |ui| {
@@ -809,14 +829,21 @@ impl CodeApp {
                         }
                         let picked = state.jump == Some(*title);
                         let fill = if picked { pal.accent.gamma_multiply(0.18) } else { egui::Color32::TRANSPARENT };
-                        let resp = egui::Frame::new()
-                            .fill(fill)
-                            .stroke(egui::Stroke::new(1.0, pal.border))
-                            .corner_radius(11.0)
-                            .inner_margin(egui::Margin::symmetric(10, 3))
-                            .show(ui, |ui| ui.add(egui::Label::new(*title).selectable(false)))
-                            .response
-                            .interact(egui::Sense::click());
+                        // Sized before it's placed, so the row wraps whole chips (a frame
+                        // laid out in place would squeeze its word onto many lines).
+                        let font = egui::TextStyle::Body.resolve(ui.style());
+                        let galley = ui.painter().layout_no_wrap((*title).to_owned(), font, pal.text);
+                        let (rect, resp) =
+                            ui.allocate_exact_size(galley.size() + egui::vec2(20.0, 6.0), egui::Sense::click());
+                        let fill = if resp.hovered() && !picked { pal.hover_bg } else { fill };
+                        ui.painter().rect(
+                            rect,
+                            11.0,
+                            fill,
+                            egui::Stroke::new(1.0, pal.border),
+                            egui::StrokeKind::Inside,
+                        );
+                        ui.painter().galley(rect.center() - galley.size() / 2.0, galley, pal.text);
                         if resp.clicked() {
                             state.jump = Some(*title);
                         }
@@ -875,32 +902,46 @@ impl CodeApp {
                                     let x = ui.max_rect().x_range();
                                     ui.painter().hline(x, y, egui::Stroke::new(1.0, pal.border.gamma_multiply(0.6)));
                                 }
-                                ui.horizontal(|ui| {
-                                    ui.vertical(|ui| {
-                                        ui.set_width((ui.available_width() - 320.0).max(200.0));
-                                        ui.label(row.label);
-                                        if !row.help.is_empty() {
-                                            let help =
-                                                RichText::new(row.help).size(help_size).color(theme::colors().text_dim);
-                                            ui.add(egui::Label::new(help).wrap());
-                                        }
-                                    });
-                                    let value = lookup(&current, row.table, row.key);
-                                    let default = lookup(&defaults, row.table, row.key);
-                                    let changed = match (value, default) {
-                                        (Some(v), Some(d)) => v != d,
-                                        (Some(v), None) => v.as_str() != Some(""),
-                                        _ => false,
-                                    };
-                                    // At the far edge, so options line up down the page.
-                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        ui.add_space(12.0);
+                                let value = lookup(&current, row.table, row.key);
+                                let default = lookup(&defaults, row.table, row.key);
+                                let changed = match (value, default) {
+                                    (Some(v), Some(d)) => v != d,
+                                    (Some(v), None) => v.as_str() != Some(""),
+                                    _ => false,
+                                };
+                                let words = |ui: &mut egui::Ui| {
+                                    ui.label(row.label);
+                                    if !row.help.is_empty() {
+                                        let help =
+                                            RichText::new(row.help).size(help_size).color(theme::colors().text_dim);
+                                        ui.add(egui::Label::new(help).wrap());
+                                    }
+                                };
+                                // Narrow (a phone, a small window): the option goes under its words.
+                                if narrow {
+                                    words(ui);
+                                    ui.horizontal(|ui| {
                                         control(ui, state, row, value, &mut action);
                                         if changed && ui.small_button("Reset").clicked() {
                                             action = Some(Action::Reset(row.table, row.key));
                                         }
                                     });
-                                });
+                                } else {
+                                    ui.horizontal(|ui| {
+                                        ui.vertical(|ui| {
+                                            ui.set_width((ui.available_width() - 320.0).max(200.0));
+                                            words(ui);
+                                        });
+                                        // At the far edge, so options line up down the page.
+                                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                            ui.add_space(12.0);
+                                            control(ui, state, row, value, &mut action);
+                                            if changed && ui.small_button("Reset").clicked() {
+                                                action = Some(Action::Reset(row.table, row.key));
+                                            }
+                                        });
+                                    });
+                                }
                                 ui.add_space(8.0);
                             }
                         });

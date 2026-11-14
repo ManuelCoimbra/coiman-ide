@@ -860,6 +860,16 @@ impl CodeApp {
                 if let Some(cmd) = self.panel_layout_button(ui) {
                     self.layout_command(cmd);
                 }
+                if !self.layout.saved.panel_floating {
+                    let (icon, tip) = if self.panel_maximized {
+                        (Icon::Restore, "Restore Panel Size")
+                    } else {
+                        (Icon::Maximize, "Maximize Panel")
+                    };
+                    if icons::button(ui, icon, tip).clicked() {
+                        self.toggle_panel_maximized();
+                    }
+                }
                 if self.panel_tab == PanelTab::Terminal {
                     ui.add_space(8.0);
                     action = self.terminal.header(ui);
@@ -868,6 +878,11 @@ impl CodeApp {
             })
             .inner;
         (action, width)
+    }
+
+    pub(crate) fn toggle_panel_maximized(&mut self) {
+        self.panel_restoring = self.panel_maximized;
+        self.panel_maximized = !self.panel_maximized;
     }
 
     /// Applies a button from the terminal header.

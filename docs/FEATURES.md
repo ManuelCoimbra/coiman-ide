@@ -50,6 +50,13 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   still reads.
 - The status bar's indentation opens a picker: spaces, tabs, or detect from the content
 - The view glides when keys move it (`editor.smooth_scrolling`); long jumps cut straight there
+- **Minimap** (`editor.minimap`, off by default, or **View: Toggle Minimap**): the whole file
+  drawn small in place of the scrollbar, the part in view under a lighter band. Click it to
+  bring that part to the middle; drag to scroll. A long file's minimap moves with the view
+- **Right-click menu** in the text: Go to Definition, Type Definition, Implementations and
+  References; Rename Symbol, Quick Fix, Format Document; Cut, Copy, Paste; Toggle Line
+  Comment, Select All Occurrences; the Command Palette. A right click outside the selection
+  moves the cursor there first, as in VS Code; inside it, the menu acts on the selection
 - Bookmarks: `Ctrl+Alt+K` toggles, `Ctrl+Alt+L` / `Ctrl+Alt+J` go next and previous, **Bookmarks: List
   All** covers every file. They follow their lines as you edit and survive a restart
 - Your own snippets (**Snippets: Manage**): type a prefix and press Tab, or **Snippets: Insert
@@ -115,7 +122,9 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   less, htop) work. Several terminals as tabs (`` Ctrl+Shift+` `` for a new one), 10,000 lines
   of scrollback (wheel, `Shift+PageUp/Down`), drag to select, `Ctrl+C` copies a selection or
   interrupts, right-click copies, `Ctrl+V` pastes (bracketed paste). **Pop Out** moves the
-  terminal into its own window; closing that window puts it back in the panel. The shell is
+  terminal into its own window; closing that window puts it back in the panel. **Maximize
+  Panel** (the corners button, or **View: Toggle Maximized Panel**) gives the panel all the
+  room the editor had, and restores it. The shell is
   `terminal.shell` (default: PowerShell on Windows, `$SHELL` elsewhere)
 - Save / Save As / Save All (`Ctrl+K S`)
 - Encodings: files are detected from their BOM, then UTF-8, falling back to Windows 1252.

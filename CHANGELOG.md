@@ -14,6 +14,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - **Database** window: query plans (Explain, Ctrl+Shift+Enter) with full table scans and
   temporary sorts marked, each table's indexes, and a diagram of the tables and their foreign
   keys, which also copies or previews as a Mermaid `erDiagram`.
+- **Minimap** in place of the scrollbar (`editor.minimap`, off by default).
+- A **right-click menu** in the editor: go to, rename, quick fix, format, clipboard, comment.
+- **Maximize Panel**: the terminal (or any panel) fills the editor's room, and restores.
+
+### Changed
+
+- Less space around the line numbers.
+- Settings fits narrow windows and phones: the category buttons wrap, and each option goes
+  under its description when there's no room beside it.
 
 ### Fixed
 
