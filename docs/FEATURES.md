@@ -390,6 +390,24 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
 - **Search in the top bar**: the box in the middle opens Search Everywhere (or press Shift
   twice). `workbench.search_in_top_bar = false` puts a magnifier on the right instead. It is
   the one search button: the dock has none.
+- **File Manager** (**View: Open File Manager**, or **Open in File Manager** on a folder in
+  the Explorer): folders in place of the editor, in one pane or two, each pane with tabs.
+  Beside them are the project, the home folder and its usual folders, the drives, and
+  bookmarks. A preview shows the picked file's details and first lines.
+  - Columns sort by name (file2 before file10), size, date or type, folders first. A filter
+    takes words or patterns such as `*.rs`, and hidden files show on request.
+  - Click, Ctrl+click and Shift+click (or Shift+arrows) pick several. Drag them onto a
+    folder to move them, holding Ctrl to copy. Drags work between the panes and the Explorer
+    both ways, and the clipboard is the Explorer's too.
+  - Keys: Enter opens, Backspace goes up, Alt+Left and Alt+Right go back and forward, F2
+    renames, F5 and F6 copy and move to the other pane, F7 makes a folder, Delete goes to
+    the Recycle Bin (Shift+Delete deletes for good, after asking), Tab changes pane, Ctrl+T
+    opens a tab.
+  - Open files follow what moves or is renamed, and unsaved work is saved before a delete.
+  - Bookmarks, the panes' folders and tabs are kept between runs.
+  - **Open File** and **Open Folder** choose with the File Manager instead of the system's
+    dialog. A bar says what is being chosen, with Open and Cancel; a double-click on a file
+    opens it.
 - **Moving the panel and side bar**: the ≡ button on the panel's header puts the panel at the
   bottom, at the right or in a window of its own over the editor. Drag that window by its
   header to the editor's bottom or right edge and it docks there again. The same menu moves

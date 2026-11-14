@@ -8,6 +8,7 @@ pub(crate) enum ViewTab {
     Log(usize),
     Bytes,
     Image,
+    Files,
 }
 
 impl CodeApp {
@@ -17,6 +18,7 @@ impl CodeApp {
         let mut tabs: Vec<_> = logs.map(|(i, (title, shown))| (ViewTab::Log(i), title, shown)).collect();
         tabs.extend(self.bytes_tab().map(|(title, shown)| (ViewTab::Bytes, title, shown)));
         tabs.extend(self.image_tab().map(|(title, shown)| (ViewTab::Image, title, shown)));
+        tabs.extend(self.file_manager_tab().map(|(title, shown)| (ViewTab::Files, title, shown)));
         tabs
     }
 
@@ -24,6 +26,7 @@ impl CodeApp {
         self.hide_logs();
         self.hide_bytes();
         self.hide_image();
+        self.hide_file_manager();
     }
 
     pub(crate) fn show_view_tab(&mut self, tab: ViewTab) {
@@ -32,6 +35,7 @@ impl CodeApp {
             ViewTab::Log(i) => self.show_log_tab(i),
             ViewTab::Bytes => self.show_bytes_tab(),
             ViewTab::Image => self.show_image_tab(),
+            ViewTab::Files => self.show_file_manager_tab(),
         }
     }
 
@@ -40,6 +44,7 @@ impl CodeApp {
             ViewTab::Log(i) => self.close_log_tab(i),
             ViewTab::Bytes => self.close_bytes_tab(),
             ViewTab::Image => self.close_image_tab(),
+            ViewTab::Files => self.close_file_manager_tab(),
         }
     }
 

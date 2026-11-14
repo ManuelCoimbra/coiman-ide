@@ -323,6 +323,7 @@ impl CodeApp {
             ExplorerAction::Delete(paths, permanent) => self.delete_pending = Some((paths, permanent)),
             ExplorerAction::Paste(dir) => self.paste_into(&dir),
             ExplorerAction::Move(paths, dir) => self.move_into(&paths, &dir),
+            ExplorerAction::OpenInFileManager(dir) => self.open_file_manager(Some(dir)),
         }
     }
 
@@ -437,76 +438,67 @@ impl CodeApp {
         match choice {
             Some(true) => {
                 self.delete_pending = None;
-                // Unsaved work goes to disk first, so the Recycle Bin holds what was shown.
-                for i in 0..self.docs.len() {
-                    let covered =
-                        self.docs[i].path.as_ref().is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone)));
-                    if covered && self.docs[i].is_dirty() {
-                        self.save_doc(i);
-                    }
-                }
-                // Large trees take a while: the work goes to a thread, and the frame stays live.
-                let count = paths.len();
-                let (tx, rx) = std::sync::mpsc::channel();
-                let wake = repaint(ui.ctx());
-                let job = paths.clone();
-                std::thread::spawn(move || {
-                    let mut failed = Vec::new();
-                    for path in &job {
-                        let done = if permanent {
-                            coiman_core::project::file_ops::remove_all(path).map_err(|e| e.to_string())
-                        } else {
-                            trash::delete(path).map_err(|e| e.to_string())
-                        };
-                        if let Err(e) = done {
-                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                            failed.push(format!("{name}: {e}"));
-                        }
-                    }
-                    let message = if failed.is_empty() {
-                        let items = if count == 1 { "1 item".to_owned() } else { format!("{count} items") };
-                        if permanent { format!("Deleted {items}") } else { format!("Moved {items} to the Recycle Bin") }
-                    } else {
-                        format!("Could not delete {}", failed.join("; "))
-                    };
-                    let _ = tx.send((job, message));
-                    wake();
-                });
-                self.deleting = Some(rx);
-                self.status = Some(if count == 1 {
-                    "Deleting 1 item…".to_owned()
-                } else {
-                    format!("Deleting {count} items…")
-                });
+                self.start_delete(ui.ctx(), paths, permanent);
             }
             Some(false) => self.delete_pending = None,
             None => {}
         }
     }
 
-    /// Pastes the Explorer's copied or cut files into `dir`. Copies take a free name
-    /// ("a copy.rs"); cut files move, and open files follow them.
-    pub(crate) fn paste_into(&mut self, dir: &Path) {
-        use coiman_core::project::file_ops;
-        let Some((files, cut)) = self.explorer.clipboard.clone() else { return };
-        let mut failed = Vec::new();
-        if cut {
-            let (moved, why) = self.move_into_paths(&files, dir);
-            failed = why;
-            self.explorer.clipboard = None;
-            self.explorer.forget(&moved);
-        } else {
-            for from in &files {
-                let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                if from.is_dir() && file_ops::is_within(dir, from) {
-                    failed.push(format!("{name}: a folder can't go inside itself"));
-                    continue;
-                }
-                if let Err(e) = file_ops::copy_all(from, &file_ops::free_copy_name(dir, &name)) {
+    /// Moves `paths` to the Recycle Bin (or deletes them for good) on a thread, saving unsaved
+    /// work in them first. The Explorer's prompt and the File Manager both end here.
+    pub(crate) fn start_delete(&mut self, ctx: &egui::Context, paths: Vec<PathBuf>, permanent: bool) {
+        // Unsaved work goes to disk first, so the Recycle Bin holds what was shown.
+        for i in 0..self.docs.len() {
+            let covered = self.docs[i].path.as_ref().is_some_and(|p| paths.iter().any(|gone| p.starts_with(gone)));
+            if covered && self.docs[i].is_dirty() {
+                self.save_doc(i);
+            }
+        }
+        // Large trees take a while: the work goes to a thread, and the frame stays live.
+        let count = paths.len();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let wake = repaint(ctx);
+        let job = paths.clone();
+        std::thread::spawn(move || {
+            let mut failed = Vec::new();
+            for path in &job {
+                let done = if permanent {
+                    coiman_core::project::file_ops::remove_all(path).map_err(|e| e.to_string())
+                } else {
+                    trash::delete(path).map_err(|e| e.to_string())
+                };
+                if let Err(e) = done {
+                    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                     failed.push(format!("{name}: {e}"));
                 }
             }
-        }
+            let message = if failed.is_empty() {
+                let items = if count == 1 { "1 item".to_owned() } else { format!("{count} items") };
+                if permanent { format!("Deleted {items}") } else { format!("Moved {items} to the Recycle Bin") }
+            } else {
+                format!("Could not delete {}", failed.join("; "))
+            };
+            let _ = tx.send((job, message));
+            wake();
+        });
+        self.deleting = Some(rx);
+        self.status =
+            Some(if count == 1 { "Deleting 1 item…".to_owned() } else { format!("Deleting {count} items…") });
+    }
+
+    /// Pastes the Explorer's copied or cut files into `dir`. Copies take a free name
+    /// ("a copy.rs"); cut files move, and open files follow them.
+    pub(crate) fn paste_into(&mut self, dir: &Path) {
+        let Some((files, cut)) = self.explorer.clipboard.clone() else { return };
+        let failed = if cut {
+            let (moved, why) = self.move_into_paths(&files, dir);
+            self.explorer.clipboard = None;
+            self.explorer.forget(&moved);
+            why
+        } else {
+            Self::copy_into_paths(&files, dir)
+        };
         self.explorer.refresh();
         self.finder.mark_stale();
         self.status = Some(if failed.is_empty() {
@@ -521,8 +513,26 @@ impl CodeApp {
         });
     }
 
+    /// Copies `files` into `dir`, each under a free name ("a copy.rs" when "a.rs" is taken).
+    /// Returns what couldn't be copied, with why.
+    pub(crate) fn copy_into_paths(files: &[PathBuf], dir: &Path) -> Vec<String> {
+        use coiman_core::project::file_ops;
+        let mut failed = Vec::new();
+        for from in files {
+            let name = from.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            if from.is_dir() && file_ops::is_within(dir, from) {
+                failed.push(format!("{name}: a folder can't go inside itself"));
+                continue;
+            }
+            if let Err(e) = file_ops::copy_all(from, &file_ops::free_copy_name(dir, &name)) {
+                failed.push(format!("{name}: {e}"));
+            }
+        }
+        failed
+    }
+
     /// Moves what was dragged onto a folder there, with open files following it.
-    fn move_into(&mut self, files: &[PathBuf], dir: &Path) {
+    pub(crate) fn move_into(&mut self, files: &[PathBuf], dir: &Path) {
         let (moved, failed) = self.move_into_paths(files, dir);
         self.explorer.forget(&moved);
         self.explorer.refresh();

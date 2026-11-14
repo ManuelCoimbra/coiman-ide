@@ -175,6 +175,7 @@ pub struct CodeApp {
     font_preview: font_preview::FontPreview,
     color_preview: color_preview::ColorPreview,
     images: image_view::Viewer,
+    file_manager: views::file_manager::FileManager,
     markup: markup::Markup,
     light_colors: light_colors::LightColors,
     svg_preview: svg_preview::SvgPreview,
@@ -347,6 +348,7 @@ impl CodeApp {
             font_preview: Default::default(),
             color_preview: Default::default(),
             images: Default::default(),
+            file_manager: Default::default(),
             markup: Default::default(),
             light_colors: Default::default(),
             svg_preview: Default::default(),
@@ -720,7 +722,7 @@ impl CodeApp {
                         self.tab_bar(ui);
                     });
                 }
-                if self.log_view(ui) || self.bytes_view(ui) || self.image_view(ui) {
+                if self.log_view(ui) || self.bytes_view(ui) || self.image_view(ui) || self.file_manager_view(ui) {
                     return;
                 }
                 cmd = cmd.or(self.welcome(ui));
@@ -763,7 +765,12 @@ impl CodeApp {
             if let Some(path) = self.log_to_open.take() {
                 self.open_log_view(ui.ctx(), &path);
             }
-            if self.log_view(ui) || self.bytes_view(ui) || self.image_view(ui) || self.table_view(ui) {
+            if self.log_view(ui)
+                || self.bytes_view(ui)
+                || self.image_view(ui)
+                || self.file_manager_view(ui)
+                || self.table_view(ui)
+            {
                 return;
             }
             self.markdown_preview(ui);

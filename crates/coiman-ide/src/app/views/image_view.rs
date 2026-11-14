@@ -316,6 +316,7 @@ impl CodeApp {
         if let Some(path) = self.images.to_open.take() {
             self.hide_logs();
             self.hide_bytes();
+            self.hide_file_manager();
             self.open_image(ui.ctx(), &path);
             self.explorer.reveal(&path);
         }

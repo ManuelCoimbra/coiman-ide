@@ -35,6 +35,8 @@ pub enum Command {
     ResetLayout,
     ToggleTerminal,
     ShowExplorer,
+    /// The File Manager, in place of the editor.
+    OpenFileManager,
     ShowSearch,
     /// The search sheet, with its replace row open.
     ReplaceInFiles,
@@ -302,6 +304,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ResetLayout, "View: Reset Layout"),
     (Command::ToggleTerminal, "View: Toggle Terminal"),
     (Command::ShowExplorer, "View: Show Explorer"),
+    (Command::OpenFileManager, "View: Open File Manager"),
     (Command::ShowSearch, "View: Show Search"),
     (Command::ReplaceInFiles, "Search: Replace in Files"),
     (Command::Find, "Find"),
@@ -580,6 +583,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ResetLayout, "coiman.resetLayout"),
     (Command::ToggleTerminal, "workbench.action.terminal.toggleTerminal"),
     (Command::ShowExplorer, "workbench.view.explorer"),
+    (Command::OpenFileManager, "coiman.openFileManager"),
     (Command::ShowSearch, "workbench.view.search"),
     (Command::ReplaceInFiles, "workbench.action.replaceInFiles"),
     (Command::Find, "actions.find"),

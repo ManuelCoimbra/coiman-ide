@@ -28,6 +28,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   launcher with the icon and the file types it opens, and CI installs and starts each one on
   Debian, Ubuntu, Fedora, openSUSE and Arch before a release. See `docs/INSTALL-LINUX.md`.
 - `coiman-ide --version` prints the version.
+- A File Manager in place of the editor, with one or two panes, tabs, bookmarks, a preview,
+  sorting and filtering. It copies, moves, renames and deletes with open files following,
+  and drags and the clipboard work with the Explorer. Open File and Open Folder now choose
+  with it instead of the system's dialog.
 
 ### Changed
 

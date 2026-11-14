@@ -70,18 +70,9 @@ impl CodeApp {
             Command::QuickOpen => self.open_palette(""),
             Command::SearchEverywhere => self.open_everywhere(),
             Command::NewFile => self.new_file(),
-            Command::OpenFile => {
-                if let Some(path) = self.file_dialog("open_file").pick_file() {
-                    self.dialog_chose("open_file", &path);
-                    self.open_file(&path);
-                }
-            }
-            Command::OpenFolder => {
-                if let Some(path) = self.file_dialog("open_folder").pick_folder() {
-                    self.dialog_chose("open_folder", &path);
-                    self.open_folder(path);
-                }
-            }
+            // Coiman's own File Manager chooses, not the system's dialog.
+            Command::OpenFile => self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Files),
+            Command::OpenFolder => self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Folder),
             Command::GitClone | Command::GitInit | Command::GitSetAuthor | Command::GitPublishGitHub => {
                 self.git_setup_command(ctx, cmd);
             }
@@ -309,6 +300,7 @@ impl CodeApp {
             | Command::PanelRight
             | Command::PanelFloat
             | Command::ResetLayout => self.layout_command(cmd),
+            Command::OpenFileManager => self.open_file_manager(None),
             Command::ShowExplorer => {
                 self.welcome_sidebar = true;
                 self.sidebar_visible = true;
@@ -858,6 +850,10 @@ impl CodeApp {
         let terminal_focused = self.terminal.has_focus(ctx);
         // While the delete prompt is up, Enter and Escape are its.
         let explorer_focused = crate::ui::explorer::Explorer::has_focus(ctx) && self.delete_pending.is_none();
+        // The File Manager's own keys (F2, F5, Delete…) come before the shortcuts while it's in front.
+        if !explorer_focused && self.chord.is_none() && self.file_manager_keys(ctx) {
+            return;
+        }
         if let Some(cmd) = self.keymap.process(ctx, &mut self.chord, editor_focused, terminal_focused, explorer_focused)
         {
             self.run_command(ctx, cmd);

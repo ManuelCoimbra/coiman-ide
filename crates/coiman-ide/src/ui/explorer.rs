@@ -144,6 +144,8 @@ pub struct DraggedFiles(pub Vec<PathBuf>);
 
 /// What the Explorer's context menu or keys ask for (`None`: the open folder).
 pub enum ExplorerAction {
+    /// Show this folder in the File Manager.
+    OpenInFileManager(PathBuf),
     NewFile(Option<PathBuf>),
     NewFolder(Option<PathBuf>),
     /// In this folder, of this one of `project_tree::TEMPLATES`.
@@ -1046,7 +1048,11 @@ impl Explorer {
                 ui.close();
             }
             if self.clipboard.is_some() && ui.button("Paste\tCtrl+V").clicked() {
-                self.action = Some(ExplorerAction::Paste(dir_of));
+                self.action = Some(ExplorerAction::Paste(dir_of.clone()));
+                ui.close();
+            }
+            if ui.button("Open in File Manager").clicked() {
+                self.action = Some(ExplorerAction::OpenInFileManager(dir_of));
                 ui.close();
             }
             ui.separator();

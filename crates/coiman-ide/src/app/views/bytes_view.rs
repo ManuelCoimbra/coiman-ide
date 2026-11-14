@@ -361,6 +361,7 @@ impl CodeApp {
         if let Some(path) = self.bytes.to_open.take() {
             self.hide_logs();
             self.hide_image();
+            self.hide_file_manager();
             self.bytes.view = Some(BytesView::new(Showing::File(path), over_now));
         }
         let paused = self.debug_is_paused();
