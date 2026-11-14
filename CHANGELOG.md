@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-14
+
 ### Added
 
 - The Markdown preview draws ```mermaid blocks (flowchart, class, sequence, state, ER and more) with

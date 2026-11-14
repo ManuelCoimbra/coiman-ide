@@ -1,6 +1,6 @@
 # Coiman IDE built from source, for the AUR. Releases fill in pkgver and the checksum.
 pkgname=coiman-ide
-pkgver=0.3.0
+pkgver=0.4.0
 pkgrel=1
 pkgdesc="Code editor and IDE written in Rust"
 arch=('x86_64' 'aarch64')
