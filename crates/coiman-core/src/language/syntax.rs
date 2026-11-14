@@ -309,6 +309,9 @@ pub struct TsState {
     computed_for: Option<(u64, u64, usize, usize, u64, bool)>,
     /// Highlighted spans for the lines last prepared.
     pub lines: HashMap<usize, Vec<Span>>,
+    /// The same for the minimap's lines, and what they were computed for.
+    minimap_for: Option<(u64, u64, usize, usize, u64, bool)>,
+    pub minimap_lines: HashMap<usize, Vec<Span>>,
 }
 
 impl TsState {
@@ -352,6 +355,8 @@ impl TsState {
             tree: None,
             computed_for: None,
             lines: HashMap::new(),
+            minimap_for: None,
+            minimap_lines: HashMap::new(),
         })
     }
 
@@ -439,15 +444,35 @@ impl TsState {
             return;
         }
         self.computed_for = Some(key);
-        self.lines.clear();
-        let Some(cfg) = config(self.lang) else { return };
+        let _ = tree;
+        self.lines = self.compute(buf, first, last, rainbow).unwrap_or_default();
+    }
+
+    /// Spans for `first..=last` kept apart from the view's, for the minimap.
+    pub fn prepare_minimap(&mut self, buf: &Buffer, first: usize, last: usize) {
+        let Some((tree_version, _)) = &self.tree else {
+            self.minimap_lines.clear();
+            return;
+        };
+        let key = (buf.version(), *tree_version, first, last, crate::appearance::theme::generation(), false);
+        if self.minimap_for == Some(key) {
+            return;
+        }
+        self.minimap_for = Some(key);
+        self.minimap_lines = self.compute(buf, first, last, false).unwrap_or_default();
+    }
+
+    fn compute(&self, buf: &Buffer, first: usize, last: usize, rainbow: bool) -> Option<HashMap<usize, Vec<Span>>> {
+        let (_, tree) = self.tree.as_ref()?;
+        let cfg = config(self.lang)?;
+        let mut out = HashMap::new();
 
         // Bring the tree up to date with edits it hasn't seen, so unchanged
         // regions keep the right positions until the worker catches up.
         let pending: Vec<&SyntaxEdit> =
             self.inflight.iter().flat_map(|(_, e)| e.iter()).chain(buf.peek_syntax_edits()).collect();
         if pending.iter().any(|e| matches!(e, SyntaxEdit::Reset)) {
-            return;
+            return None;
         }
         let tree: Cow<Tree> = if pending.is_empty() {
             Cow::Borrowed(tree)
@@ -479,8 +504,9 @@ impl TsState {
                 }
                 byte += c.len_utf8();
             }
-            self.lines.insert(line, spans);
+            out.insert(line, spans);
         }
+        Some(out)
     }
 }
 

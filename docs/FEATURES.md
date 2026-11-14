@@ -52,7 +52,8 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
 - The view glides when the wheel or keys move it (`editor.smooth_scrolling`, Settings > Smooth
   scrolling); off, the wheel and keys move it at once, as VS Code does. Long jumps cut straight there
 - **Minimap** (`editor.minimap`, off by default, or **View: Toggle Minimap**): the whole file
-  drawn small in place of the scrollbar, the part in view under a lighter band. Click it to
+  drawn small, in its syntax colors, in place of the scrollbar, the part in view under a
+  lighter band. Click it to
   bring that part to the middle; drag to scroll. A long file's minimap moves with the view
 - **Right-click menu** in the text: Go to Definition, Type Definition, Implementations and
   References; Rename Symbol, Quick Fix, Format Document; Undo, Redo; Cut, Copy, Paste; Toggle Line
@@ -927,6 +928,8 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   of it. The accent is the first of the theme's focus border, active border, button and
   link colors that stands out from its background. Wayland keeps the launcher's icon: a
   window can't change it there.
+- **Coiman High Contrast** and **Coiman High Contrast Light**: black on white or white on
+  black, bright borders, and syntax colors chosen to stay readable.
 - **Bundled themes**: Catppuccin (Mocha, Macchiato, Frappé, Latte), Dracula (and Soft),
   GitHub (nine), Gruvbox (six), Nord, One Dark Pro (five) and Tokyo Night (Night, Storm,
   Light), taken unchanged from their MIT-licensed extensions (`data/themes/LICENSES.md`).

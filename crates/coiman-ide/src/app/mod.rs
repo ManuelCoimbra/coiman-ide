@@ -1003,6 +1003,7 @@ impl CodeApp {
         }
 
         self.preview_theme(&ctx);
+        self.recolor_semantic_tokens();
         self.restore_terminals(&ctx);
         self.close_dialog(&ctx);
         self.run_refusal_ui(&ctx);

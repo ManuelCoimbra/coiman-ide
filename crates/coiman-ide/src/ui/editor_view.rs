@@ -2258,7 +2258,7 @@ fn minimap_first(total_rows: usize, track_h: f32, scroll_y: f32, row_h: f32) -> 
 /// the part in view under a lighter band.
 fn paint_minimap(
     ui: &mut egui::Ui,
-    doc: &Document,
+    doc: &mut Document,
     view: &ViewState,
     layout: &Layout,
     m: &Metrics,
@@ -2275,9 +2275,14 @@ fn paint_minimap(
     let shift = (first - start as f32) * MINI_ROW;
     let rows = (track.height() / MINI_ROW).ceil() as usize + 1;
     let max_cols = ((track.width() - 8.0) / MINI_COL) as usize;
-    let ink = pal.text.gamma_multiply(0.45);
-    let buf = &doc.buffer;
-    let mut cached: Option<(usize, Vec<char>, usize)> = None;
+    // Colored as the text is: tree-sitter's spans for these lines, else the grammar's.
+    let last_row = (start + rows).min(layout.total_rows.max(1) - 1);
+    let (first_line, last_line) =
+        (layout.row(doc, view, start.min(last_row)).line, layout.row(doc, view, last_row).line);
+    if let Some(ts) = &mut doc.ts {
+        ts.prepare_minimap(&doc.buffer, first_line, last_line);
+    }
+    let mut cached: Option<(usize, Vec<char>, usize, Vec<Color32>)> = None;
     for k in 0..rows {
         let r = start + k;
         if r >= layout.total_rows {
@@ -2285,14 +2290,26 @@ fn paint_minimap(
         }
         let row = layout.row(doc, view, r);
         if cached.as_ref().is_none_or(|c| c.0 != row.line) {
-            cached = Some((row.line, buf.line_text(row.line).chars().collect(), buf.line_start(row.line)));
+            let chars: Vec<char> = doc.buffer.line_text(row.line).chars().collect();
+            let spans = match &doc.ts {
+                Some(ts) => ts.minimap_lines.get(&row.line).map(Vec::as_slice),
+                None => doc.highlighter.spans(&doc.buffer, row.line),
+            };
+            let mut colors = Vec::with_capacity(chars.len());
+            for span in spans.into_iter().flatten() {
+                colors.extend(std::iter::repeat_n(theme::c32(span.color), span.len));
+            }
+            cached = Some((row.line, chars, doc.buffer.line_start(row.line), colors));
         }
-        let Some((_, chars, line_start)) = cached.as_ref() else { continue };
+        let Some((_, chars, line_start, colors)) = cached.as_ref() else { continue };
+        // Faint, as VS Code's: the shape of the code, its colors a hint.
+        let ink = |i: usize| colors.get(i).copied().unwrap_or(pal.text).gamma_multiply(0.6);
         let y = track.top() + k as f32 * MINI_ROW - shift;
         let (a, b) = (row.start - line_start, (row.end - line_start).min(chars.len()));
         let mut col = 0usize;
-        let mut run: Option<usize> = None;
-        let flush = |from: usize, to: usize| {
+        // A run of one color: (first column, color).
+        let mut run: Option<(usize, Color32)> = None;
+        let flush = |from: usize, to: usize, color: Color32| {
             let from = from.min(max_cols);
             let to = to.min(max_cols);
             if to > from {
@@ -2300,26 +2317,34 @@ fn paint_minimap(
                 painter.rect_filled(
                     Rect::from_min_size(Pos2::new(x, y), Vec2::new((to - from) as f32 * MINI_COL, MINI_ROW * 0.7)),
                     0.0,
-                    ink,
+                    color,
                 );
             }
         };
-        for &c in chars.get(a..b).unwrap_or(&[]) {
+        for (i, &c) in chars.iter().enumerate().take(b).skip(a) {
             let w = if c == '\t' { 4 - col % 4 } else { 1 };
             if c.is_whitespace() {
-                if let Some(from) = run.take() {
-                    flush(from, col);
+                if let Some((from, color)) = run.take() {
+                    flush(from, col, color);
                 }
-            } else if run.is_none() {
-                run = Some(col);
+            } else {
+                let color = ink(i);
+                match run {
+                    Some((_, now)) if now == color => {}
+                    Some((from, now)) => {
+                        flush(from, col, now);
+                        run = Some((col, color));
+                    }
+                    None => run = Some((col, color)),
+                }
             }
             col += w;
             if col >= max_cols {
                 break;
             }
         }
-        if let Some(from) = run {
-            flush(from, col);
+        if let Some((from, color)) = run {
+            flush(from, col, color);
         }
     }
     // The part in view.

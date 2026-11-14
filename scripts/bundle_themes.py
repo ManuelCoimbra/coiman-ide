@@ -55,6 +55,11 @@ def main():
         text = z.read(licence).decode("utf-8").strip()
         licences.append(f"\n## {pkg.get('displayName', ext_id)} ({ext_id} {pkg['version']})\n\n"
                         f"Themes: {', '.join(labels)}.\n\n```\n{text}\n```\n")
+    # Coiman's own themes, kept in own/ (they're the project's, under its licence).
+    for own in sorted((OUT / "own").glob("*.json")):
+        theme = json.loads(own.read_text("utf-8"))
+        ui = {"hc": "hc-black", "hc-light": "hc-light", "light": "vs"}.get(theme.get("type"), "vs-dark")
+        entries.append((theme["name"], ui, "own/" + own.name))
     (OUT / "LICENSES.md").write_text("".join(licences), encoding="utf-8", newline="\n")
     rows = "".join(
         f'    ({json.dumps(label, ensure_ascii=False)}, {json.dumps(ui)}, {json.dumps(file)}, '

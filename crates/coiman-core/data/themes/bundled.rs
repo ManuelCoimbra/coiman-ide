@@ -4,6 +4,8 @@
     ("Catppuccin Latte", "vs", "catppuccin-latte.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/catppuccin-latte.json"))),
     ("Catppuccin Macchiato", "vs-dark", "catppuccin-macchiato.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/catppuccin-macchiato.json"))),
     ("Catppuccin Mocha", "vs-dark", "catppuccin-mocha.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/catppuccin-mocha.json"))),
+    ("Coiman High Contrast", "hc-black", "own/coiman-high-contrast.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/own/coiman-high-contrast.json"))),
+    ("Coiman High Contrast Light", "hc-light", "own/coiman-high-contrast-light.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/own/coiman-high-contrast-light.json"))),
     ("Dracula Theme", "vs-dark", "dracula-theme.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/dracula-theme.json"))),
     ("Dracula Theme Soft", "vs-dark", "dracula-theme-soft.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/dracula-theme-soft.json"))),
     ("GitHub Dark", "vs-dark", "github-dark.json", include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/themes/github-dark.json"))),

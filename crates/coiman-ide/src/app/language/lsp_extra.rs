@@ -137,6 +137,10 @@ pub(crate) struct LspExtra {
     picked_lenses: Vec<lt::Command>,
     /// Semantic colors per document: (line count they were made for, by line).
     tokens: HashMap<u64, (usize, LineHighlights)>,
+    /// The tokens as the server sent them, with their legend, to color again for another theme.
+    token_data: HashMap<u64, (Vec<u32>, Legend)>,
+    /// The theme `tokens` were colored with.
+    tokens_theme: u64,
     inlays: HashMap<u64, (usize, Inlays)>,
     /// (doc uid, version) last asked about, and when that version was first seen.
     asked: Option<(u64, u64)>,
@@ -178,6 +182,9 @@ fn capture_of(token_type: &str, modifiers: &[&str]) -> Option<&'static str> {
         _ => return None,
     })
 }
+
+/// A server's names for token types and modifiers.
+type Legend = (Vec<String>, Vec<String>);
 
 /// A semantic token as drawn: color (transparent for none), italic, struck through.
 type TokenLook = (Color32, bool, bool);
@@ -335,6 +342,7 @@ impl CodeApp {
         let has_inlays = inlays && caps.is_some_and(|c| c.inlay_hint_provider.is_some());
         if !has_tokens {
             self.lsp.extra.tokens.remove(&uid);
+            self.lsp.extra.token_data.remove(&uid);
         }
         if !has_inlays {
             self.lsp.extra.inlays.remove(&uid);
@@ -757,6 +765,8 @@ impl CodeApp {
         }
         let map = decode_tokens(self.docs[i].buffer.rope(), &data, &legend);
         self.lsp.extra.tokens.insert(uid, (lines, Arc::new(map)));
+        self.lsp.extra.token_data.insert(uid, (data, legend));
+        self.lsp.extra.tokens_theme = coiman_core::appearance::theme::generation();
     }
 
     pub(crate) fn on_inlay_hints(&mut self, uid: u64, lines: usize, value: Value) {
@@ -797,6 +807,28 @@ impl CodeApp {
             });
         }
         self.lsp.extra.symbol_highlights = Some((uid, version, Arc::new(map)));
+    }
+
+    /// After a theme change, semantic colors are worked out again from what the server sent,
+    /// so no colors of the theme before stay behind.
+    pub(crate) fn recolor_semantic_tokens(&mut self) {
+        let generation = coiman_core::appearance::theme::generation();
+        if self.lsp.extra.tokens_theme == generation {
+            return;
+        }
+        self.lsp.extra.tokens_theme = generation;
+        let uids: Vec<u64> = self.lsp.extra.token_data.keys().copied().collect();
+        for uid in uids {
+            let Some(i) = self.doc_index(uid) else {
+                self.lsp.extra.token_data.remove(&uid);
+                continue;
+            };
+            let Some((data, legend)) = self.lsp.extra.token_data.get(&uid) else { continue };
+            let map = decode_tokens(self.docs[i].buffer.rope(), data, legend);
+            if let Some(entry) = self.lsp.extra.tokens.get_mut(&uid) {
+                entry.1 = Arc::new(map);
+            }
+        }
     }
 
     /// Semantic colors, symbol highlights and inlay hints for document `i`.

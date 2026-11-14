@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 91, partial 106,
-missing 272, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 92, partial 106,
+missing 271, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -32,7 +32,7 @@ specification is right: every row in it exists.
 | 14 DevOps | | 3 | 19 | 2 |
 | 15 Testing | 4 | 5 | 12 | |
 | 16 Security and quality | 5 | 5 | 9 | |
-| 17 Accessibility and UX | 7 | 7 | 6 | |
+| 17 Accessibility and UX | 8 | 7 | 5 | |
 | 18 Remote | | | 14 | 1 |
 | 19 Plugins | 4 | 4 | 11 | 1 |
 | 20 Workspace | 1 | 9 | 7 | |
@@ -502,7 +502,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Full screen reader support | Partial | AccessKit is wired in; not checked with a reader |
 | Keyboard-only navigation | Partial | Commands and shortcuts for most things |
 | Accessibility audit of all components | Missing | |
-| High contrast themes | Missing | |
+| High contrast themes | Done | Coiman High Contrast (dark and light), GitHub's |
 | Custom colour palettes | Done | Themes, VS Code themes |
 | Per-language editor layouts | Missing | |
 | Per-project interface profiles | Partial | Folder settings |
@@ -514,7 +514,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Context-sensitive shortcuts | Done | Editor-only and Explorer-only keys |
 | Mouse gesture support | Missing | |
 | Custom editor rulers | Done | |
-| Customisable minimap | Partial | `editor.minimap`, on or off |
+| Customisable minimap | Partial | `editor.minimap`, on or off, in syntax colors |
 | Better font rendering | Partial | |
 | Ligature configuration | Missing | |
 | Font fallback configuration | Partial | Fallback fonts exist; not configurable |
