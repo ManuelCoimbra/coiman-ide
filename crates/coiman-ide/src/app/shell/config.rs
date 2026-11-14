@@ -230,6 +230,11 @@ impl CodeApp {
             theme::set(ctx, t);
             problems.extend(err);
         }
+        if (first || new.workbench.icon_theme != old.workbench.icon_theme)
+            && let Err(e) = coiman_core::appearance::file_icons::set_pack(new.workbench.icon_theme.trim())
+        {
+            problems.push(e);
+        }
         theme::set_touch(match new.workbench.touch.trim() {
             "on" => true,
             "off" => false,
@@ -320,6 +325,16 @@ impl CodeApp {
     }
 
     /// Saves the picked theme into the user settings file and applies it.
+    /// Saves the icon pack chosen by its label.
+    pub(crate) fn set_icon_theme(&mut self, ctx: &egui::Context, label: &str) {
+        let packs = coiman_core::appearance::file_icons::packs();
+        let Some((id, _)) = packs.iter().find(|p| p.1 == label) else { return };
+        let value = toml::Value::String(id.clone()).to_string();
+        if let Err(e) = self.write_user_setting(ctx, "workbench", "icon_theme", &value) {
+            self.status = Some(e);
+        }
+    }
+
     pub(crate) fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
         let value = toml::Value::String(label.to_owned()).to_string();
         match self.write_user_setting(ctx, "workbench", "color_theme", &value) {

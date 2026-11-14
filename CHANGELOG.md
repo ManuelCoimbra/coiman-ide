@@ -15,7 +15,15 @@ and versions follow [Semantic Versioning](https://semver.org/).
   temporary sorts marked, each table's indexes, and a diagram of the tables and their foreign
   keys, which also copies or previews as a Mermaid `erDiagram`.
 - **Minimap** in place of the scrollbar (`editor.minimap`, off by default).
-- A **right-click menu** in the editor: go to, rename, quick fix, format, clipboard, comment.
+- A **right-click menu** in the editor: go to, rename, quick fix, format, undo and redo,
+  clipboard, comment.
+- **30 bundled color themes**: Catppuccin, Dracula, GitHub, Gruvbox, Nord, One Dark Pro and
+  Tokyo Night (all MIT).
+- **File icon packs**: Catppuccin and vscode-icons beside Material (Preferences: File Icon
+  Theme), and SVG icon themes from VS Code extensions.
+- **Themes from Open VSX**: search and install color and icon themes from open-vsx.org,
+  fetched with `curl`; only the themes are kept.
+- The logo, in the window and as the taskbar icon, takes the color theme's accent.
 - **Maximize Panel**: the terminal (or any panel) fills the editor's room, and restores.
 
 ### Changed
@@ -26,6 +34,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A theme whose focus border is nearly its background (Nord) hid what's drawn in the accent,
+  such as the Welcome page's icons: the accent is now the first theme color that stands out.
+- A theme file with a comment between a trailing comma and the closing bracket (Tokyo
+  Night Light) didn't load.
 - Linux, Wayland: the taskbar showed a default icon when Coiman ran from the AppImage or the
   tar.gz without installing, since Wayland takes a window's icon only from its launcher
   entry. It now adds its own entry and icons under `~/.local/share` when none is installed.

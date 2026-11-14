@@ -37,6 +37,11 @@ from where:
 
   Nothing runs until you click **Install**. npm, pip, dotnet and go tools install
   into those tools' own global folders.
+- **Themes from Open VSX** (Preferences: Get Themes from Open VSX). A search, and
+  then the extension you click **Install** on, are fetched from open-vsx.org with your
+  system's `curl`, over HTTPS only; the package is checked against the SHA-256 Open VSX
+  publishes. Only its color and icon themes are kept: its code, snippets and languages
+  never are. Nothing is fetched until you search.
 - **Git: Push, Pull and Fetch.** They run `git` against your repository's remote,
   and only when you click them or run the command. Nothing fetches on a timer.
 - **Language servers themselves** are separate programs, as in other editors.

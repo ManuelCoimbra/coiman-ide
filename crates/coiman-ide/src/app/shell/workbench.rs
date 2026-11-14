@@ -2057,17 +2057,16 @@ fn window_buttons(ui: &mut egui::Ui, bar: egui::Rect, maximized: bool) {
 }
 
 /// An icon button of the top bar.
-/// The Coiman IDE icon, loaded once for the Welcome page.
+/// The Coiman IDE icon in the theme's accent, drawn again when the accent changes.
 pub(crate) fn logo_texture(ctx: &egui::Context) -> egui::TextureHandle {
-    let id = egui::Id::unique("coiman_logo");
+    let accent = coiman_core::appearance::theme::current().palette.accent;
+    let id = egui::Id::unique(("coiman_logo", accent.r, accent.g, accent.b));
     if let Some(t) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         return t;
     }
-    let png = include_bytes!("../../../../../assets/icon/coiman-128.png");
-    let image = image::load_from_memory(png).map(|i| i.into_rgba8()).unwrap_or_default();
-    let size = [image.width() as usize, image.height() as usize];
-    let color = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-    let texture = ctx.load_texture("coiman_logo", color, egui::TextureOptions::LINEAR);
+    let svg = coiman_core::appearance::logo::svg(accent);
+    let image = icons::draw_svg(&svg, 128).unwrap_or_else(|| egui::ColorImage::new([1, 1], vec![Color32::TRANSPARENT]));
+    let texture = ctx.load_texture("coiman_logo", image, egui::TextureOptions::LINEAR);
     ctx.data_mut(|d| d.insert_temp(id, texture.clone()));
     texture
 }

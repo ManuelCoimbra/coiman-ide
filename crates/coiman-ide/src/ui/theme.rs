@@ -66,8 +66,15 @@ pub fn colors() -> Palette {
 
 /// Makes `theme` current and restyles egui.
 pub fn set(ctx: &egui::Context, theme: Theme) {
+    let accent = theme.palette.accent;
     set_current(theme);
     apply_visuals(ctx, &colors());
+    // The window's icon takes the accent too, as the logo in the window does.
+    if let Some(icon) = crate::ui::icons::window_icon(accent) {
+        #[cfg(windows)]
+        crate::ui::icons::set_taskbar_icon(&icon);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Icon(Some(std::sync::Arc::new(icon))));
+    }
 }
 
 /// How long panels, tabs and popups take to change: not at all with reduced motion.

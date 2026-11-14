@@ -331,8 +331,73 @@ thread_local! {
         std::cell::RefCell::new(HashMap::new());
 }
 
+/// The window's own icon (taskbar, Alt+Tab) in the theme's accent. Wayland has no way for a
+/// window to change it, so there it stays the launcher's.
+pub(crate) fn window_icon(accent: coiman_core::appearance::theme::Color) -> Option<egui::IconData> {
+    let image = draw_svg(&coiman_core::appearance::logo::svg(accent), 256)?;
+    let rgba = image.pixels.iter().flat_map(|p| p.to_srgba_unmultiplied()).collect();
+    Some(egui::IconData { rgba, width: 256, height: 256 })
+}
+
+/// Windows' taskbar and Alt+Tab show a window's big icon, which egui leaves as the program's
+/// own: this sets it on this thread's top windows (the main one, a popped-out terminal).
+#[cfg(windows)]
+pub(crate) fn set_taskbar_icon(icon: &egui::IconData) {
+    #[link(name = "user32")]
+    unsafe extern "system" {
+        fn CreateIconFromResourceEx(
+            bits: *const u8,
+            size: u32,
+            icon: i32,
+            ver: u32,
+            cx: i32,
+            cy: i32,
+            flags: u32,
+        ) -> isize;
+        fn EnumThreadWindows(thread: u32, callback: extern "system" fn(isize, isize) -> i32, param: isize) -> i32;
+        fn GetWindow(hwnd: isize, cmd: u32) -> isize;
+        fn SendMessageW(hwnd: isize, msg: u32, wparam: usize, lparam: isize) -> isize;
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetCurrentThreadId() -> u32;
+    }
+    extern "system" fn collect(hwnd: isize, param: isize) -> i32 {
+        const GW_OWNER: u32 = 4;
+        // SAFETY: `param` is the Vec below, alive for the whole enumeration.
+        let found = unsafe { &mut *(param as *mut Vec<isize>) };
+        // SAFETY: a plain query on a window handle Windows gave us.
+        if unsafe { GetWindow(hwnd, GW_OWNER) } == 0 {
+            found.push(hwnd);
+        }
+        1
+    }
+    // Windows reads a PNG as an icon resource.
+    let mut png = Vec::new();
+    let Some(image) = image::RgbaImage::from_raw(icon.width, icon.height, icon.rgba.clone()) else { return };
+    if image.write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png).is_err() {
+        return;
+    }
+    const LR_DEFAULTCOLOR: u32 = 0;
+    // SAFETY: the PNG's bytes and their length; Windows copies what it needs.
+    let hicon =
+        unsafe { CreateIconFromResourceEx(png.as_ptr(), png.len() as u32, 1, 0x0003_0000, 0, 0, LR_DEFAULTCOLOR) };
+    if hicon == 0 {
+        return;
+    }
+    let mut windows: Vec<isize> = Vec::new();
+    // SAFETY: the callback only pushes into `windows`, which outlives the call.
+    unsafe { EnumThreadWindows(GetCurrentThreadId(), collect, &mut windows as *mut Vec<isize> as isize) };
+    const WM_SETICON: u32 = 0x0080;
+    const ICON_BIG: usize = 1;
+    for hwnd in windows {
+        // SAFETY: a message to our own window with an icon handle that stays alive.
+        unsafe { SendMessageW(hwnd, WM_SETICON, ICON_BIG, hicon) };
+    }
+}
+
 /// Draws an icon's SVG at this many pixels square.
-fn draw_svg(svg: &str, pixels: u32) -> Option<egui::ColorImage> {
+pub(crate) fn draw_svg(svg: &str, pixels: u32) -> Option<egui::ColorImage> {
     use resvg::{tiny_skia, usvg};
     let tree = usvg::Tree::from_str(svg, &usvg::Options::default()).ok()?;
     let size = tree.size();
@@ -344,12 +409,19 @@ fn draw_svg(svg: &str, pixels: u32) -> Option<egui::ColorImage> {
 }
 
 fn file_icon_texture(ctx: &egui::Context, icon: &'static str, pixels: u32) -> Option<egui::TextureHandle> {
+    static DRAWN_FOR: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    // Another pack: its icons share names with the last one's.
+    let generation = file_icons::generation();
+    if DRAWN_FOR.swap(generation, std::sync::atomic::Ordering::Relaxed) != generation {
+        FILE_ICONS.with_borrow_mut(HashMap::clear);
+    }
     FILE_ICONS.with_borrow_mut(|cache| {
         cache
             .entry((icon, pixels))
             .or_insert_with(|| {
                 let image = draw_svg(file_icons::svg(icon)?, pixels)?;
-                Some(ctx.load_texture(format!("file_icon_{icon}_{pixels}"), image, egui::TextureOptions::LINEAR))
+                let name = format!("file_icon_{generation}_{icon}_{pixels}");
+                Some(ctx.load_texture(name, image, egui::TextureOptions::LINEAR))
             })
             .clone()
     })

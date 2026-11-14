@@ -318,6 +318,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("workbench", "zoom", "Zoom", "Scale of the whole window. 1.25 is 125%.", Kind::Decimal(0.5, 3.0)),
             row(
                 "workbench",
+                "icon_theme",
+                "File icons",
+                "Material (the default), Catppuccin, vscode-icons, or a pack from Open VSX.",
+                Kind::Button("Choose...", Command::SelectIconTheme),
+            ),
+            row(
+                "workbench",
+                "open_vsx",
+                "More themes",
+                "Color and icon themes from open-vsx.org, fetched with curl. Only their themes are taken.",
+                Kind::Button("Browse Open VSX...", Command::BrowseOpenVsxThemes),
+            ),
+            row(
+                "workbench",
                 "touch",
                 "Touch sizes",
                 "Larger buttons, rows and scroll bars for fingers. Auto turns them on on a phone.",
@@ -793,7 +807,7 @@ impl CodeApp {
             .show(ctx, |ui| {
                 // Its first frame lays out unbounded, and egui keeps a window as wide as its
                 // content was: hold the content to the size wanted.
-                ui.set_max_width(size.x);
+                ui.set_max_width(size.x - 36.0);
                 ui.horizontal_wrapped(|ui| {
                     let search_w = (ui.available_width() - 16.0).clamp(120.0, 240.0);
                     ui.add(

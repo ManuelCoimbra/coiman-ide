@@ -195,6 +195,7 @@ pub struct CodeApp {
     editor_menu: Option<editor::context_menu::EditorMenu>,
     /// The panel fills the room the editor had (the terminal full size), until restored.
     panel_maximized: bool,
+    open_vsx: extensions::open_vsx::OpenVsxUi,
     /// Just restored: the panel goes back to its saved size (egui would keep the big one).
     panel_restoring: bool,
     /// What's being pasted this frame, for what follows the editor.
@@ -374,6 +375,7 @@ impl CodeApp {
             log_to_open: None,
             editor_menu: None,
             panel_maximized: false,
+            open_vsx: Default::default(),
             panel_restoring: false,
             pasted: None,
             tests: Default::default(),
@@ -904,6 +906,7 @@ impl CodeApp {
         self.architecture_window(&ctx);
         self.code_health_window(&ctx);
         self.run_history_window(&ctx);
+        self.open_vsx_window(&ctx);
         self.database_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);

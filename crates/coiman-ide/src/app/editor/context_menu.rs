@@ -1,4 +1,4 @@
-//! The editor's right-click menu: clipboard, the language server's go-to and refactoring
+//! The editor's right-click menu: undo and redo, clipboard, the language server's go-to and refactoring
 //! commands, and the edits most often wanted on a selection.
 
 use coiman_core::editor::commands::Command;
@@ -17,6 +17,8 @@ pub(crate) struct EditorMenu {
 
 /// One row of the menu.
 enum Item {
+    Undo,
+    Redo,
     Copy,
     Cut,
     Paste,
@@ -39,7 +41,10 @@ impl CodeApp {
             self.editor_menu = None;
             return;
         }
-        let selected = self.docs.get(self.active).is_some_and(|d| d.buffer.selections().iter().any(|s| !s.is_empty()));
+        let doc = self.docs.get(self.active);
+        let selected = doc.is_some_and(|d| d.buffer.selections().iter().any(|s| !s.is_empty()));
+        let (can_undo, can_redo) =
+            doc.map_or((false, false), |d| (d.buffer.undo_depth() > 0, d.buffer.redo_depth() > 0));
         let items = [
             Item::Run(Command::GoToDefinition, "Go to Definition"),
             Item::Run(Command::GoToTypeDefinition, "Go to Type Definition"),
@@ -49,6 +54,9 @@ impl CodeApp {
             Item::Run(Command::RenameSymbol, "Rename Symbol"),
             Item::Run(Command::QuickFix, "Quick Fix..."),
             Item::Run(Command::FormatDocument, "Format Document"),
+            Item::Line,
+            Item::Undo,
+            Item::Redo,
             Item::Line,
             Item::Cut,
             Item::Copy,
@@ -77,12 +85,16 @@ impl CodeApp {
                                 ui.separator();
                                 continue;
                             }
+                            Item::Undo => ("Undo", None, can_undo),
+                            Item::Redo => ("Redo", None, can_redo),
                             Item::Cut => ("Cut", None, selected),
                             Item::Copy => ("Copy", None, selected),
                             Item::Paste => ("Paste", None, true),
                             Item::Run(c, label) => (*label, Some(*c), true),
                         };
                         let keys = match (item, command) {
+                            (Item::Undo, _) => "Ctrl+Z".to_owned(),
+                            (Item::Redo, _) => "Ctrl+Y".to_owned(),
                             (Item::Cut, _) => "Ctrl+X".to_owned(),
                             (Item::Copy, _) => "Ctrl+C".to_owned(),
                             (Item::Paste, _) => "Ctrl+V".to_owned(),
@@ -117,6 +129,16 @@ impl CodeApp {
             Item::Cut => ctx.send_viewport_cmd(egui::ViewportCommand::RequestCut),
             Item::Copy => ctx.send_viewport_cmd(egui::ViewportCommand::RequestCopy),
             Item::Paste => ctx.send_viewport_cmd(egui::ViewportCommand::RequestPaste),
+            Item::Undo => {
+                if let Some(doc) = self.docs.get_mut(self.active) {
+                    doc.buffer.undo();
+                }
+            }
+            Item::Redo => {
+                if let Some(doc) = self.docs.get_mut(self.active) {
+                    doc.buffer.redo();
+                }
+            }
             Item::Run(c, _) => self.run_command(ctx, *c),
             Item::Line => {}
         }

@@ -148,6 +148,9 @@ pub struct WorkbenchSettings {
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
     pub color_theme: String,
+    /// The file icon pack: `material`, `catppuccin`, `vscode-icons`, or one installed from an
+    /// extension ("Preferences: File Icon Theme").
+    pub icon_theme: String,
     /// A picture, or a folder of them, laid faintly over the window. Empty: none.
     pub background_image: String,
     /// Pictures for one part of the window, over the main one.
@@ -404,6 +407,7 @@ impl Default for WorkbenchSettings {
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
             color_theme: crate::appearance::theme::DEFAULT_THEME.to_owned(),
+            icon_theme: crate::appearance::file_icons::DEFAULT_PACK.to_owned(),
             background_image: String::new(),
             background_editor: String::new(),
             background_sidebar: String::new(),

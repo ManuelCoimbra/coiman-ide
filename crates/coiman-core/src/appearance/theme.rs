@@ -567,8 +567,25 @@ pub(crate) fn strip_jsonc(src: &str) -> String {
             (',', _) => {
                 // Drop the comma if only whitespace/comments lead to a closing bracket.
                 let mut j = i + 1;
-                while j < chars.len() && chars[j].is_whitespace() {
-                    j += 1;
+                loop {
+                    while j < chars.len() && chars[j].is_whitespace() {
+                        j += 1;
+                    }
+                    match (chars.get(j), chars.get(j + 1)) {
+                        (Some('/'), Some('/')) => {
+                            while j < chars.len() && chars[j] != '\n' {
+                                j += 1;
+                            }
+                        }
+                        (Some('/'), Some('*')) => {
+                            j += 2;
+                            while j + 1 < chars.len() && !(chars[j] == '*' && chars[j + 1] == '/') {
+                                j += 1;
+                            }
+                            j += 2;
+                        }
+                        _ => break,
+                    }
                 }
                 if !matches!(chars.get(j), Some('}' | ']')) {
                     out.push(c);
@@ -603,6 +620,12 @@ fn parse_color(s: &str) -> Option<Color> {
     Some(Color::from_rgba(r, g, b, a))
 }
 
+/// Whether a color is far enough from the background to be seen as an accent.
+fn stands_out(c: Color, bg: Color) -> bool {
+    let d = |a: u8, b: u8| (a as i32 - b as i32).abs();
+    d(c.r, bg.r) + d(c.g, bg.g) + d(c.b, bg.b) >= 90
+}
+
 #[derive(Default)]
 struct RawTheme {
     name: Option<String>,
@@ -612,11 +635,25 @@ struct RawTheme {
     semantic: Map<String, Value>,
 }
 
+/// Themes that come with Coiman, from MIT-licensed extensions on open-vsx.org (see
+/// `data/themes/LICENSES.md`): (label, uiTheme, file, text).
+pub const BUNDLED: &[(&str, &str, &str, &str)] = include!("../../data/themes/bundled.rs");
+/// Paths of bundled themes start with this, then the file's name.
+const BUNDLED_PREFIX: &str = "bundled:";
+
 fn read_theme_file(path: &Path, depth: usize) -> Result<RawTheme, String> {
     if depth > 8 {
         return Err(format!("{}: `include` nests too deeply", path.display()));
     }
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bundled = path
+        .to_str()
+        .and_then(|p| p.strip_prefix(BUNDLED_PREFIX))
+        .and_then(|file| BUNDLED.iter().find(|b| b.2 == file))
+        .map(|b| b.3.to_owned());
+    let text = match bundled {
+        Some(text) => text,
+        None => std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?,
+    };
     let json: Value = serde_json::from_str(&strip_jsonc(&text)).map_err(|e| format!("{}: {e}", path.display()))?;
     let mut raw = match json.get("include").and_then(Value::as_str) {
         Some(inc) => read_theme_file(&path.parent().unwrap_or(Path::new(".")).join(inc), depth + 1)?,
@@ -671,7 +708,13 @@ pub fn load_vscode_theme(path: &Path, ui_theme: Option<&str>) -> Result<Theme, S
         tab_inactive_bg: col(&["tab.inactiveBackground", "editorGroupHeader.tabsBackground"], base.tab_inactive_bg),
         tab_active_fg: col(&["tab.activeForeground"], base.tab_active_fg),
         tab_inactive_fg: col(&["tab.inactiveForeground"], base.tab_inactive_fg),
-        accent: col(&["focusBorder", "activityBar.activeBorder", "button.background"], base.accent),
+        // The first that stands out from the background: some themes (Nord) give focusBorder
+        // almost the editor's own color, and what's drawn in the accent would vanish.
+        accent: ["focusBorder", "activityBar.activeBorder", "button.background", "textLink.foreground"]
+            .iter()
+            .filter_map(|k| raw.colors.get(*k).and_then(Value::as_str).and_then(parse_color))
+            .find(|c| c.a >= 128 && stands_out(*c, editor_bg))
+            .unwrap_or(base.accent),
         status_bg: col(&["statusBar.background"], base.status_bg),
         status_fg: col(&["statusBar.foreground"], base.status_fg),
         border: col(&["sideBar.border", "panel.border", "editorGroup.border"], base.border),
@@ -752,6 +795,11 @@ pub fn discover() -> Vec<ThemeEntry> {
             out.extend(themes_in_extension(&ext));
         }
     }
+    out.extend(BUNDLED.iter().map(|(label, ui, file, _)| ThemeEntry {
+        label: (*label).to_owned(),
+        path: PathBuf::from(format!("{BUNDLED_PREFIX}{file}")),
+        ui_theme: Some((*ui).to_owned()),
+    }));
     if let Some(dir) = crate::settings::config_dir().map(|d| d.join("themes"))
         && let Ok(rd) = std::fs::read_dir(dir)
     {
@@ -823,6 +871,27 @@ pub fn resolve(name: &str, available: &[ThemeEntry]) -> (Theme, Option<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_bundled_theme_loads() {
+        assert!(BUNDLED.len() >= 30);
+        let all = discover();
+        for (label, ..) in BUNDLED {
+            let (theme, error) = resolve(label, &all);
+            assert_eq!(error, None, "{label}");
+            assert_eq!(&theme.name, label);
+            assert!(!theme.rules.is_empty(), "{label} has no code colors");
+        }
+        // Nord's focusBorder is nearly its background: the accent is its frost blue instead.
+        let nord = resolve("Nord", &all).0;
+        assert!(stands_out(nord.palette.accent, nord.palette.editor_bg), "{:?}", nord.palette.accent);
+        for (label, ..) in BUNDLED {
+            let t = resolve(label, &all).0;
+            assert!(stands_out(t.palette.accent, t.palette.editor_bg), "{label}: accent hidden");
+        }
+        let latte = resolve("Catppuccin Latte", &all).0;
+        assert!(!latte.palette.dark && resolve("Tokyo Night", &all).0.palette.dark);
+    }
 
     #[test]
     fn semantic_rules_pick_the_most_specific() {

@@ -495,6 +495,17 @@ impl CodeApp {
                 let current = self.settings.workbench.color_theme.clone();
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
             }
+            Command::BrowseOpenVsxThemes => self.show_open_vsx(),
+            Command::SelectIconTheme => {
+                let packs = coiman_core::appearance::file_icons::packs();
+                let current = packs
+                    .iter()
+                    .find(|p| p.0 == coiman_core::appearance::file_icons::current_pack())
+                    .map(|p| p.1.clone())
+                    .unwrap_or_default();
+                let labels = packs.into_iter().map(|p| p.1).collect();
+                self.palette.show_picker(PickerKind::IconTheme, labels, &current, "Select File Icon Theme");
+            }
             Command::NextHiddenCharacter => self.next_hidden_char(),
             Command::ShowLanguageServers => self.show_lsp_room(),
             Command::ShowArchitecture => self.show_architecture(ctx),
@@ -697,6 +708,7 @@ impl CodeApp {
     pub(crate) fn handle_pick(&mut self, ctx: &egui::Context, kind: PickerKind, label: &str) {
         match kind {
             PickerKind::Theme => self.set_color_theme(ctx, label),
+            PickerKind::IconTheme => self.set_icon_theme(ctx, label),
             PickerKind::CodeAction => self.pick_code_action(label),
             PickerKind::CodeLens => self.pick_code_lens(ctx, label),
             PickerKind::Branch => self.pick_branch(ctx, label),

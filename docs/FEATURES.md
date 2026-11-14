@@ -54,7 +54,7 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   drawn small in place of the scrollbar, the part in view under a lighter band. Click it to
   bring that part to the middle; drag to scroll. A long file's minimap moves with the view
 - **Right-click menu** in the text: Go to Definition, Type Definition, Implementations and
-  References; Rename Symbol, Quick Fix, Format Document; Cut, Copy, Paste; Toggle Line
+  References; Rename Symbol, Quick Fix, Format Document; Undo, Redo; Cut, Copy, Paste; Toggle Line
   Comment, Select All Occurrences; the Command Palette. A right click outside the selection
   moves the cursor there first, as in VS Code; inside it, the menu acts on the selection
 - Bookmarks: `Ctrl+Alt+K` toggles, `Ctrl+Alt+L` / `Ctrl+Alt+J` go next and previous, **Bookmarks: List
@@ -898,3 +898,18 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   installed VS Code (bundled and `~/.vscode/extensions`) and `<config>\themes`;
   `workbench.color_theme` also accepts a path to a theme `.json`. Theme files may use
   comments and `include`; token colors apply to tree-sitter and syntect highlighting.
+- **The logo follows the theme**: Coiman's icon on the Welcome page, in the dock and as the
+  window's icon (taskbar, Alt+Tab) takes the theme's accent color, its hexagon a deep shade
+  of it. The accent is the first of the theme's focus border, active border, button and
+  link colors that stands out from its background. Wayland keeps the launcher's icon: a
+  window can't change it there.
+- **Bundled themes**: Catppuccin (Mocha, Macchiato, Frappé, Latte), Dracula (and Soft),
+  GitHub (nine), Gruvbox (six), Nord, One Dark Pro (five) and Tokyo Night (Night, Storm,
+  Light), taken unchanged from their MIT-licensed extensions (`data/themes/LICENSES.md`).
+- **File icon packs** (**Preferences: File Icon Theme**, `workbench.icon_theme`): Material
+  Icon Theme (the default), Catppuccin (Latte's icons in light themes) and vscode-icons, all
+  MIT. A VS Code icon theme whose icons are SVG files can be added from Open VSX.
+- **Themes from Open VSX** (**Preferences: Get Themes from Open VSX**, or Settings > More
+  themes): search open-vsx.org for color and icon themes and install them; **Use** applies
+  one at once. `curl` does the fetching, so the app opens no connections; only the
+  extension's themes are kept, never its code, snippets or languages (see PRIVACY.md).

@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 81, partial 106,
-missing 282, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 81, partial 107,
+missing 281, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -32,7 +32,7 @@ specification is right: every row in it exists.
 | 14 DevOps | | 3 | 19 | 2 |
 | 15 Testing | 4 | 5 | 12 | |
 | 16 Security and quality | 5 | 5 | 9 | |
-| 17 Accessibility and UX | 7 | 6 | 7 | |
+| 17 Accessibility and UX | 7 | 7 | 6 | |
 | 18 Remote | | | 14 | 1 |
 | 19 Plugins | 4 | 4 | 11 | 1 |
 | 20 Workspace | 1 | 9 | 7 | |
@@ -514,7 +514,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Context-sensitive shortcuts | Done | Editor-only and Explorer-only keys |
 | Mouse gesture support | Missing | |
 | Custom editor rulers | Done | |
-| Customisable minimap | Missing | |
+| Customisable minimap | Partial | `editor.minimap`, on or off |
 | Better font rendering | Partial | |
 | Ligature configuration | Missing | |
 | Font fallback configuration | Partial | Fallback fonts exist; not configurable |

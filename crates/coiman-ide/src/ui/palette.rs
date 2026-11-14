@@ -58,6 +58,7 @@ pub enum InputKind {
 pub enum PickerKind {
     Glyph,
     Theme,
+    IconTheme,
     LineEnding,
     Bookmark,
     Snippet,
