@@ -15,6 +15,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
   temporary sorts marked, each table's indexes, and a diagram of the tables and their foreign
   keys, which also copies or previews as a Mermaid `erDiagram`.
 
+### Fixed
+
+- Linux, Wayland: the taskbar showed a default icon when Coiman ran from the AppImage or the
+  tar.gz without installing, since Wayland takes a window's icon only from its launcher
+  entry. It now adds its own entry and icons under `~/.local/share` when none is installed.
+  In the Snap the window's app id now matches the launcher snapd installs.
+
 ## [0.4.1] - 2026-11-14
 
 ### Added

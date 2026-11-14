@@ -26,6 +26,52 @@ fn app_icon() -> egui::IconData {
     }
 }
 
+/// Under Wayland the taskbar shows the icon of the launcher file named after the app id. Run
+/// from the tar.gz, an AppImage or a build there is none, so one is written to
+/// `~/.local/share` (see `coiman_core::desktop_entry`). Packages bring their own.
+#[cfg(target_os = "linux")]
+fn launcher_entry() {
+    use coiman_core::desktop_entry::{self, DataDirs, Icons};
+    if std::env::var_os("FLATPAK_ID").is_some() || std::env::var_os("SNAP").is_some() {
+        return;
+    }
+    // An AppImage runs from a temporary mount; the launcher has to start the AppImage itself.
+    let program = match std::env::var_os("APPIMAGE") {
+        Some(image) => PathBuf::from(image),
+        None => match std::env::current_exe() {
+            Ok(exe) => exe,
+            Err(_) => return,
+        },
+    };
+    let Some(dirs) = DataDirs::from_env() else { return };
+    let icons = Icons {
+        png: &[
+            (48, include_bytes!("../../../assets/icon/coiman-48.png")),
+            (128, include_bytes!("../../../assets/icon/coiman-128.png")),
+            (256, include_bytes!("../../../assets/icon/coiman-256.png")),
+        ],
+        svg: include_bytes!("../../../assets/icon/coiman.svg"),
+    };
+    match desktop_entry::ensure(&dirs, &program, &icons) {
+        Ok(true) => {
+            coiman_core::applog::info(&format!("wrote the launcher entry for {}", program.display()));
+            // KDE reads launchers from its cache; have it notice the new one.
+            for tool in ["kbuildsycoca6", "kbuildsycoca5"] {
+                if std::process::Command::new(tool)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .is_ok()
+                {
+                    break;
+                }
+            }
+        }
+        Ok(false) => {}
+        Err(e) => coiman_core::applog::warn(&format!("couldn't write the launcher entry: {e}")),
+    }
+}
+
 fn main() -> eframe::Result {
     let started = std::time::Instant::now();
     // MinGW installed but not on PATH (the usual for a course's setup): add its folder,
@@ -74,6 +120,8 @@ fn main() -> eframe::Result {
     // Optional argument: a folder (opened in the explorer) or a file.
     let start_path = args.first().map(PathBuf::from);
 
+    #[cfg(target_os = "linux")]
+    launcher_entry();
     let saved_window = session::load().and_then(|s| s.window);
     let size = saved_window.map_or([1280.0, 800.0], |w| [w.width, w.height]);
     let options = eframe::NativeOptions {
@@ -81,7 +129,7 @@ fn main() -> eframe::Result {
             .with_title("Coiman IDE")
             // What Linux desktops match against the launcher (its StartupWMClass) and the
             // Wayland app id, so the window gets the launcher's icon and grouping.
-            .with_app_id("io.github.manuelcoimbra.CoimanIde")
+            .with_app_id(coiman_core::desktop_entry::app_id(std::env::var("SNAP_INSTANCE_NAME").ok().as_deref()))
             .with_icon(std::sync::Arc::new(app_icon()))
             .with_inner_size(size)
             .with_maximized(saved_window.is_some_and(|w| w.maximized))

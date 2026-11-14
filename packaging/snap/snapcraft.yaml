@@ -42,5 +42,7 @@ parts:
       for f in "$CRAFT_PART_INSTALL"/share/applications/*.desktop "$CRAFT_PART_INSTALL"/usr/share/applications/*.desktop; do
         if [ -f "$f" ]; then
           sed -i 's|^Icon=.*|Icon=${SNAP}/usr/share/icons/hicolor/scalable/apps/io.github.manuelcoimbra.CoimanIde.svg|' "$f"
+          # Snapd installs this as coiman-ide_coiman-ide.desktop; the window's app id matches that.
+          sed -i 's|^StartupWMClass=.*|StartupWMClass=coiman-ide_coiman-ide|' "$f"
         fi
       done

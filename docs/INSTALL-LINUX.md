@@ -54,6 +54,13 @@ If it says FUSE is missing, install `libfuse2` (Ubuntu 24.04: `libfuse2t64`), or
 `--appimage-extract-and-run`. To update, download the newer AppImage. To remove, delete the
 file.
 
+Run this way (the AppImage, or `bin/coiman-ide` from the archive), the IDE adds its own
+launcher entry and icons under `~/.local/share` the first time it starts, so that Wayland
+desktops show its icon in the taskbar: Wayland finds a window's icon only through the
+launcher named after it. It writes nothing when a package already installed the launcher.
+To remove them, delete `~/.local/share/applications/io.github.manuelcoimbra.CoimanIde.desktop`
+and `~/.local/share/icons/hicolor/*/apps/io.github.manuelcoimbra.CoimanIde.*`.
+
 ## Flatpak
 
 ```
@@ -111,7 +118,8 @@ Run `sudo ./install.sh --system` instead to install for everyone under `/usr/loc
 update, do the same with the newer archive. To remove, run `./uninstall.sh` (or
 `sudo ./uninstall.sh --system`) from the unpacked folder.
 
-You can also run `bin/coiman-ide` from the unpacked folder without installing anything.
+You can also run `bin/coiman-ide` from the unpacked folder without installing anything; it
+then adds its launcher entry as the AppImage does.
 
 ## How the packages are made and tested
 

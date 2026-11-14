@@ -7,6 +7,7 @@ pub mod appearance;
 pub mod applog;
 pub mod build;
 pub mod data;
+pub mod desktop_entry;
 pub mod editor;
 pub mod extensions;
 pub mod language;
