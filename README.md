@@ -20,6 +20,7 @@ is needed; **Edit as File** still opens the TOML behind them.
 Windows: the zip on the [releases page](https://github.com/ManuelCoimbra/coiman-ide/releases).
 Linux: deb, rpm, AppImage, Flatpak, Snap, Arch PKGBUILDs and a tar.gz, for x86_64 and ARM64;
 see [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) for installing, updating and removing each.
+Android: in Termux with Termux:X11, see [docs/ANDROID-TERMUX.md](docs/ANDROID-TERMUX.md).
 
 ## Build, run and test
 

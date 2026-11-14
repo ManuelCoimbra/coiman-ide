@@ -185,7 +185,8 @@ pub fn date_text(time: SystemTime) -> String {
 /// Where to start from: the home folder and its usual folders that exist, then the drives
 /// (Windows) or the root (elsewhere). Each with the name to show.
 pub fn places() -> Vec<(String, PathBuf)> {
-    let mut out = Vec::new();
+    // On a phone: its storage and Termux's home come first.
+    let mut out = crate::mobile::phone().places();
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from);
     if let Some(home) = home.filter(|h| h.is_dir()) {
         out.push(("Home".to_owned(), home.clone()));

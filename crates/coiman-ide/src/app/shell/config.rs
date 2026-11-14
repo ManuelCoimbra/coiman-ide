@@ -230,6 +230,11 @@ impl CodeApp {
             theme::set(ctx, t);
             problems.extend(err);
         }
+        theme::set_touch(match new.workbench.touch.trim() {
+            "on" => true,
+            "off" => false,
+            _ => self.phone.android,
+        });
         theme::apply_style(ctx, new.workbench.ui_font_size);
         theme::set_motion(ctx, new.workbench.reduced_motion);
         if first || new.workbench.zoom != old.workbench.zoom {

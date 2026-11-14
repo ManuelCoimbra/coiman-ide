@@ -342,6 +342,9 @@ impl CodeApp {
                     if gear.clicked() {
                         cmd = Some(Command::OpenUserSettings);
                     }
+                    if self.soft_keyboard_button(ui) {
+                        cmd = Some(Command::CycleSoftKeyboard);
+                    }
                     let boxed = self.settings.workbench.search_in_top_bar;
                     if !boxed && tool_button(ui, Icon::Search, pal.text, "Search Everywhere (Double Shift)").clicked() {
                         cmd = Some(Command::SearchEverywhere);

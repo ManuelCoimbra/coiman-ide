@@ -32,6 +32,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   sorting and filtering. It copies, moves, renames and deletes with open files following,
   and drags and the clipboard work with the Explorer. Open File and Open Folder now choose
   with it instead of the system's dialog.
+- On Android in Termux (with Termux:X11): an on-screen keyboard made for code, whose button
+  cycles OFF, ON and AUTO (`workbench.soft_keyboard`, kept between runs). AUTO shows it while
+  typing and hides it while a hardware keyboard is used. It comes with larger touch sizes
+  (`workbench.touch`) and the phone's storage and Termux's home in the File Manager. See
+  `docs/ANDROID-TERMUX.md`.
 
 ### Changed
 

@@ -27,6 +27,17 @@ pub fn islands() -> bool {
 
 static DOCK: AtomicBool = AtomicBool::new(true);
 
+static TOUCH: AtomicBool = AtomicBool::new(false);
+
+/// Larger targets for fingers (`workbench.touch`, on by itself on a phone).
+pub fn touch() -> bool {
+    TOUCH.load(Ordering::Relaxed)
+}
+
+pub fn set_touch(on: bool) {
+    TOUCH.store(on, Ordering::Relaxed);
+}
+
 /// The Dock layout: tools in a dock at the bottom, opening as sheets over the code.
 pub fn dock() -> bool {
     DOCK.load(Ordering::Relaxed)
@@ -171,6 +182,13 @@ pub fn apply_style(ctx: &egui::Context, ui_font_size: f32) {
         let roomy = islands();
         style.spacing.item_spacing = if roomy { egui::vec2(8.0, 4.0) } else { egui::vec2(6.0, 3.0) };
         style.spacing.button_padding = if roomy { egui::vec2(8.0, 3.0) } else { egui::vec2(6.0, 2.0) };
+        if touch() {
+            // A fingertip is wider than a pointer: rows, buttons and scroll bars grow.
+            style.spacing.item_spacing = egui::vec2(10.0, 8.0);
+            style.spacing.button_padding = egui::vec2(12.0, 8.0);
+            style.spacing.interact_size.y = 36.0;
+            style.spacing.scroll.bar_width = 14.0;
+        }
         style.text_styles = [
             (TextStyle::Small, FontId::proportional(size * 0.8)),
             (TextStyle::Body, FontId::proportional(size)),

@@ -133,6 +133,9 @@ pub struct CodeApp {
     rails: tool_rails::ToolRails,
     /// Where the side bar and panel are, and their sizes.
     layout: layout::Layout,
+    soft_keyboard: shell::soft_keyboard::SoftKeyboard,
+    /// Android and Termux, when running on a phone.
+    phone: coiman_core::mobile::Phone,
     architecture: architecture::Architecture,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
@@ -314,6 +317,8 @@ impl CodeApp {
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
             layout: layout::Layout::default(),
+            soft_keyboard: Default::default(),
+            phone: coiman_core::mobile::phone().clone(),
             architecture: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
@@ -505,6 +510,8 @@ impl CodeApp {
             }
             self.terminal.detached = false;
         }
+        // What the on-screen keyboard typed comes in as this frame's keys.
+        self.soft_keyboard_input(&ctx);
         if self.pending_close.is_none() && !self.palette.open && !self.keys_ui.capturing() {
             if self.editor_focused(&ctx) {
                 self.lsp_keys(&ctx);
@@ -577,6 +584,8 @@ impl CodeApp {
             }
         }
 
+        // Above the dock or status bar, below everything else.
+        self.soft_keyboard_panel(ui);
         let classic = !theme::islands();
         let mut islands: Vec<egui::Rect> = trust_island.into_iter().collect();
         let (mut sides, mut panels) = (Vec::new(), Vec::new());

@@ -301,6 +301,7 @@ impl CodeApp {
             | Command::PanelFloat
             | Command::ResetLayout => self.layout_command(cmd),
             Command::OpenFileManager => self.open_file_manager(None),
+            Command::CycleSoftKeyboard => self.cycle_soft_keyboard(ctx),
             Command::ShowExplorer => {
                 self.welcome_sidebar = true;
                 self.sidebar_visible = true;

@@ -311,6 +311,20 @@ const SECTIONS: &[(&str, &[Row])] = &[
             row("workbench", "zoom", "Zoom", "Scale of the whole window. 1.25 is 125%.", Kind::Decimal(0.5, 3.0)),
             row(
                 "workbench",
+                "soft_keyboard",
+                "On-screen keyboard",
+                "A keyboard at the bottom of the window. Auto shows it on a phone while typing, unless a hardware keyboard is in use.",
+                Kind::Choice(&[("auto", "Auto"), ("on", "On"), ("off", "Off")]),
+            ),
+            row(
+                "workbench",
+                "touch",
+                "Touch sizes",
+                "Larger buttons, rows and scroll bars for fingers. Auto turns them on on a phone.",
+                Kind::Choice(&[("auto", "Auto"), ("on", "On"), ("off", "Off")]),
+            ),
+            row(
+                "workbench",
                 "ui_font_size",
                 "Interface font size",
                 "Menus, side bar, tabs and status bar.",

@@ -408,6 +408,11 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   - **Open File** and **Open Folder** choose with the File Manager instead of the system's
     dialog. A bar says what is being chosen, with Open and Cancel; a double-click on a file
     opens it.
+- **On a phone** (Android, in Termux with Termux:X11; see `docs/ANDROID-TERMUX.md`): larger
+  touch targets, the phone's storage and Termux's home in the File Manager, and an on-screen
+  keyboard for code. Its **Keys** button at the top cycles OFF, ON and AUTO. Its keys are
+  letters, a ?123 layer of symbols, and Esc, Tab, Ctrl, Alt, Home, End and the arrows, and
+  Ctrl+C, X and V use the clipboard.
 - **Moving the panel and side bar**: the ≡ button on the panel's header puts the panel at the
   bottom, at the right or in a window of its own over the editor. Drag that window by its
   header to the editor's bottom or right edge and it docks there again. The same menu moves

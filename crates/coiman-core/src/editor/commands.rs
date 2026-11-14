@@ -35,6 +35,8 @@ pub enum Command {
     ResetLayout,
     ToggleTerminal,
     ShowExplorer,
+    /// The on-screen keyboard's mode: Off, On, Auto.
+    CycleSoftKeyboard,
     /// The File Manager, in place of the editor.
     OpenFileManager,
     ShowSearch,
@@ -304,6 +306,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ResetLayout, "View: Reset Layout"),
     (Command::ToggleTerminal, "View: Toggle Terminal"),
     (Command::ShowExplorer, "View: Show Explorer"),
+    (Command::CycleSoftKeyboard, "View: Cycle On-screen Keyboard (Off, On, Auto)"),
     (Command::OpenFileManager, "View: Open File Manager"),
     (Command::ShowSearch, "View: Show Search"),
     (Command::ReplaceInFiles, "Search: Replace in Files"),
@@ -583,6 +586,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ResetLayout, "coiman.resetLayout"),
     (Command::ToggleTerminal, "workbench.action.terminal.toggleTerminal"),
     (Command::ShowExplorer, "workbench.view.explorer"),
+    (Command::CycleSoftKeyboard, "coiman.cycleSoftKeyboard"),
     (Command::OpenFileManager, "coiman.openFileManager"),
     (Command::ShowSearch, "workbench.view.search"),
     (Command::ReplaceInFiles, "workbench.action.replaceInFiles"),

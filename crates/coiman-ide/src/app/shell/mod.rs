@@ -11,6 +11,7 @@ pub(crate) mod layout;
 pub(crate) mod look;
 pub(crate) mod recent_ui;
 pub(crate) mod settings_ui;
+pub(crate) mod soft_keyboard;
 pub(crate) mod tool_rails;
 pub(crate) mod tour;
 pub(crate) mod welcome;
