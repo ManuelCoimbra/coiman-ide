@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
-use coiman_core::data::database::{self, Outcome, Sqlite, Table};
+use coiman_core::data::database::{self, Outcome, Plan, Sqlite, Table};
 use egui::{Color32, RichText, Stroke};
 
 use crate::app::CodeApp;
@@ -14,9 +14,32 @@ use crate::ui::grid_view::{self, GridSource, GridState};
 use crate::ui::theme;
 
 const HISTORY: usize = 30;
+const WARN: Color32 = Color32::from_rgb(0xE0, 0x9A, 0x3E);
+
+/// What the window's lower half shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum View {
+    #[default]
+    Results,
+    Plan,
+    Diagram,
+}
+
+/// What the window asks the app to do after drawing.
+#[derive(Default)]
+struct Asks {
+    run: bool,
+    explain: bool,
+    choose: bool,
+    copy_mermaid: bool,
+    preview_mermaid: bool,
+}
 
 #[derive(Default)]
 pub(crate) struct DatabaseUi {
+    view: View,
+    explaining: Option<Receiver<Result<Vec<Plan>, String>>>,
+    plans: Option<Result<Vec<Plan>, String>>,
     pub(crate) open: bool,
     db: Option<PathBuf>,
     tables: Vec<Table>,
@@ -64,6 +87,7 @@ impl CodeApp {
         if ui.db.as_deref() != Some(path) {
             ui.db = Some(path.to_path_buf());
             ui.outcome = None;
+            ui.plans = None;
             ui.expanded.clear();
             if ui.sql.trim().is_empty() {
                 ui.sql = "SELECT name FROM sqlite_schema WHERE type = 'table';".to_owned();
@@ -100,6 +124,24 @@ impl CodeApp {
     /// Runs SQL: the selection or whole `.sql` file in front when asked from the editor, else
     /// what's in the window's box.
     pub(crate) fn run_database_sql(&mut self, from_editor: bool) {
+        self.database_sql(from_editor, false);
+    }
+
+    /// Opens the Database window on its diagram of the tables.
+    pub(crate) fn show_database_diagram(&mut self) {
+        self.database.open = true;
+        self.database.view = View::Diagram;
+        if self.database.db.is_none() {
+            self.status = Some("Open a database first (Database: Open SQLite File)".to_owned());
+        }
+    }
+
+    /// Shows how SQLite would carry out the SQL (its query plan), without running it.
+    pub(crate) fn explain_database_sql(&mut self, from_editor: bool) {
+        self.database_sql(from_editor, true);
+    }
+
+    fn database_sql(&mut self, from_editor: bool, explain: bool) {
         if from_editor && let Some(doc) = self.docs.get(self.active) {
             let text = doc.buffer.selected_texts().join(
                 "
@@ -128,6 +170,15 @@ impl CodeApp {
         history.retain(|h| h != &sql);
         history.insert(0, sql.clone());
         history.truncate(HISTORY);
+        if explain {
+            let (tx, rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let _ = tx.send(sqlite.explain(&db, &sql));
+            });
+            self.database.explaining = Some(rx);
+            self.database.view = View::Plan;
+            return;
+        }
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             let _ = tx.send(sqlite.run(&db, &sql));
@@ -159,16 +210,20 @@ impl CodeApp {
             state.outcome = Some(r);
             state.shown = 0;
             state.grid = GridState::default();
+            state.view = View::Results;
         }
-        if state.running.is_some() || state.schema_loading.is_some() {
+        if let Some(r) = state.explaining.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            state.explaining = None;
+            state.plans = Some(r);
+        }
+        if state.running.is_some() || state.schema_loading.is_some() || state.explaining.is_some() {
             ctx.request_repaint_after(std::time::Duration::from_millis(80));
         }
         if std::mem::take(&mut state.reload_schema) {
             self.read_schema();
         }
         let mut open = true;
-        let mut run = false;
-        let mut choose = false;
+        let mut asks = Asks::default();
         let pal = theme::colors();
         let room = ctx.content_rect().size();
         let size = egui::vec2((room.x * 0.84).min(1240.0), (room.y * 0.82).max(420.0));
@@ -198,23 +253,48 @@ impl CodeApp {
                 let main = egui::Rect::from_min_max(egui::pos2(side.right() + 12.0, area.top()), area.max);
                 ui.allocate_rect(area, egui::Sense::hover());
                 let mut side_ui = ui.new_child(egui::UiBuilder::new().max_rect(side));
-                let insert = tables_ui(&mut side_ui, state, &mut choose);
-                if let Some(sql) = insert {
-                    state.sql = sql;
-                    run = true;
+                if let Some(table) = tables_ui(&mut side_ui, state, &mut asks.choose) {
+                    state.sql = rows_of(&table);
+                    asks.run = true;
                 }
                 let mut main_ui = ui.new_child(egui::UiBuilder::new().max_rect(main));
-                run |= sql_box(&mut main_ui, state, font_size);
-                results(&mut main_ui, state, font_size);
+                sql_box(&mut main_ui, state, font_size, &mut asks);
+                view_tabs(&mut main_ui, state);
+                match state.view {
+                    View::Results => results(&mut main_ui, state, font_size),
+                    View::Plan => plan_view(&mut main_ui, state, font_size),
+                    View::Diagram => {
+                        if let Some(table) = diagram_view(&mut main_ui, state, &mut asks) {
+                            state.sql = rows_of(&table);
+                            asks.run = true;
+                        }
+                    }
+                }
             });
         self.database.open = open;
-        if choose {
+        if asks.choose {
             self.choose_database();
         }
-        if run {
+        if asks.run {
             self.run_database_sql(false);
+        } else if asks.explain {
+            self.explain_database_sql(false);
+        }
+        if asks.copy_mermaid {
+            ctx.copy_text(database::er_mermaid(&self.database.tables));
+            self.status = Some("Copied the tables as a Mermaid diagram".to_owned());
+        }
+        if asks.preview_mermaid {
+            let text = database::er_mermaid(&self.database.tables);
+            self.preview_mermaid(&text);
+            self.status = Some("Previewing the tables as a Mermaid diagram".to_owned());
         }
     }
+}
+
+/// SQL showing a table's rows.
+fn rows_of(table: &str) -> String {
+    format!("SELECT * FROM {} LIMIT 500;", database::quote_name(table))
 }
 
 fn missing_sqlite() -> String {
@@ -223,7 +303,7 @@ fn missing_sqlite() -> String {
         .to_owned()
 }
 
-/// The tables beside the SQL. Returns SQL to run when a table is opened.
+/// The tables beside the SQL. Returns the table whose rows to show, when one is opened.
 fn tables_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, choose: &mut bool) -> Option<String> {
     let pal = theme::colors();
     let mut run = None;
@@ -263,7 +343,7 @@ fn tables_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, choose: &mut bool) -> Op
                 .interact(egui::Sense::click())
                 .on_hover_text("Click: columns · Double click: show its rows");
             if resp.double_clicked() {
-                run = Some(format!("SELECT * FROM {} LIMIT 500;", database::quote_name(&table.name)));
+                run = Some(table.name.clone());
             } else if resp.clicked() {
                 if open {
                     state.expanded.remove(&table.name);
@@ -288,6 +368,21 @@ fn tables_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, choose: &mut bool) -> Op
                         ui.label(RichText::new(note).small().color(pal.text_dim));
                     });
                 }
+                for index in &table.indexes {
+                    ui.horizontal(|ui| {
+                        ui.add_space(18.0);
+                        let mut note = String::from(if index.unique { "unique index" } else { "index" });
+                        if index.partial {
+                            note.push_str(", some rows");
+                        }
+                        if index.automatic {
+                            note.push_str(", from a constraint");
+                        }
+                        ui.label(RichText::new(format!("({})", index.columns.join(", "))).color(pal.text_dim));
+                        ui.label(RichText::new(note).small().color(pal.text_dim))
+                            .on_hover_text(format!("Index {}", index.name));
+                    });
+                }
                 ui.add_space(4.0);
             }
         }
@@ -295,17 +390,26 @@ fn tables_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, choose: &mut bool) -> Op
     run
 }
 
-/// The SQL box and its buttons. Returns whether to run.
-fn sql_box(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) -> bool {
+/// The SQL box and its buttons.
+fn sql_box(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32, asks: &mut Asks) {
     let pal = theme::colors();
-    let mut run = false;
     ui.horizontal(|ui| {
         let running = state.running.is_some();
         let label = if running { "Running..." } else { "Run  Ctrl+Enter" };
         if ui.add_enabled(!running && state.db.is_some(), egui::Button::new(label)).clicked() {
-            run = true;
+            asks.run = true;
         }
-        if running {
+        let explaining = state.explaining.is_some();
+        if ui
+            .add_enabled(!explaining && state.db.is_some(), egui::Button::new("Explain  Ctrl+Shift+Enter"))
+            .on_hover_text(
+                "How SQLite would carry the SQL out: which indexes it uses, which tables it reads whole. Nothing runs.",
+            )
+            .clicked()
+        {
+            asks.explain = true;
+        }
+        if running || explaining {
             ui.spinner();
         }
         egui::ComboBox::from_id_salt("db_history").selected_text("History").width(120.0).show_ui(ui, |ui| {
@@ -328,11 +432,276 @@ fn sql_box(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) -> bool {
         .hint_text("SQL: one statement or several, each ending with ;");
     let height = (ui.available_height() * 0.32).clamp(90.0, 260.0);
     let resp = egui::ScrollArea::vertical().id_salt("db_sql").max_height(height).show(ui, |ui| ui.add(edit)).inner;
-    if resp.has_focus() && ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) {
-        run = true;
+    if resp.has_focus() {
+        // Shift first: the plain shortcut would match it too.
+        if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Enter)) {
+            asks.explain = true;
+        } else if ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Enter)) {
+            asks.run = true;
+        }
     }
     ui.add_space(6.0);
-    run
+}
+
+/// Results, the query plan or the diagram.
+fn view_tabs(ui: &mut egui::Ui, state: &mut DatabaseUi) {
+    ui.horizontal(|ui| {
+        for (view, label, hint) in [
+            (View::Results, "Results", "What the SQL returned"),
+            (View::Plan, "Query plan", "How SQLite would carry the SQL out (Explain)"),
+            (View::Diagram, "Diagram", "The tables and how their foreign keys link them"),
+        ] {
+            if ui.selectable_label(state.view == view, label).on_hover_text(hint).clicked() {
+                state.view = view;
+            }
+        }
+    });
+    ui.separator();
+}
+
+/// Each statement's plan, as a tree, with full table scans and temporary sorts marked.
+fn plan_view(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) {
+    let pal = theme::colors();
+    let plans = match &state.plans {
+        None => {
+            ui.label(
+                RichText::new("Explain (Ctrl+Shift+Enter) shows how SQLite would carry out the SQL above.")
+                    .color(pal.text_dim),
+            );
+            return;
+        }
+        Some(Err(e)) => {
+            ui.colored_label(Color32::from_rgb(0xE5, 0x48, 0x4D), e);
+            return;
+        }
+        Some(Ok(plans)) => plans,
+    };
+    let scans = plans.iter().flat_map(|p| &p.steps).filter(|s| s.full_scan).count();
+    let sorts = plans.iter().flat_map(|p| &p.steps).filter(|s| s.temp_sort).count();
+    if scans + sorts > 0 {
+        let mut parts = Vec::new();
+        if scans > 0 {
+            parts.push(format!("{scans} full table {}", if scans == 1 { "scan" } else { "scans" }));
+        }
+        if sorts > 0 {
+            parts.push(format!("{sorts} {}", if sorts == 1 { "temporary sort" } else { "temporary sorts" }));
+        }
+        ui.label(RichText::new(parts.join(" · ")).color(WARN)).on_hover_text(
+            "A full scan reads every row; an index on the columns in WHERE or JOIN lets SQLite search instead. \
+             A temporary sort could use an index in the ORDER BY or GROUP BY order. Small tables don't need either.",
+        );
+    } else if !plans.is_empty() {
+        ui.label(RichText::new("No full table scans.").color(pal.text_dim));
+    }
+    let mono = egui::FontId::monospace(font_size);
+    egui::ScrollArea::vertical().id_salt("db_plan").auto_shrink([false, false]).show(ui, |ui| {
+        for plan in plans {
+            ui.add_space(6.0);
+            let one_line: String = plan.statement.split_whitespace().collect::<Vec<_>>().join(" ");
+            let short: String = one_line.chars().take(120).collect();
+            ui.label(RichText::new(short).font(mono.clone()).strong()).on_hover_text(&plan.statement);
+            if plan.steps.is_empty() {
+                ui.label(
+                    RichText::new("    No plan: SQLite doesn't search for this kind of statement.").color(pal.text_dim),
+                );
+            }
+            for step in &plan.steps {
+                ui.horizontal(|ui| {
+                    ui.add_space(14.0 + step.depth as f32 * 22.0);
+                    let color = if step.full_scan || step.temp_sort { WARN } else { pal.text };
+                    ui.label(RichText::new(&step.detail).font(mono.clone()).color(color));
+                    if step.full_scan {
+                        ui.label(RichText::new("reads every row").small().color(pal.text_dim));
+                    } else if step.temp_sort {
+                        ui.label(RichText::new("sorts in a temporary table").small().color(pal.text_dim));
+                    }
+                });
+            }
+        }
+    });
+}
+
+/// The tables as boxes, with a line from each foreign key to the table it points to. Returns
+/// the table whose rows to show, when one is double-clicked.
+fn diagram_view(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) -> Option<String> {
+    let pal = theme::colors();
+    let tables = &state.tables;
+    let places = database::er_layout(tables);
+    ui.horizontal(|ui| {
+        let has = !places.is_empty();
+        if ui.add_enabled(has, egui::Button::new("Copy as Mermaid")).clicked() {
+            asks.copy_mermaid = true;
+        }
+        if ui.add_enabled(has, egui::Button::new("Preview as Mermaid")).clicked() {
+            asks.preview_mermaid = true;
+        }
+        ui.label(RichText::new("Double click a table to see its rows").small().color(pal.text_dim));
+    });
+    if places.is_empty() {
+        ui.label(RichText::new("No tables.").color(pal.text_dim));
+        return None;
+    }
+    const PAD: f32 = 10.0;
+    const GAP_X: f32 = 90.0;
+    const GAP_Y: f32 = 28.0;
+    let body = egui::FontId::proportional(13.0);
+    let head = egui::FontId::proportional(14.0);
+    let row_h = 20.0;
+    let head_h = 28.0;
+    let painter = ui.painter().clone();
+    let width =
+        |text: &str, font: &egui::FontId| painter.layout_no_wrap(text.to_owned(), font.clone(), pal.text).size().x;
+    // Each box's size, then each layout column's width.
+    let sizes: Vec<egui::Vec2> = places
+        .iter()
+        .map(|&(i, ..)| {
+            let t = &tables[i];
+            let rows = t
+                .columns
+                .iter()
+                .map(|c| width(&c.name, &body) + width(&c.ty.to_lowercase(), &body) + 56.0)
+                .fold(width(&t.name, &head) + 2.0 * PAD, f32::max);
+            egui::vec2(rows.max(150.0), head_h + t.columns.len().max(1) as f32 * row_h + 6.0)
+        })
+        .collect();
+    let columns = places.iter().map(|p| p.1).max().unwrap_or(0) + 1;
+    let mut col_w = vec![0.0f32; columns];
+    for (k, p) in places.iter().enumerate() {
+        col_w[p.1] = col_w[p.1].max(sizes[k].x);
+    }
+    let col_x: Vec<f32> = col_w
+        .iter()
+        .scan(0.0, |x, w| {
+            let at = *x;
+            *x += w + GAP_X;
+            Some(at)
+        })
+        .collect();
+    let mut col_y = vec![0.0f32; columns];
+    let mut boxes = vec![egui::Rect::NOTHING; tables.len()];
+    for (k, p) in places.iter().enumerate() {
+        boxes[p.0] = egui::Rect::from_min_size(egui::pos2(col_x[p.1], col_y[p.1]), sizes[k]);
+        col_y[p.1] += sizes[k].y + GAP_Y;
+    }
+    let total = egui::vec2(
+        col_x.last().copied().unwrap_or(0.0) + col_w.last().copied().unwrap_or(0.0) + GAP_X,
+        col_y.iter().copied().fold(0.0, f32::max) + GAP_Y,
+    );
+    let mut open = None;
+    egui::ScrollArea::both().id_salt("db_diagram").auto_shrink([false, false]).show(ui, |ui| {
+        let (area, _) = ui.allocate_exact_size(total, egui::Sense::hover());
+        let origin = area.min.to_vec2() + egui::vec2(GAP_X / 2.0 + 6.0, 8.0);
+        let painter = ui.painter_at(ui.clip_rect());
+        let rect_of = |i: usize| boxes[i].translate(origin);
+        // Which box the pointer is over, to bring its links forward.
+        let mut hovered = None;
+        for &(i, ..) in &places {
+            let resp = ui.interact(rect_of(i), egui::Id::unique(("db_er", i)), egui::Sense::click());
+            if resp.hovered() {
+                hovered = Some(i);
+            }
+            if resp.double_clicked() {
+                open = Some(tables[i].name.clone());
+            }
+            resp.on_hover_text(format!("{}: double click to see its rows", tables[i].name));
+        }
+        let row_y = |i: usize, column: &str| {
+            let r = rect_of(i);
+            match tables[i].columns.iter().position(|c| c.name.eq_ignore_ascii_case(column)) {
+                Some(k) => r.top() + head_h + (k as f32 + 0.5) * row_h,
+                None => r.top() + head_h / 2.0,
+            }
+        };
+        // Links first, so boxes cover their ends.
+        for &(i, ..) in &places {
+            for fk in &tables[i].foreign_keys {
+                let Some(&(to, ..)) = places.iter().find(|p| tables[p.0].name.eq_ignore_ascii_case(&fk.table)) else {
+                    continue;
+                };
+                let (a, b) = (rect_of(i), rect_of(to));
+                let (ya, yb) = (row_y(i, &fk.column), row_y(to, &fk.to));
+                // From the side facing the other box; a box in the same column loops round its left.
+                let (from, from_dir, end, end_dir) = if b.right() <= a.left() {
+                    (egui::pos2(a.left(), ya), -1.0, egui::pos2(b.right(), yb), 1.0)
+                } else if b.left() >= a.right() {
+                    (egui::pos2(a.right(), ya), 1.0, egui::pos2(b.left(), yb), -1.0)
+                } else {
+                    (egui::pos2(a.left(), ya), -1.0, egui::pos2(b.left(), yb), -1.0)
+                };
+                let reach = ((end.x - from.x).abs() / 2.0).max(40.0);
+                let lit = hovered == Some(i) || hovered == Some(to);
+                let color = if lit { pal.accent } else { pal.text_dim.gamma_multiply(0.7) };
+                let stroke = Stroke::new(if lit { 2.0 } else { 1.2 }, color);
+                painter.add(egui::epaint::CubicBezierShape::from_points_stroke(
+                    [from, from + egui::vec2(from_dir * reach, 0.0), end + egui::vec2(end_dir * reach, 0.0), end],
+                    false,
+                    Color32::TRANSPARENT,
+                    stroke,
+                ));
+                // An arrowhead at the table pointed to; a dot where the key is.
+                let tip = end;
+                let back = tip + egui::vec2(end_dir * 8.0, 0.0);
+                painter.add(egui::Shape::convex_polygon(
+                    vec![tip, back + egui::vec2(0.0, 4.5), back - egui::vec2(0.0, 4.5)],
+                    color,
+                    Stroke::NONE,
+                ));
+                painter.circle_filled(from, 3.0, color);
+            }
+        }
+        for &(i, ..) in &places {
+            let t = &tables[i];
+            let r = rect_of(i);
+            let lit = hovered == Some(i);
+            painter.rect(
+                r,
+                8.0,
+                pal.widget_bg,
+                Stroke::new(if lit { 2.0 } else { 1.0 }, if lit { pal.accent } else { pal.border }),
+                egui::StrokeKind::Inside,
+            );
+            let head_rect = egui::Rect::from_min_size(r.min, egui::vec2(r.width(), head_h));
+            painter.line_segment([head_rect.left_bottom(), head_rect.right_bottom()], Stroke::new(1.0, pal.border));
+            painter.text(
+                head_rect.left_center() + egui::vec2(PAD, 0.0),
+                egui::Align2::LEFT_CENTER,
+                &t.name,
+                head.clone(),
+                pal.text,
+            );
+            for (k, c) in t.columns.iter().enumerate() {
+                let y = r.top() + head_h + (k as f32 + 0.5) * row_h;
+                let fk = t.foreign_keys.iter().any(|f| f.column == c.name);
+                let mark = match (c.primary_key, fk) {
+                    (true, _) => "PK",
+                    (false, true) => "FK",
+                    _ => "",
+                };
+                painter.text(
+                    egui::pos2(r.left() + PAD, y),
+                    egui::Align2::LEFT_CENTER,
+                    mark,
+                    egui::FontId::proportional(10.0),
+                    if c.primary_key { WARN } else { pal.accent },
+                );
+                painter.text(
+                    egui::pos2(r.left() + PAD + 24.0, y),
+                    egui::Align2::LEFT_CENTER,
+                    &c.name,
+                    body.clone(),
+                    pal.text,
+                );
+                painter.text(
+                    egui::pos2(r.right() - PAD, y),
+                    egui::Align2::RIGHT_CENTER,
+                    c.ty.to_lowercase(),
+                    body.clone(),
+                    pal.text_dim,
+                );
+            }
+        }
+    });
+    open
 }
 
 fn results(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) {

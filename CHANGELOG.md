@@ -11,6 +11,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
   flaky tests (passing and failing by turns), and builds, checks and runs with their first
   error. Failed Cargo tests can be run again on their own.
 - `docs/SPEC-COVERAGE.md`: each item of the feature specification, done, partial or missing.
+- **Database** window: query plans (Explain, Ctrl+Shift+Enter) with full table scans and
+  temporary sorts marked, each table's indexes, and a diagram of the tables and their foreign
+  keys, which also copies or previews as a Mermaid `erDiagram`.
 
 ## [0.4.1] - 2026-11-14
 

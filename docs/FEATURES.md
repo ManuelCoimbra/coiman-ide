@@ -813,14 +813,23 @@ A SQLite file opens in the **Database** window from the Explorer or Quick Open (
 recognised by its contents, whatever its name), or with **Database: Open SQLite File...**.
 
 - **Tables and views** on the left. A click shows the columns, with the primary key marked,
-  types, `not null`, and where a foreign key points (`→ customer.id`). A double click shows
-  the first 500 rows.
+  types, `not null`, where a foreign key points (`→ customer.id`), and the table's indexes
+  (unique, partial, or made by a constraint). A double click shows the first 500 rows.
 - **SQL** in the box, one statement or several; **Run** or Ctrl+Enter. Each statement that
   returns rows gets its own result, in a grid that only draws what's in view, with NULL
   greyed. Statements that change rows say how many. The list of tables refreshes after a
   change, and **History** keeps the last 30 runs.
+- **Explain** (Ctrl+Shift+Enter) shows the **Query plan**: how SQLite would carry out each
+  statement (`EXPLAIN QUERY PLAN`), as a tree. Steps that read a whole table or sort in a
+  temporary table are marked, since an index could spare them. Nothing runs: the database
+  is opened read-only for it.
+- **Diagram**: the tables as boxes with their columns (primary and foreign keys marked) and
+  a line from each foreign key to the table it points to. Tables pointed to sit to the
+  left; hovering a table lights its links, and a double click shows its rows. **Copy as
+  Mermaid** and **Preview as Mermaid** give the same tables as an `erDiagram`.
 - **Database: Run SQL (Selection or File)** runs the selection, or the whole `.sql` file in
-  front, against the open database.
+  front, against the open database. **Database: Explain Query Plan (Selection or File)**
+  explains it instead, and **Database: Show Tables Diagram (ER)** opens the diagram.
 
 It runs through the `sqlite3` program (on `PATH`, or MSYS2's), in its safe mode, so a
 `.sql` file can't reach the shell with dot-commands. No database code is built into the app,

@@ -493,6 +493,8 @@ impl CodeApp {
             Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),
             Command::OpenDatabase => self.choose_database(),
             Command::RunSqlInDatabase => self.run_database_sql(true),
+            Command::ExplainSqlInDatabase => self.explain_database_sql(true),
+            Command::ShowDatabaseDiagram => self.show_database_diagram(),
             Command::GitPush => self.git_remote(ctx, Command::GitPush),
             Command::GitPull => self.git_remote(ctx, Command::GitPull),
             Command::GitFetch => self.git_remote(ctx, Command::GitFetch),

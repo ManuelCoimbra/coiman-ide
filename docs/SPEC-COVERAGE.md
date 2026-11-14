@@ -1,7 +1,7 @@
 # Coverage of the IDE Feature Specification
 
 Each item of `IDE Feature Specification.md`, checked against the code as of 2026-11-14 (v0.4.1,
-plus B4 run history in progress). Status:
+plus B4 run history and the SQLite diagram and query plans). Status:
 
 - **Done**: works and is documented in `docs/FEATURES.md`.
 - **Partial**: some of it exists; the note says what.
@@ -10,8 +10,8 @@ plus B4 run history in progress). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 77, partial 107,
-missing 285, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 81, partial 106,
+missing 282, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -24,7 +24,7 @@ specification is right: every row in it exists.
 | 6 Terminal | 3 | 3 | 12 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
-| 9 Database | 5 | 6 | 12 | |
+| 9 Database | 9 | 5 | 9 | |
 | 10 Data science | 2 | 4 | 16 | |
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
@@ -297,11 +297,11 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Query result viewer | Done | |
 | Table data editor | Partial | Through SQL statements |
 | Database schema visualisation | Done | Tables, views, columns, keys |
-| ER diagrams | Missing | |
-| Foreign key visualisation | Partial | Listed in the schema |
-| Index inspection | Missing | |
-| Query execution plans | Missing | |
-| Query performance analysis | Partial | Time per statement |
+| ER diagrams | Done | Diagram tab; Mermaid `erDiagram` export |
+| Foreign key visualisation | Done | Lines from each key to its table |
+| Index inspection | Done | Each table's indexes, unique and partial marked |
+| Query execution plans | Done | Explain: `EXPLAIN QUERY PLAN` as a tree |
+| Query performance analysis | Partial | Time per statement; full scans and temporary sorts flagged |
 | Database migration management | Missing | |
 | Schema comparison | Missing | |
 | Database backup and restore | Missing | |

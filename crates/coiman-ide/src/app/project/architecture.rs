@@ -214,6 +214,18 @@ impl CodeApp {
     /// Shows the exported diagram rendered, in a Markdown draft with one ```mermaid block.
     fn preview_architecture_mermaid(&mut self) {
         let Some((text, too_many)) = self.architecture_mermaid() else { return };
+        self.preview_mermaid(&text);
+        self.status = Some(match too_many {
+            Some(edges) => {
+                format!("Previewing the folders: {edges} imports is over Mermaid's {}", arch::MERMAID_MAX_EDGES)
+            }
+            None => "Previewing the graph as Mermaid".to_owned(),
+        });
+    }
+
+    /// Shows Mermaid text rendered, in a Markdown draft with one ```mermaid block; the draft
+    /// the last preview made is reused while it's open and unsaved.
+    pub(crate) fn preview_mermaid(&mut self, text: &str) {
         let markdown = format!("```mermaid\n{text}```\n");
         // The draft the last preview made, if it's still open and hasn't been saved.
         let draft = self
@@ -233,12 +245,6 @@ impl CodeApp {
         }
         self.md_preview.open = true;
         self.md_preview.forced = Some(self.docs[self.active].uid);
-        self.status = Some(match too_many {
-            Some(edges) => {
-                format!("Previewing the folders: {edges} imports is over Mermaid's {}", arch::MERMAID_MAX_EDGES)
-            }
-            None => "Previewing the graph as Mermaid".to_owned(),
-        });
     }
 
     fn export_architecture_svg(&mut self) {
