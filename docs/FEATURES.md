@@ -757,6 +757,25 @@ Java: imports, wildcards, static imports and classes of the same package. C#: ty
 `using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
 project's own headers.
 
+## Run history
+
+**Testing: Show Run History** keeps every test run, build, check and program started with Run,
+per project and between sessions (the last 100 of each).
+
+- **Test runs:** newest first, with what passed, failed and was skipped, and how long the run
+  took. A picked run shows what changed since the run before by the same runner: tests that
+  broke, were fixed, got slower (half as long again, and 100 ms more), are new or are gone. Its
+  failures show with their message, and how many runs in a row each has failed. **Run the
+  failed ones again** runs just those Cargo tests (`cargo test -- … --exact`, or nextest's
+  filter).
+- **Flaky:** tests that both passed and failed in their last 10 runs, those that flip most
+  first, each run a dot.
+- **Builds:** `cargo check` and `cargo clippy`, and programs started with Run, with how long
+  they took, their exit code, the errors and warnings their output reported, and the first
+  error, which opens the file there.
+
+Cargo's tests and every Testing runner (pytest, Go, Jest and the others) are recorded.
+
 ## Code health
 
 **Code Health: Secrets, Complexity, Duplicates, Licences and Audits** reads the project's files

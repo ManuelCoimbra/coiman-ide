@@ -137,6 +137,7 @@ pub struct CodeApp {
     phone: coiman_core::mobile::Phone,
     architecture: architecture::Architecture,
     health: project::health::Health,
+    run_history: launch::history::RunHistory,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -320,6 +321,7 @@ impl CodeApp {
             phone: coiman_core::mobile::phone().clone(),
             architecture: Default::default(),
             health: Default::default(),
+            run_history: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -866,6 +868,7 @@ impl CodeApp {
         self.lsp_room(&ctx);
         self.architecture_window(&ctx);
         self.code_health_window(&ctx);
+        self.run_history_window(&ctx);
         self.database_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);

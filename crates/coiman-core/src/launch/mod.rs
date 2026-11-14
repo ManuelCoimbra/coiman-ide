@@ -12,5 +12,6 @@ pub mod matchers;
 pub mod preview;
 pub mod repl;
 pub mod run;
+pub mod run_history;
 pub mod stacktrace;
 pub mod testing;

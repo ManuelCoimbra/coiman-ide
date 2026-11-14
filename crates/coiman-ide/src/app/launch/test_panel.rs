@@ -451,6 +451,21 @@ impl CodeApp {
         });
         let _ = std::fs::remove_file(&run.report);
         let name = self.tests.adapters.get(run.adapter).map_or(String::new(), |a| a.name.clone());
+        self.record_test_run(coiman_core::launch::run_history::TestRun {
+            at: coiman_core::launch::run_history::now(),
+            runner: name.clone(),
+            whole: !run.single,
+            seconds: run.started.elapsed().map_or(0.0, |d| d.as_secs_f32()),
+            tests: found
+                .iter()
+                .map(|r| coiman_core::launch::run_history::TestEntry {
+                    id: crate::app::launch::history::test_id(&r.suite, &r.name),
+                    outcome: r.outcome,
+                    millis: r.millis,
+                    message: crate::app::launch::history::first_line(&r.message),
+                })
+                .collect(),
+        });
         if found.is_empty() {
             // A run that can't start or build still has exit codes to say so with.
             let code = code.map_or("no exit code".to_owned(), |c| format!("exit {c}"));

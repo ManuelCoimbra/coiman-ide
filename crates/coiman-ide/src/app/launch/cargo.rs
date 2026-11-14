@@ -55,6 +55,11 @@ struct Job {
     found: Vec<CargoDiagnostic>,
     /// Results seen in this run: (passed, failed).
     counts: (usize, usize),
+    started: std::time::Instant,
+    /// The whole workspace ran, not a filtered part of it.
+    whole: bool,
+    /// Each test's result in this run, for the history.
+    seen: Vec<(String, Outcome)>,
 }
 
 enum Msg {
@@ -505,8 +510,18 @@ impl CodeApp {
         self.cargo.output.clear();
         self.cargo.output.push(format!("> {title}"));
         self.cargo.output_title = title;
-        self.cargo.job =
-            Some(Job { kind, child, lines, parser: OutputParser::default(), found: Vec::new(), counts: (0, 0) });
+        let whole = !args.iter().any(|a| a == "--" || a == "-E");
+        self.cargo.job = Some(Job {
+            kind,
+            child,
+            lines,
+            parser: OutputParser::default(),
+            found: Vec::new(),
+            counts: (0, 0),
+            started: std::time::Instant::now(),
+            whole,
+            seen: Vec::new(),
+        });
         self.panel_visible = true;
         self.panel_tab = PanelTab::Output;
     }
@@ -537,6 +552,9 @@ impl CodeApp {
                             Outcome::Failed => job.counts.1 += 1,
                             _ => {}
                         }
+                        if outcome != Outcome::Running {
+                            job.seen.push((path.clone(), outcome));
+                        }
                         self.cargo.results.insert((binary, path), outcome);
                     }
                     new_lines.push(line);
@@ -565,19 +583,57 @@ impl CodeApp {
         for (_, line) in job.lines.try_iter().collect::<Vec<_>>() {
             self.push_output(line);
         }
+        let seconds = job.started.elapsed().as_secs_f32();
         match job.kind {
-            JobKind::Tests(_) => {
+            JobKind::Tests(runner) => {
                 self.cargo.results.retain(|_, o| *o != Outcome::Running);
                 let (passed, failed) = job.counts;
                 let summary = format!("Tests finished: {passed} passed, {failed} failed");
                 self.push_output(summary.clone());
                 self.status = Some(summary);
+                let tests = job
+                    .seen
+                    .into_iter()
+                    .map(|(id, outcome)| coiman_core::launch::run_history::TestEntry {
+                        id,
+                        outcome: match outcome {
+                            Outcome::Passed => coiman_core::launch::testing::Outcome::Passed,
+                            Outcome::Failed => coiman_core::launch::testing::Outcome::Failed,
+                            _ => coiman_core::launch::testing::Outcome::Skipped,
+                        },
+                        millis: None,
+                        message: String::new(),
+                    })
+                    .collect();
+                self.record_test_run(coiman_core::launch::run_history::TestRun {
+                    at: coiman_core::launch::run_history::now(),
+                    runner: if runner == Runner::Nextest { "cargo nextest" } else { "cargo test" }.to_owned(),
+                    whole: job.whole,
+                    seconds,
+                    tests,
+                });
             }
             JobKind::Check { tool, .. } => {
+                let first_error = job
+                    .found
+                    .iter()
+                    .find(|d| d.severity == 1)
+                    .map(|d| (d.path.clone(), d.start.0 + 1, crate::app::launch::history::first_line(&d.message)));
                 self.set_cargo_diagnostics(tool, job.found);
                 let all = self.cargo.diagnostics.values().flat_map(|(_, d)| d);
                 let count = |s| all.clone().filter(|d| d.severity == Some(s)).count();
                 let (errors, warnings) = (count(lt::DiagnosticSeverity::ERROR), count(lt::DiagnosticSeverity::WARNING));
+                // Counted as the status bar counts them: Cargo's "aborting due to" lines aside.
+                self.record_build(coiman_core::launch::run_history::BuildRun {
+                    at: coiman_core::launch::run_history::now(),
+                    what: format!("cargo {tool}"),
+                    success: exit.success(),
+                    exit: exit.code().map(i64::from),
+                    seconds: Some(seconds),
+                    errors,
+                    warnings,
+                    first_error,
+                });
                 let summary = format!("cargo {tool}: {errors} error(s), {warnings} warning(s)");
                 self.push_output(summary.clone());
                 self.status = Some(summary);
@@ -590,6 +646,33 @@ impl CodeApp {
         if !exit.success() && self.cargo.output.iter().all(|l| !l.contains("error")) {
             self.push_output(format!("[cargo exited with {exit}]"));
         }
+    }
+
+    /// Runs the Cargo tests named (paths like `module::tests::name`) again, on their own.
+    pub(crate) fn rerun_cargo_tests(&mut self, ctx: &egui::Context, paths: Vec<String>) {
+        let Some(root) = self.cargo_root() else {
+            self.status = Some("Open the Cargo project first".to_owned());
+            return;
+        };
+        if paths.is_empty() {
+            return;
+        }
+        let runner = self.runner(ctx);
+        let mut args: Vec<String> = match runner {
+            Runner::Cargo => vec!["test".into(), "--no-fail-fast".into(), "--workspace".into(), "--".into()],
+            Runner::Nextest => vec!["nextest".into(), "run".into(), "--no-fail-fast".into(), "--workspace".into()],
+        };
+        match runner {
+            Runner::Cargo => {
+                args.extend(paths.iter().cloned());
+                args.push("--exact".into());
+            }
+            Runner::Nextest => {
+                let filter: Vec<String> = paths.iter().map(|p| format!("test(={p})")).collect();
+                args.extend(["-E".into(), filter.join(" | ")]);
+            }
+        }
+        self.start_job(ctx, JobKind::Tests(runner), args, &root);
     }
 
     // ----- check / clippy ----------------------------------------------------------------
@@ -1193,6 +1276,7 @@ impl CodeApp {
         }
         self.cargo.next_problem_scan = now + PROBLEM_SCAN_SECONDS;
         let (outputs, live) = self.terminal.scan_outputs();
+        let mut ended_runs = Vec::new();
         for output in outputs {
             match run::server_url(&output.lines).filter(|_| !output.ended) {
                 Some(url) => {
@@ -1211,6 +1295,21 @@ impl CodeApp {
                 .into_iter()
                 .filter_map(|p| Some((crate::app::prints::resolve(&p.file, &bases)?, problem_diagnostic(p))))
                 .collect();
+            // A program that ended goes in the run history, with what its output reported.
+            if output.ended {
+                let count = |s| placed.iter().filter(|(_, d)| d.severity == Some(s)).count();
+                let errors = count(lt::DiagnosticSeverity::ERROR);
+                ended_runs.push(coiman_core::launch::run_history::BuildRun {
+                    at: coiman_core::launch::run_history::now(),
+                    what: output.title.clone(),
+                    success: output.exit.is_none_or(|c| c == 0) && errors == 0,
+                    exit: output.exit.map(i64::from),
+                    seconds: Some(output.seconds),
+                    errors,
+                    warnings: count(lt::DiagnosticSeverity::WARNING),
+                    first_error: crate::app::launch::history::first_error(&placed),
+                });
+            }
             // A run that reports something new about a file speaks for it again.
             if self.cargo.tab_problems.get(&output.id) != Some(&placed) {
                 for (path, _) in &placed {
@@ -1218,6 +1317,9 @@ impl CodeApp {
                 }
             }
             self.cargo.tab_problems.insert(output.id, placed);
+        }
+        for run in ended_runs {
+            self.record_build(run);
         }
         self.cargo.tab_problems.retain(|id, _| live.contains(id));
         self.cargo.dev_urls.retain(|id, _| live.contains(id));

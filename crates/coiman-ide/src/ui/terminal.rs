@@ -58,6 +58,7 @@ struct Tab {
     exited: Option<Option<u32>>,
     /// Read this tab's output for problems.
     scan: Option<Scan>,
+    started: std::time::Instant,
 }
 
 /// How to look for problems in a tab's output.
@@ -76,6 +77,12 @@ pub struct ScanOutput<'a> {
     pub lines: Vec<String>,
     /// The program has ended.
     pub ended: bool,
+    /// The tab's name: a run configuration's, or the program's.
+    pub title: String,
+    /// How it ended, when it has: its exit code if known.
+    pub exit: Option<u32>,
+    /// Seconds since it started.
+    pub seconds: f32,
 }
 
 impl Tab {
@@ -267,7 +274,16 @@ impl Terminals {
     }
 
     fn push(&mut self, session: Session, title: Option<String>, task: bool) {
-        self.tabs.push(Tab { id: self.next_id, session, title, scroll_rest: 0.0, task, exited: None, scan: None });
+        self.tabs.push(Tab {
+            id: self.next_id,
+            session,
+            title,
+            scroll_rest: 0.0,
+            task,
+            exited: None,
+            scan: None,
+            started: std::time::Instant::now(),
+        });
         self.next_id += 1;
         self.active = self.tabs.len() - 1;
         self.focus_requested = true;
@@ -344,8 +360,19 @@ impl Terminals {
             let Some(scan) = tab.scan.as_mut().filter(|s| !s.done) else { continue };
             scan.done = ended;
             let lines = output_lines(&tab.session);
+            let title = tab.title.clone().unwrap_or_else(|| tab.session.name.clone());
+            let (exit, seconds) = (tab.exited.flatten(), tab.started.elapsed().as_secs_f32());
             let Some(scan) = tab.scan.as_ref() else { continue };
-            outputs.push(ScanOutput { id: tab.id, cwd: &scan.cwd, matcher: scan.matcher.as_ref(), lines, ended });
+            outputs.push(ScanOutput {
+                id: tab.id,
+                cwd: &scan.cwd,
+                matcher: scan.matcher.as_ref(),
+                lines,
+                ended,
+                title,
+                exit,
+                seconds,
+            });
         }
         (outputs, live)
     }

@@ -5,6 +5,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Run History**: test runs with what broke, was fixed or got slower since the run before,
+  flaky tests (passing and failing by turns), and builds, checks and runs with their first
+  error. Failed Cargo tests can be run again on their own.
+- `docs/SPEC-COVERAGE.md`: each item of the feature specification, done, partial or missing.
+
 ## [0.4.1] - 2026-11-14
 
 ### Added
