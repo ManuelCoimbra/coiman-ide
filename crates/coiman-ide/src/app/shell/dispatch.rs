@@ -70,9 +70,26 @@ impl CodeApp {
             Command::QuickOpen => self.open_palette(""),
             Command::SearchEverywhere => self.open_everywhere(),
             Command::NewFile => self.new_file(),
-            // Coiman's own File Manager chooses, not the system's dialog.
+            // Coiman's own File Manager chooses, not the system's dialog. On Android the system's
+            // picker stays: only it grants access to the folders and files picked.
+            #[cfg(not(target_os = "android"))]
             Command::OpenFile => self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Files),
+            #[cfg(not(target_os = "android"))]
             Command::OpenFolder => self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Folder),
+            #[cfg(target_os = "android")]
+            Command::OpenFile => {
+                if let Some(path) = self.file_dialog("open_file").pick_file() {
+                    self.dialog_chose("open_file", &path);
+                    self.open_file(&path);
+                }
+            }
+            #[cfg(target_os = "android")]
+            Command::OpenFolder => {
+                if let Some(path) = self.file_dialog("open_folder").pick_folder() {
+                    self.dialog_chose("open_folder", &path);
+                    self.open_folder(path);
+                }
+            }
             Command::GitClone | Command::GitInit | Command::GitSetAuthor | Command::GitPublishGitHub => {
                 self.git_setup_command(ctx, cmd);
             }
@@ -301,7 +318,6 @@ impl CodeApp {
             | Command::PanelFloat
             | Command::ResetLayout => self.layout_command(cmd),
             Command::OpenFileManager => self.open_file_manager(None),
-            Command::CycleSoftKeyboard => self.cycle_soft_keyboard(ctx),
             Command::ShowExplorer => {
                 self.welcome_sidebar = true;
                 self.sidebar_visible = true;
@@ -472,6 +488,7 @@ impl CodeApp {
             Command::NextHiddenCharacter => self.next_hidden_char(),
             Command::ShowLanguageServers => self.show_lsp_room(),
             Command::ShowArchitecture => self.show_architecture(ctx),
+            Command::ShowCodeHealth => self.show_code_health(ctx),
             Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),
             Command::OpenDatabase => self.choose_database(),
             Command::RunSqlInDatabase => self.run_database_sql(true),

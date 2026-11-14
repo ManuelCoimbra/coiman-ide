@@ -183,10 +183,8 @@ pub struct WorkbenchSettings {
     /// Explorer: how a folder's entries are ordered (`explorer.sortOrder`): "default"
     /// (folders first), "mixed", "files_first", "type" or "modified".
     pub explorer_sort_order: String,
-    /// The on-screen keyboard: "auto" (on a phone, while typing, unless a hardware keyboard
-    /// is in use), "on" or "off".
-    pub soft_keyboard: String,
-    /// Larger targets for fingers: "auto" (on a phone), "on" or "off".
+    /// Larger targets for fingers: "off", "on", or "auto" (on a phone). Off unless asked: an
+    /// Android build may size its own workbench.
     pub touch: String,
 }
 
@@ -420,8 +418,7 @@ impl Default for WorkbenchSettings {
             ui: "dock".to_owned(),
             compact_folders: true,
             explorer_sort_order: "default".to_owned(),
-            soft_keyboard: "auto".to_owned(),
-            touch: "auto".to_owned(),
+            touch: "off".to_owned(),
             nest_files: true,
         }
     }

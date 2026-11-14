@@ -133,10 +133,10 @@ pub struct CodeApp {
     rails: tool_rails::ToolRails,
     /// Where the side bar and panel are, and their sizes.
     layout: layout::Layout,
-    soft_keyboard: shell::soft_keyboard::SoftKeyboard,
     /// Android and Termux, when running on a phone.
     phone: coiman_core::mobile::Phone,
     architecture: architecture::Architecture,
+    health: project::health::Health,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -317,9 +317,9 @@ impl CodeApp {
             sidebar_view: SidebarView::Explorer,
             rails: tool_rails::ToolRails::new(),
             layout: layout::Layout::default(),
-            soft_keyboard: Default::default(),
             phone: coiman_core::mobile::phone().clone(),
             architecture: Default::default(),
+            health: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -510,8 +510,6 @@ impl CodeApp {
             }
             self.terminal.detached = false;
         }
-        // What the on-screen keyboard typed comes in as this frame's keys.
-        self.soft_keyboard_input(&ctx);
         if self.pending_close.is_none() && !self.palette.open && !self.keys_ui.capturing() {
             if self.editor_focused(&ctx) {
                 self.lsp_keys(&ctx);
@@ -543,6 +541,9 @@ impl CodeApp {
             trust_island = Some(bar.response.rect - gaps);
         }
         let dock = theme::dock();
+        // The dock strip spaces itself from what's above: no gap of their own below them, or
+        // the dock sits off the middle of the space it seems to have.
+        let gap_below = !(dock && !zen);
         // Zen mode hides all workbench chrome around the editor.
         if !zen && dock {
             egui::Panel::bottom("dock_strip")
@@ -584,8 +585,6 @@ impl CodeApp {
             }
         }
 
-        // Above the dock or status bar, below everything else.
-        self.soft_keyboard_panel(ui);
         let classic = !theme::islands();
         let mut islands: Vec<egui::Rect> = trust_island.into_iter().collect();
         let (mut sides, mut panels) = (Vec::new(), Vec::new());
@@ -598,7 +597,7 @@ impl CodeApp {
         let floating = dock && !self.sheet_pinned;
         if !left_open && !floating {
             // Slides away, with what it was showing.
-            let gaps = theme::island_gaps(false, true, false, true);
+            let gaps = theme::island_gaps(false, true, false, gap_below);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
             let side = self
                 .layout
@@ -615,7 +614,7 @@ impl CodeApp {
         if left_open && !floating {
             // Never let the side bar take more than half the window, whatever it contains.
             let max_side = (ui.available_width() * 0.5).max(200.0);
-            let gaps = theme::island_gaps(false, true, false, true);
+            let gaps = theme::island_gaps(false, true, false, gap_below);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
             let side = self
                 .layout
@@ -644,7 +643,7 @@ impl CodeApp {
             self.rails.right_last = right_view;
         }
         if let Some(view) = self.rails.right_last.filter(|_| !classic && !dock) {
-            let gaps = theme::island_gaps(false, false, false, true);
+            let gaps = theme::island_gaps(false, false, false, gap_below);
             let max_side = (ui.available_width() * 0.5).max(200.0);
             let shown = std::mem::replace(&mut self.sidebar_view, view);
             let side = egui::Panel::right("right_bar")
@@ -669,7 +668,7 @@ impl CodeApp {
         let panel_open = self.panel_visible && !zen;
         let panel_docked = !panel_floating;
         if panel_docked && panel_right && (panel_open || panel_slides) {
-            let gaps = theme::island_gaps(false, false, false, true);
+            let gaps = theme::island_gaps(false, false, false, gap_below);
             let max_side = (ui.available_width() * 0.7).max(200.0);
             let panel = egui::Panel::right(self.layout.id("panel_right"))
                 .default_size(self.layout.panel_width())
@@ -711,7 +710,7 @@ impl CodeApp {
             islands.extend(place);
         }
 
-        let gaps = theme::island_gaps(zen, true, false, !(self.panel_visible && !zen && !panel_right));
+        let gaps = theme::island_gaps(zen, true, false, gap_below && !(self.panel_visible && !zen && !panel_right));
         let frame = theme::island_frame(theme::colors().editor_bg, egui::Margin::ZERO, gaps);
         if let Some(r) = self.tour.step.map(|_| ui.available_rect_before_wrap()) {
             self.tour_spot("editor", r.shrink(8.0));
@@ -866,6 +865,7 @@ impl CodeApp {
         self.font_preview_ui(&ctx);
         self.lsp_room(&ctx);
         self.architecture_window(&ctx);
+        self.code_health_window(&ctx);
         self.database_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);

@@ -5,6 +5,27 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Code Health** window: secrets left in files (shown masked), each function's complexity,
+  duplicate code, the dependencies' licences, and `cargo audit` / `npm audit` results.
+
+### Changed
+
+- An Android build of Coiman (an APK that runs its tools through Termux) keeps Android's own
+  picker for Open File and Open Folder, since only it grants access to what's picked.
+
+### Removed
+
+- The on-screen keyboard and the Termux:X11 guide added in 0.4.0. Coiman on Android is an APK
+  with Android's keyboard and its own keyboard button, so a second keyboard only got in the
+  way. Touch sizes are now off unless asked for.
+
+### Fixed
+
+- The dock sat off the middle of the bottom strip when no panel was open (noticeable at 125%):
+  the editor and side bar no longer leave a gap of their own above it.
+
 ## [0.4.0] - 2026-11-14
 
 ### Added

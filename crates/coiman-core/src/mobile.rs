@@ -1,6 +1,5 @@
-//! Running on a phone: Coiman IDE inside Termux on Android (shown through Termux:X11, often
-//! in a proot-distro Linux). What's found about that, the places it adds, and the modes of
-//! the on-screen keyboard.
+//! Running on a phone: Android (an Android build of Coiman IDE, or a Linux inside Termux). What
+//! is found about that, and the places it adds to the File Manager.
 
 use std::path::{Path, PathBuf};
 
@@ -73,63 +72,6 @@ impl Phone {
     }
 }
 
-/// When the on-screen keyboard shows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum KeyboardMode {
-    /// Never on its own: only when turned on.
-    Off,
-    /// Always, while there's something to type in.
-    On,
-    /// On a phone, while something takes typing and no hardware keyboard is being used.
-    Auto,
-}
-
-impl KeyboardMode {
-    /// As the `workbench.soft_keyboard` setting says it; anything else is Auto.
-    pub fn parse(text: &str) -> Self {
-        match text.trim().to_ascii_lowercase().as_str() {
-            "off" => Self::Off,
-            "on" => Self::On,
-            _ => Self::Auto,
-        }
-    }
-
-    pub fn setting(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::On => "on",
-            Self::Auto => "auto",
-        }
-    }
-
-    /// What the keyboard button changes it to: Off, On, Auto, and round again.
-    pub fn next(self) -> Self {
-        match self {
-            Self::Off => Self::On,
-            Self::On => Self::Auto,
-            Self::Auto => Self::Off,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Off => "OFF",
-            Self::On => "ON",
-            Self::Auto => "AUTO",
-        }
-    }
-
-    /// Whether the keyboard shows: `typing` when something takes text, `phone` when on a
-    /// phone, `hardware` when a real keyboard was used lately.
-    pub fn shows(self, typing: bool, phone: bool, hardware: bool) -> bool {
-        match self {
-            Self::Off => false,
-            Self::On => typing,
-            Self::Auto => typing && phone && !hardware,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -182,20 +124,5 @@ mod tests {
         assert_eq!(phone.storage, Some(root.join("sdcard")));
         assert_eq!(phone.termux_home, None);
         std::fs::remove_dir_all(&root).unwrap();
-    }
-
-    #[test]
-    fn keyboard_modes_cycle_and_decide() {
-        use KeyboardMode::*;
-        assert_eq!([Off.next(), On.next(), Auto.next()], [On, Auto, Off]);
-        assert_eq!(KeyboardMode::parse("ON"), On);
-        assert_eq!(KeyboardMode::parse("whatever"), Auto);
-        assert_eq!(KeyboardMode::parse(Off.setting()), Off);
-        assert!(!Off.shows(true, true, false));
-        assert!(On.shows(true, false, true));
-        assert!(!On.shows(false, true, false));
-        assert!(Auto.shows(true, true, false));
-        assert!(!Auto.shows(true, false, false), "not on a desktop");
-        assert!(!Auto.shows(true, true, true), "not with a hardware keyboard");
     }
 }

@@ -407,12 +407,11 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
   - Bookmarks, the panes' folders and tabs are kept between runs.
   - **Open File** and **Open Folder** choose with the File Manager instead of the system's
     dialog. A bar says what is being chosen, with Open and Cancel; a double-click on a file
-    opens it.
-- **On a phone** (Android, in Termux with Termux:X11; see `docs/ANDROID-TERMUX.md`): larger
-  touch targets, the phone's storage and Termux's home in the File Manager, and an on-screen
-  keyboard for code. Its **Keys** button at the top cycles OFF, ON and AUTO. Its keys are
-  letters, a ?123 layer of symbols, and Esc, Tab, Ctrl, Alt, Home, End and the arrows, and
-  Ctrl+C, X and V use the clipboard.
+    opens it. An Android build keeps Android's picker, which is what grants it access.
+  - On Android, the File Manager also lists the phone's storage (once access is granted) and
+    Termux's home folder, when they can be read.
+- **Touch sizes** (`workbench.touch`): larger buttons, rows and scroll bars for fingers. Off
+  unless turned on; Auto turns them on on Android.
 - **Moving the panel and side bar**: the ≡ button on the panel's header puts the panel at the
   bottom, at the right or in a window of its own over the editor. Drag that window by its
   header to the editor's bottom or right edge and it docks there again. The same menu moves
@@ -757,6 +756,37 @@ relative paths, `@/` and `~/` for `src`, `index` files, `require` and dynamic `i
 Java: imports, wildcards, static imports and classes of the same package. C#: types through
 `using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
 project's own headers.
+
+## Code health
+
+**Code Health: Secrets, Complexity, Duplicates, Licences and Audits** reads the project's files
+on its own thread, Git-ignored ones and folders such as `node_modules`, `target` and `dist`
+left out. A click on a place opens the file there.
+
+- **Secrets:** keys and tokens by their shape: private keys, AWS, GitHub, GitLab, Slack,
+  Stripe, Google, npm, OpenAI-style keys, JSON Web Tokens and passwords in URLs. It also
+  finds quoted passwords and keys assigned in code that look random enough to be real, and
+  unquoted ones in settings files (`.env`, `.ini`, `.properties`, YAML).
+  - Values from the environment and placeholders (`${KEY}`, `changeme`, `<token>`) aren't
+    reported.
+  - A line marked `gitleaks:allow`, `pragma: allowlist secret` or `not-a-secret` is skipped.
+  - What's found shows masked: only its first four characters.
+- **Complexity:** each function's cyclomatic complexity and length, through tree-sitter, for
+  Rust, Python, JavaScript, TypeScript, Java, C, C++, C# and Go. It shows the 200 most
+  complex. Up to 10 is plain, to 20 complex, above that very complex.
+- **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
+  file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
+  brackets don't count.
+- **Licences:** each dependency's licence, from `cargo metadata --offline` and npm's
+  `node_modules`. Each is rated permissive, weak copyleft (MPL, LGPL, EPL), copyleft (GPL,
+  AGPL) or unknown, reading SPDX expressions with `OR` and `AND`.
+- **Audits:** **Run the audits** runs `cargo audit` beside a `Cargo.lock` and `npm audit`
+  beside a `package-lock.json`, most severe first, with the fix and a link to each advisory.
+  These tools fetch the lists of known vulnerabilities themselves. When one isn't installed,
+  the tab says how to get it.
+
+In Restricted Mode, Cargo and npm don't run (they read the project's settings), so licences
+come from `node_modules` alone and the audits wait for the folder to be trusted.
 
 ## Databases (SQLite)
 
