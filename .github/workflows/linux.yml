@@ -13,6 +13,11 @@ on:
       - "crates/coiman-ide/Cargo.toml"
       - "crates/coiman-ide/src/main.rs"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "A release to attach the packages to (v0.4.0), when run by hand"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -240,6 +245,13 @@ jobs:
         with:
           name: linux-${{ matrix.arch }}
           path: dist
+      # The image's runtimes can be older than Flathub's: updated here, on their own, as
+      # updating them from inside flatpak-builder fails ("Invalid cross-device link").
+      - name: Runtimes up to date
+        run: |
+          flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak update --system -y --noninteractive
+          flatpak install --system -y --noninteractive flathub org.freedesktop.Sdk//24.08 org.freedesktop.Platform//24.08
       - name: Archive beside the manifest
         run: cp dist/*.tar.gz packaging/flatpak/coiman-ide-linux.tar.gz
       - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
@@ -303,11 +315,14 @@ jobs:
 
   publish:
     name: Attach to the release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
     needs: [deb, rpm, appimage-and-tar, arch, flatpak, snap]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    env:
+      # The tag pushed, or the one given when run by hand.
+      TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -316,13 +331,13 @@ jobs:
           merge-multiple: true
       - name: PKGBUILDs with this version and its checksums
         run: |
-          version=${GITHUB_REF_NAME#v}
+          version=${TAG#v}
           mkdir -p arch
           x86=$(sha256sum artifacts/coiman-ide-$version-linux-x86_64.tar.gz | cut -d' ' -f1)
           arm=$(sha256sum artifacts/coiman-ide-$version-linux-aarch64.tar.gz | cut -d' ' -f1)
           sed -e "s/^pkgver=.*/pkgver=$version/" -e "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$x86')/" \
               -e "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$arm')/" packaging/arch/coiman-ide-bin/PKGBUILD > arch/PKGBUILD-coiman-ide-bin
-          curl -fsSL -o source.tar.gz "https://github.com/${GITHUB_REPOSITORY}/archive/$GITHUB_REF_NAME.tar.gz"
+          curl -fsSL -o source.tar.gz "https://github.com/${GITHUB_REPOSITORY}/archive/$TAG.tar.gz"
           src=$(sha256sum source.tar.gz | cut -d' ' -f1)
           sed -e "s/^pkgver=.*/pkgver=$version/" -e "s/^sha256sums=.*/sha256sums=('$src')/" \
               packaging/arch/coiman-ide/PKGBUILD > arch/PKGBUILD-coiman-ide
@@ -331,7 +346,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           for i in $(seq 1 60); do
-            gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 && break
+            gh release view "$TAG" >/dev/null 2>&1 && break
             sleep 30
           done
-          gh release upload "$GITHUB_REF_NAME" artifacts/* arch/* --clobber
+          gh release upload "$TAG" artifacts/* arch/* --clobber
