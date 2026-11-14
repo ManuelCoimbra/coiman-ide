@@ -26,6 +26,8 @@ const PREVIEW_WIDTH: f32 = 260.0;
 const SIZE_WIDTH: f32 = 80.0;
 const DATE_WIDTH: f32 = 130.0;
 const KIND_WIDTH: f32 = 64.0;
+/// The name column keeps at least this; other columns go before it gets narrower.
+const NAME_MIN: f32 = 150.0;
 
 /// One tab of a pane: a folder, its history and what's picked in it.
 struct Folder {
@@ -586,14 +588,26 @@ impl View {
             self.ask_bar(ui, out);
             ui.add_space(4.0);
             let room = ui.available_rect_before_wrap();
-            let places = egui::Rect::from_min_size(room.min, egui::vec2(PLACES_WIDTH, room.height()));
-            let preview = egui::Rect::from_min_max(egui::pos2(room.right() - PREVIEW_WIDTH, room.top()), room.max);
+            // When room is short the preview narrows, then it and the places step aside for the panes.
+            let places_width = if room.width() >= 640.0 { PLACES_WIDTH } else { 0.0 };
+            let preview_width = match room.width() {
+                w if w >= 980.0 => PREVIEW_WIDTH,
+                w if w >= 820.0 => 200.0,
+                _ => 0.0,
+            };
+            let places = egui::Rect::from_min_size(room.min, egui::vec2(places_width, room.height()));
+            let preview = egui::Rect::from_min_max(egui::pos2(room.right() - preview_width, room.top()), room.max);
+            let gap = |w: f32| if w > 0.0 { 8.0 } else { 0.0 };
             let panes = egui::Rect::from_min_max(
-                egui::pos2(places.right() + 8.0, room.top()),
-                egui::pos2(preview.left() - 8.0, room.bottom()),
+                egui::pos2(places.right() + gap(places_width), room.top()),
+                egui::pos2(preview.left() - gap(preview_width), room.bottom()),
             );
-            ui.scope_builder(egui::UiBuilder::new().max_rect(places), |ui| self.places(ui, project));
-            ui.scope_builder(egui::UiBuilder::new().max_rect(preview), |ui| self.preview_ui(ui));
+            if places_width > 0.0 {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(places), |ui| self.places(ui, project));
+            }
+            if preview_width > 0.0 {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(preview), |ui| self.preview_ui(ui));
+            }
             if self.dual {
                 let half = (panes.width() - 8.0) / 2.0;
                 let left = egui::Rect::from_min_size(panes.min, egui::vec2(half, panes.height()));
@@ -920,17 +934,25 @@ impl View {
             return;
         }
         let width = ui.available_width();
-        let name_width = (width - SIZE_WIDTH - DATE_WIDTH - KIND_WIDTH).max(80.0);
+        // Columns beside the name, as many as fit: Type goes first, then Modified, then Size.
+        let mut columns = Vec::new();
+        let mut used = NAME_MIN;
+        for (by, label, w) in [
+            (SortBy::Size, "Size", SIZE_WIDTH),
+            (SortBy::Modified, "Modified", DATE_WIDTH),
+            (SortBy::Kind, "Type", KIND_WIDTH),
+        ] {
+            if used + w <= width {
+                used += w;
+                columns.push((by, label, w));
+            }
+        }
+        let name_width = width - columns.iter().map(|c| c.2).sum::<f32>();
         // Headers: a click sorts by the column, again reverses.
         let mut sort = None;
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            for (by, label, w) in [
-                (SortBy::Name, "Name", name_width),
-                (SortBy::Size, "Size", SIZE_WIDTH),
-                (SortBy::Modified, "Modified", DATE_WIDTH),
-                (SortBy::Kind, "Type", KIND_WIDTH),
-            ] {
+            for (by, label, w) in std::iter::once((SortBy::Name, "Name", name_width)).chain(columns.iter().copied()) {
                 let arrow = if folder.sort == by { if folder.descending { " ▼" } else { " ▲" } } else { "" };
                 let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, ROW), Sense::click());
                 if resp.hovered() {
@@ -1004,9 +1026,12 @@ impl View {
                 let mut x = rect.left() + name_width;
                 let size = if entry.is_dir { String::new() } else { dir_listing::human_size(entry.size) };
                 let date = entry.modified.map(dir_listing::date_text).unwrap_or_default();
-                for (text, w, right) in
-                    [(size, SIZE_WIDTH, true), (date, DATE_WIDTH, false), (dir_listing::kind(entry), KIND_WIDTH, false)]
-                {
+                for (by, _, w) in &columns {
+                    let (text, w, right) = match by {
+                        SortBy::Size => (size.clone(), *w, true),
+                        SortBy::Modified => (date.clone(), *w, false),
+                        _ => (dir_listing::kind(entry), *w, false),
+                    };
                     let (pos, align) = if right {
                         (egui::pos2(x + w - 12.0, rect.center().y), egui::Align2::RIGHT_CENTER)
                     } else {
