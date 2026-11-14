@@ -17,6 +17,9 @@ apps:
     command: usr/bin/coiman-ide
     desktop: usr/share/applications/io.github.manuelcoimbra.CoimanIde.desktop
     common-id: io.github.manuelcoimbra.CoimanIde
+    environment:
+      # The X11 keyboard-map library travels with the snap (see stage-packages).
+      LD_LIBRARY_PATH: $SNAP/usr/lib/x86_64-linux-gnu:$SNAP/usr/lib/aarch64-linux-gnu
 
 parts:
   coiman-ide:
@@ -25,6 +28,9 @@ parts:
     organize:
       bin: usr/bin
       share: usr/share
+    stage-packages:
+      - libxkbcommon-x11-0
+      - libxcb-xkb1
     stage:
       - usr
     # Built against an older glibc than any supported distribution, it runs on the computer's

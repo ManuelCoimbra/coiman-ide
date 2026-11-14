@@ -103,6 +103,9 @@ cd coiman-ide-<version>-linux-<arch>
 ./install.sh
 ```
 
+The archive brings no libraries: besides OpenGL it needs `libxkbcommon-x11` (Debian and
+Ubuntu: `libxkbcommon-x11-0`), which desktops normally have already.
+
 This installs for you alone, under `~/.local`, with a launcher in your applications menu.
 Run `sudo ./install.sh --system` instead to install for everyone under `/usr/local`. To
 update, do the same with the newer archive. To remove, run `./uninstall.sh` (or

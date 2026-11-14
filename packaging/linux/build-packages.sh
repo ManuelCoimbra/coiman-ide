@@ -107,9 +107,16 @@ if [ -n "${APPIMAGETOOL:-}" ]; then
     cp "$here/$id.desktop" "$app/$id.desktop"
     cp "$app/usr/share/icons/hicolor/256x256/apps/$id.png" "$app/$id.png"
     ln -s "$id.png" "$app/.DirIcon"
+    # Not every system has the X11 keyboard-map library the window loads: it travels along.
+    mkdir -p "$app/usr/lib"
+    for lib in libxkbcommon-x11.so.0 libxcb-xkb.so.1; do
+        found=$(ldconfig -p | awk -v l="$lib" '$1 == l { print $NF; exit }')
+        if [ -n "$found" ]; then cp -L "$found" "$app/usr/lib/"; else echo "AppImage: no $lib to bundle" >&2; exit 1; fi
+    done
     cat > "$app/AppRun" <<'EOF'
 #!/bin/sh
 here=$(dirname "$(readlink -f "$0")")
+export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$here/usr/bin/coiman-ide" "$@"
 EOF
     chmod 755 "$app/AppRun"
