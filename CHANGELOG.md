@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-14
+
 ### Added
 
 - **Run History**: test runs with what broke, was fixed or got slower since the run before,
