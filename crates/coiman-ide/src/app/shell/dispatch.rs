@@ -526,6 +526,8 @@ impl CodeApp {
             Command::GitFetch => self.git_remote(ctx, Command::GitFetch),
             Command::GitStash => self.git_stash(ctx),
             Command::GitShowHistory => self.git_show_history(),
+            Command::GitShowGraph => self.show_git_graph(),
+            Command::GitResolveConflicts => self.show_merge_conflicts(),
             Command::MarkdownPreview => self.toggle_markdown_preview(),
             Command::ToggleSvgPreview => self.toggle_svg_preview(),
             Command::ImportFromVsCode => self.import_from_vscode(),

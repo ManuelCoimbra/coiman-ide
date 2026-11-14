@@ -180,6 +180,19 @@ network, and only when you ask. All git work runs in the background.
   or pull, not on the remote yet (Push publishes it), or no remote yet.
 - Git's errors come with what they mean and what to do: no author set, signing in, an SSH key not
   accepted, a branch with no upstream, a rejected push, a remote not found, no connection.
+- **Git Graph** (**Git: Show Graph**): every branch's commits with lines for branches and merges,
+  branch and tag names, author and age; a click lists a commit's files (a click on one shows
+  its change). Right click a commit to **cherry-pick** it onto the current branch, **revert**
+  it, **create a branch** there, or **rebase interactively from here**: the commits after it,
+  oldest first, to move up and down and pick, reword (a new message), squash, fix up or drop,
+  then **Start Rebase**.
+- **Merge Conflicts** (**Git: Resolve Merge Conflicts**, or **Resolve Merge Conflicts…** in
+  Source Control): while a merge, cherry-pick, revert or rebase waits on conflicts, each
+  conflicted file shows its conflicts side by side, current and incoming (and what both
+  started from, when git wrote it), with **Accept Current**, **Accept Incoming**, **Accept
+  Both** and **Both, Incoming First**; **Open in Editor** for anything else. **Mark as
+  Resolved** stages the file; **Continue** goes on once every file is, **Abort** gives the
+  operation up.
 
 - **Gutter markers** beside the line numbers: green added, blue modified, red wedge for
   deleted lines, compared with the index. Click one to see the old lines and **Stage** or

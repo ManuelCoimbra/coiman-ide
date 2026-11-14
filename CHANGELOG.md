@@ -5,6 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Git Graph**: every branch's commits drawn with their branches and merges; a commit's files;
+  cherry-pick, revert, a branch at a commit, and interactive rebase (reorder, reword, squash,
+  fix up, drop) from a commit's menu.
+- **Merge Conflicts** window: each conflict side by side, settled by taking current, incoming
+  or both; mark files resolved, then continue or abort the merge, cherry-pick, revert or rebase.
+
 ## [0.4.3] - 2026-11-14
 
 ### Added

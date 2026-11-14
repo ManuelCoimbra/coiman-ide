@@ -83,9 +83,20 @@ fn native(path: &str) -> PathBuf {
 
 /// Runs git in `dir`. Errors carry git's own message.
 fn git(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<Vec<u8>, String> {
+    git_env(dir, args, stdin, &[])
+}
+
+/// [`git`] with more environment variables.
+pub(crate) fn git_env(
+    dir: &Path,
+    args: &[&str],
+    stdin: Option<&[u8]>,
+    env: &[(&str, &str)],
+) -> Result<Vec<u8>, String> {
     // A repository's config can run programs (core.fsmonitor, hooks, diff drivers).
     crate::project::trust::check(dir)?;
     let mut cmd = quiet_command(Path::new("git"));
+    cmd.envs(env.iter().copied());
     cmd.current_dir(dir)
         .args(["-c", "core.quotepath=off", "-c", "color.ui=false"])
         .args(args)
@@ -295,8 +306,12 @@ impl Repo {
         (!root.is_empty()).then(|| Repo { root: native(&root) })
     }
 
-    fn run(&self, args: &[&str]) -> Result<String, String> {
+    pub(crate) fn run(&self, args: &[&str]) -> Result<String, String> {
         git(&self.root, args, None).map(text)
+    }
+
+    pub(crate) fn run_env(&self, args: &[&str], env: &[(&str, &str)]) -> Result<String, String> {
+        git_env(&self.root, args, None, env).map(text)
     }
 
     /// Path of `path` relative to the root, with `/` separators.

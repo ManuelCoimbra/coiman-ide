@@ -6,6 +6,7 @@ pub mod file_actions;
 pub mod file_ops;
 pub mod finder;
 pub mod git;
+pub mod git_graph;
 pub mod history;
 pub mod project_tree;
 pub mod recent;

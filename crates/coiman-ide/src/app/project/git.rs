@@ -38,6 +38,9 @@ enum ListAction {
 }
 
 /// Results of background git work.
+/// Git work for the background: its message for the status bar, or its error.
+pub(crate) type GitWork = Box<dyn FnOnce(&Repo) -> Result<String, String> + Send>;
+
 enum Msg {
     Repo(Option<Repo>, Option<String>),
     /// Index contents of the open files (`None`: not in the index), then the status.
@@ -276,6 +279,17 @@ impl CodeApp {
         });
     }
 
+    /// Runs `f` in the background; its message, or its error explained, goes to the status
+    /// bar, and the status and graph are read again.
+    pub(crate) fn git_run(&mut self, ctx: &egui::Context, busy: String, f: GitWork) {
+        self.git_job(ctx, Some(busy), move |repo| Msg::Done { result: f(repo) });
+    }
+
+    /// Files with conflicts left, from the last status.
+    pub(crate) fn git_conflicts(&self) -> Vec<FileChange> {
+        self.git.status.as_ref().map(|s| s.conflicts.clone()).unwrap_or_default()
+    }
+
     /// Schedules a status refresh `delay` seconds from now.
     pub(crate) fn git_refresh_soon(&mut self, ctx: &egui::Context, delay: f64) {
         let at = ctx.input(|i| i.time) + delay;
@@ -405,6 +419,7 @@ impl CodeApp {
             },
             Msg::Done { result } => {
                 self.git.busy = None;
+                self.git_graph.stale = true;
                 match result {
                     Ok(done) => {
                         if !done.is_empty() {
@@ -1054,7 +1069,7 @@ impl CodeApp {
     }
 
     /// A file as a commit changed it, against the commit's parent.
-    fn open_commit_file(&mut self, ctx: &egui::Context, hash: String, short: String, rel: String) {
+    pub(crate) fn open_commit_file(&mut self, ctx: &egui::Context, hash: String, short: String, rel: String) {
         let Some(root) = self.git.repo.as_ref().map(|r| r.root.clone()) else { return };
         self.git_job(ctx, None, move |repo| {
             let left = repo.file_at(&format!("{hash}^"), &rel);
@@ -1233,6 +1248,15 @@ impl CodeApp {
         let mut unstage: Vec<String> = Vec::new();
         let mut discard: Vec<FileChange> = Vec::new();
         let mut list_action = None;
+        let mut resolve_conflicts = false;
+        if !status.conflicts.is_empty()
+            && ui
+                .button(format!("Resolve {} Merge Conflicts…", status.conflicts.len()))
+                .on_hover_text("Settle each conflict by taking a side, or both")
+                .clicked()
+        {
+            resolve_conflicts = true;
+        }
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             let sections: [(&str, &Vec<FileChange>, u8); 3] = [
                 ("Merge Changes", &status.conflicts, 0),
@@ -1269,7 +1293,9 @@ impl CodeApp {
                             Path::new(&f.rel).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
                         let resp = ui.add(egui::Label::new(name).sense(Sense::click()).truncate());
                         ui.add(egui::Label::new(RichText::new(dir).small().color(pal.text_dim)).truncate());
-                        if resp.clicked() {
+                        if resp.clicked() && kind == 0 {
+                            resolve_conflicts = true;
+                        } else if resp.clicked() {
                             open = Some((f.path.clone(), kind == 1, f.kind));
                         }
                         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
@@ -1411,6 +1437,9 @@ impl CodeApp {
                 many => format!("Discard the changes in {} files?", many.len()),
             };
             self.git.confirm = Some(Confirm { text, changes: discard, stash: None });
+        }
+        if resolve_conflicts {
+            self.show_merge_conflicts();
         }
         if let Some((path, staged, kind)) = open {
             if kind == 'U' {
