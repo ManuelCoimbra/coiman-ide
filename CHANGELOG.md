@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-14
+
 ### Added
 
 - Terminal: Ctrl+click on `file:line[:col]` in the output opens the file there; profiles
