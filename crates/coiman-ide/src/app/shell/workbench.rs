@@ -1130,7 +1130,11 @@ impl CodeApp {
         let view_tabs = self.view_tabs();
         let view_showing = view_tabs.iter().any(|t| t.2);
         let (mut view_select, mut view_close) = (None, None);
-        let bar_height = ui.spacing().interact_size.y.max(ui.text_style_height(&egui::TextStyle::Body)) + 14.0;
+        // The buttons at the right are centred on the bar's height as last drawn: the tabs' own
+        // margins (cards in the Dock layout) make it taller than a row of text.
+        let drawn = egui::Id::unique("tab_bar_height");
+        let guess = ui.spacing().interact_size.y.max(ui.text_style_height(&egui::TextStyle::Body)) + 14.0;
+        let bar_height = ui.ctx().data(|d| d.get_temp::<f32>(drawn)).unwrap_or(guess);
         let buttons_width = if view_showing { 0.0 } else { self.file_buttons_ui(ui, bar_height) };
         // The bar's rows (a horizontal scroll area doesn't clip up and down).
         let top = ui.max_rect().top();
@@ -1380,6 +1384,8 @@ impl CodeApp {
         if let Some(grab) = grab {
             self.tab_grab = grab;
         }
+        let height = ui.min_rect().height();
+        ui.ctx().data_mut(|d| d.insert_temp(drawn, height));
         self.tab_drag = drag_started.or(self.tab_drag);
         if let Some(uid) = self.tab_drag {
             let bar = ui.min_rect();

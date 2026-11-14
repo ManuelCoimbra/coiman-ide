@@ -597,6 +597,17 @@ fn literal(value: Value) -> String {
     value.to_string()
 }
 
+/// A choice as the Color theme row shows one: the value and ▾ at the row's right edge, its
+/// options in a menu below. (A drop-down box of fixed width left the value off the edge
+/// the other settings line up on.)
+fn choice_menu(ui: &mut egui::Ui, shown: &str, options: impl FnOnce(&mut egui::Ui)) {
+    let button = ui.button(format!("{shown}  ▾"));
+    egui::Popup::menu(&button).show(|ui| {
+        ui.set_min_width(220.0);
+        egui::ScrollArea::vertical().max_height(320.0).show(ui, options);
+    });
+}
+
 /// Draws the control for one setting.
 fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&Value>, out: &mut Option<Action>) {
     let (table, key) = (row.table, row.key);
@@ -610,7 +621,7 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
         Kind::Choice(options) => {
             let current = value.and_then(Value::as_str).unwrap_or("");
             let shown = options.iter().find(|o| o.0 == current).map_or(current, |o| o.1);
-            egui::ComboBox::new(("settings", table, key), "").selected_text(shown).width(220.0).show_ui(ui, |ui| {
+            choice_menu(ui, shown, |ui| {
                 for (v, name) in options {
                     if ui.selectable_label(*v == current, *name).clicked() {
                         *out = Some(Action::Set(table, key, literal(Value::String((*v).to_owned()))));
@@ -649,22 +660,19 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
         Kind::Font => {
             let current = value.and_then(Value::as_str).unwrap_or("");
             let shown = if current.is_empty() { "Built-in" } else { current };
-            egui::ComboBox::new(("settings", table, key), "").selected_text(shown).width(220.0).height(320.0).show_ui(
-                ui,
-                |ui| {
-                    if ui.selectable_label(current.is_empty(), "Built-in").clicked() {
-                        *out = Some(Action::Set(table, key, literal(Value::String(String::new()))));
+            choice_menu(ui, shown, |ui| {
+                if ui.selectable_label(current.is_empty(), "Built-in").clicked() {
+                    *out = Some(Action::Set(table, key, literal(Value::String(String::new()))));
+                }
+                for name in &state.fonts {
+                    if ui.selectable_label(name == current, name).clicked() {
+                        *out = Some(Action::Set(table, key, literal(Value::String(name.clone()))));
                     }
-                    for name in &state.fonts {
-                        if ui.selectable_label(name == current, name).clicked() {
-                            *out = Some(Action::Set(table, key, literal(Value::String(name.clone()))));
-                        }
-                    }
-                    if state.fonts_loading.is_some() {
-                        ui.label("Looking for fonts…");
-                    }
-                },
-            );
+                }
+                if state.fonts_loading.is_some() {
+                    ui.label("Looking for fonts…");
+                }
+            });
         }
         Kind::Whole(low, high) => {
             let saved = value.and_then(Value::as_integer).unwrap_or(0) as f64;

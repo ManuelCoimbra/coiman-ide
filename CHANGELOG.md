@@ -40,6 +40,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The buttons at the right of the tab bar (Hex, Preview…) sat higher than the tab names in the
+  Dock layout; they're centred on the bar as drawn now, at any interface scale. Settings with a
+  choice (Font, Keyboard mode and others) show their value at the right edge with ▾, like
+  Color theme, instead of left-aligned in a wide drop-down.
 - The dock's icons line up and its open-tool dot no longer sits squeezed on the tile's edge.
 - The Explorer's type badges follow each language: C, Rust and Go structs show S, not C;
   headers with only functions, typedefs and type aliases show no type.
