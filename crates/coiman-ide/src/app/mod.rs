@@ -616,7 +616,7 @@ impl CodeApp {
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut true, |ui| self.sidebar(ui));
             if let Some(side) = &side {
-                self.layout.saw_side(side.response.rect.width());
+                self.layout.saw_side(&ctx, side.response.rect.width());
             }
             let place = side.map(|side| side.response.rect - gaps);
             if let Some(place) = place.filter(|_| dock)
@@ -668,7 +668,7 @@ impl CodeApp {
                 .frame(theme::island_frame(theme::colors().editor_bg, egui::Margin::symmetric(12, 6), gaps))
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
             if let Some(panel) = panel.as_ref().filter(|_| panel_open) {
-                self.layout.saw_panel(panel.response.rect.size(), true);
+                self.layout.saw_panel(&ctx, panel.response.rect.size(), true);
             }
             let place = panel.map(|panel| panel.response.rect - gaps);
             panels.extend(place);
@@ -687,12 +687,13 @@ impl CodeApp {
             };
             let panel = egui::Panel::bottom(self.layout.id("panel"))
                 .default_size(self.layout.panel_height())
+                .size_range(120.0..=f32::INFINITY)
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(frame)
                 .show_collapsible(ui, &mut { panel_open }, |ui| self.panel(ui));
             if let Some(panel) = panel.as_ref().filter(|_| panel_open) {
-                self.layout.saw_panel(panel.response.rect.size(), false);
+                self.layout.saw_panel(&ctx, panel.response.rect.size(), false);
             }
             let place = panel.map(|panel| panel.response.rect - gaps);
             panels.extend(place);

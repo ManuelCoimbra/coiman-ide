@@ -29,16 +29,17 @@ pub(crate) struct Layout {
     generation: u32,
 }
 
-/// A size is taken from the screen only once it holds still for a frame, so a side bar or
-/// panel sliding open or shut doesn't count as resized.
+/// A size is kept only as a drag of the mouse ends with it holding still, which is how an edge
+/// is dragged: a side bar or panel sliding open or shut, or sized by what it holds, doesn't count.
 #[derive(Default)]
 struct Settle {
     last: f32,
 }
 
 impl Settle {
-    fn see(&mut self, now: f32, keep: &mut Option<f32>, first: f32) {
-        if (now - self.last).abs() < 0.5 && (now - keep.unwrap_or(first)).abs() >= 0.5 {
+    fn see(&mut self, now: f32, released: bool, keep: &mut Option<f32>, first: f32) {
+        let moved = (now - keep.unwrap_or(first)).abs() >= 0.5;
+        if released && (now - self.last).abs() < 0.5 && moved {
             *keep = Some(now);
         }
         self.last = now;
@@ -79,16 +80,18 @@ impl Layout {
     }
 
     /// The side bar's width as drawn this frame (its outer rect, with any margin).
-    pub(crate) fn saw_side(&mut self, width: f32) {
-        self.side.see(width, &mut self.saved.side_size, SIDE_WIDTH);
+    pub(crate) fn saw_side(&mut self, ctx: &egui::Context, width: f32) {
+        let released = ctx.input(|i| i.pointer.primary_released());
+        self.side.see(width, released, &mut self.saved.side_size, SIDE_WIDTH);
     }
 
     /// The docked panel's size as drawn this frame.
-    pub(crate) fn saw_panel(&mut self, size: egui::Vec2, right: bool) {
+    pub(crate) fn saw_panel(&mut self, ctx: &egui::Context, size: egui::Vec2, right: bool) {
+        let released = ctx.input(|i| i.pointer.primary_released());
         if right {
-            self.width.see(size.x, &mut self.saved.panel_width, PANEL_WIDTH);
+            self.width.see(size.x, released, &mut self.saved.panel_width, PANEL_WIDTH);
         } else {
-            self.height.see(size.y, &mut self.saved.panel_height, PANEL_HEIGHT);
+            self.height.see(size.y, released, &mut self.saved.panel_height, PANEL_HEIGHT);
         }
     }
 }
@@ -113,8 +116,6 @@ impl CodeApp {
                 self.layout.generation += 1;
                 self.sheet_pinned = false;
                 self.rails.panel_right = false;
-                self.sidebar_visible = true;
-                self.panel_visible = true;
                 self.status = Some("Layout reset".to_owned());
             }
             _ => {}

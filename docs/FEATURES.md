@@ -390,6 +390,12 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
 - **Search in the top bar**: the box in the middle opens Search Everywhere (or press Shift
   twice). `workbench.search_in_top_bar = false` puts a magnifier on the right instead. It is
   the one search button: the dock has none.
+- **Moving the panel and side bar**: the ≡ button on the panel's header puts the panel at the
+  bottom, at the right or in a window of its own over the editor. Drag that window by its
+  header to the editor's bottom or right edge and it docks there again. The same menu moves
+  the side bar to the other side of the editor (in the Islands layout, drag a tool's icon to
+  the other rail instead). Positions, the sizes edges are dragged to, and a pinned side bar
+  are kept with the project. **View: Reset Layout** puts everything back as it started.
 - **Frame rate**: nothing is drawn while nothing changes. While something does, frames
   keep to the refresh rate of the display the window is on; `workbench.max_fps` sets a
   lower limit to save power (0 follows the display).
