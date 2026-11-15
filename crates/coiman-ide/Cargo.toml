@@ -15,11 +15,14 @@ rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.8"
 serde_json = "1"
-trash = "5.2.9"
 rustybuzz = { version = "0.20", default-features = false, features = ["std"] }
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico", "tiff"] }
 ropey = { version = "=1.6.1", default-features = false, features = ["simd"] }
+
+# Android has no Trash for apps.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+trash = "5.2.9"
 
 # On Linux the window opens through X11 or Wayland, whichever the desktop runs.
 [target.'cfg(target_os = "linux")'.dependencies]

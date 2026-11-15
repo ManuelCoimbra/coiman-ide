@@ -74,7 +74,7 @@ impl CodeApp {
 
         let mut cmd = None;
         let menus_right = ui
-            .scope_builder(egui::UiBuilder::new().max_rect(bar.with_max_x(bar.max.x - 3.0 * WINDOW_BUTTON)), |ui| {
+            .scope_builder(egui::UiBuilder::new().max_rect(bar.with_max_x(bar.max.x - window_buttons_space())), |ui| {
                 ui.horizontal_centered(|ui| {
                     ui.add_space(10.0);
                     let logo = egui::Rect::from_center_size(
@@ -100,8 +100,10 @@ impl CodeApp {
         let target = self.run_target_label();
         let target_galley = target.map(|t| ui.painter().layout_no_wrap(t, font_for_target(ui), pal.text_dim));
         let target_width = target_galley.as_ref().map_or(0.0, |g| g.size().x.min(180.0) + 28.0);
-        let room =
-            egui::Rangef::new(menus_right + 16.0, bar.max.x - 3.0 * WINDOW_BUTTON - RUN_BUTTON - target_width - 16.0);
+        let room = egui::Rangef::new(
+            menus_right + 16.0,
+            bar.max.x - window_buttons_space() - RUN_BUTTON - target_width - 16.0,
+        );
         if room.span() > 40.0 {
             let width = galley.size().x.min(room.span());
             let x = (bar.center().x - width / 2.0).clamp(room.min, room.max - width);
@@ -115,7 +117,7 @@ impl CodeApp {
 
         // Run Program, just left of the window buttons.
         let run_rect = egui::Rect::from_min_size(
-            egui::pos2(bar.max.x - 3.0 * WINDOW_BUTTON - RUN_BUTTON, bar.min.y),
+            egui::pos2(bar.max.x - window_buttons_space() - RUN_BUTTON, bar.min.y),
             egui::vec2(RUN_BUTTON, HEIGHT),
         );
         // What Run starts, just left of it.
@@ -196,7 +198,7 @@ impl CodeApp {
         let mut cmd = None;
         let mut open_folder = None;
         let mut remove_folder = None;
-        let inside = bar.with_max_x(bar.max.x - 3.0 * WINDOW_BUTTON);
+        let inside = bar.with_max_x(bar.max.x - window_buttons_space());
         ui.scope_builder(egui::UiBuilder::new().max_rect(inside), |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
@@ -1727,6 +1729,8 @@ impl CodeApp {
                 }
             }
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                // A port's own item (Android's keyboard button) goes furthest right.
+                crate::hooks::status_bar_item(ui);
                 // What fits, by priority: the right side never runs over the left (in the Dock
                 // layout it only has what's right of the dock). The rest drops out, least
                 // useful first.
@@ -2044,11 +2048,22 @@ fn paint_logo(painter: &egui::Painter, rect: egui::Rect) {
     );
 }
 
-/// Size for secondary workbench text (breadcrumbs, status bar): 12/13 of the UI font.
+/// The width of one caption button (minimize, maximize, close).
 const WINDOW_BUTTON: f32 = 46.0;
+
+/// Whether the app draws caption buttons: not on Android, where the system owns the window.
+const HAS_WINDOW_BUTTONS: bool = !cfg!(target_os = "android");
+
+/// The width the caption buttons take at the right of the bar.
+fn window_buttons_space() -> f32 {
+    if HAS_WINDOW_BUTTONS { 3.0 * WINDOW_BUTTON } else { 0.0 }
+}
 
 /// Minimize, maximize and close, at the right of the bar.
 fn window_buttons(ui: &mut egui::Ui, bar: egui::Rect, maximized: bool) {
+    if !HAS_WINDOW_BUTTONS {
+        return;
+    }
     let ctx = ui.ctx().clone();
     let pal = theme::colors();
     let buttons = [WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close];

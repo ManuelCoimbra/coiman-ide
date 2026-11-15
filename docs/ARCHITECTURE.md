@@ -27,7 +27,7 @@ Data files the core compiles in are in `crates/coiman-core/data/`. The plugin AP
 
 ## `crates/coiman-ide`
 
-The egui app. `main.rs` opens the window; `app/mod.rs` holds `CodeApp`, the whole state, and the
+The egui app, a library with a small program. `main.rs` calls `lib.rs`'s `run_desktop`, which opens the window; `hooks.rs` lets a port add to the window (see [PORTING.md](PORTING.md)); `app/mod.rs` holds `CodeApp`, the whole state, and the
 frame loop. Each file under `app/` adds methods to `CodeApp` for one feature, grouped by area:
 
 | Area | What is in it |

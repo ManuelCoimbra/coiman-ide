@@ -234,6 +234,10 @@ pub struct Palette {
     query: String,
     selected: usize,
     just_opened: bool,
+    /// Set on opening: the next outside-press check is skipped. A tap on a touch screen is a
+    /// press and a release in one frame, so the tap that opened the palette (Explorer's New
+    /// File, say) would otherwise read as a press outside it and close it at once.
+    opening_press: bool,
     /// When set, the palette is a picker over these items instead of files/commands.
     picker: Option<Picker>,
     /// When set, the palette is a plain input box.
@@ -261,6 +265,7 @@ impl Palette {
         self.query = prefix.to_owned();
         self.selected = 0;
         self.just_opened = true;
+        self.opening_press = true;
         self.picker = None;
         self.input = None;
         self.everywhere = None;
@@ -774,6 +779,9 @@ impl Palette {
 
 impl Palette {
     fn close_on_click_outside(&mut self, ctx: &egui::Context, rect: egui::Rect) {
+        if std::mem::take(&mut self.opening_press) {
+            return;
+        }
         let outside =
             ctx.input(|i| i.pointer.any_pressed() && i.pointer.interact_pos().is_some_and(|p| !rect.contains(p)));
         if outside {

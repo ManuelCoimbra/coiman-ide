@@ -274,6 +274,10 @@ pub fn install_dir(kind: ServerKind) -> Option<PathBuf> {
 
 /// An executable on `PATH` (trying Windows' `.exe`, `.cmd`, `.bat`).
 pub fn which(name: &str) -> Option<PathBuf> {
+    // A port may know of programs PATH can't show (see `crate::platform::set_tool_probe`).
+    if let Some(found) = crate::platform::probed(name) {
+        return Some(found);
+    }
     let exts: &[&str] = if cfg!(windows) { &[".exe", ".cmd", ".bat", ""] } else { &[""] };
     let path = std::env::var_os("PATH")?;
     let mut dirs: Vec<PathBuf> = std::env::split_paths(&path).collect();

@@ -29,7 +29,12 @@ pub fn kill_tree(child: &mut std::process::Child) {
 }
 
 /// A command that never opens a console window (the app is a GUI program).
+///
+/// A port can run some programs another way (see [`crate::platform::set_command_router`]).
 pub fn quiet_command(program: &Path) -> Command {
+    if let Some(routed) = crate::platform::routed(program) {
+        return routed;
+    }
     #[allow(unused_mut)]
     let mut cmd = Command::new(program);
     #[cfg(windows)]

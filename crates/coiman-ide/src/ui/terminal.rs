@@ -540,6 +540,9 @@ impl Terminals {
         let response = ui.interact(rect, id, Sense::click_and_drag());
         if focus_requested || response.clicked() || response.drag_started() {
             response.request_focus();
+            if !focus_requested {
+                crate::hooks::text_tapped();
+            }
         }
         let focused = response.has_focus();
         if focused && index != self.active {
@@ -577,6 +580,9 @@ impl Terminals {
             self.open_request = Some(open);
         }
         paint(ui, &tab.session, &grid, &font, focused, rect);
+        if focused {
+            publish_selection(ui, id, &tab.session);
+        }
         underline_link(ui, tab, &response, &grid, &project);
         // In a split the one with the keyboard is marked.
         if split && focused {
@@ -1297,6 +1303,24 @@ pub fn strip_verbatim(p: PathBuf) -> PathBuf {
     match s.strip_prefix(r"\\?\") {
         Some(rest) => PathBuf::from(rest),
         None => p,
+    }
+}
+
+/// Whether the terminal has a selection, for a platform text bar (see `coiman_core::selection`):
+/// the bar goes by the pointer, where a selection is made. On Android the bar also looks for a
+/// `TextEdit`'s selection under the terminal's id, so a one-character stand-in is stored there.
+fn publish_selection(ui: &egui::Ui, id: egui::Id, session: &Session) {
+    let selected = session.term().selection.is_some();
+    let at = ui.input(|i| i.pointer.interact_pos());
+    coiman_core::selection::set(at.filter(|_| selected).map(|p| [p.x - 1.0, p.y - 10.0, p.x + 1.0, p.y + 10.0]));
+    if cfg!(target_os = "android") {
+        let mut state = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+        let end = usize::from(selected);
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(0),
+            egui::text::CCursor::new(end),
+        )));
+        state.store(ui.ctx(), id);
     }
 }
 

@@ -471,7 +471,7 @@ impl CodeApp {
                 let done = if permanent {
                     coiman_core::project::file_ops::remove_all(path).map_err(|e| e.to_string())
                 } else {
-                    trash::delete(path).map_err(|e| e.to_string())
+                    to_trash(path)
                 };
                 if let Err(e) = done {
                     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
@@ -720,4 +720,16 @@ fn child_path(dir: &Path, name: &str) -> Option<PathBuf> {
     let name = Path::new(name.trim());
     let plain = name.components().all(|c| matches!(c, std::path::Component::Normal(_)));
     (plain && !name.as_os_str().is_empty()).then(|| dir.join(name))
+}
+
+/// Moves a file or folder to the system's Trash.
+#[cfg(not(target_os = "android"))]
+fn to_trash(path: &Path) -> Result<(), String> {
+    trash::delete(path).map_err(|e| e.to_string())
+}
+
+/// Android has no Trash for apps: say so, rather than delete for good unasked.
+#[cfg(target_os = "android")]
+fn to_trash(_path: &Path) -> Result<(), String> {
+    Err("there's no Trash here: use Delete Permanently".to_owned())
 }

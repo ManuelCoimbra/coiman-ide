@@ -569,6 +569,7 @@ pub fn show(
     }
     if response.clicked() || response.drag_started() {
         response.request_focus();
+        crate::hooks::text_tapped();
     }
     let has_focus = response.has_focus();
     if has_focus {
@@ -719,6 +720,18 @@ pub fn show(
     } else {
         None
     };
+    if has_focus {
+        publish_selection(
+            ui,
+            id,
+            doc,
+            text_rect,
+            cursor_row as f32 * row_h - view.scroll.y,
+            cursor_x - view.scroll.x,
+            row_h,
+            char_w,
+        );
+    }
     Output {
         hover,
         context_click,
@@ -956,7 +969,10 @@ fn handle_mouse(
         return false;
     }
     let Some(p) = ui.input(|i| i.pointer.interact_pos()) else { return false };
-    let pressed = response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_pressed());
+    // A tap on a touch screen presses and releases in one frame, and egui forgets the button
+    // was down on this widget on the release: `clicked` is what's still true then.
+    let pressed =
+        (response.is_pointer_button_down_on() || response.clicked()) && ui.input(|i| i.pointer.primary_pressed());
     let mods = ui.input(|i| i.modifiers);
     let pos = pos_at(doc, view, layout, m, text_rect, p);
     let (_, _, line, col) = cell_at(doc, view, layout, m, text_rect, p);
@@ -2427,6 +2443,34 @@ fn paint_scrollbars(ui: &mut egui::Ui, view: &ViewState, rect: Rect, text_rect: 
             3.0,
             thumb,
         );
+    }
+}
+
+/// Where the selection is, for a platform text bar (see `coiman_core::selection`): next to the
+/// cursor, when there is one. On Android the bar also looks for a `TextEdit`'s selection under
+/// the editor's id, so it's stored there too.
+#[allow(clippy::too_many_arguments)]
+fn publish_selection(
+    ui: &egui::Ui,
+    id: egui::Id,
+    doc: &Document,
+    text_rect: Rect,
+    y: f32,
+    x: f32,
+    row_h: f32,
+    char_w: f32,
+) {
+    let selection = doc.buffer.primary();
+    let selected = selection.anchor != selection.head;
+    let (left, top) = (text_rect.left() + x, text_rect.top() + y);
+    coiman_core::selection::set(selected.then_some([left, top, left + char_w * 6.0, top + row_h]));
+    if cfg!(target_os = "android") {
+        let mut state = egui::text_edit::TextEditState::load(ui.ctx(), id).unwrap_or_default();
+        state.cursor.set_char_range(Some(egui::text::CCursorRange::two(
+            egui::text::CCursor::new(selection.anchor),
+            egui::text::CCursor::new(selection.head),
+        )));
+        state.store(ui.ctx(), id);
     }
 }
 

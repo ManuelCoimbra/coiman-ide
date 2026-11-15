@@ -7,6 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- On a touch screen, a tap in the editor places the cursor, and the tap that opens the command
+  palette (or Explorer's New File and Rename) no longer closes it at once.
 - After a theme change, the colors a language server gives (functions, types) kept the theme
   before's until the file changed; they now follow the new theme at once.
 
@@ -20,6 +22,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - The minimap draws the code in its syntax colors.
 - Git Graph: compare a branch with the current one, merge it, or rebase the current branch
   onto it; in Merge Conflicts, a result to write by hand.
+- For ports (the Android build): `coiman-ide` is a library too, with hooks to run programs
+  another way, add to the status bar, hear of taps in the text, and find the selection, so a
+  port needs no edits to Coiman's source. See [docs/PORTING.md](docs/PORTING.md).
 - **Merge Conflicts** window: each conflict side by side, settled by taking current, incoming
   or both; mark files resolved, then continue or abort the merge, cherry-pick, revert or rebase.
 

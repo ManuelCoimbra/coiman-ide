@@ -111,6 +111,8 @@ pub(crate) fn frame_limit(max_fps: u32, at: (i32, i32)) -> u32 {
 impl CodeApp {
     /// Called as a frame starts: notes why it's drawn, for the log.
     pub(crate) fn frame_started(&mut self, ctx: &egui::Context) {
+        // The editor or terminal with the keyboard publishes it again while drawing.
+        coiman_core::selection::set(None);
         if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
             let scale = ctx.input(|i| i.viewport().native_pixels_per_point).unwrap_or(1.0);
             let c = rect.center();
