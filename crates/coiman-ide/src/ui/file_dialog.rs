@@ -109,4 +109,16 @@ mod tests {
         assert_eq!(d.request.title.as_deref(), Some("Save"));
         assert_eq!(d.request.filters, [("Text".to_owned(), vec!["txt".to_owned(), "md".to_owned()])]);
     }
+
+    /// A port's picker answers every dialog, and sees what it asked for.
+    #[test]
+    fn port_picker_answers() {
+        assert!(crate::hooks::set_file_picker(Box::new(|request: &PickRequest| {
+            let name = request.file_name.clone().unwrap_or_default();
+            Some(PathBuf::from(format!("/picked/{:?}/{name}", request.kind)))
+        })));
+        assert_eq!(FileDialog::new().pick_file(), Some(PathBuf::from("/picked/File/")));
+        assert_eq!(FileDialog::new().pick_folder(), Some(PathBuf::from("/picked/Folder/")));
+        assert_eq!(FileDialog::new().set_file_name("a.txt").save_file(), Some(PathBuf::from("/picked/Save/a.txt")));
+    }
 }
