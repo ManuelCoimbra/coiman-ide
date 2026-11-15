@@ -23,6 +23,8 @@ enum Kind {
     /// Nothing to set: a button that runs a command.
     Button(&'static str, Command),
     Font,
+    /// The `[env]` table: a variable to a row, each to change or take away, and one to add.
+    Env,
 }
 
 struct Row {
@@ -426,6 +428,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 Kind::Text("pwsh -NoLogo"),
             ),
             row("terminal", "scrollback", "Scrollback", "Lines kept per terminal.", Kind::Whole(100, 1_000_000)),
+            row(
+                "env",
+                "",
+                "Environment variables",
+                "For terminals, Run and tasks. ${NAME} is the variable as Coiman started with it: PATH = ${PATH};C:/tools. With This folder chosen above, the project's own.",
+                Kind::Env,
+            ),
             row("terminal", "font_size", "Font size", "0 follows the code's size.", Kind::Decimal(0.0, 72.0)),
             row(
                 "terminal",
@@ -600,6 +609,9 @@ pub(crate) struct SettingsUi {
     fonts_loaded: bool,
     /// A section picked in the row of sections, to scroll to.
     jump: Option<&'static str>,
+    /// Environment variables: values being typed, by name, and the one being added.
+    env_texts: HashMap<String, String>,
+    env_new: (String, String),
 }
 
 /// An on/off switch. Returns whether it was flipped.
@@ -642,6 +654,8 @@ fn section_title(ui: &mut egui::Ui, title: &str) -> egui::Response {
 
 enum Action {
     Set(&'static str, &'static str, String),
+    /// An environment variable set to a value, or (`None`) taken away.
+    Env(String, Option<String>),
     Reset(&'static str, &'static str),
     Theme,
     Run(Command),
@@ -718,6 +732,45 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
                 // Not being edited: follow the file.
                 saved.clone_into(text);
             }
+        }
+        Kind::Env => {
+            let vars: Vec<(String, String)> = value
+                .and_then(Value::as_table)
+                .map(|t| t.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_owned())).collect())
+                .unwrap_or_default();
+            ui.vertical(|ui| {
+                for (name, saved) in &vars {
+                    ui.horizontal(|ui| {
+                        ui.add_sized([140.0, 20.0], egui::Label::new(RichText::new(name).monospace()).truncate());
+                        let text = state.env_texts.entry(name.clone()).or_insert_with(|| saved.clone());
+                        let edit = ui.add(egui::TextEdit::singleline(text).desired_width(320.0));
+                        if edit.lost_focus() {
+                            if text != saved {
+                                *out = Some(Action::Env(name.clone(), Some(text.clone())));
+                            }
+                            state.env_texts.remove(name);
+                        } else if !edit.has_focus() {
+                            saved.clone_into(text);
+                        }
+                        if ui.small_button("×").on_hover_text(format!("Take {name} away")).clicked() {
+                            *out = Some(Action::Env(name.clone(), None));
+                        }
+                    });
+                }
+                ui.horizontal(|ui| {
+                    let (name, val) = &mut state.env_new;
+                    let valid = !name.is_empty()
+                        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                        && !name.starts_with(|c: char| c.is_ascii_digit());
+                    ui.add(egui::TextEdit::singleline(name).hint_text("NAME").desired_width(140.0));
+                    ui.add(egui::TextEdit::singleline(val).hint_text("value").desired_width(320.0));
+                    if ui.add_enabled(valid, egui::Button::new("Add")).clicked() {
+                        *out = Some(Action::Env(name.clone(), Some(val.clone())));
+                        name.clear();
+                        val.clear();
+                    }
+                });
+            });
         }
         Kind::Font => {
             let current = value.and_then(Value::as_str).unwrap_or("");
@@ -950,13 +1003,16 @@ impl CodeApp {
                                     let x = ui.max_rect().x_range();
                                     ui.painter().hline(x, y, egui::Stroke::new(1.0, pal.border.gamma_multiply(0.6)));
                                 }
-                                let value = lookup(&current, row.table, row.key);
+                                let env = matches!(row.kind, Kind::Env);
+                                // The env row shows the whole table; it has no default to go back to.
+                                let value = if env { current.get("env") } else { lookup(&current, row.table, row.key) };
                                 let default = lookup(&defaults, row.table, row.key);
-                                let changed = match (value, default) {
-                                    (Some(v), Some(d)) => v != d,
-                                    (Some(v), None) => v.as_str() != Some(""),
-                                    _ => false,
-                                };
+                                let changed = !env
+                                    && match (value, default) {
+                                        (Some(v), Some(d)) => v != d,
+                                        (Some(v), None) => v.as_str() != Some(""),
+                                        _ => false,
+                                    };
                                 let words = |ui: &mut egui::Ui| {
                                     ui.label(row.label);
                                     if !row.help.is_empty() {
@@ -965,8 +1021,9 @@ impl CodeApp {
                                         ui.add(egui::Label::new(help).wrap());
                                     }
                                 };
-                                // Narrow (a phone, a small window): the option goes under its words.
-                                if narrow {
+                                // Narrow (a phone, a small window): the option goes under its words;
+                                // so does the env editor, a list wider than a column.
+                                if narrow || env {
                                     words(ui);
                                     ui.horizontal(|ui| {
                                         control(ui, state, row, value, &mut action);
@@ -1001,6 +1058,10 @@ impl CodeApp {
         let workspace = self.settings_ui.workspace;
         let result = match action {
             Some(Action::Set(table, key, value)) => self.change_setting(ctx, workspace, table, key, Some(&value)),
+            Some(Action::Env(name, value)) => {
+                let value = value.map(|v| literal(Value::String(v)));
+                self.change_setting(ctx, workspace, "env", &name, value.as_deref())
+            }
             Some(Action::Reset(table, key)) => self.change_setting(ctx, workspace, table, key, None),
             Some(Action::ChoosePath(table, key, folder)) => {
                 let kind = format!("setting_{table}_{key}");

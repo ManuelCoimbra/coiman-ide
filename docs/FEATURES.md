@@ -990,7 +990,9 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   terminals, Run and tasks. A project's `.coiman/settings.toml` adds to and overrides yours;
   `${NAME}` is a variable as Coiman was started with it (`PATH = "${PATH};C:/tools"`). In
   Restricted Mode only yours apply, so a folder not trusted can't set what a shell runs on
-  start.
+  start. Settings > Terminal > **Environment variables** edits them: each variable with its
+  value, × to take one away, and a row to add one; with **This folder** chosen, the project's
+  own.
 - **Color themes** (`Ctrl+K Ctrl+T`): any VS Code theme. In the picker, a theme the pointer
   rests on for a second is shown without being chosen; leaving brings the chosen one back. The picker lists themes from the
   installed VS Code (bundled and `~/.vscode/extensions`) and `<config>\themes`;

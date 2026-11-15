@@ -805,6 +805,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn env_variables_set_and_taken_away_in_text() {
+        let text = set_value_in_text("[editor]
+font_size = 14
+", "env", "RUST_LOG", "\"debug\"");
+        let text = set_value_in_text(&text, "env", "MODE", "\"test\"");
+        let table: Table = toml::from_str(&text).unwrap();
+        assert_eq!(table["env"]["RUST_LOG"].as_str(), Some("debug"));
+        let text = remove_value_in_text(&text, "env", "RUST_LOG");
+        let table: Table = toml::from_str(&text).unwrap();
+        assert!(table["env"].get("RUST_LOG").is_none());
+        assert_eq!(table["env"]["MODE"].as_str(), Some("test"));
+        assert_eq!(table["editor"]["font_size"].as_integer(), Some(14));
+    }
+
+    #[test]
     fn workspace_folders() {
         let root = std::env::temp_dir().join(format!("rc-ws-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
