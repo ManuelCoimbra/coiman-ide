@@ -103,7 +103,7 @@ impl CodeApp {
         self.set_workspace_trust(ctx, &folder, trust_it);
     }
 
-    fn set_workspace_trust(&mut self, ctx: &egui::Context, folder: &Path, trusted: bool) {
+    pub(crate) fn set_workspace_trust(&mut self, ctx: &egui::Context, folder: &Path, trusted: bool) {
         let result = if trusted { trust::trust(folder) } else { trust::revoke(folder) };
         if let Err(e) = result {
             self.status = Some(format!("Could not save trust: {e}"));

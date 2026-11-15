@@ -259,6 +259,22 @@ impl CodeApp {
             return true;
         }
         self.author_section(ui, &info);
+        // Another folder of the workspace, not trusted: git doesn't run there until it is.
+        if self.git_repo().is_none()
+            && let Some(folder) = self.git.discovered_for.clone().filter(|f| Some(f) != self.explorer.root.as_ref())
+            && !coiman_core::project::trust::is_trusted(&folder)
+        {
+            ui.add_space(6.0);
+            let name = folder.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            ui.label(
+                RichText::new(format!("{name} is in Restricted Mode: Git runs there once you trust it."))
+                    .color(pal.text_dim),
+            );
+            if ui.button(format!("Trust {name}")).clicked() {
+                self.set_workspace_trust(&ctx, &folder, true);
+            }
+            return true;
+        }
         if self.git_repo().is_none() {
             ui.add_space(6.0);
             let open = self.explorer.root.is_some();

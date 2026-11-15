@@ -975,7 +975,10 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   to the project when beside it, `../shared`), so the project opens with them next time.
 - A VS Code **`.code-workspace`** file opens as one: its first folder as the project, the
   others added to it.
-- Git, Run and the language servers stay with the project's own folder.
+- **Source Control** has a **Repository** picker then: the project or one of the other
+  folders, and Git (status, branch, commits, the Graph) follows the one chosen. A folder not
+  trusted says so, with a button to trust it. Run and the language servers stay with the
+  project's own folder.
 
 ## Settings, keybindings and themes
 

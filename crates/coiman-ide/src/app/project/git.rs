@@ -155,6 +155,8 @@ pub(crate) struct GitState {
     repo: Option<Repo>,
     /// Folder the repository was looked up for.
     pub(crate) discovered_for: Option<PathBuf>,
+    /// In a workspace of several folders, the one Git follows (else the project's).
+    pub(crate) chosen_folder: Option<PathBuf>,
     me: Option<String>,
     status: Option<Status>,
     tx: Sender<Msg>,
@@ -201,6 +203,7 @@ impl Default for GitState {
         Self {
             repo: None,
             discovered_for: None,
+            chosen_folder: None,
             me: None,
             status: None,
             tx,
@@ -321,10 +324,10 @@ impl CodeApp {
             }
             return;
         }
-        let target = self
-            .explorer
-            .root
-            .clone()
+        // The folder chosen in Source Control, while it's still one of the workspace's.
+        let chosen = self.git.chosen_folder.clone().filter(|f| self.explorer.extra_roots.contains(f));
+        let target = chosen
+            .or_else(|| self.explorer.root.clone())
             .or_else(|| self.docs.get(self.active).and_then(|d| d.path.as_ref()?.parent().map(Path::to_path_buf)));
         if target != self.git.discovered_for {
             self.git.discovered_for = target.clone();
@@ -1167,6 +1170,31 @@ impl CodeApp {
                 }
             });
         });
+        // A workspace of several folders: which one's repository this shows.
+        if let Some(root) = self.explorer.root.clone()
+            && !self.explorer.extra_roots.is_empty()
+        {
+            let folders: Vec<PathBuf> =
+                std::iter::once(root.clone()).chain(self.explorer.extra_roots.clone()).collect();
+            let current = self.git.discovered_for.clone().unwrap_or(root);
+            let name =
+                |p: &Path| p.file_name().map_or_else(|| p.display().to_string(), |n| n.to_string_lossy().into_owned());
+            ui.horizontal(|ui| {
+                ui.label(RichText::new("Repository").small().color(pal.text_dim));
+                let mut picked = None;
+                egui::ComboBox::from_id_salt("git_folder").selected_text(name(&current)).show_ui(ui, |ui| {
+                    for f in &folders {
+                        if ui.selectable_label(*f == current, name(f)).on_hover_text(f.display().to_string()).clicked()
+                        {
+                            picked = Some(f.clone());
+                        }
+                    }
+                });
+                if let Some(f) = picked.filter(|f| *f != current) {
+                    self.git.chosen_folder = Some(f);
+                }
+            });
+        }
         if self.settings.git.enabled && self.git_setup_section(ui) {
             return;
         }

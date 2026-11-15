@@ -21,6 +21,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Source Control's Repository picker: in a workspace of several folders, Git follows the one
+  chosen.
 - Database connections can be named; the profiler shows time (ms) beside each share.
 - Settings > Terminal > Environment variables: `[env]` without opening the file.
 - Workspaces with more than one folder: Add Folder to Workspace in the Explorer, each folder a

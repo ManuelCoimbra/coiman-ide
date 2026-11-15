@@ -569,7 +569,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 
 | Item | Status | Note |
 |---|---|---|
-| Multi-root workspaces | Partial | More folders: Explorer, Quick Open, Find in Files, `.code-workspace`; Git and Run for the project's folder only |
+| Multi-root workspaces | Partial | More folders: Explorer, Quick Open, Find in Files, `.code-workspace`, Git by a picker; Run and language servers for the project's folder |
 | Workspace profiles | Partial | Folder settings |
 | Project templates | Partial | Sample projects, Maven archetypes, file templates |
 | Project scaffolding | Partial | Same |

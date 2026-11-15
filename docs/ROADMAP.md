@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Multi-root: Git follows the folder chosen in Source Control.
 - An editor for `[env]` in Settings; named database connections; profiler times.
 - Workspaces with more than one folder (Explorer, Quick Open, Find in Files,
   `.code-workspace` files).
@@ -21,8 +22,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **Partial items finished**
-  - Multi-root: Git for each folder.
 - **Testing**
   - A test timeline.
   - Snapshot testing (insta, Jest).
