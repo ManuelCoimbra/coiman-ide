@@ -555,6 +555,11 @@ downloaded unless you click **Download**.
   CodeLLDB uses data breakpoints; gdb, whose adapter has none, uses its own watchpoint on the
   variable's memory (`watch -location`), so only the names at the top of a scope offer it there.
   They last for the session.
+- **Breakpoint groups**: right-click a line or function breakpoint in BREAKPOINTS and type a
+  name to start a group, or move it to a group there is, or out of its group. Each group shows
+  under its name with how many it holds; its box turns them all on or off at once (half-filled
+  when some are on), and its cross undoes the group, leaving the breakpoints. Groups are kept
+  between runs and go into exports.
 - **Export and import**: **Debug: Export Breakpoints...** saves line, function and exception
   breakpoints to a JSON file (paths inside the project are relative, so the file travels with
   it); **Import Breakpoints...** adds a file's breakpoints to those set. Both are under

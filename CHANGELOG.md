@@ -21,6 +21,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Breakpoint groups: right-click a breakpoint in BREAKPOINTS to put it in a group, new or
+  one there is; a group's box turns all its breakpoints on or off at once. Groups are kept
+  with the breakpoints and in exports.
 - Tests at once: the Testing view's **At once** (and `[testing] parallel`) sets how many tests
   each runner runs at the same time, from one at a time up; the view says which runner is
   running and how many are still to go.

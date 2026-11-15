@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 115, partial 108,
-missing 246, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 116, partial 108,
+missing 245, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -100,7 +100,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Data breakpoints | Done | `dataBreakpoint` or gdb's `watch -location` |
 | Function breakpoints | Done | |
 | Exception breakpoints | Done | Adapter's filters |
-| Breakpoint groups | Missing | |
+| Breakpoint groups | Done | Line and function breakpoints; a group turned on or off at once; kept and exported |
 | Breakpoint import and export | Done | |
 | Reverse debugging | Missing | |
 | Execution recording and replay | Missing | |

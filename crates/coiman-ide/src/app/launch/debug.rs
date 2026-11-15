@@ -41,6 +41,44 @@ pub(crate) struct Breakpoint {
     enabled: bool,
     /// Whether the debugger could place it (None: no session yet).
     verified: Option<bool>,
+    /// The group it's in, turned on and off together.
+    group: Option<String>,
+}
+
+/// A line or function breakpoint, to move between groups.
+enum BreakpointRef {
+    Line(PathBuf, usize),
+    Function(usize),
+}
+
+/// The right-click menu of a breakpoint: into a group (one there is, or a new one named),
+/// or out of its group. Returns the group chosen (None: no group) when one was.
+fn group_menu(
+    label: &egui::Response,
+    names: &[String],
+    current: Option<&str>,
+    input: &mut String,
+) -> Option<Option<String>> {
+    let mut chosen = None;
+    // Clicking into the name field must leave the menu open.
+    egui::Popup::context_menu(label).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
+        for name in names.iter().filter(|n| Some(n.as_str()) != current) {
+            if ui.button(format!("Move to {name}")).clicked() {
+                chosen = Some(Some(name.clone()));
+                ui.close();
+            }
+        }
+        let edit = ui.add(egui::TextEdit::singleline(input).hint_text("New group (Enter)").desired_width(160.0));
+        if edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) && !input.trim().is_empty() {
+            chosen = Some(Some(std::mem::take(input).trim().to_owned()));
+            ui.close();
+        }
+        if current.is_some() && ui.button("Out of the group").clicked() {
+            chosen = Some(None);
+            ui.close();
+        }
+    });
+    chosen
 }
 
 /// What to debug.
@@ -175,6 +213,8 @@ pub(crate) struct DebugState {
     /// Function breakpoints, and whether the debugger placed each.
     functions: Vec<(FunctionBreakpoint, Option<bool>)>,
     function_input: String,
+    /// The name typed for a new breakpoint group.
+    group_input: String,
     /// Exception filters the user turned on or off, by id.
     exceptions: HashMap<String, bool>,
     /// The exception filters the last debugger offered.
@@ -211,6 +251,7 @@ impl Default for DebugState {
             editing: None,
             functions: Vec::new(),
             function_input: String::new(),
+            group_input: String::new(),
             exceptions: HashMap::new(),
             filters: Vec::new(),
             data: Vec::new(),
@@ -929,6 +970,7 @@ impl CodeApp {
                     condition: b.condition.clone(),
                     log: b.log.clone(),
                     enabled: b.enabled,
+                    group: b.group.clone(),
                 })
             })
             .collect();
@@ -1023,7 +1065,14 @@ impl CodeApp {
             let entry = self.debug.breakpoints.entry(key(&path)).or_insert_with(|| (path.clone(), Vec::new()));
             let line = l.line - 1;
             entry.1.retain(|b| b.line != line);
-            let bp = Breakpoint { line, condition: l.condition, log: l.log, enabled: l.enabled, verified: None };
+            let bp = Breakpoint {
+                line,
+                condition: l.condition,
+                log: l.log,
+                enabled: l.enabled,
+                verified: None,
+                group: l.group,
+            };
             entry.1.push(bp);
             entry.1.sort_by_key(|b| b.line);
             if !files.contains(&path) {
@@ -1482,7 +1531,7 @@ impl CodeApp {
         if let Some(i) = entry.1.iter().position(|b| b.line == line) {
             entry.1.remove(i);
         } else {
-            entry.1.push(Breakpoint { line, condition: None, log: None, enabled: true, verified: None });
+            entry.1.push(Breakpoint { line, condition: None, log: None, enabled: true, verified: None, group: None });
             entry.1.sort_by_key(|b| b.line);
         }
         if entry.1.is_empty() {
@@ -1525,7 +1574,14 @@ impl CodeApp {
         let bp = match entry.1.iter_mut().position(|b| b.line == line) {
             Some(i) => &mut entry.1[i],
             None => {
-                entry.1.push(Breakpoint { line, condition: None, log: None, enabled: true, verified: None });
+                entry.1.push(Breakpoint {
+                    line,
+                    condition: None,
+                    log: None,
+                    enabled: true,
+                    verified: None,
+                    group: None,
+                });
                 entry.1.sort_by_key(|b| b.line);
                 let i = entry.1.iter().position(|b| b.line == line).expect("just added");
                 &mut entry.1[i]
@@ -1687,6 +1743,11 @@ impl CodeApp {
         let mut remove_watch = None;
         let mut goto_bp: Option<(PathBuf, usize)> = None;
         let mut remove_bp: Option<(PathBuf, usize)> = None;
+        // A breakpoint into a group (or out of one), a group turned on or off, a group undone.
+        let mut regroup: Option<(BreakpointRef, Option<String>)> = None;
+        let mut group_on: Option<(String, bool)> = None;
+        let mut ungroup: Option<String> = None;
+        let mut group_input = std::mem::take(&mut self.debug.group_input);
         let mut resend = false;
         let mut memory_at = None;
         let mut data_at: Option<(i64, String)> = None;
@@ -1801,48 +1862,108 @@ impl CodeApp {
                     if self.debug.breakpoints.is_empty() && self.debug.functions.is_empty() {
                         ui.label(RichText::new("F9 or click left of a line number to add one.").color(pal.text_dim));
                     }
-                    for (path, bps) in self.debug.breakpoints.values_mut() {
-                        let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                        for b in bps.iter_mut() {
+                    let names = bpx::group_names(
+                        self.debug
+                            .breakpoints
+                            .values()
+                            .flat_map(|(_, bps)| bps.iter().map(|b| b.group.as_deref()))
+                            .chain(self.debug.functions.iter().map(|(f, _)| f.group.as_deref())),
+                    );
+                    // The breakpoints in no group first, then each group under its name.
+                    let sections: Vec<Option<String>> =
+                        std::iter::once(None).chain(names.iter().cloned().map(Some)).collect();
+                    for section in &sections {
+                        let members: Vec<bool> = self
+                            .debug
+                            .breakpoints
+                            .values()
+                            .flat_map(|(_, bps)| bps.iter().filter(|b| &b.group == section).map(|b| b.enabled))
+                            .chain(
+                                self.debug
+                                    .functions
+                                    .iter()
+                                    .filter(|(f, _)| &f.group == section)
+                                    .map(|(f, _)| f.enabled),
+                            )
+                            .collect();
+                        if let Some(name) = section {
                             ui.horizontal(|ui| {
-                                let changed = ui.checkbox(&mut b.enabled, "").changed();
-                                let mut text = format!("{name}:{}", b.line + 1);
-                                if let Some(c) = &b.condition {
+                                let mut on = members.iter().all(|e| *e);
+                                let some = !on && members.iter().any(|e| *e);
+                                let check = ui
+                                    .add(egui::Checkbox::without_text(&mut on).indeterminate(some))
+                                    .on_hover_text("Turn every breakpoint in the group on or off");
+                                if check.changed() {
+                                    group_on = Some((name.clone(), on));
+                                }
+                                ui.label(RichText::new(name).strong());
+                                ui.label(RichText::new(members.len().to_string()).small().color(pal.text_dim));
+                                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                    if icons::button(ui, Icon::Close, "Ungroup (the breakpoints stay)").clicked() {
+                                        ungroup = Some(name.clone());
+                                    }
+                                });
+                            });
+                        }
+                        let indent = if section.is_some() { 16.0 } else { 0.0 };
+                        for (path, bps) in self.debug.breakpoints.values_mut() {
+                            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                            for b in bps.iter_mut().filter(|b| &b.group == section) {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(indent);
+                                    let changed = ui.checkbox(&mut b.enabled, "").changed();
+                                    let mut text = format!("{name}:{}", b.line + 1);
+                                    if let Some(c) = &b.condition {
+                                        text.push_str(&format!("  if {c}"));
+                                    }
+                                    if let Some(l) = &b.log {
+                                        text.push_str(&format!("  log \"{l}\""));
+                                    }
+                                    let label = ui
+                                        .add(egui::Label::new(text).sense(Sense::click()))
+                                        .on_hover_text("Click to go there; right-click to group");
+                                    if label.clicked() {
+                                        goto_bp = Some((path.clone(), b.line));
+                                    }
+                                    if let Some(to) = group_menu(&label, &names, b.group.as_deref(), &mut group_input) {
+                                        regroup = Some((BreakpointRef::Line(path.clone(), b.line), to));
+                                    }
+                                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                        if icons::button(ui, Icon::Close, "Remove").clicked() {
+                                            remove_bp = Some((path.clone(), b.line));
+                                        }
+                                    });
+                                    resend |= changed;
+                                });
+                            }
+                        }
+                        for (i, (f, verified)) in self.debug.functions.iter_mut().enumerate() {
+                            if &f.group != section {
+                                continue;
+                            }
+                            ui.horizontal(|ui| {
+                                ui.add_space(indent);
+                                functions_changed |= ui.checkbox(&mut f.enabled, "").changed();
+                                let mut text = format!("function {}", f.name);
+                                if let Some(c) = &f.condition {
                                     text.push_str(&format!("  if {c}"));
                                 }
-                                if let Some(l) = &b.log {
-                                    text.push_str(&format!("  log \"{l}\""));
+                                let color = if *verified == Some(false) { pal.text_dim } else { pal.text };
+                                let label =
+                                    ui.add(egui::Label::new(RichText::new(text).color(color)).sense(Sense::click()));
+                                if let Some(to) = group_menu(&label, &names, f.group.as_deref(), &mut group_input) {
+                                    regroup = Some((BreakpointRef::Function(i), to));
                                 }
-                                if ui.add(egui::Label::new(text).sense(Sense::click())).clicked() {
-                                    goto_bp = Some((path.clone(), b.line));
+                                if *verified == Some(false) {
+                                    label.on_hover_text("The debugger found no function by this name");
                                 }
                                 ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                                     if icons::button(ui, Icon::Close, "Remove").clicked() {
-                                        remove_bp = Some((path.clone(), b.line));
+                                        remove_function = Some(i);
                                     }
                                 });
-                                resend |= changed;
                             });
                         }
-                    }
-                    for (i, (f, verified)) in self.debug.functions.iter_mut().enumerate() {
-                        ui.horizontal(|ui| {
-                            functions_changed |= ui.checkbox(&mut f.enabled, "").changed();
-                            let mut text = format!("function {}", f.name);
-                            if let Some(c) = &f.condition {
-                                text.push_str(&format!("  if {c}"));
-                            }
-                            let color = if *verified == Some(false) { pal.text_dim } else { pal.text };
-                            let label = ui.label(RichText::new(text).color(color));
-                            if *verified == Some(false) {
-                                label.on_hover_text("The debugger found no function by this name");
-                            }
-                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                                if icons::button(ui, Icon::Close, "Remove").clicked() {
-                                    remove_function = Some(i);
-                                }
-                            });
-                        });
                     }
                     for (i, d) in self.debug.data.iter().enumerate() {
                         ui.horizontal(|ui| {
@@ -1869,7 +1990,7 @@ impl CodeApp {
                     {
                         let name = std::mem::take(&mut self.debug.function_input).trim().to_owned();
                         if !self.debug.functions.iter().any(|(f, _)| f.name == name) {
-                            let f = FunctionBreakpoint { name, condition: None, enabled: true };
+                            let f = FunctionBreakpoint { name, condition: None, enabled: true, group: None };
                             self.debug.functions.push((f, None));
                         }
                         functions_changed = true;
@@ -1916,6 +2037,50 @@ impl CodeApp {
         }
         if let Some((reference, name)) = data_at {
             self.break_on_change(reference, &name);
+        }
+        self.debug.group_input = group_input;
+        if let Some((target, to)) = regroup {
+            match target {
+                BreakpointRef::Line(path, line) => {
+                    if let Some(b) = self
+                        .debug
+                        .breakpoints
+                        .get_mut(&key(&path))
+                        .and_then(|(_, bps)| bps.iter_mut().find(|b| b.line == line))
+                    {
+                        b.group = to;
+                    }
+                }
+                BreakpointRef::Function(i) => {
+                    if let Some((f, _)) = self.debug.functions.get_mut(i) {
+                        f.group = to;
+                    }
+                }
+            }
+        }
+        if let Some((name, on)) = group_on {
+            for (_, bps) in self.debug.breakpoints.values_mut() {
+                for b in bps.iter_mut().filter(|b| b.group.as_deref() == Some(name.as_str())) {
+                    b.enabled = on;
+                }
+            }
+            for (f, _) in self.debug.functions.iter_mut().filter(|(f, _)| f.group.as_deref() == Some(name.as_str())) {
+                f.enabled = on;
+            }
+            resend = true;
+            functions_changed = true;
+            let what = if on { "on" } else { "off" };
+            self.status = Some(format!("Breakpoint group {name}: {what}"));
+        }
+        if let Some(name) = ungroup {
+            for (_, bps) in self.debug.breakpoints.values_mut() {
+                for b in bps.iter_mut().filter(|b| b.group.as_deref() == Some(name.as_str())) {
+                    b.group = None;
+                }
+            }
+            for (f, _) in self.debug.functions.iter_mut().filter(|(f, _)| f.group.as_deref() == Some(name.as_str())) {
+                f.group = None;
+            }
         }
         if let Some(i) = remove_function {
             self.debug.functions.remove(i);

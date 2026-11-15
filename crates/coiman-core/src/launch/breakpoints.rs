@@ -69,6 +69,9 @@ pub struct FunctionBreakpoint {
     pub condition: Option<String>,
     #[serde(default = "yes")]
     pub enabled: bool,
+    /// The group it's in, to turn on and off with the others in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 fn yes() -> bool {
@@ -178,6 +181,16 @@ pub struct SavedLine {
     pub log: Option<String>,
     #[serde(default = "yes")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
+}
+
+/// The groups named, each once, in alphabetical order (case aside).
+pub fn group_names<'a>(groups: impl IntoIterator<Item = Option<&'a str>>) -> Vec<String> {
+    let mut names: Vec<String> = groups.into_iter().flatten().map(str::to_owned).collect();
+    names.sort_by_key(|n| n.to_lowercase());
+    names.dedup();
+    names
 }
 
 /// Every breakpoint, as written to and read from a file.
@@ -400,12 +413,21 @@ mod tests {
     }
 
     #[test]
+    fn group_names_once_each() {
+        assert_eq!(group_names([Some("b"), None, Some("A"), Some("b")]), ["A", "b"]);
+        // Old files have no groups.
+        let f: FunctionBreakpoint = serde_json::from_value(json!({"name": "main"})).unwrap();
+        assert_eq!(f.group, None);
+        assert!(!serde_json::to_string(&f).unwrap().contains("group"));
+    }
+
+    #[test]
     fn builds_requests() {
         assert_eq!(exception_args(&["throw".into()]), json!({"filters": ["throw"]}));
         let f = vec![
-            FunctionBreakpoint { name: "main".into(), condition: None, enabled: true },
-            FunctionBreakpoint { name: "add".into(), condition: Some("a > 2".into()), enabled: true },
-            FunctionBreakpoint { name: "off".into(), condition: None, enabled: false },
+            FunctionBreakpoint { name: "main".into(), condition: None, enabled: true, group: None },
+            FunctionBreakpoint { name: "add".into(), condition: Some("a > 2".into()), enabled: true, group: None },
+            FunctionBreakpoint { name: "off".into(), condition: None, enabled: false, group: None },
         ];
         assert_eq!(
             function_args(&f),
@@ -466,6 +488,7 @@ mod tests {
                     condition: Some("i == 3".into()),
                     log: None,
                     enabled: true,
+                    group: None,
                 },
                 SavedLine {
                     path: "lib.c".into(),
@@ -473,9 +496,10 @@ mod tests {
                     condition: None,
                     log: Some("x is {x}".into()),
                     enabled: false,
+                    group: Some("Parsing".into()),
                 },
             ],
-            functions: vec![FunctionBreakpoint { name: "main".into(), condition: None, enabled: true }],
+            functions: vec![FunctionBreakpoint { name: "main".into(), condition: None, enabled: true, group: None }],
             exceptions: vec![("throw".into(), true), ("catch".into(), false)],
         };
         let text = saved.to_json();
@@ -488,7 +512,14 @@ mod tests {
     #[test]
     fn keeps_in_the_session_file() {
         let saved = Saved {
-            lines: vec![SavedLine { path: "a.c".into(), line: 2, condition: None, log: None, enabled: true }],
+            lines: vec![SavedLine {
+                path: "a.c".into(),
+                line: 2,
+                condition: None,
+                log: None,
+                enabled: true,
+                group: None,
+            }],
             functions: Vec::new(),
             exceptions: vec![("throw".into(), true)],
         };
