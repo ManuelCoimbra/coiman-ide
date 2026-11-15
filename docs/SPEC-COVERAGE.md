@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 114, partial 107,
-missing 248, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 114, partial 108,
+missing 247, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -461,7 +461,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Mutation testing | Missing | |
 | Property-based testing integration | Missing | |
 | Fuzz testing integration | Missing | |
-| Snapshot testing | Missing | |
+| Snapshot testing | Partial | insta reviewed in the app; Jest and Vitest updated with `-u` |
 | Visual regression testing | Missing | |
 | API testing | Missing | |
 | Load testing | Missing | |

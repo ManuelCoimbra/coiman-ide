@@ -517,6 +517,7 @@ impl CodeApp {
             Command::ShowArchitecture => self.show_architecture(ctx),
             Command::ShowCodeHealth => self.show_code_health(ctx),
             Command::ShowRunHistory => self.show_run_history(),
+            Command::ReviewSnapshots => self.show_snapshots(),
             Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),
             Command::OpenDatabase => self.choose_database(),
             Command::RunSqlInDatabase => self.run_database_sql(true),

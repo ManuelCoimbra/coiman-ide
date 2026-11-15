@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Snapshot testing: Review Snapshots (insta), Update Snapshots (Jest, Vitest).
 - The Testing view's timeline.
 - Multi-root: Git follows the folder chosen in Source Control.
 - An editor for `[env]` in Settings; named database connections; profiler times.
@@ -24,7 +25,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 ## Next, nothing to download
 
 - **Testing**
-  - Snapshot testing (insta, Jest).
   - Managing parallel test runs.
 - **Debugging**
   - Breakpoint groups.

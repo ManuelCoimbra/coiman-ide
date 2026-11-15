@@ -142,6 +142,7 @@ pub struct CodeApp {
     architecture: architecture::Architecture,
     health: project::health::Health,
     run_history: launch::history::RunHistory,
+    snapshots: launch::snapshots::Snapshots,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -342,6 +343,7 @@ impl CodeApp {
             architecture: Default::default(),
             health: Default::default(),
             run_history: Default::default(),
+            snapshots: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -934,6 +936,7 @@ impl CodeApp {
         self.architecture_window(&ctx);
         self.code_health_window(&ctx);
         self.run_history_window(&ctx);
+        self.snapshots_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

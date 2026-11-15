@@ -9,5 +9,6 @@ pub(crate) mod maven;
 pub(crate) mod prints;
 pub(crate) mod profiler;
 pub(crate) mod repl;
+pub(crate) mod snapshots;
 pub(crate) mod test_panel;
 pub(crate) mod traces;

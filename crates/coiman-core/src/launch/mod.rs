@@ -14,5 +14,6 @@ pub mod profiler;
 pub mod repl;
 pub mod run;
 pub mod run_history;
+pub mod snapshots;
 pub mod stacktrace;
 pub mod testing;
