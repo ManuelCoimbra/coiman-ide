@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 103, partial 107,
-missing 259, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 108, partial 109,
+missing 252, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -20,7 +20,7 @@ specification is right: every row in it exists.
 | 2 Architecture | 13 | 4 | 12 | |
 | 3 Debugging and performance | 11 | 4 | 23 | |
 | 4 Git and collaboration | 8 | 1 | 9 | 9 |
-| 5 Build and dependencies | 8 | 15 | 15 | 1 |
+| 5 Build and dependencies | 13 | 17 | 8 | 1 |
 | 6 Terminal | 8 | 3 | 7 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
@@ -182,15 +182,15 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Build failure analysis | Partial | First error, problem matchers, Problems |
 | Incremental build information | Missing | |
 | Build cache management | Missing | |
-| Unified dependency manager | Missing | |
+| Unified dependency manager | Partial | Code Health, Dependencies: Cargo, npm, Poetry, uv, pip together |
 | Dependency installation interface | Partial | Maven: search Maven Central and add |
-| Dependency removal interface | Missing | |
-| Dependency update management | Missing | |
+| Dependency removal interface | Done | Remove, through the package manager |
+| Dependency update management | Done | Check for updates, Update |
 | Dependency vulnerability analysis | Done | Code Health, Audits |
 | Dependency licence analysis | Done | Code Health, Licences |
-| Dependency conflict detection | Missing | |
-| Dependency version comparison | Missing | |
-| Lockfile visualisation | Missing | |
+| Dependency conflict detection | Done | Packages pinned at more than one version, and by whom |
+| Dependency version comparison | Done | Now, what an update gets, newest; major, minor or patch |
+| Lockfile visualisation | Done | Cargo.lock, package-lock.json, poetry.lock, uv.lock as trees |
 | Offline dependency management | Missing | |
 | Private package registries | Network | |
 | CMake | Done | |
@@ -206,7 +206,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | npm | Done | |
 | pnpm | Partial | Run only |
 | Yarn | Partial | Run only |
-| Poetry | Missing | |
+| Poetry | Partial | poetry.lock read; update and remove through it |
 | uv | Partial | Its environments are found |
 | Pip | Partial | Environments; debugpy install offer |
 

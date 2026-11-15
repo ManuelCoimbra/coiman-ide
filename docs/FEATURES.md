@@ -832,7 +832,7 @@ Cargo's tests and every Testing runner (pytest, Go, Jest and the others) are rec
 
 ## Code health
 
-**Code Health: Secrets, Complexity, Duplicates, Licences and Audits** reads the project's files
+**Code Health: Secrets, Complexity, Duplicates, Dependencies, Licences and Audits** reads the project's files
 on its own thread, Git-ignored ones and folders such as `node_modules`, `target` and `dist`
 left out. A click on a place opens the file there.
 
@@ -850,6 +850,18 @@ left out. A click on a place opens the file there.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.
+- **Dependencies:** each lockfile in the folder (`Cargo.lock`, `package-lock.json`,
+  `poetry.lock`, `uv.lock`) as a tree, from the project's own packages down; and the packages
+  pinned at more than one version, with what wants each version.
+  - **Check for updates** asks `cargo update --dry-run`, `npm outdated` and, for a Python
+    project, the project's `pip list --outdated` (they ask their registries themselves). Each
+    package shows its version now, what an update gets within the project's requirement,
+    and the newest, marked a major, minor or patch step.
+  - **Update** and **Remove** run the package manager's own command in a terminal
+    (`cargo update -p`, `cargo remove`, `npm update`, `npm uninstall`, `pip install --upgrade`,
+    `pip uninstall`, and Poetry's and uv's). Remove is offered for packages the project names
+    itself. When the newest is beyond the requirement, the row says to change it in the
+    manifest.
 - **Licences:** each dependency's licence, from `cargo metadata --offline` and npm's
   `node_modules`. Each is rated permissive, weak copyleft (MPL, LGPL, EPL), copyleft (GPL,
   AGPL) or unknown, reading SPDX expressions with `OR` and `AND`.
@@ -859,7 +871,8 @@ left out. A click on a place opens the file there.
   the tab says how to get it.
 
 In Restricted Mode, Cargo and npm don't run (they read the project's settings), so licences
-come from `node_modules` alone and the audits wait for the folder to be trusted.
+come from `node_modules` alone, and the audits, update checks and updates wait for the folder
+to be trusted. Lockfiles are read either way.
 
 ## Databases (SQLite, PostgreSQL, MySQL)
 

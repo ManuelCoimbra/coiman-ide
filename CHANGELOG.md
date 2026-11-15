@@ -19,6 +19,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Health, **Dependencies**: the lockfile tree (Cargo, npm, Poetry, uv), packages pinned
+  at more than one version, what's out of date (major, minor or patch), and Update or Remove
+  through the package manager.
 - A project's own keybindings (`.coiman/keybindings.toml`) and environment variables (`[env]`
   in settings, for terminals, Run and tasks); `editor.font_ligatures_off` leaves chosen
   ligatures out; the PROFILE panel compares a profile with the one before.
