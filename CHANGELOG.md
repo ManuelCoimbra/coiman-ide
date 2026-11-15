@@ -21,6 +21,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Database connections can be named; the profiler shows time (ms) beside each share.
 - Settings > Terminal > Environment variables: `[env]` without opening the file.
 - Workspaces with more than one folder: Add Folder to Workspace in the Explorer, each folder a
   tree of its own and searched by Quick Open and Find in Files; `.code-workspace` files open.

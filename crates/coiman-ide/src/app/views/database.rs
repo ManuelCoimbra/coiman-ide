@@ -45,6 +45,7 @@ impl Target {
     fn short(&self) -> String {
         match self {
             Self::File(path) => path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            Self::Server(server) if !server.name.trim().is_empty() => server.name.trim().to_owned(),
             Self::Server(server) => format!("{} on {}", server.database, server.host),
         }
     }
@@ -105,7 +106,7 @@ impl ConnectForm {
             port: kind.default_port(),
             user: kind.default_user().to_owned(),
             database: if kind == Kind::Postgres { "postgres".to_owned() } else { String::new() },
-            password: None,
+            ..Server::default()
         };
         Self { port: server.port.to_string(), server, ..Self::default() }
     }
@@ -456,6 +457,7 @@ fn connect_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) {
             ("Port", &mut form.port, ""),
             ("User", &mut form.server.user, ""),
             ("Database", &mut form.server.database, "optional for MySQL"),
+            ("Name", &mut form.server.name, "optional: Shop, staging"),
         ] {
             ui.label(label);
             let r = ui.add(egui::TextEdit::singleline(text).hint_text(hint).desired_width(f32::INFINITY));
@@ -497,7 +499,7 @@ fn connect_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) {
         ui.add_space(8.0);
         ui.label(RichText::new("Recent").small().strong());
         for s in saved {
-            if ui.selectable_label(false, s.label()).clicked() {
+            if ui.selectable_label(false, s.title()).on_hover_text(s.label()).clicked() {
                 form.port = s.port.to_string();
                 form.server = s;
                 form.password.clear();

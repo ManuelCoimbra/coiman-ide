@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- An editor for `[env]` in Settings; named database connections; profiler times.
 - Workspaces with more than one folder (Explorer, Quick Open, Find in Files,
   `.code-workspace` files).
 - Git worktrees, and a GitHub Actions view (through `gh`).
@@ -21,9 +22,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 ## Next, nothing to download
 
 - **Partial items finished**
-  - An editor for `[env]` in Settings.
-  - Named database connections.
-  - The profiler's function times in milliseconds.
   - Multi-root: Git for each folder.
 - **Testing**
   - A test timeline.

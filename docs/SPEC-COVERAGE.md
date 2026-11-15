@@ -10,7 +10,7 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 111, partial 109,
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 113, partial 107,
 missing 249, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
@@ -18,13 +18,13 @@ specification is right: every row in it exists.
 |---|---|---|---|---|
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
 | 2 Architecture | 13 | 4 | 12 | |
-| 3 Debugging and performance | 11 | 4 | 23 | |
+| 3 Debugging and performance | 12 | 3 | 23 | |
 | 4 Git and collaboration | 9 | 1 | 8 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
 | 6 Terminal | 9 | 2 | 7 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
-| 9 Database | 12 | 5 | 6 | |
+| 9 Database | 13 | 4 | 6 | |
 | 10 Data science | 2 | 4 | 16 | |
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
@@ -124,7 +124,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Detect excessive allocations | Missing | |
 | CPU profiler | Done | py-spy (Python), perf (Linux); profiles from elsewhere too |
 | Flame graphs | Done | PROFILE panel: zoom, hottest functions, jump to code |
-| Function execution times | Partial | The profiler's share of time per function (sampled) |
+| Function execution times | Done | The profiler: share and time per function, sampled |
 | Function call frequency | Missing | B5 |
 | Allocation profiling | Missing | |
 | Thread performance analysis | Missing | |
@@ -306,7 +306,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Schema comparison | Missing | |
 | Database backup and restore | Missing | |
 | Multiple database connections | Partial | One window per database file |
-| Connection profiles | Partial | Recent connections kept (no passwords); no names or groups |
+| Connection profiles | Done | Recent connections with names of their own (no passwords) |
 | SQLite | Done | Through `sqlite3` |
 | PostgreSQL | Done | Through `psql` |
 | MySQL and MariaDB | Done | Through the `mariadb` or `mysql` client |

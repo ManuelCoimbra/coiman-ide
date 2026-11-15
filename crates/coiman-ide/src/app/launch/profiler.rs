@@ -124,6 +124,15 @@ impl CodeApp {
         });
         match done {
             Ok((profile, label)) => {
+                // A handful of samples says more about the run than the program: too short, or the
+                // profiler started late (a first run, scanned by the antivirus).
+                self.profiler.error = (profile.samples() < 10).then(|| {
+                    format!(
+                        "Only {} samples: the program ran too briefly, or the profiler couldn't follow it. \
+                         Profile again, or give it more to do.",
+                        profile.samples()
+                    )
+                });
                 self.status =
                     Some(format!("Profiled {label}: {} samples (its output is in Output)", profile.samples()));
                 self.keep_previous_profile();
@@ -245,7 +254,21 @@ impl CodeApp {
                 ui.label(RichText::new("Hottest (self, with calls)").small().strong());
                 egui::ScrollArea::vertical().id_salt("profile_hot").show(ui, |ui| {
                     for hot in profile.hottest().into_iter().take(60) {
-                        let text = format!("{:>6} {:>6}  {}", percent(hot.own), percent(hot.total), hot.name);
+                        // With the rate known, the time too: samples × the time each stands for.
+                        let time = |n: u64| {
+                            profile.rate.filter(|r| *r > 0).map_or_else(String::new, |rate| {
+                                let t = n as f64 * 1000.0 / f64::from(rate);
+                                if t >= 1000.0 { format!(" {:>5.1}s", t / 1000.0) } else { format!(" {:>4.0}ms", t) }
+                            })
+                        };
+                        let text = format!(
+                            "{:>6}{} {:>6}{}  {}",
+                            percent(hot.own),
+                            time(hot.own),
+                            percent(hot.total),
+                            time(hot.total),
+                            hot.name
+                        );
                         let mut resp =
                             ui.add(egui::Label::new(RichText::new(text).monospace()).sense(Sense::click()).truncate());
                         if let Some((file, line)) = &hot.place {

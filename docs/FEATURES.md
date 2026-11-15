@@ -811,7 +811,9 @@ project's own headers.
   `PATH` or where pip put it for the project's Python). On Linux, anything Run can run uses
   **perf**. The profiler is a program of its own; Coiman doesn't install it.
 - The panel has a **flame graph**: the outermost calls on top, what they called below, each as
-  wide as its share of the time. Hover for the name, file and line, and its share. Click a
+  wide as its share of the time. Hover for the name, file and line, and its share. A run
+  here also gives the time (samples × 5 ms at 200 a second) beside each share; fewer than 10
+  samples are flagged, as the run was too short or the profiler started late. Click a
   function to zoom into it, click the top row to zoom back out, and double-click to open its
   code. **Hottest** lists functions by time spent in themselves (then with what they call),
   each a link to its code.
@@ -914,7 +916,8 @@ recognised by its contents, whatever its name), or with **Database: Open SQLite 
   The same tables, columns, keys, indexes, results, diagram and query plans follow (the plan
   is the server's `EXPLAIN`; nothing runs). Errors say which statement they're in. **Recent**
   keeps the connections used, without passwords: the password is held only while the app
-  runs, and given to the client for each run (`PGPASSWORD`, `MYSQL_PWD`).
+  runs, and given to the client for each run (`PGPASSWORD`, `MYSQL_PWD`). A connection can
+  have a **Name** of its own ("Shop, staging"), shown in Recent and the window's title.
 
 It runs through the `sqlite3` program (on `PATH`, or MSYS2's), in its safe mode, so a
 `.sql` file can't reach the shell with dot-commands; servers through `psql` and the `mariadb`

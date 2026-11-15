@@ -107,6 +107,9 @@ impl Kind {
 /// A server to connect to. Everything but the password is kept for next time.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Server {
+    /// A name of the user's own for the connection ("Shop, staging"); empty: none.
+    #[serde(default)]
+    pub name: String,
     pub kind: Kind,
     pub host: String,
     pub port: u16,
@@ -125,6 +128,11 @@ impl Server {
             Kind::MySql => "mysql",
         };
         format!("{scheme}://{}@{}:{}/{}", self.user, self.host, self.port, self.database)
+    }
+
+    /// Its name when it has one, else its address.
+    pub fn title(&self) -> String {
+        if self.name.trim().is_empty() { self.label() } else { self.name.trim().to_owned() }
     }
 
     /// The client's command, with the connection and the password in its environment.
@@ -269,6 +277,7 @@ pub fn remember(saved: &mut Vec<Server>, server: &Server) -> Result<(), String> 
     }
     let mut kept = server.clone();
     kept.password = None;
+    // One entry per address; a new name replaces the old.
     saved.retain(|s| s.label() != kept.label());
     saved.insert(0, kept);
     saved.truncate(12);
@@ -720,7 +729,15 @@ mod tests {
 
     #[test]
     fn passwords_are_not_saved() {
-        let s = Server { password: Some("secret".into()), host: "h".into(), port: 1, ..Server::default() };
+        let s = Server {
+            password: Some("secret".into()),
+            host: "h".into(),
+            port: 1,
+            name: "Shop".into(),
+            ..Server::default()
+        };
+        assert_eq!(s.title(), "Shop");
+        assert_eq!(Server { name: " ".into(), ..s.clone() }.title(), s.label());
         #[derive(Serialize)]
         struct File<'a> {
             server: &'a [Server],
@@ -762,7 +779,7 @@ ERROR 1054 (42S22) at line 3: Unknown column 'nope' in 'SELECT'";
             let host = parts.next().unwrap().to_owned();
             let port = parts.next().unwrap().parse().unwrap();
             let user = parts.next().unwrap().to_owned();
-            let mut server = Server { kind, host, port, user, database: String::new(), password: None };
+            let mut server = Server { kind, host, port, user, ..Server::default() };
             if kind == Kind::MySql {
                 server.run("CREATE DATABASE IF NOT EXISTS coiman_test").unwrap();
                 server.database = "coiman_test".to_owned();

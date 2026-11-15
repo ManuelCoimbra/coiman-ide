@@ -48,6 +48,8 @@ impl Frame {
 pub struct Profile {
     /// Every stack under one root, named "all".
     pub root: Frame,
+    /// Samples a second, when known (a run here: RATE): each stands for 1/rate s.
+    pub rate: Option<u32>,
 }
 
 impl Profile {
@@ -373,7 +375,9 @@ pub fn run(plan: &ProfilePlan) -> Result<Ran, String> {
         printed.push_str(line);
         printed.push('\n');
     }
-    Ok(Ran { printed, profile: read(plan, &out) })
+    // Each sample stands for 1/RATE of a second of the program's time.
+    let profile = read(plan, &out).map(|p| Profile { rate: RATE.parse().ok(), ..p });
+    Ok(Ran { printed, profile })
 }
 
 fn read(plan: &ProfilePlan, out: &std::process::Output) -> Result<Profile, String> {
@@ -497,7 +501,7 @@ prog  1234 100.004: 250000 cpu-clock:
         let dir = std::env::temp_dir().join(format!("coiman-profile-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("busy.py");
-        let source = "def spin():\n    s = 0\n    for i in range(3000000):\n        s += i * i\n    return s\n\nspin()\nprint('spun')\n";
+        let source = "def spin():\n    s = 0\n    for i in range(10000000):\n        s += i * i\n    return s\n\nspin()\nprint('spun')\n";
         std::fs::write(&file, source).unwrap();
         let plan = match plan(&file, source, None, &dir) {
             Ok(plan) => plan,

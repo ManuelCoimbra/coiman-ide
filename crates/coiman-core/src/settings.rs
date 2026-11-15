@@ -806,9 +806,14 @@ mod tests {
 
     #[test]
     fn env_variables_set_and_taken_away_in_text() {
-        let text = set_value_in_text("[editor]
+        let text = set_value_in_text(
+            "[editor]
 font_size = 14
-", "env", "RUST_LOG", "\"debug\"");
+",
+            "env",
+            "RUST_LOG",
+            "\"debug\"",
+        );
         let text = set_value_in_text(&text, "env", "MODE", "\"test\"");
         let table: Table = toml::from_str(&text).unwrap();
         assert_eq!(table["env"]["RUST_LOG"].as_str(), Some("debug"));
