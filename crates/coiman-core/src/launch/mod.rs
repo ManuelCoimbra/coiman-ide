@@ -10,6 +10,7 @@ pub mod live;
 pub mod live_adapters;
 pub mod matchers;
 pub mod preview;
+pub mod profiler;
 pub mod repl;
 pub mod run;
 pub mod run_history;

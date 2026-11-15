@@ -793,6 +793,21 @@ Java: imports, wildcards, static imports and classes of the same package. C#: ty
 `using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
 project's own headers.
 
+## Profiling
+
+- **Run: Profile Current File** runs the file to its end under a sampling profiler, then shows
+  the **PROFILE** panel. Python files use **py-spy** (`pip install py-spy`; Coiman finds it on
+  `PATH` or where pip put it for the project's Python). On Linux, anything Run can run uses
+  **perf**. The profiler is a program of its own; Coiman doesn't install it.
+- The panel has a **flame graph**: the outermost calls on top, what they called below, each as
+  wide as its share of the time. Hover for the name, file and line, and its share. Click a
+  function to zoom into it, click the top row to zoom back out, and double-click to open its
+  code. **Hottest** lists functions by time spent in themselves (then with what they call),
+  each a link to its code.
+- **Profile: Open Profile File...** reads a profile made elsewhere: collapsed stacks
+  (`main;work;fib 12`, what py-spy's `raw` format and flame graph tools write) or `perf script`
+  output.
+
 ## Run history
 
 **Testing: Show Run History** keeps every test run, build, check and program started with Run,

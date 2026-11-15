@@ -1483,7 +1483,7 @@ impl CodeApp {
     }
 
     /// Saves every changed file, so what runs is what's on screen. Says whether it could.
-    fn save_before_run(&mut self, ctx: &egui::Context) -> bool {
+    pub(crate) fn save_before_run(&mut self, ctx: &egui::Context) -> bool {
         for i in 0..self.docs.len() {
             if self.docs[i].is_dirty() && self.docs[i].path.is_some() && !self.save_doc(i) {
                 let why = format!("Nothing was run: {} couldn't be saved", self.docs[i].title());

@@ -10,15 +10,15 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 94, partial 105,
-missing 270, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 96, partial 105,
+missing 268, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
 |---|---|---|---|---|
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
 | 2 Architecture | 13 | 4 | 12 | |
-| 3 Debugging and performance | 8 | 3 | 27 | |
+| 3 Debugging and performance | 10 | 3 | 25 | |
 | 4 Git and collaboration | 8 | 1 | 9 | 9 |
 | 5 Build and dependencies | 8 | 15 | 15 | 1 |
 | 6 Terminal | 8 | 2 | 8 | |
@@ -122,8 +122,8 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Memory ownership analysis | Missing | |
 | Reference cycle detection | Missing | |
 | Detect excessive allocations | Missing | |
-| CPU profiler | Missing | Planned (B5) through `perf`, `samply`, `py-spy` |
-| Flame graphs | Missing | B5 |
+| CPU profiler | Done | py-spy (Python), perf (Linux); profiles from elsewhere too |
+| Flame graphs | Done | PROFILE panel: zoom, hottest functions, jump to code |
 | Function execution times | Missing | B5 |
 | Function call frequency | Missing | B5 |
 | Allocation profiling | Missing | |

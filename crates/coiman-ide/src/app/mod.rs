@@ -16,7 +16,7 @@ use editor::{
 };
 use extensions::plugins;
 use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room};
-use launch::{cargo, coverage, debug, live, maven, prints, repl, test_panel, traces};
+use launch::{cargo, coverage, debug, live, maven, prints, profiler, repl, test_panel, traces};
 use project::{architecture, git, git_setup};
 use shell::{
     dock, file_buttons, frames, keys_ui, layout, look, recent_ui, settings_ui, tool_rails, tour, window, workbench,
@@ -78,6 +78,8 @@ enum PanelTab {
     Coverage,
     /// Stack Trace: Analyze.
     StackTrace,
+    /// Where a profiled program's time went.
+    Profile,
     /// A panel contributed by a plugin (index into its panels).
     Plugin(usize),
 }
@@ -208,6 +210,7 @@ pub struct CodeApp {
     tests: test_panel::Tests,
     tables: tables::Tables,
     traces: traces::Traces,
+    profiler: profiler::Profiler,
     cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
@@ -391,6 +394,7 @@ impl CodeApp {
             tests: Default::default(),
             tables: Default::default(),
             traces: Default::default(),
+            profiler: Default::default(),
             cpp: Default::default(),
             auto_save: Default::default(),
             font_load: None,

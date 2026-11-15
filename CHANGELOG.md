@@ -16,6 +16,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Profiling**: Run: Profile Current File (py-spy for Python, perf on Linux) and a PROFILE panel
+  with a flame graph and the hottest functions; Profile: Open Profile File reads collapsed
+  stacks or perf script output.
 - **Git Graph**: every branch's commits drawn with their branches and merges; a commit's files;
   cherry-pick, revert, a branch at a commit, and interactive rebase (reorder, reword, squash,
   fix up, drop) from a commit's menu.

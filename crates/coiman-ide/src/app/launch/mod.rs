@@ -7,6 +7,7 @@ pub(crate) mod history;
 pub(crate) mod live;
 pub(crate) mod maven;
 pub(crate) mod prints;
+pub(crate) mod profiler;
 pub(crate) mod repl;
 pub(crate) mod test_panel;
 pub(crate) mod traces;
