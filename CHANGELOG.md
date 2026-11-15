@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `[symbols]` in settings no longer reports each of its names as an unknown setting.
+- Turning `editor.font_ligatures` off works again: egui itself draws a font's ligatures, so
+  Coiman's own drawing of them is gone, and off now keeps the characters apart.
 - The terminal types what an input method composes, and the input method's window follows its
   cursor.
 - On a touch screen, a tap in the editor places the cursor, and the tap that opens the command
@@ -16,6 +19,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A project's own keybindings (`.coiman/keybindings.toml`) and environment variables (`[env]`
+  in settings, for terminals, Run and tasks); `editor.font_ligatures_off` leaves chosen
+  ligatures out; the PROFILE panel compares a profile with the one before.
 - **PostgreSQL and MySQL/MariaDB** in the Database window: Connect, then tables, results,
   diagram and query plans as for SQLite, through `psql` and the `mariadb`/`mysql` client.
 - **Profiling**: Run: Profile Current File (py-spy for Python, perf on Linux) and a PROFILE panel

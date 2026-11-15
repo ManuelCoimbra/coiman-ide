@@ -33,6 +33,31 @@ pub struct Settings {
     pub cpp: CppSettings,
     /// More backslash names: `to = "⟶"`. Yours win over the shipped ones.
     pub symbols: std::collections::HashMap<String, String>,
+    /// Environment variables for terminals, Run and tasks: `RUST_LOG = "debug"`. A project's
+    /// `.coiman/settings.toml` adds to and overrides the user's. `${NAME}` is the variable as
+    /// the app was started with it: `PATH = "${PATH};C:/tools"`.
+    pub env: std::collections::BTreeMap<String, String>,
+}
+
+/// `value` with each `${NAME}` replaced by `lookup(NAME)` (empty when unset).
+pub fn expand_env(value: &str, lookup: impl Fn(&str) -> Option<String>) -> String {
+    let mut out = String::new();
+    let mut rest = value;
+    while let Some(at) = rest.find("${") {
+        out.push_str(&rest[..at]);
+        match rest[at + 2..].find('}') {
+            Some(end) => {
+                out.push_str(&lookup(&rest[at + 2..at + 2 + end]).unwrap_or_default());
+                rest = &rest[at + 2 + end + 1..];
+            }
+            None => {
+                out.push_str(&rest[at..]);
+                rest = "";
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
@@ -128,6 +153,8 @@ pub struct EditorSettings {
     pub minimap: bool,
     /// Draw the code font's ligatures (`->`, `!=`, `=>`), for fonts that have them.
     pub font_ligatures: bool,
+    /// Ligatures never drawn, by the characters they join: `["==", "!=", "www"]`.
+    pub font_ligatures_off: Vec<String>,
     /// Mark bidi controls and invisible or private use characters, and warn about them.
     pub unicode_warnings: bool,
     pub trim_trailing_whitespace: bool,
@@ -400,6 +427,7 @@ impl Default for EditorSettings {
             smooth_scrolling: true,
             minimap: false,
             font_ligatures: true,
+            font_ligatures_off: Vec::new(),
             unicode_warnings: true,
             trim_trailing_whitespace: false,
             insert_final_newline: false,
@@ -517,6 +545,11 @@ pub fn workspace_settings_path(root: &Path) -> PathBuf {
     project_dir(root).join("settings.toml")
 }
 
+/// The project's own keybindings, over the user's: `<folder>/.coiman/keybindings.toml`.
+pub fn workspace_keybindings_path(root: &Path) -> PathBuf {
+    project_dir(root).join("keybindings.toml")
+}
+
 /// Result of loading all layers: the settings plus anything worth telling the user.
 pub struct Loaded {
     pub settings: Settings,
@@ -603,8 +636,8 @@ fn unknown_keys(value: &Value, known: &Value, prefix: &str, out: &mut Vec<String
     for (key, v) in t {
         let path = if prefix.is_empty() { key.clone() } else { format!("{prefix}.{key}") };
         match k.get(key) {
-            // Named by the user: one entry per language server.
-            Some(_) if path == "lsp.paths" => {}
+            // Named by the user: one entry per language server, per variable.
+            Some(_) if matches!(path.as_str(), "lsp.paths" | "env" | "symbols") => {}
             Some(kv) => unknown_keys(v, kv, &path, out),
             None => out.push(format!("Unknown setting `{path}`")),
         }
@@ -686,6 +719,26 @@ pub fn default_file_contents() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn env_expands_and_layers() {
+        let got = expand_env("${A};x;${MISSING}${B", |n| (n == "A").then(|| "1".to_owned()));
+        assert_eq!(got, "1;x;${B");
+        let root = std::env::temp_dir().join(format!("rc-env-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".coiman")).unwrap();
+        // `[symbols]` names its own keys too.
+        std::fs::write(
+            root.join(".coiman/settings.toml"),
+            "[env]\nRUST_LOG = \"debug\"\nAPP_MODE = \"test\"\n\n[symbols]\nto = \"→\"\n",
+        )
+        .unwrap();
+        let loaded = load(Some(&root));
+        assert!(loaded.problems.is_empty(), "{:?}", loaded.problems);
+        assert_eq!(loaded.settings.env.get("RUST_LOG").map(String::as_str), Some("debug"));
+        assert_eq!(loaded.settings.env.get("APP_MODE").map(String::as_str), Some("test"));
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn project_settings_folder_old_and_new() {

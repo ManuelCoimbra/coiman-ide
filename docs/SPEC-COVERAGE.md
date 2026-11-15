@@ -10,18 +10,18 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 99, partial 105,
-missing 265, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 103, partial 107,
+missing 259, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
 |---|---|---|---|---|
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
 | 2 Architecture | 13 | 4 | 12 | |
-| 3 Debugging and performance | 10 | 3 | 25 | |
+| 3 Debugging and performance | 11 | 4 | 23 | |
 | 4 Git and collaboration | 8 | 1 | 9 | 9 |
 | 5 Build and dependencies | 8 | 15 | 15 | 1 |
-| 6 Terminal | 8 | 2 | 8 | |
+| 6 Terminal | 8 | 3 | 7 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 12 | 5 | 6 | |
@@ -32,10 +32,10 @@ specification is right: every row in it exists.
 | 14 DevOps | | 3 | 19 | 2 |
 | 15 Testing | 4 | 5 | 12 | |
 | 16 Security and quality | 5 | 5 | 9 | |
-| 17 Accessibility and UX | 8 | 7 | 5 | |
+| 17 Accessibility and UX | 9 | 7 | 4 | |
 | 18 Remote | | | 14 | 1 |
 | 19 Plugins | 4 | 4 | 11 | 1 |
-| 20 Workspace | 1 | 9 | 7 | |
+| 20 Workspace | 3 | 9 | 5 | |
 | 21 Experimental | 7 | 10 | 20 | |
 
 ## 1. AI integration and project intelligence
@@ -124,12 +124,12 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Detect excessive allocations | Missing | |
 | CPU profiler | Done | py-spy (Python), perf (Linux); profiles from elsewhere too |
 | Flame graphs | Done | PROFILE panel: zoom, hottest functions, jump to code |
-| Function execution times | Missing | B5 |
+| Function execution times | Partial | The profiler's share of time per function (sampled) |
 | Function call frequency | Missing | B5 |
 | Allocation profiling | Missing | |
 | Thread performance analysis | Missing | |
 | I/O performance analysis | Missing | |
-| Performance comparison between executions | Missing | |
+| Performance comparison between executions | Done | PROFILE panel: Compare with the profile before |
 | Benchmark history | Missing | |
 | Performance regression detection | Missing | |
 | Performance changes between commits | Missing | |
@@ -225,7 +225,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Command autocomplete | Missing | The shell's own only |
 | Command syntax highlighting | Missing | |
 | Command suggestions from project context | Missing | |
-| Environment variable editor | Missing | |
+| Environment variable editor | Partial | `[env]` in the settings file |
 | Environment profile management | Missing | |
 | SSH terminal integration | Missing | `ssh` runs in a tab, without integration |
 | Remote shell support | Missing | |
@@ -516,7 +516,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Custom editor rulers | Done | |
 | Customisable minimap | Partial | `editor.minimap`, on or off, in syntax colors |
 | Better font rendering | Partial | |
-| Ligature configuration | Missing | |
+| Ligature configuration | Done | On or off, and ligatures left out (`editor.font_ligatures_off`) |
 | Font fallback configuration | Partial | Fallback fonts exist; not configurable |
 | Multi-monitor workspace support | Partial | Terminal in its own window |
 
@@ -575,7 +575,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Project scaffolding | Partial | Same |
 | Project initialisation wizard | Partial | Sample Project, Git init and clone |
 | Project configuration editor | Done | Settings, This folder |
-| Workspace-specific environment variables | Missing | |
+| Workspace-specific environment variables | Done | `[env]` in `.coiman/settings.toml` |
 | Workspace task management | Partial | Run configurations |
 | Workspace dependency overview | Partial | Code Health, Licences |
 | Workspace health dashboard | Partial | Code Health |
@@ -584,7 +584,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Project backup and restore | Partial | Local history, per file |
 | Project snapshots | Missing | |
 | Project comparison | Missing | |
-| Project-specific keybindings | Missing | |
+| Project-specific keybindings | Done | `.coiman/keybindings.toml` over the user's |
 | Project-specific themes | Partial | Folder settings |
 | Project-specific AI instructions | No AI | |
 

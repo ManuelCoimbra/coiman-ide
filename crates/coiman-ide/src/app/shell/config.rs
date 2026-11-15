@@ -37,6 +37,7 @@ impl CodeApp {
                 .collect();
         if let Some(root) = &self.explorer.root {
             files.push(settings::workspace_settings_path(root));
+            files.push(settings::workspace_keybindings_path(root));
         }
         files.iter().any(|f| f == path)
     }
@@ -156,8 +157,7 @@ impl CodeApp {
     pub(crate) fn install_fonts(&self, ctx: &egui::Context) {
         const EDITOR: &str = "editor font";
         let mut fonts = egui::FontDefinitions::default();
-        // Ligatures are shaped with the code font itself; the built-in one has none.
-        crate::ui::ligatures::set_font(self.editor_font.clone());
+        crate::ui::ligatures::set_off(&self.settings.editor.font_ligatures_off);
         if let Some(font) = &self.editor_font {
             fonts.font_data.insert(EDITOR.to_owned(), font.clone());
             // The built-in fonts stay behind it for characters it lacks.
@@ -179,7 +179,9 @@ impl CodeApp {
         let mut clock = std::time::Instant::now();
         let loaded = settings::load(self.explorer.root.as_deref());
         slow_step("reading settings", &mut clock);
-        let (keymap, key_problems) = Keymap::load(settings::user_keybindings_path().as_deref());
+        let workspace_keys = self.explorer.root.as_deref().map(settings::workspace_keybindings_path);
+        let (keymap, key_problems) =
+            Keymap::load_layers(&[settings::user_keybindings_path().as_deref(), workspace_keys.as_deref()]);
         let mut problems = loaded.problems;
         problems.extend(key_problems);
         let (language_problem, languages_changed) = registry::reload();
@@ -196,6 +198,7 @@ impl CodeApp {
         {
             self.restart_rust_analyzer();
         }
+        crate::ui::ligatures::set_off(&new.editor.font_ligatures_off);
         if !first && old.cpp != new.cpp {
             self.restart_clangd();
         }

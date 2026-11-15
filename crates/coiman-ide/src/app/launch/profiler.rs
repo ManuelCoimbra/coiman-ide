@@ -21,6 +21,10 @@ pub(crate) struct Profiler {
     profile: Option<Profile>,
     /// What the profile is of.
     label: String,
+    /// The profile before this one, to compare with, and what it was of.
+    previous: Option<(Profile, String)>,
+    /// The hottest list shows what changed since the previous profile.
+    comparing: bool,
     /// Where its files are named from.
     base: Option<PathBuf>,
     running: Option<Receiver<Finished>>,
@@ -93,6 +97,7 @@ impl CodeApp {
         let read = std::fs::read_to_string(&path).map_err(|e| e.to_string()).and_then(|t| profiler::parse(&t));
         match read {
             Ok(profile) => {
+                self.keep_previous_profile();
                 self.profiler.profile = Some(profile);
                 self.profiler.label = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
                 self.profiler.base = path.parent().map(Path::to_path_buf);
@@ -121,6 +126,7 @@ impl CodeApp {
             Ok((profile, label)) => {
                 self.status =
                     Some(format!("Profiled {label}: {} samples (its output is in Output)", profile.samples()));
+                self.keep_previous_profile();
                 self.profiler.profile = Some(profile);
                 self.profiler.label = label;
                 self.profiler.zoom.clear();
@@ -129,6 +135,13 @@ impl CodeApp {
                 self.status = Some(format!("Profiling failed: {e}"));
                 self.profiler.error = Some(e);
             }
+        }
+    }
+
+    /// The profile in hand becomes the one to compare the next with.
+    fn keep_previous_profile(&mut self) {
+        if let Some(p) = self.profiler.profile.take() {
+            self.profiler.previous = Some((p, std::mem::take(&mut self.profiler.label)));
         }
     }
 
@@ -170,6 +183,10 @@ impl CodeApp {
             {
                 self.profiler.ask_open = true;
             }
+            if let Some((_, before)) = &self.profiler.previous {
+                ui.checkbox(&mut self.profiler.comparing, "Compare")
+                    .on_hover_text(format!("Each function's share of the time before ({before}) and now"));
+            }
             if !self.profiler.zoom.is_empty() && ui.button("Reset Zoom").clicked() {
                 self.profiler.zoom.clear();
             }
@@ -189,6 +206,42 @@ impl CodeApp {
             let list_w = (ui.available_width() * 0.3).clamp(220.0, 360.0);
             ui.vertical(|ui| {
                 ui.set_width(list_w);
+                let previous = self.profiler.previous.as_ref().filter(|_| self.profiler.comparing);
+                if let Some((before, label)) = previous {
+                    ui.label(RichText::new(format!("Before ({label}), now, change")).small().strong());
+                    egui::ScrollArea::vertical().id_salt("profile_cmp").show(ui, |ui| {
+                        for c in profiler::compare(profile, before).into_iter().take(60) {
+                            let delta = (c.now - c.before) * 100.0;
+                            let text = format!(
+                                "{:>5.1}% {:>5.1}% {:>+6.1}  {}",
+                                c.before * 100.0,
+                                c.now * 100.0,
+                                delta,
+                                c.name
+                            );
+                            // Slower in red, faster in green.
+                            let color = if delta > 0.5 {
+                                Color32::from_rgb(0xE5, 0x6B, 0x5D)
+                            } else if delta < -0.5 {
+                                Color32::from_rgb(0x6B, 0xC2, 0x7A)
+                            } else {
+                                pal.text_dim
+                            };
+                            let mut resp = ui.add(
+                                egui::Label::new(RichText::new(text).monospace().color(color))
+                                    .sense(Sense::click())
+                                    .truncate(),
+                            );
+                            if let Some((file, line)) = &c.place {
+                                resp = resp.on_hover_text(format!("{file}:{line}"));
+                                if resp.clicked() {
+                                    open = Some((file.clone(), *line));
+                                }
+                            }
+                        }
+                    });
+                    return;
+                }
                 ui.label(RichText::new("Hottest (self, with calls)").small().strong());
                 egui::ScrollArea::vertical().id_salt("profile_hot").show(ui, |ui| {
                     for hot in profile.hottest().into_iter().take(60) {

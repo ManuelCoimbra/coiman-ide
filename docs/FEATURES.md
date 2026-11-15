@@ -804,6 +804,9 @@ project's own headers.
   function to zoom into it, click the top row to zoom back out, and double-click to open its
   code. **Hottest** lists functions by time spent in themselves (then with what they call),
   each a link to its code.
+- **Compare**: once there's a profile before this one, the panel's Compare box shows each
+  function's share of the time before and now, and the change, biggest first, slower in red
+  and faster in green. Shares, not times, so runs of different lengths compare.
 - **Profile: Open Profile File...** reads a profile made elsewhere: collapsed stacks
   (`main;work;fib 12`, what py-spy's `raw` format and flame graph tools write) or `perf script`
   output.
@@ -944,7 +947,14 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   Separate `editor.font_size` and `workbench.ui_font_size`, on top of `workbench.zoom`.
 - **Keybindings** (`Ctrl+K Ctrl+S`): `<config>\keybindings.toml` with VS Code
   command IDs, two-key chords, `when = "editorTextFocus"`, and `-command` to remove a
-  default. Menus and the palette show the active shortcuts.
+  default. Menus and the palette show the active shortcuts. A project's own
+  `<folder>/.coiman/keybindings.toml`, in the same form, goes over yours: its bindings win,
+  and its `-command` entries take yours or the defaults away. Saving it applies it.
+- **Environment variables** (`[env]` in settings): `RUST_LOG = "debug"` and the like, for
+  terminals, Run and tasks. A project's `.coiman/settings.toml` adds to and overrides yours;
+  `${NAME}` is a variable as Coiman was started with it (`PATH = "${PATH};C:/tools"`). In
+  Restricted Mode only yours apply, so a folder not trusted can't set what a shell runs on
+  start.
 - **Color themes** (`Ctrl+K Ctrl+T`): any VS Code theme. In the picker, a theme the pointer
   rests on for a second is shown without being chosen; leaving brings the chosen one back. The picker lists themes from the
   installed VS Code (bundled and `~/.vscode/extensions`) and `<config>\themes`;
@@ -958,7 +968,10 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
 - **Font ligatures** (`editor.font_ligatures`, on): with a code font that has them (Fira Code,
   JetBrains Mono, Cascadia Code, set in `editor.font_family`), `->`, `=>`, `!=`, `>=`, `===`,
   `<!--` and the rest are drawn as the font joins them. Each character keeps its cell, so the
-  cursor and selections move through them one character at a time.
+  cursor and selections move through them one character at a time. Turned off, the font's
+  characters are drawn each on its own. `editor.font_ligatures_off = ["==", "!="]` leaves
+  those out (a longer one holding them, `===` or `!==`, goes too, so no half of a ligature is
+  drawn).
 - **Coiman High Contrast** and **Coiman High Contrast Light**: black on white or white on
   black, bright borders, and syntax colors chosen to stay readable.
 - **Bundled themes**: Catppuccin (Mocha, Macchiato, Frappé, Latte), Dracula (and Soft),

@@ -38,7 +38,19 @@ impl CodeApp {
 
     /// Variables for a program started from here.
     pub(crate) fn environment_variables(&self) -> Vec<(String, String)> {
-        self.python_env().map(PythonEnv::variables).unwrap_or_default()
+        let mut vars = self.python_env().map(PythonEnv::variables).unwrap_or_default();
+        // `[env]` from settings. In Restricted Mode only the user's: a folder not trusted
+        // mustn't set what a shell runs on start (BASH_ENV and the like).
+        let restricted = self.restricted_folder().is_some();
+        let env = if restricted { coiman_core::settings::load(None).settings.env } else { self.settings.env.clone() };
+        for (name, value) in env {
+            let value = coiman_core::settings::expand_env(&value, |n| {
+                vars.iter().find(|(k, _)| k == n).map(|(_, v)| v.clone()).or_else(|| std::env::var(n).ok())
+            });
+            vars.retain(|(k, _)| k != &name);
+            vars.push((name, value));
+        }
+        vars
     }
 
     /// Looks again now and then; a server using an old answer starts over.

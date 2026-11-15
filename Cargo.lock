@@ -854,7 +854,6 @@ dependencies = [
  "resvg 0.45.1",
  "rfd",
  "ropey",
- "rustybuzz",
  "serde",
  "serde_json",
  "toml",

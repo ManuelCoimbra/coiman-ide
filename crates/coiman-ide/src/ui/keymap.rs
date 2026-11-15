@@ -245,61 +245,13 @@ impl Keymap {
         Self { bindings, order }
     }
 
-    /// Defaults plus the user's keybindings file. Problems are returned, not fatal.
-    pub fn load(path: Option<&Path>) -> (Self, Vec<String>) {
+    /// Defaults, then each keybindings file in turn (the user's, then the project's): a later
+    /// file's bindings win, and its `-command` entries remove earlier ones.
+    pub fn load_layers(paths: &[Option<&Path>]) -> (Self, Vec<String>) {
         let mut problems = Vec::new();
         let mut bindings = Self::defaults().bindings;
-        let Some(path) = path.filter(|p| p.exists()) else { return (Self::from_bindings(bindings), problems) };
-        let text = match std::fs::read_to_string(path) {
-            Ok(t) => t,
-            Err(e) => {
-                problems.push(format!("{}: {e}", path.display()));
-                return (Self::from_bindings(bindings), problems);
-            }
-        };
-        let file: UserFile = match toml::from_str(&text) {
-            Ok(f) => f,
-            Err(e) => {
-                problems.push(format!("{}: {}", path.display(), e.message()));
-                return (Self::from_bindings(bindings), problems);
-            }
-        };
-        for b in file.bindings {
-            let keys = match b.key.as_deref().map(parse_keys).transpose() {
-                Ok(k) => k,
-                Err(e) => {
-                    problems.push(format!("keybindings: {e}"));
-                    continue;
-                }
-            };
-            if let Some(id) = b.command.strip_prefix('-') {
-                let Some(cmd) = command_from_id(id) else {
-                    problems.push(format!("keybindings: unknown command `{id}`"));
-                    continue;
-                };
-                bindings.retain(|x| !(x.command == cmd && keys.as_ref().is_none_or(|k| *k == x.keys)));
-                continue;
-            }
-            let Some(cmd) = command_from_id(&b.command) else {
-                problems.push(format!("keybindings: unknown command `{}`", b.command));
-                continue;
-            };
-            let Some(keys) = keys else {
-                problems.push(format!("keybindings: `{}` needs a `key`", b.command));
-                continue;
-            };
-            let (editor_only, explorer_only) = match b.when.as_deref() {
-                None | Some("") => (false, false),
-                Some("editorTextFocus" | "editorFocus") => (true, false),
-                Some("filesExplorerFocus" | "explorerViewletFocus" | "explorerFocus") => (false, true),
-                Some(other) => {
-                    problems.push(format!(
-                        "keybindings: unsupported `when` clause `{other}` (use editorTextFocus or filesExplorerFocus)"
-                    ));
-                    (true, false)
-                }
-            };
-            bindings.push(Binding { keys, command: cmd, editor_only, explorer_only });
+        for path in paths.iter().flatten().filter(|p| p.exists()) {
+            apply_file(path, &mut bindings, &mut problems);
         }
         (Self::from_bindings(bindings), problems)
     }
@@ -471,6 +423,61 @@ pub fn set_binding_in_text(text: &str, id: &str, change: &BindingChange) -> Resu
     Ok(format!("{comments}{body}"))
 }
 
+/// One keybindings file's bindings onto `bindings`. Problems are noted, not fatal.
+fn apply_file(path: &Path, bindings: &mut Vec<Binding>, problems: &mut Vec<String>) {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) => {
+            problems.push(format!("{}: {e}", path.display()));
+            return;
+        }
+    };
+    let file: UserFile = match toml::from_str(&text) {
+        Ok(f) => f,
+        Err(e) => {
+            problems.push(format!("{}: {}", path.display(), e.message()));
+            return;
+        }
+    };
+    for b in file.bindings {
+        let keys = match b.key.as_deref().map(parse_keys).transpose() {
+            Ok(k) => k,
+            Err(e) => {
+                problems.push(format!("keybindings: {e}"));
+                continue;
+            }
+        };
+        if let Some(id) = b.command.strip_prefix('-') {
+            let Some(cmd) = command_from_id(id) else {
+                problems.push(format!("keybindings: unknown command `{id}`"));
+                continue;
+            };
+            bindings.retain(|x| !(x.command == cmd && keys.as_ref().is_none_or(|k| *k == x.keys)));
+            continue;
+        }
+        let Some(cmd) = command_from_id(&b.command) else {
+            problems.push(format!("keybindings: unknown command `{}`", b.command));
+            continue;
+        };
+        let Some(keys) = keys else {
+            problems.push(format!("keybindings: `{}` needs a `key`", b.command));
+            continue;
+        };
+        let (editor_only, explorer_only) = match b.when.as_deref() {
+            None | Some("") => (false, false),
+            Some("editorTextFocus" | "editorFocus") => (true, false),
+            Some("filesExplorerFocus" | "explorerViewletFocus" | "explorerFocus") => (false, true),
+            Some(other) => {
+                problems.push(format!(
+                    "keybindings: unsupported `when` clause `{other}` (use editorTextFocus or filesExplorerFocus)"
+                ));
+                (true, false)
+            }
+        };
+        bindings.push(Binding { keys, command: cmd, editor_only, explorer_only });
+    }
+}
+
 /// Parses "ctrl+shift+k" or a chord "ctrl+k ctrl+o".
 pub fn parse_keys(s: &str) -> Result<Vec<KeyboardShortcut>, String> {
     let strokes: Vec<KeyboardShortcut> = s.split_whitespace().map(parse_stroke).collect::<Result<_, _>>()?;
@@ -597,7 +604,7 @@ mod tests {
         let id = command_id(Command::DeleteLines);
         let load = |text: &str| {
             std::fs::write(&path, text).unwrap();
-            let (km, problems) = Keymap::load(Some(&path));
+            let (km, problems) = Keymap::load_layers(&[Some(&path)]);
             assert_eq!(problems, Vec::<String>::new());
             km
         };
@@ -768,11 +775,30 @@ mod tests {
             "#,
         )
         .unwrap();
-        let (km, problems) = Keymap::load(Some(&path));
+        let (km, problems) = Keymap::load_layers(&[Some(&path)]);
         assert_eq!(km.shortcut_text(Command::DuplicateSelection), "Ctrl+Shift+D");
         assert_eq!(km.shortcut_text(Command::DeleteLines), "Ctrl+Alt+K", "user binding wins for display");
         assert_eq!(km.shortcut_text(Command::SelectNextOccurrence), "", "removed");
         assert_eq!(problems, vec!["keybindings: unknown command `no.such.command`".to_owned()]);
+
+        // A project's file over the user's: its binding wins, and it can take one away.
+        let project = dir.join("project.toml");
+        std::fs::write(
+            &project,
+            r#"
+            [[bindings]]
+            key = "ctrl+alt+j"
+            command = "editor.action.deleteLines"
+
+            [[bindings]]
+            command = "-editor.action.duplicateSelection"
+            "#,
+        )
+        .unwrap();
+        let (km, problems) = Keymap::load_layers(&[Some(&path), Some(&project)]);
+        assert_eq!(km.shortcut_text(Command::DeleteLines), "Ctrl+Alt+J", "the project's binding wins");
+        assert_eq!(km.shortcut_text(Command::DuplicateSelection), "", "the project took it away");
+        assert_eq!(problems.len(), 1, "{problems:?}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

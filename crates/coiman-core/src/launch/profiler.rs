@@ -108,6 +108,40 @@ fn same_function(a: &str, a_place: &Option<(String, u32)>, b: &str, b_place: &Op
     a == b && a_place.as_ref().map(|p| &p.0) == b_place.as_ref().map(|p| &p.0)
 }
 
+/// A function's share of the time in two profiles: `now` and `before`, as fractions of each
+/// profile's samples, so runs of different lengths compare.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Change {
+    pub name: String,
+    pub place: Option<(String, u32)>,
+    pub now: f64,
+    pub before: f64,
+}
+
+/// What changed from `before` to `now`, by time in the function itself: the biggest changes
+/// first, functions only one has among them.
+pub fn compare(now: &Profile, before: &Profile) -> Vec<Change> {
+    let share = |p: &Profile| {
+        let total = p.samples().max(1) as f64;
+        p.hottest().into_iter().map(move |h| (h.name, h.place, h.own as f64 / total)).collect::<Vec<_>>()
+    };
+    let old = share(before);
+    let mut out: Vec<Change> = share(now)
+        .into_iter()
+        .map(|(name, place, now)| {
+            let before = old.iter().find(|(n, p, _)| same_function(n, p, &name, &place)).map_or(0.0, |(_, _, b)| *b);
+            Change { name, place, now, before }
+        })
+        .collect();
+    for (name, place, before) in old {
+        if !out.iter().any(|c| same_function(&c.name, &c.place, &name, &place)) {
+            out.push(Change { name, place, now: 0.0, before });
+        }
+    }
+    out.sort_by(|a, b| (b.now - b.before).abs().total_cmp(&(a.now - a.before).abs()).then_with(|| a.name.cmp(&b.name)));
+    out
+}
+
 /// A function with its samples, for the hottest list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hot {
@@ -401,6 +435,17 @@ main (a.py:1);other (a.py:11) 7
             (hot[0].name.as_str(), hot[0].own, hot[0].place.clone()),
             ("other", 10, Some(("a.py".to_owned(), 10)))
         );
+    }
+
+    #[test]
+    fn compares_two_runs_by_share() {
+        let before = parse_folded("main;a 50\nmain;b 50\n");
+        let now = parse_folded("main;a 10\nmain;b 30\nmain;c 60\n");
+        let changes = compare(&now, &before);
+        let get = |n: &str| changes.iter().find(|c| c.name == n).unwrap().clone();
+        assert_eq!((get("c").before, get("c").now), (0.0, 0.6));
+        assert!((get("a").now - 0.1).abs() < 1e-9 && (get("a").before - 0.5).abs() < 1e-9);
+        assert_eq!(changes[0].name, "c", "the biggest change first");
     }
 
     #[test]
