@@ -21,6 +21,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Tests at once: the Testing view's **At once** (and `[testing] parallel`) sets how many tests
+  each runner runs at the same time, from one at a time up; the view says which runner is
+  running and how many are still to go.
 - `Testing: Review Snapshots`: insta's pending snapshots, each as what changed, to accept or
   reject one by one or all at once; in a Jest or Vitest project, Update Snapshots runs its `-u`.
 - The Testing view's Timeline: each test as a bar as long as it took, in the order they ran.

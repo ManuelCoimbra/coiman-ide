@@ -25,6 +25,7 @@ pub struct Settings {
     pub terminal: TerminalSettings,
     pub git: GitSettings,
     pub cargo: CargoSettings,
+    pub testing: TestingSettings,
     pub history: HistorySettings,
     pub debug: DebugSettings,
     pub plugins: PluginSettings,
@@ -383,6 +384,15 @@ pub struct CargoSettings {
     pub check_command: String,
     /// Test runner: "auto" (nextest when installed), "cargo" or "nextest".
     pub test_runner: String,
+}
+
+/// How tests run.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct TestingSettings {
+    /// How many tests (or test files) a runner runs at once: 0 leaves it to the runner
+    /// (usually one per CPU), 1 runs them one at a time.
+    pub parallel: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]

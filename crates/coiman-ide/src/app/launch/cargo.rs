@@ -476,9 +476,18 @@ impl CodeApp {
             return;
         }
         let title = format!("cargo {}", args.join(" "));
+        // How many tests at once, for libtest or nextest.
+        let threads = match kind {
+            JobKind::Tests(runner) => coiman_core::launch::testing::cargo_threads_env(
+                runner == Runner::Nextest,
+                self.settings.testing.parallel,
+            ),
+            _ => None,
+        };
         let spawned = quiet_command(Path::new("cargo"))
             .args(&args)
             .current_dir(cwd)
+            .envs(threads)
             .env("CARGO_TERM_COLOR", "never")
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -958,6 +967,7 @@ impl CodeApp {
             _ => "cargo test",
         };
         ui.label(RichText::new(format!("Runner: {runner}")).small().color(pal.text_dim));
+        self.tests_at_once_ui(ui, true);
         let root = self.cargo_root();
         let mut files: Vec<&FileTests> = self.cargo.tests.values().collect();
         files.sort_by(|a, b| a.path.cmp(&b.path));

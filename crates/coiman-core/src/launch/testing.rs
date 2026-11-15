@@ -101,6 +101,9 @@ pub struct Adapter {
     pub cwd: PathBuf,
     /// File extensions whose tests this runs.
     pub extensions: Vec<String>,
+    /// How to tell it how many tests to run at once: `{n}` is the number. It goes where the
+    /// command has `{workers}`, else at its end. None: it can't be told.
+    pub workers: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -115,6 +118,8 @@ struct AdapterEntry {
     report_dir: Option<String>,
     #[serde(default)]
     extensions: Vec<String>,
+    #[serde(default)]
+    workers: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -140,6 +145,7 @@ pub fn custom_adapters(root: &Path) -> Result<Vec<Adapter>, String> {
             report_dir: e.report_dir,
             cwd: root.to_path_buf(),
             extensions: e.extensions,
+            workers: e.workers,
         })
         .collect())
 }
@@ -169,6 +175,33 @@ fn has_pytest(python_path: &Path) -> bool {
         .is_ok_and(|s| s.success())
 }
 
+/// Whether pytest-xdist (pytest's `-n`) is installed.
+fn has_xdist(python_path: &Path) -> bool {
+    quiet_command(python_path)
+        .args(["-c", "import xdist"])
+        .current_dir(std::env::temp_dir())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// How each built-in runner is told how many tests to run at once.
+fn workers_of(kind: Kind) -> Option<&'static str> {
+    Some(match kind {
+        Kind::Go => "-p {n} -parallel {n}",
+        Kind::Pytest => "-n {n}",
+        Kind::Node => "--test-concurrency={n}",
+        Kind::Vitest | Kind::Jest => "--maxWorkers={n}",
+        // After everything else: `--` starts the run settings.
+        Kind::Dotnet => "-- RunConfiguration.MaxCpuCount={n}",
+        Kind::Maven => "-DforkCount={n}",
+        Kind::Gradle => "--max-workers={n}",
+        Kind::Unittest | Kind::Rspec | Kind::Custom => return None,
+    })
+}
+
 fn strings(list: &[&str]) -> Vec<String> {
     list.iter().map(|s| (*s).to_owned()).collect()
 }
@@ -196,15 +229,16 @@ pub fn detect(root: &Path, files: &[PathBuf]) -> Result<Vec<Adapter>, String> {
             report_dir: report_dir.map(str::to_owned),
             cwd: root.to_path_buf(),
             extensions: strings(ext),
+            workers: workers_of(kind).map(str::to_owned),
         });
     };
     if at_root("go.mod") || any(&|n| n.ends_with("_test.go")) {
-        let single = "go test -json -run {id} {dir}".to_owned();
+        let single = "go test -json {workers} -run {id} {dir}".to_owned();
         add(
             &mut found,
             "go test",
             Kind::Go,
-            "go test -json ./...".to_owned(),
+            "go test -json {workers} ./...".to_owned(),
             Some(single),
             Format::GoJson,
             None,
@@ -217,9 +251,15 @@ pub fn detect(root: &Path, files: &[PathBuf]) -> Result<Vec<Adapter>, String> {
             let path =
                 crate::launch::environment::resolve(anchor.parent().unwrap_or(root), Some(root)).map(|e| e.python);
             if path.as_deref().is_some_and(has_pytest) {
-                let command = format!("{python} -m pytest -q --junitxml={{report}}");
-                let single = format!("{python} -m pytest -q --junitxml={{report}} {{node}}");
+                let command = format!("{python} -m pytest -q {{workers}} --junitxml={{report}}");
+                let single = format!("{python} -m pytest -q {{workers}} --junitxml={{report}} {{node}}");
                 add(&mut found, "pytest", Kind::Pytest, command, Some(single), Format::JUnit, None, &["py"]);
+                // `-n` is pytest-xdist's: without it, pytest runs one test at a time.
+                if !path.as_deref().is_some_and(has_xdist)
+                    && let Some(last) = found.last_mut()
+                {
+                    last.workers = None;
+                }
             } else {
                 let command = format!("{python} -m unittest discover -v");
                 let single = format!("{python} -m unittest -v {{module}}.{{id}}");
@@ -230,16 +270,16 @@ pub fn detect(root: &Path, files: &[PathBuf]) -> Result<Vec<Adapter>, String> {
     let manifest = std::fs::read_to_string(root.join("package.json")).unwrap_or_default();
     const JS: &[&str] = &["js", "mjs", "cjs", "ts", "mts", "cts", "jsx", "tsx"];
     if manifest.contains("\"vitest\"") {
-        let command = "npx vitest run --reporter=junit --outputFile={report}".to_owned();
+        let command = "npx vitest run {workers} --reporter=junit --outputFile={report}".to_owned();
         let single = format!("{command} {{file}} -t {{id}}");
         add(&mut found, "Vitest", Kind::Vitest, command, Some(single), Format::JUnit, None, JS);
     } else if manifest.contains("\"jest\"") {
-        let command = "npx jest --json --outputFile={report}".to_owned();
+        let command = "npx jest {workers} --json --outputFile={report}".to_owned();
         let single = format!("{command} {{file}} -t {{id}}");
         add(&mut found, "Jest", Kind::Jest, command, Some(single), Format::Jest, None, JS);
     } else if any(&is_js_test) {
-        let command = "node --test --test-reporter=tap".to_owned();
-        let single = "node --test --test-reporter=tap --test-name-pattern={pattern} {file}".to_owned();
+        let command = "node --test {workers} --test-reporter=tap".to_owned();
+        let single = "node --test {workers} --test-reporter=tap --test-name-pattern={pattern} {file}".to_owned();
         add(&mut found, "node --test", Kind::Node, command, Some(single), Format::Tap, None, JS);
     }
     let dotnet_tests: Vec<&PathBuf> = files
@@ -341,9 +381,9 @@ impl Adapter {
         let all = self.command_for_all(report);
         let inside = |name: &str| q(&folder.join(name));
         Some(match self.kind {
-            Kind::Go => format!("go test -json -coverprofile={} ./...", inside("coverage.out")),
+            Kind::Go => format!("go test -json {{workers}} -coverprofile={} ./...", inside("coverage.out")),
             Kind::Node => format!(
-                "node --test --experimental-test-coverage --test-reporter=tap --test-reporter-destination=stdout \
+                "node --test {{workers}} --experimental-test-coverage --test-reporter=tap --test-reporter-destination=stdout \
                  --test-reporter=lcov --test-reporter-destination={}",
                 inside("lcov.info")
             ),
@@ -389,6 +429,33 @@ impl Adapter {
         };
         Some(filled.replace("{id}", &id_text))
     }
+}
+
+impl Adapter {
+    /// `command` with how many tests run at once filled in: `n` of them (0: the runner's own
+    /// choice, nothing added). A custom command's `{jobs}` is the number, one per CPU at 0.
+    pub fn with_parallel(&self, command: &str, n: usize) -> String {
+        let jobs = if n > 0 { n } else { std::thread::available_parallelism().map_or(1, |n| n.get()) };
+        let command = command.replace("{jobs}", &jobs.to_string());
+        let flag = match (&self.workers, n) {
+            (Some(w), 1..) => w.replace("{n}", &n.to_string()),
+            _ => String::new(),
+        };
+        if flag.is_empty() {
+            // Nothing to add: the place for it goes, with its space.
+            command.replace(" {workers}", "").replace("{workers}", "")
+        } else if command.contains("{workers}") {
+            command.replace("{workers}", &flag)
+        } else {
+            format!("{command} {flag}")
+        }
+    }
+}
+
+/// How many tests a Cargo run may run at once, as the environment variable that says so:
+/// libtest's `RUST_TEST_THREADS`, nextest's `NEXTEST_TEST_THREADS`. None at 0.
+pub fn cargo_threads_env(nextest: bool, n: usize) -> Option<(&'static str, String)> {
+    (n > 0).then(|| (if nextest { "NEXTEST_TEST_THREADS" } else { "RUST_TEST_THREADS" }, n.to_string()))
 }
 
 /// Where a test run's results are, once it has ended.
@@ -1243,6 +1310,7 @@ Ran 4 tests in 0.001s
             report_dir: None,
             cwd: root.into(),
             extensions: Vec::new(),
+            workers: None,
         };
         let one = go.command_for_one(r, root, file, "TestA", 3).unwrap();
         assert!(one.contains("^TestA$") && one.contains("./pkg"), "{one}");
@@ -1260,6 +1328,44 @@ Ran 4 tests in 0.001s
         );
         let none = Adapter { single: None, ..go };
         assert_eq!(none.command_for_one(r, root, file, "TestA", 3), None);
+    }
+
+    #[test]
+    fn tells_runners_how_many_at_once() {
+        let jest = Adapter {
+            name: "Jest".into(),
+            kind: Kind::Jest,
+            command: "npx jest {workers} --json --outputFile={report}".into(),
+            single: None,
+            format: Format::Jest,
+            report_dir: None,
+            cwd: PathBuf::new(),
+            extensions: Vec::new(),
+            workers: workers_of(Kind::Jest).map(str::to_owned),
+        };
+        let all = jest.command_for_all(Path::new("r.json"));
+        assert_eq!(jest.with_parallel(&all, 0), all.replace(" {workers}", ""));
+        assert!(jest.with_parallel(&all, 3).starts_with("npx jest --maxWorkers=3 --json"));
+        // No place for it: at the end, where `dotnet test` wants its run settings.
+        let dotnet = Adapter {
+            kind: Kind::Dotnet,
+            command: "dotnet test --nologo".into(),
+            workers: workers_of(Kind::Dotnet).map(str::to_owned),
+            ..jest.clone()
+        };
+        assert_eq!(
+            dotnet.with_parallel("dotnet test --nologo --filter X", 2),
+            "dotnet test --nologo --filter X -- RunConfiguration.MaxCpuCount=2"
+        );
+        let go = Adapter { workers: workers_of(Kind::Go).map(str::to_owned), ..jest.clone() };
+        assert_eq!(go.with_parallel("go test -json {workers} ./...", 1), "go test -json -p 1 -parallel 1 ./...");
+        // A runner that can't be told is run as it is; a custom one gets `{jobs}`.
+        let custom = Adapter { kind: Kind::Custom, workers: None, ..jest };
+        assert_eq!(custom.with_parallel("make test", 4), "make test");
+        assert_eq!(custom.with_parallel("make -j{jobs} test", 4), "make -j4 test");
+        assert_eq!(cargo_threads_env(false, 2), Some(("RUST_TEST_THREADS", "2".to_owned())));
+        assert_eq!(cargo_threads_env(true, 1), Some(("NEXTEST_TEST_THREADS", "1".to_owned())));
+        assert_eq!(cargo_threads_env(true, 0), None);
     }
 
     #[test]

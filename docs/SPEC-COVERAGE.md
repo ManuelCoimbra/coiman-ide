@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 114, partial 108,
-missing 247, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 115, partial 108,
+missing 246, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -468,7 +468,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Stress testing | Missing | |
 | Security testing | Missing | |
 | Test environment profiles | Missing | |
-| Parallel test execution management | Missing | |
+| Parallel test execution management | Done | At once, for every runner that can be told; Cargo through RUST_TEST_THREADS / NEXTEST_TEST_THREADS |
 | Test failure analysis | Partial | Failure place, message, Problems, failing streaks |
 
 ## 16. Security and code quality

@@ -357,6 +357,7 @@ impl CodeApp {
             Some(folder) => spec.command_with_coverage(&report, folder).unwrap_or(command),
             None => command,
         };
+        let command = spec.with_parallel(&command, self.settings.testing.parallel);
         let (program, args) = shell(&command);
         let spawned = quiet_command(Path::new(&program))
             .args(&args)
@@ -504,6 +505,50 @@ impl CodeApp {
         }
     }
 
+    /// How many tests run at once, for every runner: chosen here, kept as `[testing] parallel`.
+    pub(crate) fn tests_at_once_ui(&mut self, ui: &mut egui::Ui, cargo: bool) {
+        let now = self.settings.testing.parallel;
+        let cpus = std::thread::available_parallelism().map_or(1, |n| n.get());
+        let name = |n: usize| match n {
+            0 => "the runner's choice".to_owned(),
+            1 => "1 (one at a time)".to_owned(),
+            n if n == cpus => format!("{n} (one per CPU)"),
+            n => n.to_string(),
+        };
+        let mut options = vec![0, 1, 2, 4, 8, cpus];
+        if now > 0 {
+            options.push(now);
+        }
+        options.sort_unstable();
+        options.dedup();
+        options.retain(|&n| n == 0 || n == 1 || n <= cpus * 2 || n == now);
+        let mut picked = now;
+        let tip = if cargo {
+            "How many tests run at once (RUST_TEST_THREADS, or NEXTEST_TEST_THREADS for nextest)"
+        } else {
+            "How many tests, or test files, each runner runs at once: Go's -parallel, pytest-xdist's -n,              node --test's --test-concurrency, Jest's and Vitest's --maxWorkers, dotnet's MaxCpuCount,              Maven's forkCount, Gradle's --max-workers"
+        };
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("At once").small()).on_hover_text(tip);
+            egui::ComboBox::from_id_salt(if cargo { "cargo_at_once" } else { "tests_at_once" })
+                .selected_text(RichText::new(name(now)).small())
+                .show_ui(ui, |ui| {
+                    for n in options {
+                        ui.selectable_value(&mut picked, n, name(n));
+                    }
+                })
+                .response
+                .on_hover_text(tip);
+        });
+        if picked != now {
+            let ctx = ui.ctx().clone();
+            match self.write_user_setting(&ctx, "testing", "parallel", &picked.to_string()) {
+                Ok(()) => self.status = Some(format!("Tests at once: {}", name(picked))),
+                Err(e) => self.status = Some(e),
+            }
+        }
+    }
+
     /// `Test: Run All Tests` when this view is the one that applies.
     pub(crate) fn run_all_other_tests(&mut self, ctx: &egui::Context) -> bool {
         if self.tests.adapters.is_empty() {
@@ -575,6 +620,24 @@ impl CodeApp {
                 }
             });
         });
+        self.tests_at_once_ui(ui, false);
+        // Runners that can't be told run as they always do.
+        let fixed: Vec<&str> =
+            self.tests.adapters.iter().filter(|a| a.workers.is_none()).map(|a| a.name.as_str()).collect();
+        if self.settings.testing.parallel > 0 && !fixed.is_empty() {
+            let text = format!("{} can't be told: it runs as it always does", fixed.join(", "));
+            ui.label(RichText::new(text).small().color(pal.text_dim));
+        }
+        if let Some(run) = &self.tests.run {
+            let total = self.tests.queue.len() + 1;
+            let name = self.tests.adapters.get(run.adapter).map_or("", |a| a.name.as_str());
+            let text = if total > 1 {
+                format!("Running {name}; then {} more", self.tests.queue.len())
+            } else {
+                format!("Running {name}")
+            };
+            ui.label(RichText::new(text).small().color(pal.text_dim));
+        }
         let (passed, failed, skipped) = self.tests.counts();
         if passed + failed + skipped > 0 {
             ui.label(format!("{passed} passed, {failed} failed, {skipped} skipped"));

@@ -548,6 +548,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 ]),
             ),
             row(
+                "testing",
+                "parallel",
+                "Tests at once",
+                "For every test runner that can be told. 0 leaves it to the runner (usually one per CPU); 1 runs them one at a time.",
+                Kind::Whole(0, 256),
+            ),
+            row(
                 "debug",
                 "codelldb_path",
                 "CodeLLDB path",

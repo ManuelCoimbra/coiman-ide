@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Tests at once: one setting for every test runner.
 - Snapshot testing: Review Snapshots (insta), Update Snapshots (Jest, Vitest).
 - The Testing view's timeline.
 - Multi-root: Git follows the folder chosen in Source Control.
@@ -24,8 +25,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **Testing**
-  - Managing parallel test runs.
 - **Debugging**
   - Breakpoint groups.
   - Remote debugging through `gdbserver` over `ssh`.
