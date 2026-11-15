@@ -3,6 +3,7 @@
 //! interactive rebase). Also the Merge Conflicts window, where each conflict of a file is
 //! settled by taking one side, the other, or both.
 
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver};
 
 use coiman_core::project::git;
@@ -46,6 +47,19 @@ pub(crate) struct GitGraphUi {
     results: std::collections::HashMap<(String, usize), String>,
     pub(crate) conflicts_open: bool,
     conflict_file: Option<String>,
+    /// The Worktrees panel, while it's open: the trees, and the form for a new one.
+    worktrees: Option<Worktrees>,
+}
+
+#[derive(Default)]
+struct Worktrees {
+    list: Vec<git_graph::Worktree>,
+    branch: String,
+    /// A new branch, rather than one that exists.
+    create: bool,
+    folder: String,
+    /// The folder was typed, not made from the branch's name.
+    folder_typed: bool,
 }
 
 /// An interactive rebase being planned: the commits after `base`, in their new order.
@@ -73,6 +87,12 @@ enum Ask {
     RebaseOnto(String),
     Compare(String),
     OpenCompared(String, String, String),
+    /// Open the Worktrees panel; with a branch, its form filled for that branch.
+    Worktrees(Option<String>),
+    AddWorktree(PathBuf, String, bool),
+    RemoveWorktree(PathBuf, bool),
+    OpenFolder(PathBuf),
+    PruneWorktrees,
 }
 
 /// A color for a lane, from the theme's bracket colors and a few more.
@@ -308,6 +328,53 @@ impl CodeApp {
                 self.git_graph.compare = Some((target, Some(rx), None));
             }
             Ask::OpenCompared(base, other, rel) => self.open_compared_file(ctx, base, other, rel),
+            Ask::Worktrees(branch) => {
+                let Some(repo) = self.git_repo().cloned() else { return };
+                match repo.worktrees() {
+                    Ok(list) => {
+                        let w = self.git_graph.worktrees.get_or_insert_with(Worktrees::default);
+                        w.list = list;
+                        if let Some(b) = branch {
+                            w.branch = b;
+                            w.create = false;
+                            w.folder_typed = false;
+                        }
+                    }
+                    Err(e) => self.git_graph.error = Some(git::explain(&e)),
+                }
+            }
+            Ask::AddWorktree(path, branch, create) => {
+                let label = format!("Adding a worktree for {branch}…");
+                run(
+                    self,
+                    label,
+                    Box::new(move |repo| {
+                        repo.add_worktree(&path, &branch, create)
+                            .map(|()| format!("Worktree for {branch} in {}", path.display()))
+                    }),
+                );
+                self.git_graph.worktrees = None;
+            }
+            Ask::RemoveWorktree(path, force) => {
+                run(
+                    self,
+                    "Removing the worktree…".to_owned(),
+                    Box::new(move |repo| {
+                        repo.remove_worktree(&path, force)
+                            .map(|()| format!("Removed the worktree in {}", path.display()))
+                    }),
+                );
+                self.git_graph.worktrees = None;
+            }
+            Ask::PruneWorktrees => {
+                run(
+                    self,
+                    "Pruning worktrees…".to_owned(),
+                    Box::new(|repo| repo.prune_worktrees().map(|()| "Pruned".to_owned())),
+                );
+                self.git_graph.worktrees = None;
+            }
+            Ask::OpenFolder(path) => self.open_folder(path),
         }
     }
 
@@ -526,6 +593,17 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
         if g.loading.is_some() {
             ui.spinner();
         }
+        if ui
+            .selectable_label(g.worktrees.is_some(), "Worktrees")
+            .on_hover_text("This repository's other working folders, each on its own branch")
+            .clicked()
+        {
+            if g.worktrees.is_some() {
+                g.worktrees = None;
+            } else {
+                ask = Some(Ask::Worktrees(None));
+            }
+        }
         ui.label(RichText::new(format!("{} commits, every branch", g.commits.len())).small().color(pal.text_dim));
         ui.label(
             RichText::new("Click a commit for its files · right click for cherry-pick, revert, a branch, a rebase")
@@ -700,6 +778,10 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
         }
         ui.add_space(6.0);
     }
+    if let Some(w) = &mut g.worktrees {
+        worktrees_ui(ui, w, &mut ask);
+        ui.add_space(6.0);
+    }
     // A new branch's name, asked for above the graph.
     if let Some((hash, name)) = &mut g.new_branch {
         let mut done = false;
@@ -847,6 +929,15 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
                     ui.separator();
                     // A branch here is named in these; a commit by its hash otherwise.
                     let target = branch_name.clone().unwrap_or_else(|| short.clone());
+                    if let Some(b) = &branch_name
+                        && ui
+                            .button(format!("New Worktree for {b}…"))
+                            .on_hover_text("Check the branch out in a folder of its own, beside this one")
+                            .clicked()
+                    {
+                        ask = Some(Ask::Worktrees(Some(b.clone())));
+                        ui.close();
+                    }
                     if ui.button(format!("Compare {target} with the Current Branch")).clicked() {
                         ask = Some(Ask::Compare(target.clone()));
                         ui.close();
@@ -891,4 +982,83 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
         });
     }
     ask
+}
+
+/// The Worktrees panel: each working tree with Open and Remove, and a form for a new one.
+fn worktrees_ui(ui: &mut egui::Ui, w: &mut Worktrees, ask: &mut Option<Ask>) {
+    let pal = theme::colors();
+    egui::Frame::new()
+        .stroke(Stroke::new(1.0, pal.accent.gamma_multiply(0.6)))
+        .corner_radius(8.0)
+        .inner_margin(8.0)
+        .show(ui, |ui| {
+            ui.label(RichText::new("Worktrees").strong());
+            egui::Grid::new("git_worktrees").num_columns(4).spacing([12.0, 4.0]).show(ui, |ui| {
+                for t in &w.list {
+                    let branch = t.branch.clone().unwrap_or_else(|| format!("detached at {}", &t.head[..t.head.len().min(8)]));
+                    let mut name = RichText::new(branch).strong();
+                    if t.prunable {
+                        name = name.color(pal.text_dim);
+                    }
+                    ui.label(name);
+                    let mut where_ = t.path.display().to_string();
+                    if t.main {
+                        where_.push_str("  (the repository's own)");
+                    }
+                    if t.locked {
+                        where_.push_str("  locked");
+                    }
+                    if t.prunable {
+                        where_.push_str("  folder gone");
+                    }
+                    ui.label(RichText::new(where_).small().color(pal.text_dim));
+                    if !t.prunable && ui.button("Open").on_hover_text("Open its folder as the project").clicked() {
+                        *ask = Some(Ask::OpenFolder(t.path.clone()));
+                    }
+                    if !t.main {
+                        let remove = ui.button("Remove").on_hover_text(
+                            "Removes the folder too. Git refuses one with changes not committed: Shift+click forces it.",
+                        );
+                        if remove.clicked() {
+                            let force = ui.input(|i| i.modifiers.shift);
+                            *ask = Some(Ask::RemoveWorktree(t.path.clone(), force));
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+            if w.list.iter().any(|t| t.prunable) && ui.button("Forget the ones whose folder is gone").clicked() {
+                *ask = Some(Ask::PruneWorktrees);
+            }
+            ui.add_space(6.0);
+            // A new one: a branch, and a folder beside the repository named after it.
+            let main = w.list.iter().find(|t| t.main).map(|t| t.path.clone());
+            ui.horizontal(|ui| {
+                ui.label("New worktree on");
+                ui.add(egui::TextEdit::singleline(&mut w.branch).hint_text("branch").desired_width(160.0));
+                ui.checkbox(&mut w.create, "new branch")
+                    .on_hover_text("Make the branch from the current commit, rather than use one that exists");
+            });
+            if !w.folder_typed
+                && let Some(main) = &main
+            {
+                let base = main.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let safe: String = w.branch.trim().chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect();
+                w.folder = if safe.is_empty() {
+                    String::new()
+                } else {
+                    main.with_file_name(format!("{base}-{safe}")).display().to_string()
+                };
+            }
+            ui.horizontal(|ui| {
+                ui.label("in");
+                if ui.add(egui::TextEdit::singleline(&mut w.folder).hint_text("folder").desired_width(360.0)).changed() {
+                    w.folder_typed = true;
+                }
+                let ready = !w.branch.trim().is_empty() && !w.folder.trim().is_empty();
+                if ui.add_enabled(ready, egui::Button::new("Add")).clicked() {
+                    *ask = Some(Ask::AddWorktree(PathBuf::from(w.folder.trim()), w.branch.trim().to_owned(), w.create));
+                }
+            });
+        });
 }

@@ -80,6 +80,8 @@ enum PanelTab {
     StackTrace,
     /// Where a profiled program's time went.
     Profile,
+    /// GitHub Actions: workflow runs.
+    Actions,
     /// A panel contributed by a plugin (index into its panels).
     Plugin(usize),
 }
@@ -211,6 +213,7 @@ pub struct CodeApp {
     tables: tables::Tables,
     traces: traces::Traces,
     profiler: profiler::Profiler,
+    actions: project::actions_ui::ActionsUi,
     cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
@@ -395,6 +398,7 @@ impl CodeApp {
             tables: Default::default(),
             traces: Default::default(),
             profiler: Default::default(),
+            actions: Default::default(),
             cpp: Default::default(),
             auto_save: Default::default(),
             font_load: None,
@@ -629,7 +633,7 @@ impl CodeApp {
         let floating = dock && !self.sheet_pinned;
         if !left_open && !floating {
             // Slides away, with what it was showing.
-            let gaps = theme::island_gaps(false, true, false, gap_below);
+            let gaps = dock_edges(theme::island_gaps(false, true, false, gap_below), dock, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
             let side = self
                 .layout
@@ -646,7 +650,7 @@ impl CodeApp {
         if left_open && !floating {
             // Never let the side bar take more than half the window, whatever it contains.
             let max_side = (ui.available_width() * 0.5).max(200.0);
-            let gaps = theme::island_gaps(false, true, false, gap_below);
+            let gaps = dock_edges(theme::island_gaps(false, true, false, gap_below), dock, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
             let side = self
                 .layout
@@ -764,7 +768,11 @@ impl CodeApp {
             islands.extend(place);
         }
 
+        // In the Dock layout nothing stands to the editor's left (no tool rail) unless the side
+        // bar does: then it keeps the window's edge itself.
+        let side_in_layout = left_open && !floating;
         let gaps = theme::island_gaps(zen, true, false, gap_below && !(self.panel_visible && !zen && !panel_right));
+        let gaps = if zen { gaps } else { dock_edges(gaps, dock, !side_in_layout) };
         let frame = theme::island_frame(theme::colors().editor_bg, egui::Margin::ZERO, gaps);
         if let Some(r) = self.tour.step.map(|_| ui.available_rect_before_wrap()) {
             self.tour_spot("editor", r.shrink(8.0));
@@ -1049,4 +1057,15 @@ pub(crate) fn slow_step(what: &str, clock: &mut std::time::Instant) {
 fn repaint(ctx: &egui::Context) -> impl Fn() + Send + Sync + 'static {
     let ctx = ctx.clone();
     move || ctx.request_repaint()
+}
+
+/// In the Dock layout, an island keeps the gap the docked panel keeps from the window's sides:
+/// on its right, and on its left when it's the first thing there (`at_left`). There's no tool
+/// rail on the left to keep it.
+fn dock_edges(gaps: egui::Margin, dock: bool, at_left: bool) -> egui::Margin {
+    if !dock || !theme::islands() {
+        return gaps;
+    }
+    const EDGE: i8 = 8;
+    egui::Margin { left: if at_left { EDGE } else { gaps.left }, right: EDGE, ..gaps }
 }

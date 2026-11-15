@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 108, partial 109,
-missing 252, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 110, partial 109,
+missing 250, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -19,7 +19,7 @@ specification is right: every row in it exists.
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
 | 2 Architecture | 13 | 4 | 12 | |
 | 3 Debugging and performance | 11 | 4 | 23 | |
-| 4 Git and collaboration | 8 | 1 | 9 | 9 |
+| 4 Git and collaboration | 9 | 1 | 8 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
 | 6 Terminal | 8 | 3 | 7 | |
 | 7 Documentation | 1 | 5 | 13 | |
@@ -29,7 +29,7 @@ specification is right: every row in it exists.
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 2 | 4 | 9 | |
-| 14 DevOps | | 3 | 19 | 2 |
+| 14 DevOps | 1 | 3 | 18 | 2 |
 | 15 Testing | 4 | 5 | 12 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
@@ -148,7 +148,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Visualise repository history | Done | Git Graph, file history, blame |
 | Search through commit history | Missing | |
 | Compare arbitrary commits | Missing | |
-| Git worktree management | Missing | |
+| Git worktree management | Done | Git Graph: list, add, open, remove, prune |
 | Submodule management | Missing | |
 | Git hooks management | Missing | |
 | Git LFS integration | Missing | |
@@ -435,7 +435,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Infrastructure dependency graphs | Missing | |
 | Ansible support | Missing | |
 | CI/CD pipeline editor | Missing | |
-| GitHub Actions integration | Missing | |
+| GitHub Actions integration | Done | ACTIONS panel through `gh`: runs, jobs, failed log, re-run, step in its workflow |
 | GitLab CI integration | Missing | |
 | Pipeline execution history | Missing | |
 | Deployment configuration | Missing | |

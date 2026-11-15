@@ -24,6 +24,40 @@ fn greeting() -> &'static str {
     }
 }
 
+/// Who the greeting is for: `setting` when set (`-` for no one), else the first word of
+/// Git's `user.name`, else the account's name. Git is asked once.
+fn greeted(setting: &str) -> Option<String> {
+    match setting.trim() {
+        "-" => return None,
+        "" => {}
+        name => return Some(name.to_owned()),
+    }
+    static FOUND: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    FOUND
+        .get_or_init(|| {
+            let git = coiman_core::language::lsp::servers::which("git").and_then(|git| {
+                coiman_core::language::lsp::discovery::quiet_command(&git)
+                    .args(["config", "--get", "user.name"])
+                    .stdin(std::process::Stdio::null())
+                    .output()
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+            });
+            let account = std::env::var("USERNAME").or_else(|_| std::env::var("USER")).ok();
+            first_name(git.as_deref()).or_else(|| first_name(account.as_deref()))
+        })
+        .clone()
+}
+
+/// The first word of a name, with a capital: "manuel.pereira" and "Manuel Pereira" give "Manuel".
+fn first_name(name: Option<&str>) -> Option<String> {
+    let word = name?.split(|c: char| c.is_whitespace() || c == '.' || c == '_').find(|w| !w.is_empty())?;
+    let mut chars = word.chars();
+    let first = chars.next()?;
+    Some(first.to_uppercase().chain(chars).collect())
+}
+
 /// A tile: an icon, what it does, a line on it, and its keys. Returns whether it was clicked.
 fn tile(ui: &mut egui::Ui, width: f32, icon: Icon, title: &str, line: &str, keys: &str) -> bool {
     let pal = theme::colors();
@@ -80,7 +114,11 @@ impl CodeApp {
                         ui.add_space(14.0);
                         ui.vertical(|ui| {
                             ui.add_space(6.0);
-                            ui.label(RichText::new(format!("{}.", greeting())).size(30.0).strong().color(pal.text));
+                            let hello = match greeted(&self.settings.workbench.greeting_name) {
+                                Some(name) => format!("{}, {name}.", greeting()),
+                                None => format!("{}.", greeting()),
+                            };
+                            ui.label(RichText::new(hello).size(30.0).strong().color(pal.text));
                             ui.label(
                                 RichText::new("Coiman IDE. Open a project, or start one.")
                                     .size(15.0)
@@ -295,4 +333,18 @@ fn project_card(ui: &mut egui::Ui, width: f32, entry: &coiman_core::project::rec
         });
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn names_for_the_greeting() {
+        assert_eq!(first_name(Some("Manuel Pereira")).as_deref(), Some("Manuel"));
+        assert_eq!(first_name(Some("manuel.pereira")).as_deref(), Some("Manuel"));
+        assert_eq!(first_name(Some("  ")), None);
+        assert_eq!(greeted("-"), None);
+        assert_eq!(greeted("Ana").as_deref(), Some("Ana"));
+    }
 }

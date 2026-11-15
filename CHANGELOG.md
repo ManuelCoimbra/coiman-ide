@@ -7,6 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- In the Dock layout the editor (and the side bar) touched the window's left edge while
+  keeping a gap on the right; both sides now keep the same gap.
 - `[symbols]` in settings no longer reports each of its names as an unknown setting.
 - Turning `editor.font_ligatures` off works again: egui itself draws a font's ligatures, so
   Coiman's own drawing of them is gone, and off now keeps the characters apart.
@@ -19,6 +21,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Welcome page greets you by name (`workbench.greeting_name`, else your Git name).
+- Git worktrees from the Git Graph (list, add, open, remove), and a GitHub Actions panel
+  (runs, jobs and steps, the failed log, re-run, the failed step in its workflow file),
+  through `gh`.
 - Code Health, **Dependencies**: the lockfile tree (Cargo, npm, Poetry, uv), packages pinned
   at more than one version, what's out of date (major, minor or patch), and Update or Remove
   through the package manager.

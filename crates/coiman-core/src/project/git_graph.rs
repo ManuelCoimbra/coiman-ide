@@ -276,7 +276,91 @@ pub fn todo(steps: &[Step]) -> String {
     out
 }
 
+/// A working tree of the repository: the main one, or one added with `git worktree add`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Worktree {
+    pub path: std::path::PathBuf,
+    pub head: String,
+    /// Its branch (`main`); `None` when it's on a commit of its own (detached).
+    pub branch: Option<String>,
+    /// The repository's own folder.
+    pub main: bool,
+    pub locked: bool,
+    /// Its folder is gone: `git worktree prune` would drop it.
+    pub prunable: bool,
+}
+
+/// `git worktree list --porcelain`: a block per working tree, the main one first.
+pub fn parse_worktrees(text: &str) -> Vec<Worktree> {
+    let mut out: Vec<Worktree> = Vec::new();
+    for line in text.lines() {
+        let (key, value) = line.split_once(' ').unwrap_or((line, ""));
+        match key {
+            "worktree" => out.push(Worktree {
+                path: std::path::PathBuf::from(value),
+                head: String::new(),
+                branch: None,
+                main: out.is_empty(),
+                locked: false,
+                prunable: false,
+            }),
+            "HEAD" => {
+                if let Some(w) = out.last_mut() {
+                    w.head = value.to_owned();
+                }
+            }
+            "branch" => {
+                if let Some(w) = out.last_mut() {
+                    w.branch = Some(value.strip_prefix("refs/heads/").unwrap_or(value).to_owned());
+                }
+            }
+            "locked" => {
+                if let Some(w) = out.last_mut() {
+                    w.locked = true;
+                }
+            }
+            "prunable" => {
+                if let Some(w) = out.last_mut() {
+                    w.prunable = true;
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 impl Repo {
+    /// The repository's working trees, its own first.
+    pub fn worktrees(&self) -> Result<Vec<Worktree>, String> {
+        Ok(parse_worktrees(&self.run(&["worktree", "list", "--porcelain"])?))
+    }
+
+    /// A new working tree in `path` on `branch`: a new branch from the current commit when
+    /// `create`, else one that exists (git refuses a branch another working tree has).
+    pub fn add_worktree(&self, path: &std::path::Path, branch: &str, create: bool) -> Result<(), String> {
+        let path = path.to_string_lossy().into_owned();
+        let args: Vec<&str> =
+            if create { vec!["worktree", "add", "-b", branch, &path] } else { vec!["worktree", "add", &path, branch] };
+        self.run(&args).map(drop)
+    }
+
+    /// Removes a working tree and its folder. Without `force`, git refuses one with changes.
+    pub fn remove_worktree(&self, path: &std::path::Path, force: bool) -> Result<(), String> {
+        let path = path.to_string_lossy().into_owned();
+        let mut args = vec!["worktree", "remove"];
+        if force {
+            args.push("--force");
+        }
+        args.push(&path);
+        self.run(&args).map(drop)
+    }
+
+    /// Forgets working trees whose folders are gone.
+    pub fn prune_worktrees(&self) -> Result<(), String> {
+        self.run(&["worktree", "prune"]).map(drop)
+    }
+
     /// Commits of every branch, newest first and each after its children, for the graph.
     pub fn graph_log(&self, limit: usize) -> Result<Vec<GraphCommit>, String> {
         if self.run(&["rev-parse", "--verify", "-q", "HEAD"]).is_err() {
@@ -463,6 +547,43 @@ mod tests {
             refs: String::new(),
             subject: String::new(),
         }
+    }
+
+    #[test]
+    fn worktree_list_is_read() {
+        let text = "worktree C:/src/app\nHEAD 1111\nbranch refs/heads/main\n\nworktree C:/src/app-fix\nHEAD 2222\nbranch refs/heads/fix\nlocked\n\nworktree C:/src/old\nHEAD 3333\ndetached\nprunable gitdir file points to non-existent location\n";
+        let w = parse_worktrees(text);
+        assert_eq!(w.len(), 3);
+        assert!(w[0].main && !w[1].main);
+        assert_eq!(w[0].branch.as_deref(), Some("main"));
+        assert_eq!((w[1].branch.as_deref(), w[1].locked), (Some("fix"), true));
+        assert_eq!((w[2].branch.as_deref(), w[2].prunable, w[2].head.as_str()), (None, true, "3333"));
+    }
+
+    /// Against the real `git`: a worktree on a new branch, listed, then removed.
+    #[test]
+    fn worktrees_with_real_git() {
+        let dir = std::env::temp_dir().join(format!("coiman-worktree-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("repo")).unwrap();
+        let repo = crate::project::git::init(&dir.join("repo"), "main").unwrap();
+        repo.set_identity("Test", "test@example.com").unwrap();
+        std::fs::write(dir.join("repo/a.txt"), "a\n").unwrap();
+        repo.stage(&["."]).unwrap();
+        repo.commit("first").unwrap();
+        let other = dir.join("repo-feature");
+        repo.add_worktree(&other, "feature", true).unwrap();
+        assert!(other.join("a.txt").is_file(), "the new tree has the files");
+        let list = repo.worktrees().unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[1].branch.as_deref(), Some("feature"));
+        assert!(repo.add_worktree(&dir.join("again"), "feature", false).is_err(), "a branch in one tree only");
+        std::fs::write(other.join("b.txt"), "b\n").unwrap();
+        assert!(repo.remove_worktree(&other, false).is_err(), "changes keep it");
+        repo.remove_worktree(&other, true).unwrap();
+        assert!(!other.exists());
+        assert_eq!(repo.worktrees().unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

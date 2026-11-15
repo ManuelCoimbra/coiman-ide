@@ -245,6 +245,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "workbench",
+                "greeting_name",
+                "Name in the greeting",
+                "Who the Welcome page greets. Empty: the first word of your Git name, else your account's. - for no one.",
+                Kind::Text("Manuel"),
+            ),
+            row(
+                "workbench",
                 "background_image",
                 "Background image",
                 "A picture, or a folder of them to go through.",

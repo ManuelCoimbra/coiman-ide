@@ -189,6 +189,17 @@ network, and only when you ask. All git work runs in the background.
   then **Start Rebase**. On a branch (or commit) also: **Compare with the Current Branch**
   (the commits only on each, and the files it changed since they parted, each opening its
   change), **Merge into the Current Branch** and **Rebase the Current Branch onto** it.
+- **Worktrees** (the button at the top of the Git Graph, or **New Worktree for…** on a branch):
+  the repository's working folders, each on its own branch, with **Open** (as the project)
+  and **Remove** (git refuses one with changes; Shift+click forces it). A new one takes a
+  branch (an existing one, or **new branch** from the current commit) and a folder, named
+  `<repository>-<branch>` beside it unless typed. Ones whose folder is gone can be forgotten.
+- **GitHub Actions** (**GitHub: Show Actions**): the ACTIONS panel lists the repository's
+  latest workflow runs (or **Only failed**), each with its workflow, branch, state and age. A
+  run shows its jobs and steps; a failed one has **Log of what failed** (only the errors and
+  the lines before each, or the whole log), **Re-run failed jobs**, **Open on GitHub**, and
+  **Open in workflow** on a failed step, at its line in the workflow file. It all goes
+  through the `gh` program and your GitHub login.
 - **Merge Conflicts** (**Git: Resolve Merge Conflicts**, or **Resolve Merge Conflicts…** in
   Source Control): while a merge, cherry-pick, revert or rebase waits on conflicts, each
   conflicted file shows its conflicts side by side, current and incoming (and what both
@@ -973,6 +984,9 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   installed VS Code (bundled and `~/.vscode/extensions`) and `<config>\themes`;
   `workbench.color_theme` also accepts a path to a theme `.json`. Theme files may use
   comments and `include`; token colors apply to tree-sitter and syntect highlighting.
+- **The Welcome page greets you by name** ("Good afternoon, Manuel."): from
+  `workbench.greeting_name`, else the first word of Git's `user.name`, else the account's
+  name; `-` for no name.
 - **The logo follows the theme**: Coiman's icon on the Welcome page, in the dock and as the
   window's icon (taskbar, Alt+Tab) takes the theme's accent color, its hexagon a deep shade
   of it. The accent is the first of the theme's focus border, active border, button and

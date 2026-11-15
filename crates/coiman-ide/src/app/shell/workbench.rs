@@ -782,6 +782,9 @@ impl CodeApp {
             if self.profiler.used {
                 tabs.push((PanelTab::Profile, "PROFILE".to_owned()));
             }
+            if self.actions.used {
+                tabs.push((PanelTab::Actions, "ACTIONS".to_owned()));
+            }
             for (i, p) in self.plugins.panels.iter().enumerate() {
                 tabs.push((PanelTab::Plugin(i), p.title.to_uppercase()));
             }
@@ -846,6 +849,7 @@ impl CodeApp {
             PanelTab::Coverage => self.coverage_panel(ui),
             PanelTab::StackTrace => self.stack_trace_panel(ui),
             PanelTab::Profile => self.profile_panel(ui),
+            PanelTab::Actions => self.actions_panel(ui),
             PanelTab::Terminal => {
                 let font_size = self.terminal_font();
                 self.terminal.body(ui, font_size);

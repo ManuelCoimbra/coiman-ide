@@ -1,5 +1,6 @@
 //! The folder being worked on: files, search, watching, sessions, trust, history and Git.
 
+pub mod actions;
 pub mod dialog_dirs;
 pub mod dir_listing;
 pub mod file_actions;

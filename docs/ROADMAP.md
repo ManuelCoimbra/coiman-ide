@@ -1,0 +1,59 @@
+# Roadmap
+
+What's planned for Coiman IDE, in order. `docs/SPEC-COVERAGE.md` has each item of the
+feature specification and where it stands; `docs/AUDIT.md` §11 has the phases.
+
+Coiman has no AI features, and opens no network connections of its own: where something needs
+the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`…).
+
+## Now
+
+1. **Git worktrees and a GitHub Actions view.** Built. Worktrees are tested in the app;
+   the Actions view lists runs, and its "Only failed" filter is being tested before the
+   commit.
+2. **The editor's island sizing.** To reproduce with a Markdown file, a background picture,
+   word wrap and the island layout, and fix.
+3. **The user's name in the Welcome greeting**: "Good afternoon, Manuel." From
+   `workbench.greeting_name`, else the first word of Git's `user.name`, else the account's
+   name.
+4. **Multi-root workspaces.** Extra folders in Explorer, each its own tree; Quick Open and
+   Find in Files search them too; `.code-workspace` files open. Git, Run and the language
+   servers stay with the main folder at first.
+
+## Next, nothing to download
+
+- **Partial items finished**
+  - An editor for `[env]` in Settings.
+  - Named database connections.
+  - The profiler's function times in milliseconds.
+  - Multi-root: Git for each folder.
+- **Testing**
+  - A test timeline.
+  - Snapshot testing (insta, Jest).
+  - Managing parallel test runs.
+- **Debugging**
+  - Breakpoint groups.
+  - Remote debugging through `gdbserver` over `ssh`.
+- **Plugins:** templates for a new plugin, and a dev mode that reloads it as it's edited.
+- **SSH remote projects**, through `ssh`.
+- **Experimental:** a project overview, flow views, session statistics.
+- **Documentation**
+  - Search across the project's documentation.
+  - Public functions without a doc comment.
+  - PlantUML preview.
+
+## Later, each needing a download first
+
+Downloads are asked for first, with the file, where it comes from and its size.
+
+- Docker and Compose.
+- ADB and logcat, for Android devices.
+- Notebooks (Jupyter).
+- A serial monitor, and binary size, for embedded work.
+- Shaders.
+- SQL Server, MongoDB and Redis.
+
+## Releases
+
+Releases gather several of these at a time; what's done since the last one is under
+"Unreleased" in `CHANGELOG.md`.
