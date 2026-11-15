@@ -9,6 +9,8 @@
 //! - [`set_tool_probe`]: [`crate::language::lsp::servers::which`] asks the probe first whether a
 //!   program is there, for programs it can't see on `PATH` (Termux's folder belongs to another
 //!   app).
+//! - [`set_terminal_starter`]: a terminal's program (its shell, or a build run in a terminal)
+//!   may be started by the port instead of in a pseudo-terminal: on Android, through Termux.
 //!
 //! The desktop sets neither.
 
@@ -22,7 +24,28 @@ pub type CommandRouter = Box<dyn Fn(&Path) -> Option<Command> + Send + Sync>;
 /// Says where a program is, or `None` to look on `PATH` as usual.
 pub type ToolProbe = Box<dyn Fn(&str) -> Option<PathBuf> + Send + Sync>;
 
+/// Starts a terminal's program, or `None` to start it in a pseudo-terminal as usual.
+/// `Started::from_child` makes one from a child process with piped input and output.
+pub type TerminalStarter = Box<
+    dyn Fn(&crate::terminal::pty::TerminalRequest) -> Option<Result<crate::terminal::pty::Started, String>>
+        + Send
+        + Sync,
+>;
+
 static ROUTER: OnceLock<CommandRouter> = OnceLock::new();
+static STARTER: OnceLock<TerminalStarter> = OnceLock::new();
+
+/// Sets the terminal starter. Only the first call counts; it says whether this one did.
+pub fn set_terminal_starter(starter: TerminalStarter) -> bool {
+    STARTER.set(starter).is_ok()
+}
+
+/// The starter's session for `request`, when a starter is set and wants it.
+pub(crate) fn terminal_started(
+    request: &crate::terminal::pty::TerminalRequest,
+) -> Option<Result<crate::terminal::pty::Started, String>> {
+    STARTER.get().and_then(|starter| starter(request))
+}
 static PROBE: OnceLock<ToolProbe> = OnceLock::new();
 
 /// Sets the command router. Only the first call counts; it says whether this one did.
@@ -49,6 +72,50 @@ pub(crate) fn probed(name: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
     use crate::language::lsp::{discovery::quiet_command, servers::which};
+
+    /// A port's terminal: its program's output reaches the screen, its exit is seen, and what
+    /// it was asked carries the shell flag and `TERM`. Others still get a pseudo-terminal.
+    #[test]
+    fn terminal_starter() {
+        use crate::terminal::pty::{Notice, Session, Size, Started};
+        use std::process::Stdio;
+        use std::sync::Mutex;
+        use std::time::{Duration, Instant};
+        static ASKED: Mutex<Vec<(String, bool, bool)>> = Mutex::new(Vec::new());
+        assert!(set_terminal_starter(Box::new(|request| {
+            ASKED.lock().unwrap().push((
+                request.program.to_owned(),
+                request.shell,
+                request.env.iter().any(|(k, v)| k == "TERM" && v == "xterm-256color"),
+            ));
+            if !request.program.starts_with("coiman-port") {
+                return None;
+            }
+            let mut cmd = if cfg!(windows) { Command::new("cmd") } else { Command::new("sh") };
+            if cfg!(windows) {
+                cmd.args(["/c", "echo port-ok"]);
+            } else {
+                cmd.args(["-c", "echo port-ok"]);
+            }
+            cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            Some(cmd.spawn().map_err(|e| e.to_string()).and_then(|c| Started::from_child(c, Some("port".into()))))
+        })));
+        let size = Size { columns: 40, lines: 5 };
+        let mut session = Session::spawn("coiman-port-shell -l", &std::env::temp_dir(), &[], size, 10, || {}).unwrap();
+        assert_eq!(session.name, "port");
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut exited = false;
+        while Instant::now() < deadline && !(exited && session.screen_text().contains("port-ok")) {
+            exited |= session.poll().iter().any(|n| matches!(n, Notice::Exited(_)));
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(session.screen_text().contains("port-ok"), "screen: {:?}", session.screen_text());
+        assert!(exited);
+        let asked = ASKED.lock().unwrap().clone();
+        assert!(asked.contains(&("coiman-port-shell".to_owned(), true, true)), "{asked:?}");
+        drop(Session::spawn_args("coiman-port-run", &[], &std::env::temp_dir(), &[], size, 10, || {}).unwrap());
+        assert!(ASKED.lock().unwrap().contains(&("coiman-port-run".to_owned(), false, true)));
+    }
 
     /// One test sets both hooks: they can be set once a process.
     #[test]

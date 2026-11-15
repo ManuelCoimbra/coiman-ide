@@ -25,6 +25,7 @@ did. The desktop sets none.
 |---|---|
 | `coiman_core::platform::set_command_router(Box<dyn Fn(&Path) -> Option<Command>>)` | Every program Coiman runs (git, cargo, compilers, language servers, formatters) is made by `quiet_command`. The router may return another command for a program: on Android, the shim that runs it inside Termux. `None` runs the program as it is. |
 | `coiman_core::platform::set_tool_probe(Box<dyn Fn(&str) -> Option<PathBuf>>)` | `which` asks the probe first whether a program is there, for programs `PATH` can't show (Termux's folder belongs to another app). |
+| `coiman_core::platform::set_terminal_starter(Box<dyn Fn(&TerminalRequest) -> Option<Result<Started, String>>>)` | A terminal's program (its shell, or a build or test run in a terminal) may be started by the port instead of in a pseudo-terminal. The request has the program, its arguments, `shell` (whether it's the terminal's shell), the folder, the variables (`TERM` among them) and the size. `Started::from_child(child, name)` takes a child process with piped input, output and error; a port with something else implements `TerminalProcess` (`try_wait`, `kill`, `resize`). `None` starts it in a pseudo-terminal. |
 | `coiman_ide::hooks::set_status_bar_item(Box<dyn Fn(&mut egui::Ui)>)` | A widget at the right end of the status bar (Android's soft keyboard button). |
 | `coiman_ide::hooks::set_text_tapped(Box<dyn Fn()>)` | Called when the editor or a terminal is clicked or tapped to type in (to bring the soft keyboard back). |
 | `coiman_ide::hooks::set_file_picker(Box<dyn Fn(&PickRequest) -> Option<PathBuf>>)` | Every file dialog (open, save, choose a folder) asks the picker: on Android, the system's document picker. A `PickRequest` has the kind (file, folder, save), title, starting folder, file name and filters. On Android, Open File and Open Folder use it too, else Coiman's File Manager. |
@@ -36,6 +37,9 @@ did. The desktop sets none.
 keyboard publishes it each frame, and the frame starts with `None`. On Android the editor and the
 terminal also store their selection as a `TextEditState` under their own id, where a platform
 text bar looks for it.
+
+The terminal also publishes where its cursor is (`IMEOutput`, purpose `Terminal`) while it has
+the keyboard, and types what an input method commits, as the editor does.
 
 ## Already handled on Android
 
@@ -57,8 +61,8 @@ change that breaks it is caught here.
 
 - Its own eframe shell, renderer (wgpu, if it wants it rather than glow) and Activity.
 - Its egui fork, if it uses one (fields of `IMEOutput` differ from crates.io egui).
-- The terminal's shell: `coiman_core::terminal::pty` builds on Android, but the programs a
-  terminal runs there are Termux's, which another app can't start directly.
+- How a terminal's program is started there (the terminal starter): Termux's programs can't be
+  started directly by another app.
 
 ## Moving the Android adapter over
 
@@ -89,8 +93,8 @@ code they carried moves into the shell crate (`apps/coimanide-android`), set up 
 | `egui::text::cursor::CCursor` path fix | Drop (it fixed the dropped edits). |
 | egui fork in `[patch]` | Keep, if the builder wants its fork. |
 | Editor `IMEOutput` with the fork's fields | Keep: the fork's struct differs from crates.io egui's. |
-| Terminal `IMEOutput` | Keep for now (Coiman's terminal publishes none). |
-| `portable-pty` desktop-only, `pty_android.rs` in place of `pty.rs` | Keep for now. Coiman builds with `portable-pty` on Android, but its terminal runs Termux's programs, which need the shim. |
+| Terminal `IMEOutput` | Drop the block; Coiman's terminal publishes one now. Like the editor's, it needs the fork's fields if the fork is kept. |
+| `portable-pty` desktop-only, `pty_android.rs` in place of `pty.rs`, the `libc` dependency | Drop; `platform::set_terminal_starter` (below). The shim's command and the reading of its output move into the starter; `Session` does the rest. |
 | Workspace member `apps/coimanide-android`, Activity, broker, shim, file associations, text bar | Keep: the adapter's own. |
 
 ### In the shell crate, before `CodeApp::new`
@@ -109,6 +113,34 @@ platform::set_command_router(Box::new(|program| {
 // Termux's folder belongs to another app: say its tools are there.
 platform::set_tool_probe(Box::new(|name| {
     termux::tool_for(std::path::Path::new(name)).map(std::path::PathBuf::from)
+}));
+
+// Terminals: the shell, or a program run in one, through the shim.
+platform::set_terminal_starter(Box::new(|request| {
+    use coiman_core::terminal::pty::Started;
+    use std::process::{Command, Stdio};
+    let (shim, tool) = if request.shell {
+        (termux::shell_shim(), "__terminal__".to_owned())
+    } else {
+        let name = std::path::Path::new(request.program).file_name()?.to_str()?.to_owned();
+        (termux::shim(), name)
+    };
+    let Some(shim) = shim else {
+        return Some(Err("the Termux bridge is missing from this build; reinstall the app".to_owned()));
+    };
+    let mut cmd = Command::new(shim);
+    cmd.env("COIMAN_TERMUX_TOOL", &tool)
+        .env("COIMAN_TERMUX_SIZE", format!("{}x{}", request.size.columns, request.size.lines))
+        .envs(request.env.iter().map(|(k, v)| (k, v)))
+        .current_dir(request.cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    if !request.shell {
+        cmd.args(request.args);
+    }
+    let name = request.shell.then(|| "bash".to_owned());
+    Some(cmd.spawn().map_err(|e| format!("could not start the Termux session: {e}")).and_then(|c| Started::from_child(c, name)))
 }));
 
 hooks::set_status_bar_item(Box::new(android_keyboard::button));

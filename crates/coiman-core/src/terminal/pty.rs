@@ -1,6 +1,9 @@
 //! Terminal sessions: a shell in a pseudo-terminal (ConPTY on Windows) whose
 //! output is interpreted by alacritty's terminal emulator. No UI here: the
 //! app draws the grid and sends keys.
+//!
+//! A port can start a terminal's program its own way instead (see
+//! [`crate::platform::set_terminal_starter`]): on Android, through the Termux bridge.
 
 use std::io::{Read, Write};
 use std::path::Path;
@@ -147,13 +150,88 @@ fn split_command(command: &str) -> Vec<String> {
     words
 }
 
+/// What a port's terminal starter is asked to start.
+#[derive(Debug)]
+pub struct TerminalRequest<'a> {
+    /// The program, as the setting or the caller names it.
+    pub program: &'a str,
+    pub args: &'a [String],
+    /// Whether it's the terminal's shell (else a program run in a terminal: a build, a test).
+    pub shell: bool,
+    pub cwd: &'a Path,
+    /// The variables to set, `TERM` and the like among them.
+    pub env: &'a [(String, String)],
+    pub size: Size,
+}
+
+/// A program a port started for a terminal, with its input and output.
+pub struct Started {
+    /// What it prints (standard output, and standard error when apart).
+    pub output: Vec<Box<dyn Read + Send>>,
+    /// Where typed keys go.
+    pub input: Box<dyn Write + Send>,
+    pub process: Box<dyn TerminalProcess>,
+    /// The tab's name, when not the program's.
+    pub name: Option<String>,
+}
+
+impl Started {
+    /// A child process started with piped standard input, output and error.
+    pub fn from_child(mut child: std::process::Child, name: Option<String>) -> Result<Self, String> {
+        let input = child.stdin.take().ok_or("the program's input isn't piped")?;
+        let stdout = child.stdout.take().ok_or("the program's output isn't piped")?;
+        let mut output: Vec<Box<dyn Read + Send>> = vec![Box::new(stdout)];
+        if let Some(stderr) = child.stderr.take() {
+            output.push(Box::new(stderr));
+        }
+        Ok(Self { output, input: Box::new(input), process: Box::new(ChildProcess(Mutex::new(child))), name })
+    }
+}
+
+/// The program behind a port's terminal.
+pub trait TerminalProcess: Send + Sync {
+    /// `None` while it runs; once it has ended, its exit code if known.
+    fn try_wait(&self) -> Option<Option<u32>>;
+    /// Stops it.
+    fn kill(&self);
+    /// The terminal changed size.
+    fn resize(&self, _size: Size) {}
+}
+
+/// A child process as a terminal's program.
+struct ChildProcess(Mutex<std::process::Child>);
+
+impl TerminalProcess for ChildProcess {
+    fn try_wait(&self) -> Option<Option<u32>> {
+        match self.0.lock().unwrap_or_else(|e| e.into_inner()).try_wait() {
+            Ok(Some(status)) => Some(status.code().map(|c| c as u32)),
+            Ok(None) => None,
+            Err(_) => Some(None),
+        }
+    }
+
+    fn kill(&self) {
+        let mut child = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+/// What the program runs in.
+enum Backend {
+    Pty {
+        master: Box<dyn MasterPty + Send>,
+        killer: Box<dyn ChildKiller + Send + Sync>,
+        /// The shell's process id, for stopping what it started too.
+        pid: Option<u32>,
+    },
+    Port(Arc<dyn TerminalProcess>),
+}
+
 pub struct Session {
     term: Arc<FairMutex<Term<Listener>>>,
     writer: Writer,
-    master: Box<dyn MasterPty + Send>,
-    killer: Box<dyn ChildKiller + Send + Sync>,
-    /// The shell's process id, for stopping what it started too.
-    pid: Option<u32>,
+    backend: Backend,
     notices: Receiver<Notice>,
     size: Size,
     shared_size: Arc<Mutex<Size>>,
@@ -175,7 +253,7 @@ impl Session {
     ) -> Result<Self, String> {
         let words = split_command(command);
         let (program, args) = words.split_first().ok_or("no shell configured")?;
-        Self::spawn_args(program, args, cwd, env, size, scrollback, wake)
+        Self::start(program, args, true, cwd, env, size, scrollback, wake)
     }
 
     /// Like [`Session::spawn`] with the program and arguments given
@@ -189,6 +267,29 @@ impl Session {
         scrollback: usize,
         wake: impl Fn() + Send + Sync + 'static,
     ) -> Result<Self, String> {
+        Self::start(program, args, false, cwd, env, size, scrollback, wake)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start(
+        program: &str,
+        args: &[String],
+        shell: bool,
+        cwd: &Path,
+        env: &[(String, String)],
+        size: Size,
+        scrollback: usize,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> Result<Self, String> {
+        let mut full_env = env.to_vec();
+        full_env.extend(
+            [("TERM", "xterm-256color"), ("COLORTERM", "truecolor"), ("TERM_PROGRAM", "coiman-ide")]
+                .map(|(k, v)| (k.to_owned(), v.to_owned())),
+        );
+        let request = TerminalRequest { program, args, shell, cwd, env: &full_env, size };
+        if let Some(started) = crate::platform::terminal_started(&request) {
+            return Self::from_port(program, started?, size, scrollback, wake);
+        }
         let program = program.to_owned();
         let pair = native_pty_system().openpty(size.pty()).map_err(|e| format!("could not open a terminal: {e}"))?;
         let mut cmd = CommandBuilder::new(&program);
@@ -199,43 +300,17 @@ impl Session {
         if let Some(path) = merged_path(cmd.get_env("PATH")) {
             cmd.env("PATH", path);
         }
-        for (k, v) in env {
+        for (k, v) in &full_env {
             cmd.env(k, v);
         }
-        cmd.env("TERM", "xterm-256color");
-        cmd.env("COLORTERM", "truecolor");
-        cmd.env("TERM_PROGRAM", "coiman-ide");
         let mut child = pair.slave.spawn_command(cmd).map_err(|e| format!("could not start {program}: {e}"))?;
         drop(pair.slave);
         let killer = child.clone_killer();
         let pid = child.process_id();
-        let mut reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
+        let reader = pair.master.try_clone_reader().map_err(|e| e.to_string())?;
         let writer: Writer = Arc::new(Mutex::new(pair.master.take_writer().map_err(|e| e.to_string())?));
-
-        let (tx, notices) = mpsc::channel();
-        let shared_size = Arc::new(Mutex::new(size));
-        let listener = Listener { tx: tx.clone(), writer: Arc::clone(&writer), size: Arc::clone(&shared_size) };
-        let config = Config { scrolling_history: scrollback, ..Config::default() };
-        let term = Arc::new(FairMutex::new(Term::new(config, &size, listener)));
-        let wake: Arc<dyn Fn() + Send + Sync> = Arc::new(wake);
-
-        let (term_r, wake_r) = (Arc::clone(&term), Arc::clone(&wake));
-        std::thread::Builder::new()
-            .name("pty-reader".into())
-            .spawn(move || {
-                let mut processor: Processor = Processor::new();
-                let mut buf = vec![0u8; 64 * 1024];
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => {
-                            processor.advance(&mut *term_r.lock(), &buf[..n]);
-                            wake_r();
-                        }
-                    }
-                }
-            })
-            .map_err(|e| e.to_string())?;
+        let (term, tx, notices, shared_size, wake) = emulator(&writer, size, scrollback, wake);
+        spawn_reader(&term, &wake, reader)?;
         // On Windows the output pipe stays open after the shell exits, so
         // exits are detected by waiting on the process itself.
         std::thread::Builder::new()
@@ -249,7 +324,42 @@ impl Session {
 
         let name =
             Path::new(&program).file_stem().map_or_else(|| program.clone(), |s| s.to_string_lossy().into_owned());
-        Ok(Self { term, writer, master: pair.master, killer, pid, notices, size, shared_size, name, exited: false })
+        let backend = Backend::Pty { master: pair.master, killer, pid };
+        Ok(Self { term, writer, backend, notices, size, shared_size, name, exited: false })
+    }
+
+    /// A session over a program a port started.
+    fn from_port(
+        program: &str,
+        started: Started,
+        size: Size,
+        scrollback: usize,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> Result<Self, String> {
+        let writer: Writer = Arc::new(Mutex::new(started.input));
+        let (term, tx, notices, shared_size, wake) = emulator(&writer, size, scrollback, wake);
+        for reader in started.output {
+            spawn_reader(&term, &wake, reader)?;
+        }
+        let process: Arc<dyn TerminalProcess> = Arc::from(started.process);
+        let waited = Arc::clone(&process);
+        std::thread::Builder::new()
+            .name("terminal-wait".into())
+            .spawn(move || {
+                loop {
+                    if let Some(code) = waited.try_wait() {
+                        let _ = tx.send(Notice::Exited(code));
+                        wake();
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        let name = started.name.unwrap_or_else(|| {
+            Path::new(program).file_stem().map_or_else(|| program.to_owned(), |s| s.to_string_lossy().into_owned())
+        });
+        Ok(Self { term, writer, backend: Backend::Port(process), notices, size, shared_size, name, exited: false })
     }
 
     /// The emulator state (grid, cursor, modes); hold the lock briefly.
@@ -275,7 +385,12 @@ impl Session {
         self.size = size;
         *self.shared_size.lock().unwrap_or_else(|e| e.into_inner()) = size;
         self.term.lock().resize(size);
-        let _ = self.master.resize(size.pty());
+        match &self.backend {
+            Backend::Pty { master, .. } => {
+                let _ = master.resize(size.pty());
+            }
+            Backend::Port(process) => process.resize(size),
+        }
     }
 
     /// Everything reported since the last call.
@@ -309,14 +424,61 @@ impl Session {
 impl Drop for Session {
     fn drop(&mut self) {
         if !self.exited {
-            // What the shell started goes too: a program a build tool runs (a JavaFX
-            // window from `mvn javafx:run`) would outlive the shell otherwise.
-            if let Some(pid) = self.pid {
-                kill_tree(pid);
+            match &mut self.backend {
+                Backend::Pty { killer, pid, .. } => {
+                    // What the shell started goes too: a program a build tool runs (a JavaFX
+                    // window from `mvn javafx:run`) would outlive the shell otherwise.
+                    if let Some(pid) = *pid {
+                        kill_tree(pid);
+                    }
+                    let _ = killer.kill();
+                }
+                Backend::Port(process) => process.kill(),
             }
-            let _ = self.killer.kill();
         }
     }
+}
+
+/// The emulator for a session writing to `writer`, and what goes with it.
+#[allow(clippy::type_complexity)]
+fn emulator(
+    writer: &Writer,
+    size: Size,
+    scrollback: usize,
+    wake: impl Fn() + Send + Sync + 'static,
+) -> (Arc<FairMutex<Term<Listener>>>, Sender<Notice>, Receiver<Notice>, Arc<Mutex<Size>>, Arc<dyn Fn() + Send + Sync>) {
+    let (tx, notices) = mpsc::channel();
+    let shared_size = Arc::new(Mutex::new(size));
+    let listener = Listener { tx: tx.clone(), writer: Arc::clone(writer), size: Arc::clone(&shared_size) };
+    let config = Config { scrolling_history: scrollback, ..Config::default() };
+    let term = Arc::new(FairMutex::new(Term::new(config, &size, listener)));
+    (term, tx, notices, shared_size, Arc::new(wake))
+}
+
+/// Feeds what `reader` gives to the emulator, on a thread of its own.
+fn spawn_reader(
+    term: &Arc<FairMutex<Term<Listener>>>,
+    wake: &Arc<dyn Fn() + Send + Sync>,
+    mut reader: Box<dyn Read + Send>,
+) -> Result<(), String> {
+    let (term, wake) = (Arc::clone(term), Arc::clone(wake));
+    std::thread::Builder::new()
+        .name("pty-reader".into())
+        .spawn(move || {
+            let mut processor: Processor = Processor::new();
+            let mut buf = vec![0u8; 64 * 1024];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        processor.advance(&mut *term.lock(), &buf[..n]);
+                        wake();
+                    }
+                }
+            }
+        })
+        .map(drop)
+        .map_err(|e| e.to_string())
 }
 
 /// Stops a process and every process under it.

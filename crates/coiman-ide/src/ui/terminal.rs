@@ -582,6 +582,7 @@ impl Terminals {
         paint(ui, &tab.session, &grid, &font, focused, rect);
         if focused {
             publish_selection(ui, id, &tab.session);
+            publish_ime(ui, &tab.session, &grid, rect);
         }
         underline_link(ui, tab, &response, &grid, &project);
         // In a split the one with the keyboard is marked.
@@ -938,6 +939,11 @@ fn handle_keys(ui: &mut egui::Ui, session: &Session) {
     for event in events {
         match event {
             Event::Text(text) if !alt_text => {
+                session.write(text.as_bytes());
+                sent = true;
+            }
+            // What an input method (or a phone's keyboard) composed.
+            Event::Ime(egui::ImeEvent::Commit(text)) if !text.is_empty() => {
                 session.write(text.as_bytes());
                 sent = true;
             }
@@ -1304,6 +1310,29 @@ pub fn strip_verbatim(p: PathBuf) -> PathBuf {
         Some(rest) => PathBuf::from(rest),
         None => p,
     }
+}
+
+/// Where the terminal's cursor is, for an input method or a phone's keyboard to follow.
+fn publish_ime(ui: &egui::Ui, session: &Session, grid: &Grid, rect: Rect) {
+    let (line, column, offset) = {
+        let term = session.term();
+        let content = term.renderable_content();
+        (content.cursor.point.line.0, content.cursor.point.column.0, content.display_offset)
+    };
+    let pos = Pos2::new(
+        grid.rect.left() + column as f32 * grid.char_w,
+        grid.rect.top() + (line + offset as i32) as f32 * grid.row_h,
+    );
+    let cursor_rect = Rect::from_min_size(pos, Vec2::new(grid.char_w, grid.row_h));
+    let to_global = ui.ctx().layer_transform_to_global(ui.layer_id()).unwrap_or_default();
+    ui.output_mut(|o| {
+        o.ime = Some(egui::output::IMEOutput {
+            purpose: egui::IMEPurpose::Terminal,
+            rect: to_global * rect,
+            cursor_rect: to_global * cursor_rect,
+            should_interrupt_composition: false,
+        });
+    });
 }
 
 /// Whether the terminal has a selection, for a platform text bar (see `coiman_core::selection`):
