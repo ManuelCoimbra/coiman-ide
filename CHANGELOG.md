@@ -18,6 +18,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - **Font ligatures** for code fonts that have them (`editor.font_ligatures`).
 - **Coiman High Contrast** themes, dark and light.
 - The minimap draws the code in its syntax colors.
+- Git Graph: compare a branch with the current one, merge it, or rebase the current branch
+  onto it; in Merge Conflicts, a result to write by hand.
 - **Merge Conflicts** window: each conflict side by side, settled by taking current, incoming
   or both; mark files resolved, then continue or abort the merge, cherry-pick, revert or rebase.
 

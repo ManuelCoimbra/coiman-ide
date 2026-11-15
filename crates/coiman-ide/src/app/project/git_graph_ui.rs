@@ -6,7 +6,7 @@
 use std::sync::mpsc::{self, Receiver};
 
 use coiman_core::project::git;
-use coiman_core::project::git_graph::{self, Action, Choice, GraphCommit, Operation, Row, Step};
+use coiman_core::project::git_graph::{self, Action, Choice, Comparison, GraphCommit, Operation, Row, Step};
 use egui::{Color32, Pos2, RichText, Sense, Stroke, Vec2};
 
 use crate::app::project::git::GitWork;
@@ -19,6 +19,8 @@ const ROW_H: f32 = 24.0;
 const LANE_W: f32 = 14.0;
 
 type Loaded = Result<(Vec<GraphCommit>, Option<Operation>), String>;
+/// A branch's comparison with the current one, as read.
+type Compared = Result<Comparison, String>;
 /// A commit's files: (kind, path).
 type CommitFiles = Result<Vec<(char, String)>, String>;
 
@@ -38,6 +40,10 @@ pub(crate) struct GitGraphUi {
     /// A new branch's name, being typed for this commit.
     new_branch: Option<(String, String)>,
     rebase: Option<Rebase>,
+    /// Another branch against the current one: its name, and how they differ.
+    compare: Option<(String, Option<Receiver<Compared>>, Option<Comparison>)>,
+    /// Results written by hand for conflicts: by (file, conflict).
+    results: std::collections::HashMap<(String, usize), String>,
     pub(crate) conflicts_open: bool,
     conflict_file: Option<String>,
 }
@@ -63,6 +69,10 @@ enum Ask {
     Continue(Operation),
     Abort(Operation),
     ShowConflicts,
+    Merge(String),
+    RebaseOnto(String),
+    Compare(String),
+    OpenCompared(String, String, String),
 }
 
 /// A color for a lane, from the theme's bracket colors and a few more.
@@ -264,6 +274,40 @@ impl CodeApp {
                 Box::new(move |repo| repo.abort_operation(op).map(|()| format!("The {} was given up", op.name()))),
             ),
             Ask::ShowConflicts => self.show_merge_conflicts(),
+            Ask::Merge(target) => run(
+                self,
+                format!("Merging {target}…"),
+                Box::new(move |repo| match repo.merge(&target) {
+                    Ok(()) => Ok(format!("Merged {target}")),
+                    Err(e) if repo.operation() == Some(Operation::Merge) => {
+                        Err(format!("{e} — resolve the conflicts (Git: Resolve Merge Conflicts), then Continue"))
+                    }
+                    Err(e) => Err(e),
+                }),
+            ),
+            Ask::RebaseOnto(target) => run(
+                self,
+                format!("Rebasing onto {target}…"),
+                Box::new(move |repo| match repo.rebase_onto(&target) {
+                    Ok(()) => Ok(format!("Rebased onto {target}")),
+                    Err(e) if repo.operation() == Some(Operation::Rebase) => {
+                        Err(format!("{e} — the rebase stopped at a conflict: resolve it, then Continue"))
+                    }
+                    Err(e) => Err(e),
+                }),
+            ),
+            Ask::Compare(target) => {
+                let Some(repo) = self.git_repo().cloned() else { return };
+                let (tx, rx) = mpsc::channel();
+                let wake = repaint(ctx);
+                let other = target.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(repo.compare(&other));
+                    wake();
+                });
+                self.git_graph.compare = Some((target, Some(rx), None));
+            }
+            Ask::OpenCompared(base, other, rel) => self.open_compared_file(ctx, base, other, rel),
         }
     }
 
@@ -273,6 +317,7 @@ impl CodeApp {
         let root = self.git_repo().cloned().map(|r| r.root);
         let mut open = true;
         let mut choose: Option<(String, usize, Choice)> = None;
+        let mut custom: Option<(String, usize, Vec<String>)> = None;
         let mut resolved: Option<String> = None;
         let mut open_file: Option<std::path::PathBuf> = None;
         let mut op_ask = None;
@@ -393,6 +438,22 @@ impl CodeApp {
                                 }
                             }
                         });
+                        // The result, to write by hand: starts as both sides, current first.
+                        let key = (rel.clone(), i);
+                        let result = g
+                            .results
+                            .entry(key.clone())
+                            .or_insert_with(|| git_graph::chosen(c, Choice::Both).join("\n"));
+                        ui.label(RichText::new("Result (edit it, then Use This Result)").small().color(pal.text_dim));
+                        ui.add(
+                            egui::TextEdit::multiline(result)
+                                .font(mono.clone())
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY),
+                        );
+                        if ui.button("Use This Result").clicked() {
+                            custom = Some((rel.clone(), i, result.lines().map(str::to_owned).collect()));
+                        }
                         if let Some(base) = &c.base {
                             ui.label(
                                 RichText::new(format!("Before both: {}", base.join(" ⏎ "))).small().color(pal.text_dim),
@@ -413,6 +474,20 @@ impl CodeApp {
                     Err(e) => self.status = Some(format!("Couldn't write {rel}: {e}")),
                 }
             }
+        }
+        if let Some((rel, index, lines)) = custom
+            && let Some(root) = &root
+        {
+            let path = root.join(&rel);
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            if let Some(new) = git_graph::resolve_with(&text, index, &lines) {
+                match std::fs::write(&path, new) {
+                    Ok(()) => self.reload_open_file(&path),
+                    Err(e) => self.status = Some(format!("Couldn't write {rel}: {e}")),
+                }
+            }
+            // The rest move up a place: their results are written afresh.
+            self.git_graph.results.retain(|(r, _), _| r != &rel);
         }
         if let Some(rel) = resolved {
             self.git_run(
@@ -474,6 +549,68 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
     }
     if let Some(e) = &g.error {
         ui.colored_label(Color32::from_rgb(0xE5, 0x48, 0x4D), e);
+    }
+    // A branch compared with the current one.
+    if let Some((name, rx, found)) = &mut g.compare {
+        if let Some(r) = rx.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            *rx = None;
+            match r {
+                Ok(c) => *found = Some(c),
+                Err(e) => g.error = Some(git::explain(&e)),
+            }
+        }
+        let mut close = false;
+        egui::Frame::new()
+            .stroke(Stroke::new(1.0, pal.accent.gamma_multiply(0.6)))
+            .corner_radius(8.0)
+            .inner_margin(8.0)
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("{name} against the current branch")).strong());
+                    if rx.is_some() {
+                        ui.spinner();
+                    }
+                    if ui.button("Close").clicked() {
+                        close = true;
+                    }
+                });
+                let Some(c) = found else { return };
+                egui::ScrollArea::vertical().id_salt("git_compare").max_height(200.0).show(ui, |ui| {
+                    ui.columns(2, |cols| {
+                        for (col, title, list) in [
+                            (0, format!("Only on {name}: {}", c.theirs.len()), &c.theirs),
+                            (1, format!("Only on the current branch: {}", c.ours.len()), &c.ours),
+                        ] {
+                            cols[col].label(RichText::new(title).small().strong());
+                            for commit in list {
+                                cols[col].label(RichText::new(format!("{} {}", commit.short, commit.subject)).small());
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("Files {name} changed since they parted: {}", c.files.len()))
+                            .small()
+                            .strong(),
+                    );
+                    for (kind, rel) in &c.files {
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(kind.to_string()).strong().color(pal.text_dim));
+                            if ui
+                                .add(egui::Label::new(rel).sense(Sense::click()))
+                                .on_hover_text("Show the change")
+                                .clicked()
+                            {
+                                ask = Some(Ask::OpenCompared(c.base.clone(), name.clone(), rel.clone()));
+                            }
+                        });
+                    }
+                });
+            });
+        if close {
+            g.compare = None;
+        }
+        ui.add_space(6.0);
     }
     if let Some(rebase) = &mut g.rebase {
         let mut close = false;
@@ -679,6 +816,13 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
                 }
                 let (hash, short) = (commit.hash.clone(), commit.short.clone());
                 let subject_text = commit.subject.clone();
+                // The first branch here (not a tag, not a remote's HEAD).
+                let branch_name = commit
+                    .refs
+                    .split(", ")
+                    .map(|r| r.trim_start_matches("HEAD -> "))
+                    .find(|r| !r.is_empty() && *r != "HEAD" && !r.starts_with("tag: ") && !r.ends_with("/HEAD"))
+                    .map(str::to_owned);
                 resp.context_menu(|ui| {
                     if ui.button("Cherry-pick onto the current branch").clicked() {
                         ask = Some(Ask::CherryPick(hash.clone(), short.clone()));
@@ -698,6 +842,25 @@ fn graph_ui(ui: &mut egui::Ui, g: &mut GitGraphUi) -> Option<Ask> {
                         .clicked()
                     {
                         ask = Some(Ask::PlanRebase(hash.clone(), format!("{short} {subject_text}")));
+                        ui.close();
+                    }
+                    ui.separator();
+                    // A branch here is named in these; a commit by its hash otherwise.
+                    let target = branch_name.clone().unwrap_or_else(|| short.clone());
+                    if ui.button(format!("Compare {target} with the Current Branch")).clicked() {
+                        ask = Some(Ask::Compare(target.clone()));
+                        ui.close();
+                    }
+                    if ui.button(format!("Merge {target} into the Current Branch")).clicked() {
+                        ask = Some(Ask::Merge(target.clone()));
+                        ui.close();
+                    }
+                    if ui
+                        .button(format!("Rebase the Current Branch onto {target}"))
+                        .on_hover_text("Replay the current branch's own commits on top of it")
+                        .clicked()
+                    {
+                        ask = Some(Ask::RebaseOnto(target.clone()));
                         ui.close();
                     }
                     ui.separator();

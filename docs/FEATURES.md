@@ -186,12 +186,15 @@ network, and only when you ask. All git work runs in the background.
   its change). Right click a commit to **cherry-pick** it onto the current branch, **revert**
   it, **create a branch** there, or **rebase interactively from here**: the commits after it,
   oldest first, to move up and down and pick, reword (a new message), squash, fix up or drop,
-  then **Start Rebase**.
+  then **Start Rebase**. On a branch (or commit) also: **Compare with the Current Branch**
+  (the commits only on each, and the files it changed since they parted, each opening its
+  change), **Merge into the Current Branch** and **Rebase the Current Branch onto** it.
 - **Merge Conflicts** (**Git: Resolve Merge Conflicts**, or **Resolve Merge Conflicts…** in
   Source Control): while a merge, cherry-pick, revert or rebase waits on conflicts, each
   conflicted file shows its conflicts side by side, current and incoming (and what both
   started from, when git wrote it), with **Accept Current**, **Accept Incoming**, **Accept
-  Both** and **Both, Incoming First**; **Open in Editor** for anything else. **Mark as
+  Both** and **Both, Incoming First**, or a **Result** to write by hand and **Use This Result**;
+  **Open in Editor** for anything else. **Mark as
   Resolved** stages the file; **Continue** goes on once every file is, **Abort** gives the
   operation up.
 

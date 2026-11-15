@@ -118,7 +118,9 @@ pub(crate) fn git_env(
     if out.status.success() {
         Ok(out.stdout)
     } else {
-        let err = String::from_utf8_lossy(&out.stderr);
+        // Some commands (merge, cherry-pick) say what went wrong on standard output.
+        let stream = if out.stderr.iter().any(|b| !b.is_ascii_whitespace()) { &out.stderr } else { &out.stdout };
+        let err = String::from_utf8_lossy(stream);
         let msg = err.lines().filter(|l| !l.trim().is_empty()).collect::<Vec<_>>().join(" ");
         Err(if msg.is_empty() { format!("git {} failed", args.first().unwrap_or(&"")) } else { msg })
     }

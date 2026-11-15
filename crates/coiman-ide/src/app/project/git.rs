@@ -1079,6 +1079,17 @@ impl CodeApp {
         });
     }
 
+    /// A file as another branch has it, against where the two branches parted.
+    pub(crate) fn open_compared_file(&mut self, ctx: &egui::Context, base: String, other: String, rel: String) {
+        let Some(root) = self.git.repo.as_ref().map(|r| r.root.clone()) else { return };
+        self.git_job(ctx, None, move |repo| {
+            let left = repo.file_at(&base, &rel);
+            let right = Some(repo.file_at(&other, &rel));
+            let path = root.join(&rel);
+            Msg::Diff(DiffSource { path, rel, staged: false, left, right, commit: Some(other) })
+        });
+    }
+
     /// Push, pull or fetch, in the background. Nothing else reaches the network.
     pub(crate) fn git_remote(&mut self, ctx: &egui::Context, command: Command) {
         if self.git.repo.is_none() {

@@ -198,18 +198,30 @@ pub fn conflicts(text: &str) -> Vec<Conflict> {
     out
 }
 
+/// The lines a choice keeps for a conflict.
+pub fn chosen(c: &Conflict, choice: Choice) -> Vec<String> {
+    match choice {
+        Choice::Ours => c.ours.clone(),
+        Choice::Theirs => c.theirs.clone(),
+        Choice::Both => c.ours.iter().chain(&c.theirs).cloned().collect(),
+        Choice::BothTheirsFirst => c.theirs.iter().chain(&c.ours).cloned().collect(),
+    }
+}
+
 /// The text with conflict `index` settled by `choice`, keeping the file's line endings.
 pub fn resolve(text: &str, index: usize, choice: Choice) -> Option<String> {
+    let c = conflicts(text).into_iter().nth(index)?;
+    resolve_with(text, index, &chosen(&c, choice))
+}
+
+/// The text with conflict `index` replaced by `kept`: lines of one's own, as the result pane
+/// edits them.
+pub fn resolve_with(text: &str, index: usize, kept: &[String]) -> Option<String> {
     let found = conflicts(text);
     let c = found.get(index)?;
     let nl = if text.contains("\r\n") { "\r\n" } else { "\n" };
     let lines: Vec<&str> = text.lines().collect();
-    let kept: Vec<&str> = match choice {
-        Choice::Ours => c.ours.iter().map(String::as_str).collect(),
-        Choice::Theirs => c.theirs.iter().map(String::as_str).collect(),
-        Choice::Both => c.ours.iter().chain(&c.theirs).map(String::as_str).collect(),
-        Choice::BothTheirsFirst => c.theirs.iter().chain(&c.ours).map(String::as_str).collect(),
-    };
+    let kept: Vec<&str> = kept.iter().map(String::as_str).collect();
     let mut out: Vec<&str> = lines[..c.start].to_vec();
     out.extend(kept);
     out.extend(&lines[c.end..]);
@@ -376,6 +388,65 @@ impl Repo {
         let _ = std::fs::remove_file(&file);
         result
     }
+
+    /// Merges `branch` into the current one, with git's own message. Stops at conflicts.
+    pub fn merge(&self, branch: &str) -> Result<(), String> {
+        self.run_env(&["merge", "--no-edit", branch], &[("GIT_EDITOR", "true")]).map(drop)
+    }
+
+    /// Replays the current branch's own commits on top of `onto`. Stops at a conflict.
+    pub fn rebase_onto(&self, onto: &str) -> Result<(), String> {
+        self.run_env(&["rebase", onto], &[("GIT_EDITOR", "true")]).map(drop)
+    }
+
+    /// How `other` differs from HEAD: the commits each has that the other hasn't, and the
+    /// files `other` changed since the two parted.
+    pub fn compare(&self, other: &str) -> Result<Comparison, String> {
+        let base = self.run(&["merge-base", "HEAD", other])?.trim().to_owned();
+        let side = |range: String| -> Result<Vec<GraphCommit>, String> {
+            let out = self.run(&["log", &range, "--format=%H%x1f%h%x1f%P%x1f%an%x1f%at%x1f%D%x1f%s"])?;
+            Ok(out
+                .lines()
+                .filter_map(|line| {
+                    let mut f = line.splitn(7, '\x1f').map(str::to_owned);
+                    Some(GraphCommit {
+                        hash: f.next()?,
+                        short: f.next()?,
+                        parents: f.next()?.split_whitespace().map(str::to_owned).collect(),
+                        author: f.next()?,
+                        time: f.next()?.parse().ok()?,
+                        refs: f.next()?,
+                        subject: f.next()?,
+                    })
+                })
+                .collect())
+        };
+        let files = self.run(&["diff", "--name-status", "--no-renames", "-z", &format!("{base}..{other}")])?;
+        let mut parts = files.split('\0').filter(|p| !p.is_empty());
+        let mut changed = Vec::new();
+        while let (Some(kind), Some(rel)) = (parts.next(), parts.next()) {
+            changed.push((kind.trim().chars().next().unwrap_or('M'), rel.to_owned()));
+        }
+        Ok(Comparison {
+            base,
+            theirs: side(format!("HEAD..{other}"))?,
+            ours: side(format!("{other}..HEAD"))?,
+            files: changed,
+        })
+    }
+}
+
+/// How a branch differs from the current one.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Comparison {
+    /// Where the two parted.
+    pub base: String,
+    /// Commits only on the other branch.
+    pub theirs: Vec<GraphCommit>,
+    /// Commits only on the current branch.
+    pub ours: Vec<GraphCommit>,
+    /// Files the other branch changed since `base`: (kind, path).
+    pub files: Vec<(char, String)>,
 }
 
 #[cfg(test)]
@@ -418,6 +489,7 @@ mod tests {
         assert_eq!(resolve(text, 0, Choice::Ours).unwrap(), "a\nmine\nz\n");
         assert_eq!(resolve(text, 0, Choice::Theirs).unwrap(), "a\ntheirs 1\ntheirs 2\nz\n");
         assert_eq!(resolve(text, 0, Choice::Both).unwrap(), "a\nmine\ntheirs 1\ntheirs 2\nz\n");
+        assert_eq!(resolve_with(text, 0, &["my own".to_owned()]).unwrap(), "a\nmy own\nz\n");
         assert_eq!(
             resolve("x\r\n<<<<<<< a\r\n1\r\n=======\r\n2\r\n>>>>>>> b\r\n", 0, Choice::Theirs).unwrap(),
             "x\r\n2\r\n"
@@ -494,6 +566,27 @@ mod tests {
         assert_eq!(subjects, ["add c", "add d (it's reworded)"]);
         assert!(dir.join("e.txt").exists() && !dir.join("f.txt").exists());
         assert!(repo.rebase(&base, &[Step { action: Action::Squash, ..plan[0].clone() }]).is_err());
+
+        // A branch compared, then merged; another rebased onto main.
+        let main_tip = repo.run(&["rev-parse", "HEAD"]).unwrap().trim().to_owned();
+        repo.switch("side", true).unwrap();
+        commit("side.txt", "s\n", "side work");
+        repo.switch("main", false).unwrap();
+        commit("main2.txt", "m\n", "main work");
+        let cmp = repo.compare("side").unwrap();
+        assert_eq!(cmp.theirs.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(), ["side work"]);
+        assert_eq!(cmp.ours.iter().map(|c| c.subject.as_str()).collect::<Vec<_>>(), ["main work"]);
+        assert_eq!(cmp.files, [('A', "side.txt".to_owned())]);
+        assert_eq!(cmp.base, main_tip);
+        repo.merge("side").unwrap();
+        assert!(dir.join("side.txt").exists());
+        repo.switch("later", true).unwrap();
+        commit("later.txt", "l\n", "later work");
+        repo.switch("main", false).unwrap();
+        commit("main3.txt", "m3\n", "more main");
+        repo.switch("later", false).unwrap();
+        repo.rebase_onto("main").unwrap();
+        assert!(dir.join("main3.txt").exists() && dir.join("later.txt").exists(), "later now sits on main");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
