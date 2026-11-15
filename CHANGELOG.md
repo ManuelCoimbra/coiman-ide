@@ -21,6 +21,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Testing view's Timeline: each test as a bar as long as it took, in the order they ran.
 - Source Control's Repository picker: in a workspace of several folders, Git follows the one
   chosen.
 - Database connections can be named; the profiler shows time (ms) beside each share.

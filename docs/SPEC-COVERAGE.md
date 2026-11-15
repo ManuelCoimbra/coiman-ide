@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 113, partial 107,
-missing 249, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 114, partial 107,
+missing 248, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -30,7 +30,7 @@ specification is right: every row in it exists.
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 2 | 4 | 9 | |
 | 14 DevOps | 1 | 3 | 18 | 2 |
-| 15 Testing | 4 | 5 | 12 | |
+| 15 Testing | 5 | 5 | 11 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
 | 18 Remote | | | 14 | 1 |
@@ -450,7 +450,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Item | Status | Note |
 |---|---|---|
 | Unified test explorer | Done | Testing view, every language |
-| Test execution timeline | Missing | |
+| Test execution timeline | Done | Testing view, Timeline: bars by time, in run order |
 | Test history | Done | Run History (B4) |
 | Test comparison between runs | Done | Run History: broke, fixed, slower (B4) |
 | Flaky test detection | Done | Run History, Flaky (B4) |

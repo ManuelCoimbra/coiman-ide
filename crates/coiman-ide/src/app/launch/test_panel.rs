@@ -81,6 +81,8 @@ pub(crate) struct Tests {
     restored: bool,
     /// With Cargo in the same project, which view shows.
     pub(crate) show_others: bool,
+    /// The results as a timeline, not a list.
+    timeline: bool,
 }
 
 /// Where a project's last results are kept between sessions.
@@ -576,7 +578,11 @@ impl CodeApp {
         let (passed, failed, skipped) = self.tests.counts();
         if passed + failed + skipped > 0 {
             ui.label(format!("{passed} passed, {failed} failed, {skipped} skipped"));
-            ui.checkbox(&mut self.tests.only_failed, "Only failures");
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut self.tests.only_failed, "Only failures");
+                ui.checkbox(&mut self.tests.timeline, "Timeline")
+                    .on_hover_text("Each test as a bar as long as it took, in the order they ran");
+            });
         }
         let warn = Color32::from_rgb(0xCC, 0xA7, 0x00);
         for line in [&self.tests.notice, &self.tests.problem].into_iter().flatten() {
@@ -593,73 +599,83 @@ impl CodeApp {
         let list_height = (ui.available_height() - detail_height).max(60.0);
         let only_failed = self.tests.only_failed;
         let size = ui.text_style_height(&egui::TextStyle::Body);
-        egui::ScrollArea::vertical().id_salt("other_tests").max_height(list_height).auto_shrink([false, false]).show(
-            ui,
-            |ui| {
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-                let results = &self.tests.results;
-                for row in &self.tests.rows {
-                    match row {
-                        Row::Heading { adapter, name } => {
-                            ui.horizontal(|ui| {
-                                ui.label(RichText::new(name).strong());
-                                if running == Some(*adapter) {
-                                    ui.label(RichText::new("running…").small().color(pal.text_dim));
-                                }
-                                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                                    if icons::button(ui, Icon::Play, "Run All").clicked() {
-                                        start = Some((*adapter, None));
+        if self.tests.timeline {
+            if let Some(chosen) = timeline_ui(ui, &self.tests.results, list_height, self.tests.selected) {
+                select = Some(chosen);
+            }
+        } else {
+            egui::ScrollArea::vertical()
+                .id_salt("other_tests")
+                .max_height(list_height)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
+                    let results = &self.tests.results;
+                    for row in &self.tests.rows {
+                        match row {
+                            Row::Heading { adapter, name } => {
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(name).strong());
+                                    if running == Some(*adapter) {
+                                        ui.label(RichText::new("running…").small().color(pal.text_dim));
                                     }
-                                    let can = self.tests.adapters.get(*adapter).is_some_and(|a| {
-                                        a.command_with_coverage(Path::new("r"), Path::new("c")).is_some()
+                                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                        if icons::button(ui, Icon::Play, "Run All").clicked() {
+                                            start = Some((*adapter, None));
+                                        }
+                                        let can = self.tests.adapters.get(*adapter).is_some_and(|a| {
+                                            a.command_with_coverage(Path::new("r"), Path::new("c")).is_some()
+                                        });
+                                        if can
+                                            && ui
+                                                .small_button("Coverage")
+                                                .on_hover_text("Run all, with coverage")
+                                                .clicked()
+                                        {
+                                            cover = Some(*adapter);
+                                        }
                                     });
-                                    if can
-                                        && ui.small_button("Coverage").on_hover_text("Run all, with coverage").clicked()
-                                    {
-                                        cover = Some(*adapter);
-                                    }
                                 });
-                            });
-                        }
-                        Row::Group(title) => {
-                            if !only_failed {
-                                ui.label(RichText::new(title).small().color(pal.text_dim));
                             }
-                        }
-                        Row::Test { adapter, file, id, line, result } => {
-                            let found = result.and_then(|r| results.get(*adapter)?.get(r));
-                            if only_failed && !found.is_some_and(|r| r.outcome == Outcome::Failed) {
-                                continue;
-                            }
-                            ui.horizontal(|ui| {
-                                ui.add_space(10.0);
-                                let (icon, color) = outcome_icon(to_cargo(found.map(|r| r.outcome)));
-                                let (icon, color) =
-                                    if icon == Icon::Play { (Icon::Beaker, pal.text_dim) } else { (icon, color) };
-                                icons::show(ui, icon, size, color);
-                                if ui.add(egui::Label::new(id.as_str()).sense(Sense::click())).clicked() {
-                                    if let Some(r) = result {
-                                        select = Some((*adapter, *r));
-                                    }
-                                    if let Some(file) = file {
-                                        open = Some((file.clone(), *line));
-                                    }
+                            Row::Group(title) => {
+                                if !only_failed {
+                                    ui.label(RichText::new(title).small().color(pal.text_dim));
                                 }
-                                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                                    if let Some(file) = file
-                                        && icons::button(ui, Icon::Play, "Run").clicked()
-                                    {
-                                        start = Some((*adapter, Some((file.clone(), id.clone(), *line))));
+                            }
+                            Row::Test { adapter, file, id, line, result } => {
+                                let found = result.and_then(|r| results.get(*adapter)?.get(r));
+                                if only_failed && !found.is_some_and(|r| r.outcome == Outcome::Failed) {
+                                    continue;
+                                }
+                                ui.horizontal(|ui| {
+                                    ui.add_space(10.0);
+                                    let (icon, color) = outcome_icon(to_cargo(found.map(|r| r.outcome)));
+                                    let (icon, color) =
+                                        if icon == Icon::Play { (Icon::Beaker, pal.text_dim) } else { (icon, color) };
+                                    icons::show(ui, icon, size, color);
+                                    if ui.add(egui::Label::new(id.as_str()).sense(Sense::click())).clicked() {
+                                        if let Some(r) = result {
+                                            select = Some((*adapter, *r));
+                                        }
+                                        if let Some(file) = file {
+                                            open = Some((file.clone(), *line));
+                                        }
                                     }
-                                    let time = duration(found.and_then(|r| r.millis));
-                                    ui.label(RichText::new(time).small().color(pal.text_dim));
+                                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                        if let Some(file) = file
+                                            && icons::button(ui, Icon::Play, "Run").clicked()
+                                        {
+                                            start = Some((*adapter, Some((file.clone(), id.clone(), *line))));
+                                        }
+                                        let time = duration(found.and_then(|r| r.millis));
+                                        ui.label(RichText::new(time).small().color(pal.text_dim));
+                                    });
                                 });
-                            });
+                            }
                         }
                     }
-                }
-            },
-        );
+                });
+        }
         // What a selected test printed, and a way to where it went wrong.
         let mut jump = None;
         if let Some((a, r)) = self.tests.selected {
@@ -723,4 +739,78 @@ impl CodeApp {
             }
         }
     }
+}
+
+/// The timeline: a row a test, its bar on one time axis, colored by how it went. Returns the
+/// test clicked.
+fn timeline_ui(
+    ui: &mut egui::Ui,
+    results: &[Vec<TestResult>],
+    height: f32,
+    selected: Option<(usize, usize)>,
+) -> Option<(usize, usize)> {
+    let pal = theme::colors();
+    let (spans, total) = testing::timeline(results);
+    if spans.is_empty() {
+        ui.label(
+            RichText::new("No times yet: run the tests (not every runner gives each test's time).").color(pal.text_dim),
+        );
+        return None;
+    }
+    let slowest = spans.iter().max_by_key(|s| s.millis).copied();
+    let name_of = |s: &testing::Span| results[s.adapter][s.result].name.clone();
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(format!("{} tests, {} in all", spans.len(), duration(Some(total)))).small());
+        if let Some(s) = slowest {
+            ui.label(
+                RichText::new(format!("slowest: {} ({})", name_of(&s), duration(Some(s.millis))))
+                    .small()
+                    .color(pal.text_dim),
+            );
+        }
+    });
+    let mut clicked = None;
+    egui::ScrollArea::vertical().id_salt("test_timeline").max_height(height).auto_shrink([false, false]).show(
+        ui,
+        |ui| {
+            let row_h = ui.text_style_height(&egui::TextStyle::Small) + 6.0;
+            let width = ui.available_width();
+            let label_w = (width * 0.35).clamp(90.0, 260.0);
+            let bar_w = (width - label_w - 8.0).max(40.0);
+            let scale = bar_w / total.max(1) as f32;
+            for s in &spans {
+                let r = &results[s.adapter][s.result];
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(width, row_h), Sense::click());
+                let painter = ui.painter_at(rect);
+                if selected == Some((s.adapter, s.result)) || resp.hovered() {
+                    painter.rect_filled(rect, 3.0, pal.hover_bg);
+                }
+                let font = egui::FontId::proportional(ui.text_style_height(&egui::TextStyle::Small));
+                let label = painter.layout(r.name.clone(), font, pal.text, label_w - 6.0);
+                painter.galley(egui::pos2(rect.left() + 2.0, rect.center().y - label.size().y / 2.0), label, pal.text);
+                let color = match r.outcome {
+                    Outcome::Passed => Color32::from_rgb(0x4C, 0xB8, 0x6A),
+                    Outcome::Failed => Color32::from_rgb(0xE5, 0x53, 0x4B),
+                    Outcome::Skipped => pal.text_dim,
+                };
+                let x = rect.left() + label_w + s.start as f32 * scale;
+                let bar = egui::Rect::from_min_size(
+                    egui::pos2(x, rect.top() + 3.0),
+                    egui::vec2((s.millis as f32 * scale).max(2.0), row_h - 6.0),
+                );
+                painter.rect_filled(bar, 2.0, color);
+                let resp = resp.on_hover_text(format!(
+                    "{}\n{} · from {} to {}",
+                    r.name,
+                    duration(Some(s.millis)),
+                    duration(Some(s.start)),
+                    duration(Some(s.start + s.millis))
+                ));
+                if resp.clicked() {
+                    clicked = Some((s.adapter, s.result));
+                }
+            }
+        },
+    );
+    clicked
 }

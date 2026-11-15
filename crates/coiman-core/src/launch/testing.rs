@@ -944,9 +944,55 @@ pub fn failure_place(result: &TestResult, root: &Path, files: &[PathBuf]) -> Opt
     })
 }
 
+/// A test on the timeline: which (runner, result), where its bar starts and how long it is,
+/// in milliseconds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Span {
+    pub adapter: usize,
+    pub result: usize,
+    pub start: u64,
+    pub millis: u64,
+}
+
+/// The tests that have a time, end to end in the order they ran (each runner after the one
+/// before), and the time they took in all. Runners that run tests at once overlap them: laid
+/// end to end, the axis is the sum of their times.
+pub fn timeline(results: &[Vec<TestResult>]) -> (Vec<Span>, u64) {
+    let mut at = 0;
+    let mut spans = Vec::new();
+    for (adapter, list) in results.iter().enumerate() {
+        for (result, r) in list.iter().enumerate() {
+            let Some(millis) = r.millis else { continue };
+            spans.push(Span { adapter, result, start: at, millis });
+            at += millis;
+        }
+    }
+    (spans, at)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timeline_lays_tests_end_to_end() {
+        let t = |name: &str, ms: Option<u64>| {
+            let mut r = TestResult::new("s", name, Outcome::Passed);
+            r.millis = ms;
+            r
+        };
+        let results = vec![vec![t("a", Some(10)), t("b", None), t("c", Some(5))], vec![t("d", Some(20))]];
+        let (spans, total) = timeline(&results);
+        assert_eq!(total, 35);
+        assert_eq!(
+            spans,
+            [
+                Span { adapter: 0, result: 0, start: 0, millis: 10 },
+                Span { adapter: 0, result: 2, start: 10, millis: 5 },
+                Span { adapter: 1, result: 0, start: 15, millis: 20 },
+            ]
+        );
+    }
 
     #[test]
     fn reads_go() {
