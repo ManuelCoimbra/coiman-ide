@@ -123,6 +123,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "editor",
+                "font_ligatures",
+                "Font ligatures",
+                "Draw `->`, `!=`, `=>` as the code font joins them, for fonts that have ligatures (Fira Code, JetBrains Mono, Cascadia Code).",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "minimap",
                 "Minimap",
                 "A small picture of the whole file in place of the scrollbar. Click or drag it to move.",

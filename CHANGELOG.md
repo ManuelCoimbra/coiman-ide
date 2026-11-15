@@ -15,6 +15,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - **Git Graph**: every branch's commits drawn with their branches and merges; a commit's files;
   cherry-pick, revert, a branch at a commit, and interactive rebase (reorder, reword, squash,
   fix up, drop) from a commit's menu.
+- **Font ligatures** for code fonts that have them (`editor.font_ligatures`).
 - **Coiman High Contrast** themes, dark and light.
 - The minimap draws the code in its syntax colors.
 - **Merge Conflicts** window: each conflict side by side, settled by taking current, incoming

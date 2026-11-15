@@ -814,6 +814,7 @@ impl CodeApp {
                 block_cursor: false,
                 smooth_scrolling: self.settings.editor.smooth_scrolling,
                 minimap: self.settings.editor.minimap,
+                ligatures: self.settings.editor.font_ligatures,
                 pane: 0,
                 active: true,
             };

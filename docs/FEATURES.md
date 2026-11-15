@@ -928,6 +928,10 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   of it. The accent is the first of the theme's focus border, active border, button and
   link colors that stands out from its background. Wayland keeps the launcher's icon: a
   window can't change it there.
+- **Font ligatures** (`editor.font_ligatures`, on): with a code font that has them (Fira Code,
+  JetBrains Mono, Cascadia Code, set in `editor.font_family`), `->`, `=>`, `!=`, `>=`, `===`,
+  `<!--` and the rest are drawn as the font joins them. Each character keeps its cell, so the
+  cursor and selections move through them one character at a time.
 - **Coiman High Contrast** and **Coiman High Contrast Light**: black on white or white on
   black, bright borders, and syntax colors chosen to stay readable.
 - **Bundled themes**: Catppuccin (Mocha, Macchiato, Frappé, Latte), Dracula (and Soft),

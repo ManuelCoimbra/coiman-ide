@@ -69,6 +69,8 @@ pub struct Options {
     pub smooth_scrolling: bool,
     /// A picture of the whole file in place of the vertical scrollbar.
     pub minimap: bool,
+    /// Draw the editor font's ligatures (`->`, `!=`), when it has them.
+    pub ligatures: bool,
     /// Which pane this is, when the editor is split.
     pub pane: u8,
     /// Whether this is the focused pane; the other one leaves focus requests alone.
@@ -1700,7 +1702,21 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         // Each picture takes the color its first character would have, quote or letter.
         let image_colors: Vec<Color32> = word_images.iter().map(|w| syntax_color(doc, row.line, w.start)).collect();
         // Text.
-        let job = row_job(doc, view, &row, m, Some(&line_highlights).filter(|h| !h.is_empty()).map(|h| h.as_slice()));
+        let swaps = if opts.ligatures && row.first {
+            crate::ui::ligatures::swaps(&doc.buffer.line_text(row.line))
+        } else {
+            std::sync::Arc::default()
+        };
+        let mut ligature_cells = Vec::new();
+        let job = row_job(
+            doc,
+            view,
+            &row,
+            m,
+            Some(&line_highlights).filter(|h| !h.is_empty()).map(|h| h.as_slice()),
+            &swaps,
+            &mut ligature_cells,
+        );
         let galley = ui.fonts_mut(|f| {
             let job = fit_to_cells(job, m.char_w, f);
             f.layout_job(job)
@@ -1739,6 +1755,18 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             from = xb;
         }
         let rest = Rect::from_x_y_ranges((from - shift).max(clip.left())..=clip.right(), clip.y_range());
+        // Ligatures: the font's own glyphs where its characters were left transparent.
+        if shifts.is_empty()
+            && let Some(galley_row) = galley.rows.first()
+        {
+            for (at, glyph, color) in &ligature_cells {
+                if let (Some(g), Some(glyph)) = (galley_row.glyphs.get(*at), glyph) {
+                    let baseline = y + galley_row.pos.y + g.pos.y;
+                    let x = x0 + galley_row.pos.x + g.pos.x;
+                    crate::ui::ligatures::paint(&text_painter, *glyph, x, baseline, m.font_id.size, m.char_w, *color);
+                }
+            }
+        }
         text_painter.with_clip_rect(rest.intersect(clip)).galley(Pos2::new(x0 - shift, y), galley, text_color);
         if shifts.is_empty() {
             view.word_shifts.remove(&row.start);
@@ -2131,13 +2159,18 @@ fn fit_to_cells(job: LayoutJob, char_w: f32, fonts: &mut egui::epaint::text::Fon
     LayoutJob { sections, ..job }
 }
 
+#[allow(clippy::too_many_arguments)] // the row, how to color it, and its ligatures
 fn row_job(
     doc: &mut Document,
     view: &mut ViewState,
     row: &Row,
     m: &Metrics,
     highlights: Option<&[Highlight]>,
+    swaps: &[crate::ui::ligatures::Swap],
+    ligature_cells: &mut Vec<(usize, Option<u16>, Color32)>,
 ) -> LayoutJob {
+    // Characters of the job so far, to find a ligature's glyph in the laid-out row.
+    let mut job_chars = 0usize;
     let line_start = doc.buffer.line_start(row.line);
     let line_text = doc.buffer.line_text(row.line);
     let chars: Vec<char> = line_text.chars().collect();
@@ -2204,31 +2237,43 @@ fn row_job(
         }
         while let Some((_, text)) = hints.get(hint_at).filter(|(c, _)| *c <= idx) {
             job.append(text, 0.0, hint_format.clone());
+            job_chars += text.chars().count();
             hint_at += 1;
         }
+        let format = |color: Color32| TextFormat {
+            font_id: m.font_id.clone(),
+            color,
+            italics: look.italic,
+            strikethrough: if look.strike { egui::Stroke::new(1.0, color) } else { egui::Stroke::NONE },
+            ..Default::default()
+        };
+        // Pieces of one color; a ligature's characters are transparent, its glyph drawn after.
         let mut piece = String::with_capacity(stop - idx);
+        let mut piece_hidden = false;
         for (i, &c) in (idx..stop).zip(&chars[idx..stop]) {
             let w = char_width(c, col);
+            let swap = (!swaps.is_empty()).then(|| swaps.binary_search_by_key(&i, |s| s.index).ok()).flatten();
+            if swap.is_some() != piece_hidden && !piece.is_empty() {
+                job.append(&piece, 0.0, format(if piece_hidden { Color32::TRANSPARENT } else { color }));
+                piece.clear();
+            }
+            piece_hidden = swap.is_some();
+            if let Some(s) = swap {
+                ligature_cells.push((job_chars, swaps[s].glyph, color));
+            }
             if c == '\t' {
                 piece.extend(std::iter::repeat_n(' ', w));
+                job_chars += w;
             } else if hidden.is_some_and(|h| h.contains(&i)) {
                 piece.push('?');
+                job_chars += 1;
             } else {
                 piece.push(c);
+                job_chars += 1;
             }
             col += w;
         }
-        job.append(
-            &piece,
-            0.0,
-            TextFormat {
-                font_id: m.font_id.clone(),
-                color,
-                italics: look.italic,
-                strikethrough: if look.strike { egui::Stroke::new(1.0, color) } else { egui::Stroke::NONE },
-                ..Default::default()
-            },
-        );
+        job.append(&piece, 0.0, format(if piece_hidden { Color32::TRANSPARENT } else { color }));
         idx = stop;
         if idx >= seg_b {
             break;

@@ -156,6 +156,8 @@ impl CodeApp {
     pub(crate) fn install_fonts(&self, ctx: &egui::Context) {
         const EDITOR: &str = "editor font";
         let mut fonts = egui::FontDefinitions::default();
+        // Ligatures are shaped with the code font itself; the built-in one has none.
+        crate::ui::ligatures::set_font(self.editor_font.clone());
         if let Some(font) = &self.editor_font {
             fonts.font_data.insert(EDITOR.to_owned(), font.clone());
             // The built-in fonts stay behind it for characters it lacks.

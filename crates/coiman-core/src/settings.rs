@@ -126,6 +126,8 @@ pub struct EditorSettings {
     pub smooth_scrolling: bool,
     /// A small picture of the whole file in place of the scrollbar, as Kate and VS Code have.
     pub minimap: bool,
+    /// Draw the code font's ligatures (`->`, `!=`, `=>`), for fonts that have them.
+    pub font_ligatures: bool,
     /// Mark bidi controls and invisible or private use characters, and warn about them.
     pub unicode_warnings: bool,
     pub trim_trailing_whitespace: bool,
@@ -397,6 +399,7 @@ impl Default for EditorSettings {
             code_lens: true,
             smooth_scrolling: true,
             minimap: false,
+            font_ligatures: true,
             unicode_warnings: true,
             trim_trailing_whitespace: false,
             insert_final_newline: false,

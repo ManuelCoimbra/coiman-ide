@@ -6,6 +6,7 @@ pub mod grid_view;
 pub mod icons;
 pub mod inspector;
 pub mod keymap;
+pub mod ligatures;
 pub mod lsp_ui;
 pub mod palette;
 pub mod search_panel;
