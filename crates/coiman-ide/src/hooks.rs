@@ -5,6 +5,7 @@
 //! The rest of what a port needs is in `coiman_core`: `platform` (running programs another way)
 //! and `selection` (where the selected text is, for a platform text bar).
 
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 /// Draws something of the port's own.
@@ -26,6 +27,48 @@ pub fn set_status_bar_item(draw: UiHook) -> bool {
 /// the soft keyboard back).
 pub fn set_text_tapped(notify: Notify) -> bool {
     TEXT_TAPPED.set(notify).is_ok()
+}
+
+/// What a file dialog asks for.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PickKind {
+    /// A file to open.
+    #[default]
+    File,
+    /// A folder to open.
+    Folder,
+    /// Where to save a file.
+    Save,
+}
+
+/// A file dialog's request, for a port's picker.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PickRequest {
+    pub kind: PickKind,
+    /// The dialog's title.
+    pub title: Option<String>,
+    /// The folder it opens in.
+    pub directory: Option<PathBuf>,
+    /// The name a save starts with.
+    pub file_name: Option<String>,
+    /// Kinds of file to show: a name and its extensions (`*` for all).
+    pub filters: Vec<(String, Vec<String>)>,
+}
+
+/// Answers a file dialog: the path chosen, or `None` when cancelled. It waits for the answer.
+pub type FilePicker = Box<dyn Fn(&PickRequest) -> Option<PathBuf> + Send + Sync>;
+
+static FILE_PICKER: OnceLock<FilePicker> = OnceLock::new();
+
+/// Shows the port's own file dialogs in place of the system's (on Android, the system's
+/// document picker). Android has no other.
+pub fn set_file_picker(picker: FilePicker) -> bool {
+    FILE_PICKER.set(picker).is_ok()
+}
+
+/// The port's file picker, if it set one.
+pub(crate) fn file_picker() -> Option<&'static FilePicker> {
+    FILE_PICKER.get()
 }
 
 /// Draws the port's status bar item, if it set one.

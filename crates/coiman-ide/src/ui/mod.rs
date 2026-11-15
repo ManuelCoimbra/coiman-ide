@@ -2,6 +2,7 @@
 
 pub mod editor_view;
 pub mod explorer;
+pub mod file_dialog;
 pub mod grid_view;
 pub mod icons;
 pub mod inspector;

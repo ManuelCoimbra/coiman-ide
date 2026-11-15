@@ -27,6 +27,7 @@ did. The desktop sets none.
 | `coiman_core::platform::set_tool_probe(Box<dyn Fn(&str) -> Option<PathBuf>>)` | `which` asks the probe first whether a program is there, for programs `PATH` can't show (Termux's folder belongs to another app). |
 | `coiman_ide::hooks::set_status_bar_item(Box<dyn Fn(&mut egui::Ui)>)` | A widget at the right end of the status bar (Android's soft keyboard button). |
 | `coiman_ide::hooks::set_text_tapped(Box<dyn Fn()>)` | Called when the editor or a terminal is clicked or tapped to type in (to bring the soft keyboard back). |
+| `coiman_ide::hooks::set_file_picker(Box<dyn Fn(&PickRequest) -> Option<PathBuf>>)` | Every file dialog (open, save, choose a folder) asks the picker: on Android, the system's document picker. A `PickRequest` has the kind (file, folder, save), title, starting folder, file name and filters. On Android, Open File and Open Folder use it too, else Coiman's File Manager. |
 
 ## Published state
 
@@ -44,10 +45,17 @@ text bar looks for it.
   command palette (and Explorer's New File, Rename…) doesn't take the tap that opened it as a
   press outside, which would close it.
 - No `trash` crate: Move to Trash says there's no Trash, rather than delete for good unasked.
+- No `rfd` crate (it has no Android dialogs): file dialogs go to the port's picker, or show
+  nothing without one.
+- eframe uses the native Activity (`android-native-activity`), without `accesskit` (eframe has it
+  on Android only with GameActivity).
+
+CI checks the Android build with clippy on every push (the `android` job in `ci.yml`), so a
+change that breaks it is caught here.
 
 ## Left to the port
 
-- Its own eframe shell, renderer (wgpu) and Activity.
+- Its own eframe shell, renderer (wgpu, if it wants it rather than glow) and Activity.
 - Its egui fork, if it uses one (fields of `IMEOutput` differ from crates.io egui).
-- The terminal's pseudo-terminal: `coiman_core::terminal::pty` uses `portable-pty`, which has no
-  Android backend.
+- The terminal's shell: `coiman_core::terminal::pty` builds on Android, but the programs a
+  terminal runs there are Termux's, which another app can't start directly.

@@ -1,6 +1,7 @@
 //! Recent projects and files: Open Recent (Ctrl+R), the Welcome page's list and the File
 //! menu's, each able to open, remove and clear them, and each marking those that are gone.
 
+use crate::ui::file_dialog::FileDialog;
 use std::path::{Path, PathBuf};
 
 use coiman_core::project::recent::{self, Entry};
@@ -47,8 +48,8 @@ fn place(path: &Path) -> String {
 
 impl CodeApp {
     /// A file dialog that opens where dialog `kind` was last left, else in the open folder.
-    pub(crate) fn file_dialog(&self, kind: &str) -> rfd::FileDialog {
-        let dialog = rfd::FileDialog::new();
+    pub(crate) fn file_dialog(&self, kind: &str) -> FileDialog {
+        let dialog = FileDialog::new();
         match self.dialog_dirs.get(kind).map(Path::to_path_buf).or_else(|| self.explorer.root.clone()) {
             Some(dir) => dialog.set_directory(dir),
             None => dialog,

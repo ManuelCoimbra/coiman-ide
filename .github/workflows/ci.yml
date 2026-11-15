@@ -41,3 +41,27 @@ jobs:
       - name: Checks
         shell: pwsh
         run: ./scripts/check.ps1
+
+  android:
+    name: Android build check (the hooks a port uses)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component clippy
+          rustup target add aarch64-linux-android
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-android-${{ hashFiles('Cargo.lock') }}
+      # The runner's NDK compiles the tree-sitter grammars for Android.
+      - name: Clippy for Android
+        run: |
+          ndk="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$ndk/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$ndk/llvm-ar"
+          cargo clippy --target aarch64-linux-android -p coiman-core -p coiman-ide -- -D warnings

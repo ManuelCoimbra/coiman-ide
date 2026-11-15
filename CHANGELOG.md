@@ -24,7 +24,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
   onto it; in Merge Conflicts, a result to write by hand.
 - For ports (the Android build): `coiman-ide` is a library too, with hooks to run programs
   another way, add to the status bar, hear of taps in the text, and find the selection, so a
-  port needs no edits to Coiman's source. See [docs/PORTING.md](docs/PORTING.md).
+  port needs no edits to Coiman's source; its file dialogs go through a hook too. CI checks the
+  Android build. See [docs/PORTING.md](docs/PORTING.md).
 - **Merge Conflicts** window: each conflict side by side, settled by taking current, incoming
   or both; mark files resolved, then continue or abort the merge, cherry-pick, revert or rebase.
 

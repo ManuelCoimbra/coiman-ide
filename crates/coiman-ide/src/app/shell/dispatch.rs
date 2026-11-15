@@ -70,20 +70,21 @@ impl CodeApp {
             Command::QuickOpen => self.open_palette(""),
             Command::SearchEverywhere => self.open_everywhere(),
             Command::NewFile => self.new_file(),
-            // Coiman's own File Manager chooses, not the system's dialog. On Android the system's
-            // picker stays: only it grants access to the folders and files picked.
-            #[cfg(not(target_os = "android"))]
-            Command::OpenFile => self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Files),
-            #[cfg(not(target_os = "android"))]
-            Command::OpenFolder => self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Folder),
-            #[cfg(target_os = "android")]
+            // Coiman's own File Manager chooses, not the system's dialog. On Android the port's
+            // picker (the system's) chooses when it gave one: only it grants access to the
+            // folders and files picked.
+            Command::OpenFile if !android_picker() => {
+                self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Files)
+            }
+            Command::OpenFolder if !android_picker() => {
+                self.pick_with_file_manager(crate::app::views::file_manager::PickFor::Folder)
+            }
             Command::OpenFile => {
                 if let Some(path) = self.file_dialog("open_file").pick_file() {
                     self.dialog_chose("open_file", &path);
                     self.open_file(&path);
                 }
             }
-            #[cfg(target_os = "android")]
             Command::OpenFolder => {
                 if let Some(path) = self.file_dialog("open_folder").pick_folder() {
                     self.dialog_chose("open_folder", &path);
@@ -955,4 +956,9 @@ impl CodeApp {
             self.run_command(ctx, cmd);
         }
     }
+}
+
+/// Whether Open File and Open Folder use the port's picker: on Android, when it set one.
+fn android_picker() -> bool {
+    cfg!(target_os = "android") && crate::hooks::file_picker().is_some()
 }

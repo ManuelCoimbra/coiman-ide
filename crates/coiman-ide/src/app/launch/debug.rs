@@ -977,7 +977,7 @@ impl CodeApp {
     }
 
     /// Where breakpoint files are saved and read: the project's `.coiman` folder at first.
-    fn breakpoints_dialog(&self) -> rfd::FileDialog {
+    fn breakpoints_dialog(&self) -> crate::ui::file_dialog::FileDialog {
         let dialog = self.file_dialog("breakpoints").add_filter("Breakpoints", &["json"]);
         let coiman = self.explorer.root.as_ref().map(|r| r.join(".coiman")).filter(|d| d.is_dir());
         match coiman {
