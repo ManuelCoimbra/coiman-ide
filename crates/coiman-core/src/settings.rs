@@ -37,6 +37,86 @@ pub struct Settings {
     /// `.coiman/settings.toml` adds to and overrides the user's. `${NAME}` is the variable as
     /// the app was started with it: `PATH = "${PATH};C:/tools"`.
     pub env: std::collections::BTreeMap<String, String>,
+    pub workspace: WorkspaceSettings,
+}
+
+/// More than one folder in a window (a project's own setting, in `.coiman/settings.toml`).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(default)]
+pub struct WorkspaceSettings {
+    /// Folders shown and searched beside the project: relative to it, or whole paths.
+    pub folders: Vec<String>,
+}
+
+impl WorkspaceSettings {
+    /// The folders as paths, those that exist, each once and never the project itself.
+    pub fn resolved(&self, root: &Path) -> Vec<PathBuf> {
+        let mut out: Vec<PathBuf> = Vec::new();
+        for f in &self.folders {
+            let p = Path::new(f.trim());
+            let path = if p.is_absolute() { p.to_path_buf() } else { root.join(p) };
+            let path = normalize(&path);
+            if path.is_dir() && !out.contains(&path) && path != root {
+                out.push(path);
+            }
+        }
+        out
+    }
+}
+
+/// A VS Code `.code-workspace` file's folders, as paths (relative ones to the file's folder).
+pub fn code_workspace_folders(file: &Path, text: &str) -> Result<Vec<PathBuf>, String> {
+    let doc: serde_json::Value =
+        serde_json::from_str(&crate::appearance::theme::strip_jsonc(text)).map_err(|e| e.to_string())?;
+    let base = file.parent().unwrap_or(Path::new("."));
+    let folders = doc.get("folders").and_then(|f| f.as_array()).ok_or("no `folders` in it")?;
+    Ok(folders
+        .iter()
+        .filter_map(|f| f.get("path").and_then(|p| p.as_str()))
+        .map(|p| {
+            let p = Path::new(p);
+            normalize(&if p.is_absolute() { p.to_path_buf() } else { base.join(p) })
+        })
+        .collect())
+}
+
+/// `path` with its `.` and `..` worked out, without asking the disk.
+fn normalize(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for c in path.components() {
+        match c {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// `folder` as the workspace's setting stores it: relative to `root` when it's beside or under
+/// it (`../shared`), else whole.
+pub fn workspace_folder_entry(root: &Path, folder: &Path) -> String {
+    let rel = pathdiff(folder, root);
+    rel.map_or_else(|| folder.display().to_string(), |r| r.to_string_lossy().replace('\\', "/"))
+}
+
+/// `path` relative to `base`, when they share a root (on another drive there's none).
+fn pathdiff(path: &Path, base: &Path) -> Option<PathBuf> {
+    let (p, b): (Vec<_>, Vec<_>) = (path.components().collect(), base.components().collect());
+    if p.first() != b.first() {
+        return None;
+    }
+    let same = p.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let mut out = PathBuf::new();
+    for _ in same..b.len() {
+        out.push("..");
+    }
+    for c in &p[same..] {
+        out.push(c.as_os_str());
+    }
+    Some(out)
 }
 
 /// `value` with each `${NAME}` replaced by `lookup(NAME)` (empty when unset).
@@ -723,6 +803,32 @@ pub fn default_file_contents() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workspace_folders() {
+        let root = std::env::temp_dir().join(format!("rc-ws-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("app")).unwrap();
+        std::fs::create_dir_all(root.join("lib")).unwrap();
+        let (app, lib) = (root.join("app"), root.join("lib"));
+        let ws = WorkspaceSettings { folders: vec!["../lib".into(), "../lib".into(), "../gone".into(), ".".into()] };
+        assert_eq!(ws.resolved(&app), std::slice::from_ref(&lib), "once, existing, not the project");
+        assert_eq!(workspace_folder_entry(&app, &lib), "../lib");
+        std::fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn code_workspace_files() {
+        let text = r#"{
+            // two folders
+            "folders": [ { "path": "app" }, { "path": "../shared", "name": "Shared" }, ],
+            "settings": {}
+        }"#;
+        let file = Path::new("/w/proj/my.code-workspace");
+        let got = code_workspace_folders(file, text).unwrap();
+        assert_eq!(got, [PathBuf::from("/w/proj/app"), PathBuf::from("/w/shared")]);
+        assert!(code_workspace_folders(file, "{}").is_err());
+    }
 
     #[test]
     fn env_expands_and_layers() {

@@ -157,6 +157,10 @@ pub enum ExplorerAction {
     Paste(PathBuf),
     /// These files and folders into this folder, dragged and dropped.
     Move(Vec<PathBuf>, PathBuf),
+    /// Another folder in this window, beside the project.
+    AddRoot,
+    /// This folder out of the window (the folder itself stays).
+    RemoveRoot(PathBuf),
 }
 
 /// A row as last drawn, for the keyboard to move through.
@@ -211,6 +215,8 @@ pub struct Explorer {
     /// Chosen in a context menu, for the app to carry out.
     pub action: Option<ExplorerAction>,
     pub root: Option<PathBuf>,
+    /// The workspace's other folders, each its own tree under the project's.
+    pub extra_roots: Vec<PathBuf>,
     expanded: HashSet<PathBuf>,
     /// Cached directory listings, cleared on refresh.
     cache: HashMap<PathBuf, Vec<Entry>>,
@@ -897,6 +903,15 @@ impl Explorer {
                     self.action = Some(ExplorerAction::Paste(root.clone()));
                     ui.close();
                 }
+                ui.separator();
+                if ui
+                    .button("Add Folder to Workspace…")
+                    .on_hover_text("Another folder in this window, beside the project: shown and searched too")
+                    .clicked()
+                {
+                    self.action = Some(ExplorerAction::AddRoot);
+                    ui.close();
+                }
             });
             // Files dropped on the project row go back to the project's root.
             self.drop_here(ui, &response, &root);
@@ -910,6 +925,10 @@ impl Explorer {
             if expanded {
                 self.dir_ui(ui, &root, 1, focused, &mut clicked);
             }
+            // The workspace's other folders, each a tree of its own.
+            for extra in self.extra_roots.clone() {
+                self.extra_root_ui(ui, &extra, focused, &mut clicked);
+            }
         });
         self.rows = std::mem::take(&mut self.drawing);
         // A double click takes the file to the editor; a single one leaves the keyboard here.
@@ -920,6 +939,49 @@ impl Explorer {
             ui.memory_mut(|m| m.request_focus(focus_id()));
         }
         clicked.map(|path| (path, to_editor))
+    }
+
+    /// Another folder of the workspace: its row and, opened, its tree.
+    fn extra_root_ui(&mut self, ui: &mut egui::Ui, root: &Path, focused: bool, clicked: &mut Option<PathBuf>) {
+        let name = root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
+        let expanded = self.expanded.contains(root);
+        let look = FolderLook { expanded, kind: FolderKind::Plain, module: false };
+        let marks = self.marks(root, focused);
+        let response = row(ui, 0, &name, &home_relative(root), marks, Row::Folder(look));
+        self.drawing.push(RowInfo { path: root.to_path_buf(), opens: true, expanded, is_dir: true, depth: 0 });
+        response.context_menu(|ui| {
+            let dir = self.target_folder();
+            ui.menu_button("New", |ui| self.new_menu(ui, dir));
+            if self.clipboard.is_some() && ui.button("Paste\tCtrl+V").clicked() {
+                self.action = Some(ExplorerAction::Paste(root.to_path_buf()));
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Remove Folder from Workspace").on_hover_text("The folder itself stays where it is").clicked()
+            {
+                self.action = Some(ExplorerAction::RemoveRoot(root.to_path_buf()));
+                ui.close();
+            }
+        });
+        self.drop_here(ui, &response, root);
+        if response.clicked() && self.click_row(ui, root) {
+            if expanded {
+                self.expanded.remove(root);
+            } else {
+                self.expanded.insert(root.to_path_buf());
+            }
+        }
+        if expanded {
+            self.dir_ui(ui, root, 1, focused, clicked);
+        }
+    }
+
+    /// Opens the workspace's other folders' trees the first time they're seen.
+    pub fn set_extra_roots(&mut self, roots: Vec<PathBuf>) {
+        for r in roots.iter().filter(|r| !self.extra_roots.contains(r)) {
+            self.expanded.insert(r.clone());
+        }
+        self.extra_roots = roots;
     }
 
     /// How row `path` is marked: selected, the keyboard's, cut.

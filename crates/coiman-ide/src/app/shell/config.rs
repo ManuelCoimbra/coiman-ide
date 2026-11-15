@@ -190,6 +190,11 @@ impl CodeApp {
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
         let new = self.settings.clone();
+        // The workspace's other folders: shown, indexed and searched beside the project.
+        let extra = self.explorer.root.as_deref().map(|r| new.workspace.resolved(r)).unwrap_or_default();
+        self.explorer.set_extra_roots(extra.clone());
+        self.search.extra_roots = extra.clone();
+        self.finder.set_extra(extra);
         crate::buffer::set_tab_width(new.editor.tab_size);
         // Servers read these when they start.
         if !first

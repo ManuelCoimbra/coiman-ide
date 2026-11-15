@@ -21,6 +21,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Workspaces with more than one folder: Add Folder to Workspace in the Explorer, each folder a
+  tree of its own and searched by Quick Open and Find in Files; `.code-workspace` files open.
 - The Welcome page greets you by name (`workbench.greeting_name`, else your Git name).
 - Git worktrees from the Git Graph (list, add, open, remove), and a GitHub Actions panel
   (runs, jobs and steps, the failed log, re-run, the failed step in its workflow file),

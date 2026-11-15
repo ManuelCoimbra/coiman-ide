@@ -62,6 +62,11 @@ impl SearchHandle {
     /// Starts searching `root` for `query` on background threads; `notify`
     /// is called whenever new results are available.
     pub fn spawn(query: Query, root: PathBuf, notify: impl Fn() + Send + 'static) -> Self {
+        Self::spawn_in(query, vec![root], notify)
+    }
+
+    /// Searches several folders (a workspace's), one after the other, as one search.
+    pub fn spawn_in(query: Query, roots: Vec<PathBuf>, notify: impl Fn() + Send + 'static) -> Self {
         let (tx, rx) = channel();
         let cancel = Arc::new(AtomicBool::new(false));
         let flag = cancel.clone();
@@ -75,7 +80,22 @@ impl SearchHandle {
                     notify();
                 }
             });
-            run_search(&query, &root, &inner_tx, &flag);
+            let (mut files, mut truncated) = (0, false);
+            for root in &roots {
+                match run_search(&query, root, &inner_tx, &flag) {
+                    Some((f, t)) => {
+                        files += f;
+                        truncated |= t;
+                    }
+                    None => break,
+                }
+                if truncated {
+                    break;
+                }
+            }
+            if !flag.load(Ordering::Relaxed) {
+                let _ = inner_tx.send(Msg::Done { files_searched: files, truncated });
+            }
             drop(inner_tx);
             let _ = forward.join();
         });
@@ -102,12 +122,14 @@ fn build_matcher(q: &Query) -> Result<RegexMatcher, String> {
         .map_err(|e| format!("Invalid search: {e}"))
 }
 
-fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>) {
+/// Searches one folder: the files searched and whether the matches ran out, or `None` after
+/// an error (sent) or when cancelled.
+fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>) -> Option<(usize, bool)> {
     let matcher = match build_matcher(q) {
         Ok(m) => m,
         Err(e) => {
             let _ = tx.send(Msg::Error(e));
-            return;
+            return None;
         }
     };
     let mut walk = crate::project::finder::walker(root);
@@ -116,13 +138,13 @@ fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>
     for g in globs(&q.include) {
         if let Err(e) = overrides.add(&g) {
             let _ = tx.send(Msg::Error(format!("Bad include glob `{g}`: {e}")));
-            return;
+            return None;
         }
     }
     for g in globs(&q.exclude) {
         if let Err(e) = overrides.add(&format!("!{g}")) {
             let _ = tx.send(Msg::Error(format!("Bad exclude glob `{g}`: {e}")));
-            return;
+            return None;
         }
     }
     match overrides.build() {
@@ -131,7 +153,7 @@ fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>
         }
         Err(e) => {
             let _ = tx.send(Msg::Error(format!("Bad glob: {e}")));
-            return;
+            return None;
         }
     }
 
@@ -167,12 +189,10 @@ fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>
             WalkState::Continue
         })
     });
-    if !cancel.load(Ordering::Relaxed) {
-        let _ = tx.send(Msg::Done {
-            files_searched: files.load(Ordering::Relaxed),
-            truncated: total.load(Ordering::Relaxed) >= MAX_MATCHES,
-        });
+    if cancel.load(Ordering::Relaxed) {
+        return None;
     }
+    Some((files.load(Ordering::Relaxed), total.load(Ordering::Relaxed) >= MAX_MATCHES))
 }
 
 /// Matches of one line, trimmed for display.

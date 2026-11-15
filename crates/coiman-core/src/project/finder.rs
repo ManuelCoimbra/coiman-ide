@@ -28,6 +28,8 @@ pub struct FileMatch {
 pub struct FileFinder {
     nucleo: Nucleo<Entry>,
     root: Option<PathBuf>,
+    /// More folders of the workspace: their files are named from the folder's own name.
+    extra: Vec<PathBuf>,
     /// Bumped on every new walk so older walks stop early.
     walk_generation: Arc<AtomicU64>,
     walking: Arc<AtomicBool>,
@@ -54,6 +56,7 @@ impl FileFinder {
         Self {
             nucleo: Nucleo::new(Config::DEFAULT.match_paths(), notify, None, 1),
             root: None,
+            extra: Vec::new(),
             walk_generation: Arc::new(AtomicU64::new(0)),
             walking: Arc::new(AtomicBool::new(false)),
             query: String::new(),
@@ -67,6 +70,15 @@ impl FileFinder {
             return;
         }
         self.root = root;
+        self.rescan();
+    }
+
+    /// The workspace's other folders, indexed too.
+    pub fn set_extra(&mut self, extra: Vec<PathBuf>) {
+        if self.extra == extra {
+            return;
+        }
+        self.extra = extra;
         self.rescan();
     }
 
@@ -87,29 +99,38 @@ impl FileFinder {
         self.nucleo.restart(true);
         let generation = self.walk_generation.fetch_add(1, Ordering::SeqCst) + 1;
         let Some(root) = self.root.clone() else { return };
+        // The project's files by their path in it; another folder's under its own name.
+        let mut roots = vec![(root, String::new())];
+        for extra in &self.extra {
+            let name = extra.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            roots.push((extra.clone(), format!("{name}/")));
+        }
         let injector = self.nucleo.injector();
         let current = self.walk_generation.clone();
         let walking = self.walking.clone();
         walking.store(true, Ordering::SeqCst);
         std::thread::spawn(move || {
-            walker(&root).build_parallel().run(|| {
-                let injector = injector.clone();
-                let root = root.clone();
-                let current = current.clone();
-                Box::new(move |entry| {
-                    if current.load(Ordering::Relaxed) != generation {
-                        return WalkState::Quit;
-                    }
-                    if let Ok(e) = entry
-                        && e.file_type().is_some_and(|t| t.is_file())
-                    {
-                        let path = e.into_path();
-                        let rel = path.strip_prefix(&root).unwrap_or(&path).to_string_lossy().into_owned();
-                        injector.push(Entry { path, rel }, |e, cols| cols[0] = e.rel.as_str().into());
-                    }
-                    WalkState::Continue
-                })
-            });
+            for (root, prefix) in roots {
+                walker(&root).build_parallel().run(|| {
+                    let injector = injector.clone();
+                    let (root, prefix) = (root.clone(), prefix.clone());
+                    let current = current.clone();
+                    Box::new(move |entry| {
+                        if current.load(Ordering::Relaxed) != generation {
+                            return WalkState::Quit;
+                        }
+                        if let Ok(e) = entry
+                            && e.file_type().is_some_and(|t| t.is_file())
+                        {
+                            let path = e.into_path();
+                            let rel =
+                                format!("{prefix}{}", path.strip_prefix(&root).unwrap_or(&path).to_string_lossy());
+                            injector.push(Entry { path, rel }, |e, cols| cols[0] = e.rel.as_str().into());
+                        }
+                        WalkState::Continue
+                    })
+                });
+            }
             if current.load(Ordering::SeqCst) == generation {
                 walking.store(false, Ordering::SeqCst);
             }

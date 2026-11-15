@@ -8,17 +8,15 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Now
 
-1. **Git worktrees and a GitHub Actions view.** Built. Worktrees are tested in the app;
-   the Actions view lists runs, and its "Only failed" filter is being tested before the
-   commit.
-2. **The editor's island sizing.** To reproduce with a Markdown file, a background picture,
-   word wrap and the island layout, and fix.
-3. **The user's name in the Welcome greeting**: "Good afternoon, Manuel." From
-   `workbench.greeting_name`, else the first word of Git's `user.name`, else the account's
-   name.
-4. **Multi-root workspaces.** Extra folders in Explorer, each its own tree; Quick Open and
-   Find in Files search them too; `.code-workspace` files open. Git, Run and the language
-   servers stay with the main folder at first.
+- Picking up from "Next" below.
+
+## Done lately
+
+- Workspaces with more than one folder (Explorer, Quick Open, Find in Files,
+  `.code-workspace` files).
+- Git worktrees, and a GitHub Actions view (through `gh`).
+- The Welcome page greets by name.
+- The Dock layout's island gaps, even on both sides.
 
 ## Next, nothing to download
 

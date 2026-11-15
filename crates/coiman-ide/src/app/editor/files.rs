@@ -226,6 +226,10 @@ impl CodeApp {
             self.remember_recent();
         }
         self.hide_view_tabs();
+        // A VS Code workspace: its first folder as the project, the rest beside it.
+        if path.extension().is_some_and(|e| e == "code-workspace") && self.open_code_workspace(path) {
+            return;
+        }
         // A SQLite database opens in the Database window, not as bytes.
         if coiman_core::data::database::is_sqlite_file(path) {
             self.open_database(path);
@@ -329,6 +333,77 @@ impl CodeApp {
             ExplorerAction::Paste(dir) => self.paste_into(&dir),
             ExplorerAction::Move(paths, dir) => self.move_into(&paths, &dir),
             ExplorerAction::OpenInFileManager(dir) => self.open_file_manager(Some(dir)),
+            ExplorerAction::AddRoot => {
+                if let Some(dir) =
+                    self.file_dialog("workspace_folder").set_title("A folder to add to the workspace").pick_folder()
+                {
+                    self.dialog_chose("workspace_folder", &dir);
+                    self.change_workspace_folders(|folders, root| {
+                        let entry = coiman_core::settings::workspace_folder_entry(root, &dir);
+                        if !folders.contains(&entry) {
+                            folders.push(entry);
+                        }
+                    });
+                }
+            }
+            ExplorerAction::RemoveRoot(dir) => self.change_workspace_folders(|folders, root| {
+                let entry = coiman_core::settings::workspace_folder_entry(root, &dir);
+                folders.retain(|f| f != &entry && Path::new(f) != dir);
+            }),
+        }
+    }
+
+    /// Opens a `.code-workspace` file's folders: the first as the project, the others in its
+    /// `[workspace] folders`. False when it can't be read (it then opens as text).
+    fn open_code_workspace(&mut self, file: &Path) -> bool {
+        let read = std::fs::read_to_string(file)
+            .map_err(|e| e.to_string())
+            .and_then(|t| coiman_core::settings::code_workspace_folders(file, &t));
+        let folders: Vec<PathBuf> = match read {
+            Ok(f) => f.into_iter().filter(|p| p.is_dir()).collect(),
+            Err(e) => {
+                self.status = Some(format!("{}: {e}", file.display()));
+                return false;
+            }
+        };
+        let Some((first, rest)) = folders.split_first() else {
+            self.status = Some("None of the workspace's folders is here".to_owned());
+            return false;
+        };
+        self.open_folder(first.clone());
+        if !rest.is_empty() {
+            let rest = rest.to_vec();
+            self.change_workspace_folders(|folders, root| {
+                for dir in &rest {
+                    let entry = coiman_core::settings::workspace_folder_entry(root, dir);
+                    if !folders.contains(&entry) {
+                        folders.push(entry);
+                    }
+                }
+            });
+        }
+        true
+    }
+
+    /// Changes `[workspace] folders` in the project's own settings file, and reloads.
+    pub(crate) fn change_workspace_folders(&mut self, change: impl FnOnce(&mut Vec<String>, &Path)) {
+        let Some(root) = self.explorer.root.clone() else { return };
+        let mut folders = self.settings.workspace.folders.clone();
+        change(&mut folders, &root);
+        let file = coiman_core::settings::workspace_settings_path(&root);
+        let text = std::fs::read_to_string(&file).unwrap_or_default();
+        let value = toml::Value::Array(folders.iter().map(|f| toml::Value::String(f.clone())).collect()).to_string();
+        let text = coiman_core::settings::set_value_in_text(&text, "workspace", "folders", &value);
+        let written = file.parent().map_or(Ok(()), std::fs::create_dir_all).and_then(|()| std::fs::write(&file, text));
+        match written {
+            Ok(()) => {
+                self.settings_reload = true;
+                self.status = Some(format!(
+                    "Workspace folders: {}",
+                    if folders.is_empty() { "none".to_owned() } else { folders.join(", ") }
+                ));
+            }
+            Err(e) => self.status = Some(format!("Couldn't write {}: {e}", file.display())),
         }
     }
 

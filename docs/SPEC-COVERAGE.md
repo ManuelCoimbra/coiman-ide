@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 110, partial 109,
-missing 250, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 110, partial 110,
+missing 249, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -35,7 +35,7 @@ specification is right: every row in it exists.
 | 17 Accessibility and UX | 9 | 7 | 4 | |
 | 18 Remote | | | 14 | 1 |
 | 19 Plugins | 4 | 4 | 11 | 1 |
-| 20 Workspace | 3 | 9 | 5 | |
+| 20 Workspace | 3 | 10 | 4 | |
 | 21 Experimental | 7 | 10 | 20 | |
 
 ## 1. AI integration and project intelligence
@@ -569,7 +569,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 
 | Item | Status | Note |
 |---|---|---|
-| Multi-root workspaces | Missing | |
+| Multi-root workspaces | Partial | More folders: Explorer, Quick Open, Find in Files, `.code-workspace`; Git and Run for the project's folder only |
 | Workspace profiles | Partial | Folder settings |
 | Project templates | Partial | Sample projects, Maven archetypes, file templates |
 | Project scaffolding | Partial | Same |

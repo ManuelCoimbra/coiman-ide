@@ -25,6 +25,8 @@ pub struct Jump {
 #[derive(Default)]
 pub struct SearchPanel {
     pub query: Query,
+    /// The workspace's other folders, searched after the project.
+    pub extra_roots: Vec<PathBuf>,
     pub focus_requested: bool,
     show_globs: bool,
     /// Query of the running/finished search, and when the input last changed.
@@ -241,9 +243,21 @@ impl SearchPanel {
             // Long lines end in "…" instead of widening the side bar.
             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
             for file in &self.results {
-                let rel = file.path.strip_prefix(root).unwrap_or(&file.path);
+                // In the project: from its folder; in another of the workspace's, under that
+                // folder's name.
+                let rel = match file.path.strip_prefix(root) {
+                    Ok(rel) => rel.display().to_string(),
+                    Err(_) => self
+                        .extra_roots
+                        .iter()
+                        .find_map(|r| {
+                            let rel = file.path.strip_prefix(r).ok()?;
+                            Some(format!("{}/{}", r.file_name()?.to_string_lossy(), rel.display()))
+                        })
+                        .unwrap_or_else(|| file.path.display().to_string()),
+                };
                 let collapsed = self.collapsed.contains(&file.path);
-                let header = format!("{}  ({})", rel.display(), file.matches.len());
+                let header = format!("{rel}  ({})", file.matches.len());
                 let clicked = ui
                     .horizontal(|ui| {
                         let size = ui.text_style_height(&egui::TextStyle::Body);
@@ -308,7 +322,8 @@ impl SearchPanel {
         }
         self.running = true;
         let ctx = ctx.clone();
-        self.handle = Some(SearchHandle::spawn(self.query.clone(), root.to_path_buf(), move || ctx.request_repaint()));
+        let roots = std::iter::once(root.to_path_buf()).chain(self.extra_roots.iter().cloned()).collect();
+        self.handle = Some(SearchHandle::spawn_in(self.query.clone(), roots, move || ctx.request_repaint()));
     }
 }
 

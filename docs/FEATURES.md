@@ -962,6 +962,18 @@ shipped `workbench.desktop.main.js` and `nls.messages.json`.
 Palette only: Join Lines, Duplicate Selection, Sort Lines Ascending/Descending,
 Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Case.
 
+## Workspaces with more than one folder
+
+- **Add Folder to Workspace…** (right click the project's row in the Explorer) puts another
+  folder in the window, beside the project: its own tree in the Explorer, its files in Quick
+  Open (under the folder's name, `shared/x.rs`) and in Find in Files. **Remove Folder from
+  Workspace** on its row takes it out; the folder itself stays.
+- They're kept in the project's `.coiman/settings.toml` as `[workspace] folders` (relative
+  to the project when beside it, `../shared`), so the project opens with them next time.
+- A VS Code **`.code-workspace`** file opens as one: its first folder as the project, the
+  others added to it.
+- Git, Run and the language servers stay with the project's own folder.
+
 ## Settings, keybindings and themes
 
 - **Settings** (`Ctrl+,`): TOML, layered defaults → user
