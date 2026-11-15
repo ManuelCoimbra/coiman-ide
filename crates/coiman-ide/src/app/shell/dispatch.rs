@@ -579,6 +579,7 @@ impl CodeApp {
             Command::LoadCoverage => self.pick_coverage_report(ctx),
             Command::ProfileFile => self.profile_current_file(ctx),
             Command::OpenProfile => self.open_profile_file(),
+            Command::ConnectDatabase => self.show_database_connect(),
             Command::OpenHexView => self.hex_command(),
             Command::ShowMemory => self.show_memory(None),
             Command::ShowDisassembly => self.show_disassembly(),

@@ -1,12 +1,14 @@
-//! The Database window: a SQLite file's tables and views with their columns, a box to write
-//! SQL in, and each statement's rows in a grid. It runs through the `sqlite3` program (see
-//! `coiman_core::data::database`), in the background so a slow query never stops the editor.
+//! The Database window: a SQLite file's, or a PostgreSQL or MySQL server's, tables and views
+//! with their columns, a box to write SQL in, and each statement's rows in a grid. It runs
+//! through the `sqlite3`, `psql` and `mysql` programs (see `coiman_core::data::database` and
+//! `server_db`), in the background so a slow query never stops the editor.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 
 use coiman_core::data::database::{self, Outcome, Plan, Sqlite, Table};
+use coiman_core::data::server_db::{self, Kind, Server};
 use egui::{Color32, RichText, Stroke};
 
 use crate::app::CodeApp;
@@ -25,12 +27,97 @@ enum View {
     Diagram,
 }
 
+/// What the window works on: a SQLite file, or a server.
+#[derive(Clone, Debug, PartialEq)]
+enum Target {
+    File(PathBuf),
+    Server(Server),
+}
+
+impl Target {
+    fn label(&self) -> String {
+        match self {
+            Self::File(path) => path.display().to_string(),
+            Self::Server(server) => server.label(),
+        }
+    }
+
+    fn short(&self) -> String {
+        match self {
+            Self::File(path) => path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
+            Self::Server(server) => format!("{} on {}", server.database, server.host),
+        }
+    }
+
+    fn engine(&self) -> &'static str {
+        match self {
+            Self::File(_) => "SQLite",
+            Self::Server(s) => match s.kind {
+                Kind::Postgres => "PostgreSQL",
+                Kind::MySql => "MySQL",
+            },
+        }
+    }
+
+    fn quote(&self, name: &str) -> String {
+        match self {
+            Self::File(_) => database::quote_name(name),
+            Self::Server(s) => s.kind.quote_name(name),
+        }
+    }
+
+    fn run(&self, sql: &str) -> Result<Outcome, String> {
+        match self {
+            Self::File(path) => Sqlite::find().ok_or_else(missing_sqlite)?.run(path, sql),
+            Self::Server(server) => server.run(sql),
+        }
+    }
+
+    fn schema(&self) -> Result<Vec<Table>, String> {
+        match self {
+            Self::File(path) => Sqlite::find().ok_or_else(missing_sqlite)?.schema(path),
+            Self::Server(server) => server.schema(),
+        }
+    }
+
+    fn explain(&self, sql: &str) -> Result<Vec<Plan>, String> {
+        match self {
+            Self::File(path) => Sqlite::find().ok_or_else(missing_sqlite)?.explain(path, sql),
+            Self::Server(server) => server.explain(sql),
+        }
+    }
+}
+
+/// The Connect form: everything but the password is remembered.
+#[derive(Default)]
+struct ConnectForm {
+    server: Server,
+    port: String,
+    password: String,
+    error: Option<String>,
+}
+
+impl ConnectForm {
+    fn for_kind(kind: Kind) -> Self {
+        let server = Server {
+            kind,
+            host: "localhost".to_owned(),
+            port: kind.default_port(),
+            user: kind.default_user().to_owned(),
+            database: if kind == Kind::Postgres { "postgres".to_owned() } else { String::new() },
+            password: None,
+        };
+        Self { port: server.port.to_string(), server, ..Self::default() }
+    }
+}
+
 /// What the window asks the app to do after drawing.
 #[derive(Default)]
 struct Asks {
     run: bool,
     explain: bool,
     choose: bool,
+    connect: bool,
     copy_mermaid: bool,
     preview_mermaid: bool,
 }
@@ -41,7 +128,11 @@ pub(crate) struct DatabaseUi {
     explaining: Option<Receiver<Result<Vec<Plan>, String>>>,
     plans: Option<Result<Vec<Plan>, String>>,
     pub(crate) open: bool,
-    db: Option<PathBuf>,
+    target: Option<Target>,
+    /// The Connect form, while it's open.
+    connect: Option<ConnectForm>,
+    /// Connections used before (no passwords), read when first wanted.
+    saved: Option<Vec<Server>>,
     tables: Vec<Table>,
     schema_error: Option<String>,
     schema_loading: Option<Receiver<Result<Vec<Table>, String>>>,
@@ -82,18 +173,65 @@ impl GridSource for Rows<'_> {
 impl CodeApp {
     /// Opens a SQLite file in the Database window.
     pub(crate) fn open_database(&mut self, path: &Path) {
+        self.open_target(Target::File(path.to_path_buf()));
+    }
+
+    fn open_target(&mut self, target: Target) {
         let ui = &mut self.database;
         ui.open = true;
-        if ui.db.as_deref() != Some(path) {
-            ui.db = Some(path.to_path_buf());
+        ui.connect = None;
+        if ui.target.as_ref() != Some(&target) {
+            let first_sql = match &target {
+                Target::File(_) => "SELECT name FROM sqlite_schema WHERE type = 'table';",
+                Target::Server(s) if s.kind == Kind::Postgres => {
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema();"
+                }
+                Target::Server(_) => "SHOW TABLES;",
+            };
+            let was_first = ui.sql.trim().is_empty()
+                || ui.sql.starts_with("SELECT name FROM sqlite_schema")
+                || ui.sql.starts_with("SELECT table_name FROM information_schema")
+                || ui.sql == "SHOW TABLES;";
+            ui.target = Some(target);
+            ui.tables.clear();
             ui.outcome = None;
             ui.plans = None;
             ui.expanded.clear();
-            if ui.sql.trim().is_empty() {
-                ui.sql = "SELECT name FROM sqlite_schema WHERE type = 'table';".to_owned();
+            if was_first {
+                ui.sql = first_sql.to_owned();
             }
         }
         self.read_schema();
+    }
+
+    /// Database: Connect to PostgreSQL or MySQL: the window, on its Connect form.
+    pub(crate) fn show_database_connect(&mut self) {
+        let ui = &mut self.database;
+        ui.open = true;
+        let saved = ui.saved.get_or_insert_with(server_db::load_saved);
+        let form = match saved.first() {
+            Some(last) => ConnectForm { port: last.port.to_string(), server: last.clone(), ..ConnectForm::default() },
+            None => ConnectForm::for_kind(Kind::Postgres),
+        };
+        ui.connect = Some(form);
+    }
+
+    /// The form's Connect: remembers the server (not its password) and reads its tables.
+    fn connect_database(&mut self) {
+        let Some(form) = self.database.connect.as_mut() else { return };
+        let Ok(port) = form.port.trim().parse::<u16>() else {
+            form.error = Some("The port is a number, like 5432".to_owned());
+            return;
+        };
+        let mut server = form.server.clone();
+        server.port = port;
+        server.host = server.host.trim().to_owned();
+        server.password = (!form.password.is_empty()).then(|| form.password.clone());
+        let saved = self.database.saved.get_or_insert_with(server_db::load_saved);
+        if let Err(e) = server_db::remember(saved, &server) {
+            self.status = Some(format!("Couldn't remember the connection: {e}"));
+        }
+        self.open_target(Target::Server(server));
     }
 
     /// File > Open a database, through the file dialog.
@@ -109,14 +247,10 @@ impl CodeApp {
     }
 
     fn read_schema(&mut self) {
-        let Some(db) = self.database.db.clone() else { return };
-        let Some(sqlite) = Sqlite::find() else {
-            self.database.schema_error = Some(missing_sqlite());
-            return;
-        };
+        let Some(target) = self.database.target.clone() else { return };
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(sqlite.schema(&db));
+            let _ = tx.send(target.schema());
         });
         self.database.schema_loading = Some(rx);
     }
@@ -131,8 +265,8 @@ impl CodeApp {
     pub(crate) fn show_database_diagram(&mut self) {
         self.database.open = true;
         self.database.view = View::Diagram;
-        if self.database.db.is_none() {
-            self.status = Some("Open a database first (Database: Open SQLite File)".to_owned());
+        if self.database.target.is_none() {
+            self.status = Some("Open a database first (Database: Open SQLite File, or Connect)".to_owned());
         }
     }
 
@@ -152,20 +286,16 @@ impl CodeApp {
                 self.database.sql = sql;
             }
         }
-        if self.database.db.is_none() {
+        if self.database.target.is_none() {
             self.database.open = true;
-            self.status = Some("Open a database first (Database: Open SQLite File)".to_owned());
+            self.status = Some("Open a database first (Database: Open SQLite File, or Connect)".to_owned());
             return;
         }
         self.database.open = true;
-        let (Some(db), sql) = (self.database.db.clone(), self.database.sql.clone()) else { return };
+        let (Some(target), sql) = (self.database.target.clone(), self.database.sql.clone()) else { return };
         if sql.trim().is_empty() {
             return;
         }
-        let Some(sqlite) = Sqlite::find() else {
-            self.database.outcome = Some(Err(missing_sqlite()));
-            return;
-        };
         let history = &mut self.database.history;
         history.retain(|h| h != &sql);
         history.insert(0, sql.clone());
@@ -173,7 +303,7 @@ impl CodeApp {
         if explain {
             let (tx, rx) = mpsc::channel();
             std::thread::spawn(move || {
-                let _ = tx.send(sqlite.explain(&db, &sql));
+                let _ = tx.send(target.explain(&sql));
             });
             self.database.explaining = Some(rx);
             self.database.view = View::Plan;
@@ -181,7 +311,7 @@ impl CodeApp {
         }
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(sqlite.run(&db, &sql));
+            let _ = tx.send(target.run(&sql));
         });
         self.database.running = Some(rx);
     }
@@ -227,8 +357,8 @@ impl CodeApp {
         let pal = theme::colors();
         let room = ctx.content_rect().size();
         let size = egui::vec2((room.x * 0.84).min(1240.0), (room.y * 0.82).max(420.0));
-        let title = match &self.database.db {
-            Some(db) => format!("Database · {}", db.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()),
+        let title = match &self.database.target {
+            Some(t) => format!("Database · {}", t.short()),
             None => "Database".to_owned(),
         };
         let font_size = self.font_size;
@@ -253,8 +383,10 @@ impl CodeApp {
                 let main = egui::Rect::from_min_max(egui::pos2(side.right() + 12.0, area.top()), area.max);
                 ui.allocate_rect(area, egui::Sense::hover());
                 let mut side_ui = ui.new_child(egui::UiBuilder::new().max_rect(side));
-                if let Some(table) = tables_ui(&mut side_ui, state, &mut asks.choose) {
-                    state.sql = rows_of(&table);
+                if state.connect.is_some() {
+                    connect_ui(&mut side_ui, state, &mut asks);
+                } else if let Some(table) = tables_ui(&mut side_ui, state, &mut asks) {
+                    state.sql = rows_of(state.target.as_ref(), &table);
                     asks.run = true;
                 }
                 let mut main_ui = ui.new_child(egui::UiBuilder::new().max_rect(main));
@@ -265,7 +397,7 @@ impl CodeApp {
                     View::Plan => plan_view(&mut main_ui, state, font_size),
                     View::Diagram => {
                         if let Some(table) = diagram_view(&mut main_ui, state, &mut asks) {
-                            state.sql = rows_of(&table);
+                            state.sql = rows_of(state.target.as_ref(), &table);
                             asks.run = true;
                         }
                     }
@@ -274,6 +406,9 @@ impl CodeApp {
         self.database.open = open;
         if asks.choose {
             self.choose_database();
+        }
+        if asks.connect {
+            self.connect_database();
         }
         if asks.run {
             self.run_database_sql(false);
@@ -293,8 +428,83 @@ impl CodeApp {
 }
 
 /// SQL showing a table's rows.
-fn rows_of(table: &str) -> String {
-    format!("SELECT * FROM {} LIMIT 500;", database::quote_name(table))
+fn rows_of(target: Option<&Target>, table: &str) -> String {
+    let name = target.map_or_else(|| database::quote_name(table), |t| t.quote(table));
+    format!("SELECT * FROM {name} LIMIT 500;")
+}
+
+/// The Connect form, in place of the tables.
+fn connect_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) {
+    let pal = theme::colors();
+    let saved = state.saved.clone().unwrap_or_default();
+    let Some(form) = state.connect.as_mut() else { return };
+    ui.label(RichText::new("Connect to a server").strong());
+    ui.add_space(4.0);
+    let mut kind = form.server.kind;
+    egui::ComboBox::from_id_salt("db_kind").selected_text(kind.label()).show_ui(ui, |ui| {
+        for k in [Kind::Postgres, Kind::MySql] {
+            ui.selectable_value(&mut kind, k, k.label());
+        }
+    });
+    if kind != form.server.kind {
+        *form = ConnectForm::for_kind(kind);
+    }
+    let mut enter = false;
+    egui::Grid::new("db_connect").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+        for (label, text, hint) in [
+            ("Host", &mut form.server.host, "localhost"),
+            ("Port", &mut form.port, ""),
+            ("User", &mut form.server.user, ""),
+            ("Database", &mut form.server.database, "optional for MySQL"),
+        ] {
+            ui.label(label);
+            let r = ui.add(egui::TextEdit::singleline(text).hint_text(hint).desired_width(f32::INFINITY));
+            enter |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.end_row();
+        }
+        ui.label("Password");
+        let r = ui.add(
+            egui::TextEdit::singleline(&mut form.password)
+                .password(true)
+                .hint_text("kept only while open")
+                .desired_width(f32::INFINITY),
+        );
+        enter |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        ui.end_row();
+    });
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        if ui.button("Connect").clicked() || enter {
+            asks.connect = true;
+        }
+        if ui.button("Cancel").clicked() {
+            state.connect = None;
+        }
+    });
+    let Some(form) = state.connect.as_mut() else { return };
+    if let Some(e) = &form.error {
+        ui.colored_label(Color32::from_rgb(0xE5, 0x48, 0x4D), e);
+    }
+    ui.label(
+        RichText::new(format!(
+            "Runs through {}: the password goes to it for each run and is never saved.",
+            if form.server.kind == Kind::Postgres { "psql" } else { "the mysql or mariadb client" }
+        ))
+        .small()
+        .color(pal.text_dim),
+    );
+    if !saved.is_empty() {
+        ui.add_space(8.0);
+        ui.label(RichText::new("Recent").small().strong());
+        for s in saved {
+            if ui.selectable_label(false, s.label()).clicked() {
+                form.port = s.port.to_string();
+                form.server = s;
+                form.password.clear();
+                form.error = None;
+            }
+        }
+    }
 }
 
 fn missing_sqlite() -> String {
@@ -304,29 +514,37 @@ fn missing_sqlite() -> String {
 }
 
 /// The tables beside the SQL. Returns the table whose rows to show, when one is opened.
-fn tables_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, choose: &mut bool) -> Option<String> {
+fn tables_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) -> Option<String> {
     let pal = theme::colors();
     let mut run = None;
     // Rows take the clicks, not their text.
     ui.style_mut().interaction.selectable_labels = false;
     ui.horizontal(|ui| {
         if ui.button("Open...").on_hover_text("Open another SQLite file").clicked() {
-            *choose = true;
+            asks.choose = true;
+        }
+        if ui.button("Connect...").on_hover_text("A PostgreSQL or MySQL (MariaDB) server").clicked() {
+            state.connect = Some(match &state.target {
+                Some(Target::Server(s)) => {
+                    ConnectForm { port: s.port.to_string(), server: s.clone(), ..ConnectForm::default() }
+                }
+                _ => ConnectForm::for_kind(Kind::Postgres),
+            });
+            state.saved.get_or_insert_with(server_db::load_saved);
         }
         if state.schema_loading.is_some() {
             ui.spinner();
         }
     });
-    if let Some(db) = &state.db {
-        ui.label(RichText::new(db.display().to_string()).small().color(pal.text_dim))
-            .on_hover_text(db.display().to_string());
+    if let Some(t) = &state.target {
+        ui.label(RichText::new(t.label()).small().color(pal.text_dim)).on_hover_text(t.label());
     }
     if let Some(e) = &state.schema_error {
         ui.colored_label(Color32::from_rgb(0xE5, 0x48, 0x4D), e);
     }
     ui.add_space(4.0);
     egui::ScrollArea::vertical().id_salt("db_tables").auto_shrink([false, false]).show(ui, |ui| {
-        if state.db.is_none() {
+        if state.target.is_none() {
             ui.label(RichText::new("No database open.").color(pal.text_dim));
         }
         for table in &state.tables {
@@ -396,14 +614,15 @@ fn sql_box(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32, asks: &mut
     ui.horizontal(|ui| {
         let running = state.running.is_some();
         let label = if running { "Running..." } else { "Run  Ctrl+Enter" };
-        if ui.add_enabled(!running && state.db.is_some(), egui::Button::new(label)).clicked() {
+        if ui.add_enabled(!running && state.target.is_some(), egui::Button::new(label)).clicked() {
             asks.run = true;
         }
         let explaining = state.explaining.is_some();
         if ui
-            .add_enabled(!explaining && state.db.is_some(), egui::Button::new("Explain  Ctrl+Shift+Enter"))
+            .add_enabled(!explaining && state.target.is_some(), egui::Button::new("Explain  Ctrl+Shift+Enter"))
             .on_hover_text(
-                "How SQLite would carry the SQL out: which indexes it uses, which tables it reads whole. Nothing runs.",
+                "How the database would carry the SQL out: which indexes it uses, which tables it reads whole. \
+                 Nothing runs.",
             )
             .clicked()
         {
@@ -448,7 +667,7 @@ fn view_tabs(ui: &mut egui::Ui, state: &mut DatabaseUi) {
     ui.horizontal(|ui| {
         for (view, label, hint) in [
             (View::Results, "Results", "What the SQL returned"),
-            (View::Plan, "Query plan", "How SQLite would carry the SQL out (Explain)"),
+            (View::Plan, "Query plan", "How the database would carry the SQL out (Explain)"),
             (View::Diagram, "Diagram", "The tables and how their foreign keys link them"),
         ] {
             if ui.selectable_label(state.view == view, label).on_hover_text(hint).clicked() {
@@ -465,7 +684,7 @@ fn plan_view(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) {
     let plans = match &state.plans {
         None => {
             ui.label(
-                RichText::new("Explain (Ctrl+Shift+Enter) shows how SQLite would carry out the SQL above.")
+                RichText::new("Explain (Ctrl+Shift+Enter) shows how the database would carry out the SQL above.")
                     .color(pal.text_dim),
             );
             return;
@@ -487,12 +706,13 @@ fn plan_view(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) {
             parts.push(format!("{sorts} {}", if sorts == 1 { "temporary sort" } else { "temporary sorts" }));
         }
         ui.label(RichText::new(parts.join(" · ")).color(WARN)).on_hover_text(
-            "A full scan reads every row; an index on the columns in WHERE or JOIN lets SQLite search instead. \
+            "A full scan reads every row; an index on the columns in WHERE or JOIN lets the database search instead. \
              A temporary sort could use an index in the ORDER BY or GROUP BY order. Small tables don't need either.",
         );
     } else if !plans.is_empty() {
         ui.label(RichText::new("No full table scans.").color(pal.text_dim));
     }
+    let engine = state.target.as_ref().map_or("SQLite", Target::engine);
     let mono = egui::FontId::monospace(font_size);
     egui::ScrollArea::vertical().id_salt("db_plan").auto_shrink([false, false]).show(ui, |ui| {
         for plan in plans {
@@ -502,7 +722,8 @@ fn plan_view(ui: &mut egui::Ui, state: &mut DatabaseUi, font_size: f32) {
             ui.label(RichText::new(short).font(mono.clone()).strong()).on_hover_text(&plan.statement);
             if plan.steps.is_empty() {
                 ui.label(
-                    RichText::new("    No plan: SQLite doesn't search for this kind of statement.").color(pal.text_dim),
+                    RichText::new(format!("    No plan: {engine} doesn't search for this kind of statement."))
+                        .color(pal.text_dim),
                 );
             }
             for step in &plan.steps {

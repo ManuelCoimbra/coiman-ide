@@ -858,7 +858,7 @@ left out. A click on a place opens the file there.
 In Restricted Mode, Cargo and npm don't run (they read the project's settings), so licences
 come from `node_modules` alone and the audits wait for the folder to be trusted.
 
-## Databases (SQLite)
+## Databases (SQLite, PostgreSQL, MySQL)
 
 A SQLite file opens in the **Database** window from the Explorer or Quick Open (it is
 recognised by its contents, whatever its name), or with **Database: Open SQLite File...**.
@@ -882,9 +882,18 @@ recognised by its contents, whatever its name), or with **Database: Open SQLite 
   front, against the open database. **Database: Explain Query Plan (Selection or File)**
   explains it instead, and **Database: Show Tables Diagram (ER)** opens the diagram.
 
+- **PostgreSQL and MySQL (or MariaDB)**: **Connect...** in the window, or **Database:
+  Connect to PostgreSQL or MySQL...**, asks for the host, port, user, database and password.
+  The same tables, columns, keys, indexes, results, diagram and query plans follow (the plan
+  is the server's `EXPLAIN`; nothing runs). Errors say which statement they're in. **Recent**
+  keeps the connections used, without passwords: the password is held only while the app
+  runs, and given to the client for each run (`PGPASSWORD`, `MYSQL_PWD`).
+
 It runs through the `sqlite3` program (on `PATH`, or MSYS2's), in its safe mode, so a
-`.sql` file can't reach the shell with dot-commands. No database code is built into the app,
-and it opens no connections of its own. Results keep 10,000 rows each.
+`.sql` file can't reach the shell with dot-commands; servers through `psql` and the `mariadb`
+or `mysql` client (on `PATH` or where their installers put them). No database code is built
+into the app, and it opens no connections of its own: the clients do. Results keep 10,000
+rows each.
 
 ## Code structure
 

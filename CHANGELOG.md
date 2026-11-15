@@ -16,6 +16,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **PostgreSQL and MySQL/MariaDB** in the Database window: Connect, then tables, results,
+  diagram and query plans as for SQLite, through `psql` and the `mariadb`/`mysql` client.
 - **Profiling**: Run: Profile Current File (py-spy for Python, perf on Linux) and a PROFILE panel
   with a flame graph and the hottest functions; Profile: Open Profile File reads collapsed
   stacks or perf script output.

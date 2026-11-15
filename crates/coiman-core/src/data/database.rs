@@ -315,6 +315,24 @@ fn strip_explain(statement: &str) -> &str {
 
 /// SQL split into its statements, without their final `;`: a `;` inside quotes, comments or
 /// a trigger's BEGIN...END doesn't end one, and the shell's dot-commands are left out.
+/// The dollar-quote tag starting at `i` (`$$` or `$name$`), unless `$` is part of a name.
+fn dollar_tag(chars: &[char], i: usize) -> Option<Vec<char>> {
+    if i > 0 && (chars[i - 1].is_alphanumeric() || chars[i - 1] == '_') {
+        return None;
+    }
+    let mut j = i + 1;
+    while j < chars.len() && (chars[j].is_alphanumeric() || chars[j] == '_') {
+        j += 1;
+    }
+    let first = chars.get(i + 1).copied();
+    (chars.get(j) == Some(&'$') && !first.is_some_and(|c| c.is_ascii_digit())).then(|| chars[i..=j].to_vec())
+}
+
+/// Where `needle` next starts at or after `from`.
+fn find_from(chars: &[char], from: usize, needle: &[char]) -> Option<usize> {
+    (from..(chars.len() + 1).saturating_sub(needle.len())).find(|&k| chars[k..k + needle.len()] == *needle)
+}
+
 pub fn split_statements(sql: &str) -> Vec<String> {
     let chars: Vec<char> = sql.chars().collect();
     let mut out = Vec::new();
@@ -348,6 +366,13 @@ pub fn split_statements(sql: &str) -> Vec<String> {
                         break;
                     }
                 }
+            }
+            // PostgreSQL's dollar quotes: `$$ ... $$` or `$tag$ ... $tag$`, a function's body.
+            '$' if dollar_tag(&chars, i).is_some_and(|tag| find_from(&chars, i + tag.len(), &tag).is_some()) => {
+                let tag = dollar_tag(&chars, i).unwrap_or_default();
+                let end = find_from(&chars, i + tag.len(), &tag).unwrap_or(chars.len()) + tag.len();
+                current.extend(&chars[i..end.min(chars.len())]);
+                i = end;
             }
             '-' if chars.get(i + 1) == Some(&'-') => {
                 while i < chars.len() && chars[i] != '\n' {
@@ -535,6 +560,16 @@ mod tests {
         assert_eq!(sets[1].rows, [[Some("only".to_owned())]]);
         assert!(parse_sets("").unwrap().is_empty());
         assert_eq!(quote_name("we\"ird"), "\"we\"\"ird\"");
+    }
+
+    #[test]
+    fn dollar_quoted_bodies_stay_whole() {
+        let sql = "CREATE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;\nSELECT $tag$ a;b $tag$; SELECT $1;";
+        let got = split_statements(sql);
+        assert_eq!(got.len(), 3, "{got:?}");
+        assert!(got[0].ends_with("LANGUAGE plpgsql"));
+        assert_eq!(got[1], "SELECT $tag$ a;b $tag$");
+        assert_eq!(got[2], "SELECT $1");
     }
 
     #[test]
