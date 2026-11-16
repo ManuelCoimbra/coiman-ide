@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Project: Show Session Statistics`: active time per project and day, kept on this
+  computer only.
 - `Project: Generate Overview`: a Markdown page about the open folder (languages, lines,
   folders, largest files, build files, Git), opened with its preview.
 - Find in Files' **Doc** switch, and `Search: Find in Documentation`: only documentation is

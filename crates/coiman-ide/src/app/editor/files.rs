@@ -99,6 +99,7 @@ impl CodeApp {
 
     /// Writes the session if it changed. Returns false if writing failed.
     pub(crate) fn save_session(&mut self) -> bool {
+        self.flush_activity();
         let mut session =
             Session::capture(self.explorer.root.as_deref(), &self.docs, self.active, self.settings.files.hot_exit);
         session.window = self.window;

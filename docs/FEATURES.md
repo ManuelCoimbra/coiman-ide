@@ -902,6 +902,11 @@ left out. A click on a place opens the file there.
   files, the build files found, languages with files and lines, the largest top-level folders
   and files, and from `git` the branch, commits, first and last dates, authors and last tag.
   Tests inside code files (Rust's `#[cfg(test)]`) aren't counted as test files.
+- **Project: Show Session Statistics**: active time per project and day, kept on this
+  computer only (`activity.json` in the config folder). Time counts while the window is in
+  front and something was typed or clicked in the last two minutes. The page shows today,
+  the last 7 and 30 days, the days with use, today's projects, the last 14 days and every
+  project's total.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

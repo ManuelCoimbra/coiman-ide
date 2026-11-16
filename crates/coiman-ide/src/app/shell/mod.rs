@@ -1,5 +1,6 @@
 //! The window around the editor: menus, side bar, commands, settings, keys, looks, the tour and the Welcome page.
 
+pub(crate) mod activity;
 pub(crate) mod app_log;
 pub(crate) mod config;
 pub(crate) mod dispatch;

@@ -539,16 +539,10 @@ impl CodeApp {
             Command::ShowArchitecture => self.show_architecture(ctx),
             Command::ShowCodeHealth => self.show_code_health(ctx),
             Command::ProjectOverview => match self.explorer.root.clone() {
-                Some(root) => {
-                    let markdown = coiman_core::analysis::overview::overview(&root);
-                    self.untitled_counter += 1;
-                    let doc = coiman_core::editor::document::Document::untitled_with(self.untitled_counter, &markdown);
-                    self.add_doc(doc);
-                    self.md_preview.open = true;
-                    self.md_preview.forced = Some(self.docs[self.active].uid);
-                }
+                Some(root) => self.open_markdown_page(&coiman_core::analysis::overview::overview(&root)),
                 None => self.status = Some("Open a folder to see its overview".to_owned()),
             },
+            Command::SessionStatistics => self.show_session_statistics(),
             Command::ShowRunHistory => self.show_run_history(),
             Command::ReviewSnapshots => self.show_snapshots(),
             Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),

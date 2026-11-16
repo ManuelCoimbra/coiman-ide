@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 124, partial 116,
-missing 229, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 126, partial 117,
+missing 226, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -36,7 +36,7 @@ specification is right: every row in it exists.
 | 18 Remote | 1 | 2 | 11 | 1 |
 | 19 Plugins | 6 | 4 | 9 | 1 |
 | 20 Workspace | 3 | 10 | 4 | |
-| 21 Experimental | 8 | 10 | 19 | |
+| 21 Experimental | 10 | 11 | 16 | |
 
 ## 1. AI integration and project intelligence
 
@@ -619,10 +619,10 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Query editor for syntax trees | Done | Find by Syntax Tree |
 | Custom language grammar support | Partial | Language profiles and registry |
 | Custom language server profiles | Done | Server paths, extension servers |
-| Personal productivity dashboard | Missing | |
-| Coding session statistics stored locally | Missing | |
+| Personal productivity dashboard | Partial | The session statistics page; no charts |
+| Coding session statistics stored locally | Done | Project: Show Session Statistics; `activity.json` |
 | Project activity timeline | Partial | Local history timeline, per file |
-| Time spent per project | Missing | |
+| Time spent per project | Done | Active time per project and day |
 | Task and issue integration | Missing | |
 | Personal snippets library | Done | Snippets |
 | Reusable project workflows | Partial | Run configurations |

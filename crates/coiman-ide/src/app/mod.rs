@@ -143,6 +143,8 @@ pub struct CodeApp {
     health: project::health::Health,
     run_history: launch::history::RunHistory,
     snapshots: launch::snapshots::Snapshots,
+    /// Active time per project, for the session statistics.
+    activity: shell::activity::Tracker,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -344,6 +346,7 @@ impl CodeApp {
             health: Default::default(),
             run_history: Default::default(),
             snapshots: Default::default(),
+            activity: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -504,6 +507,7 @@ impl CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
+        self.track_activity(&ctx);
         self.pump_environment(&ctx);
         self.pump_run_configs(&ctx);
         self.pump_run_problems(&ctx);
