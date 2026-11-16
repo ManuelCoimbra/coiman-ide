@@ -98,6 +98,8 @@ pub enum Command {
     ShowArchitecture,
     /// Secrets, complexity, duplicates, licences and audits.
     ShowCodeHealth,
+    /// A Markdown overview of the project: languages, folders, tests, Git.
+    ProjectOverview,
     /// Test runs, flaky tests and builds, kept between sessions.
     ShowRunHistory,
     /// Insta's pending snapshots, to accept or reject; Jest and Vitest's `-u`.
@@ -420,6 +422,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowLanguageServers, "Language Servers: Show Status"),
     (Command::ShowArchitecture, "Architecture: Show Dependency Graph"),
     (Command::ShowCodeHealth, "Code Health: Secrets, Complexity, Duplicates, Licences and Audits"),
+    (Command::ProjectOverview, "Project: Generate Overview"),
     (Command::ShowRunHistory, "Testing: Show Run History (Tests, Flaky Tests, Builds)"),
     (Command::ReviewSnapshots, "Testing: Review Snapshots"),
     (Command::ShowImpactOfFile, "Architecture: Impact of Current File"),
@@ -693,6 +696,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowLanguageServers, "coiman.showLanguageServers"),
     (Command::ShowArchitecture, "coiman.showArchitecture"),
     (Command::ShowCodeHealth, "coiman.showCodeHealth"),
+    (Command::ProjectOverview, "coiman.projectOverview"),
     (Command::ShowRunHistory, "coiman.showRunHistory"),
     (Command::ReviewSnapshots, "coiman.reviewSnapshots"),
     (Command::ShowImpactOfFile, "coiman.showImpactOfFile"),

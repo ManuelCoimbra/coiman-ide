@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 123, partial 116,
-missing 230, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 124, partial 116,
+missing 229, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -36,7 +36,7 @@ specification is right: every row in it exists.
 | 18 Remote | 1 | 2 | 11 | 1 |
 | 19 Plugins | 6 | 4 | 9 | 1 |
 | 20 Workspace | 3 | 10 | 4 | |
-| 21 Experimental | 7 | 10 | 20 | |
+| 21 Experimental | 8 | 10 | 19 | |
 
 ## 1. AI integration and project intelligence
 
@@ -599,7 +599,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Identify outdated project conventions | Missing | |
 | Suggest improvements to project structure | Missing | |
 | Monitor project health | Partial | Code Health |
-| Generate a project overview | Missing | |
+| Generate a project overview | Done | Project: Generate Overview (Markdown with its preview) |
 | Unified project status dashboard | Missing | |
 | Execution flow visualisation | Missing | |
 | Memory layout visualisation | Missing | |

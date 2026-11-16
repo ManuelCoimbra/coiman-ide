@@ -6,6 +6,7 @@ pub mod complexity;
 pub mod deps;
 pub mod duplicates;
 pub mod lockfiles;
+pub mod overview;
 pub mod packages;
 pub mod secrets;
 pub mod undocumented;

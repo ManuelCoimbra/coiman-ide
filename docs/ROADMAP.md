@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Project: Generate Overview.
 - Search the project's documentation (Find in Files' Doc switch).
 - Code Health lists public items without a doc comment.
 - Plugin templates and dev mode.
@@ -32,7 +33,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 - **SSH remote projects**, through `ssh` (started: an ssh terminal to a host from `~/.ssh/config`;
   next, the remote folder in the Explorer).
-- **Experimental:** a project overview, flow views, session statistics.
+- **Experimental:** flow views, session statistics.
 - **Documentation**
   - PlantUML preview.
 

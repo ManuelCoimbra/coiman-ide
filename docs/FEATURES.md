@@ -897,6 +897,11 @@ left out. A click on a place opens the file there.
   items (no `///` above), Go's exported names (no `//` above), Python's public top-level `def`
   and `class` (no docstring), JavaScript's and TypeScript's `export`s (no `/** */` above).
   Tests are left out.
+- **Project: Generate Overview** writes a Markdown page about the open folder and opens it
+  with its preview: the README's title and first paragraph, files, lines of code and test
+  files, the build files found, languages with files and lines, the largest top-level folders
+  and files, and from `git` the branch, commits, first and last dates, authors and last tag.
+  Tests inside code files (Rust's `#[cfg(test)]`) aren't counted as test files.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

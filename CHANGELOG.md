@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Project: Generate Overview`: a Markdown page about the open folder (languages, lines,
+  folders, largest files, build files, Git), opened with its preview.
 - Find in Files' **Doc** switch, and `Search: Find in Documentation`: only documentation is
   searched (doc files, and doc comments in code).
 - Code Health's **Undocumented** tab: public items with no doc comment, in Rust, Go, Python,
