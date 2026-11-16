@@ -60,6 +60,7 @@ pub enum PickerKind {
     Theme,
     IconTheme,
     TerminalProfile,
+    SshHost,
     LineEnding,
     Bookmark,
     Snippet,

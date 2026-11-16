@@ -13,6 +13,7 @@ pub mod project_tree;
 pub mod recent;
 pub mod search;
 pub mod session;
+pub mod ssh_hosts;
 pub mod trust;
 pub mod watcher;
 pub mod workspace;

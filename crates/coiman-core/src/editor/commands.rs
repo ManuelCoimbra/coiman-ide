@@ -138,6 +138,8 @@ pub enum Command {
     // Terminal.
     NewTerminal,
     NewTerminalWithProfile,
+    /// A terminal running `ssh` to a host named in ~/.ssh/config.
+    NewSshTerminal,
     SplitTerminal,
     KillTerminal,
     ClearTerminal,
@@ -424,6 +426,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowDatabaseDiagram, "Database: Show Tables Diagram (ER)"),
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
+    (Command::NewSshTerminal, "Terminal: New SSH Terminal..."),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),
@@ -728,6 +731,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::RestartLanguageServer, "rust-analyzer.restartServer"),
     (Command::NewTerminal, "workbench.action.terminal.new"),
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
+    (Command::NewSshTerminal, "coiman.terminal.newSsh"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),
     (Command::KillTerminal, "workbench.action.terminal.kill"),
     (Command::ClearTerminal, "workbench.action.terminal.clear"),

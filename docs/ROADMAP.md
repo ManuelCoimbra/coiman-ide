@@ -28,7 +28,8 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **SSH remote projects**, through `ssh`.
+- **SSH remote projects**, through `ssh` (started: an ssh terminal to a host from `~/.ssh/config`;
+  next, the remote folder in the Explorer).
 - **Experimental:** a project overview, flow views, session statistics.
 - **Documentation**
   - Search across the project's documentation.

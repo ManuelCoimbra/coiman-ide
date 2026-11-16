@@ -5,6 +5,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `Terminal: New SSH Terminal...`: pick a host named in `~/.ssh/config` and get a terminal
+  running `ssh` to it; the tab stays open after ssh ends, with its last words.
+
 ## [0.5.0] - 2026-11-16
 
 ### Fixed

@@ -154,6 +154,17 @@ impl CodeApp {
                 let names = self.terminal.profiles.iter().map(|p| p.name.clone()).collect();
                 self.palette.show_picker(PickerKind::TerminalProfile, names, "", "Select a terminal profile");
             }
+            Command::NewSshTerminal => {
+                use coiman_core::project::ssh_hosts;
+                let hosts = ssh_hosts::config_path().map(|p| ssh_hosts::hosts_in(&p)).unwrap_or_default();
+                if hosts.is_empty() {
+                    self.status = Some(
+                        "No hosts in ~/.ssh/config: add one (Host name, HostName, User) to pick it here".to_owned(),
+                    );
+                } else {
+                    self.palette.show_picker(PickerKind::SshHost, hosts, "", "Open a terminal on which host?");
+                }
+            }
             Command::KillTerminal => self.terminal.kill_active(),
             Command::ClearTerminal => self.terminal.clear_active(),
             Command::DetachTerminal => {
@@ -729,6 +740,33 @@ impl CodeApp {
         }
     }
 
+    /// A terminal running `ssh host`. It stays open after ssh ends, so its last words (a
+    /// refused key, an unknown host) can be read; ssh asks for passwords in it.
+    fn open_ssh_terminal(&mut self, ctx: &egui::Context, host: &str) {
+        let program = coiman_core::language::lsp::servers::which("ssh")
+            .map_or_else(|| "ssh".to_owned(), |p| p.to_string_lossy().into_owned());
+        let cwd = self.explorer.root.clone().unwrap_or_else(std::env::temp_dir);
+        let env = self.environment_variables();
+        let title = format!("ssh {host}");
+        let args = [host.to_owned()];
+        let task = crate::ui::terminal::Task {
+            title: &title,
+            program: &program,
+            args: &args,
+            env: &env,
+            cwd: &cwd,
+            scan: None,
+        };
+        let scrollback = self.settings.terminal.scrollback;
+        match self.terminal.run_task(ctx, task, scrollback) {
+            Ok(()) => {
+                self.panel_visible = true;
+                self.panel_tab = PanelTab::Terminal;
+            }
+            Err(e) => self.status = Some(format!("Couldn't start ssh: {e}")),
+        }
+    }
+
     /// Shows the bottom panel on `tab`, or hides it if it already shows `tab`.
     fn toggle_panel(&mut self, tab: PanelTab) {
         if self.panel_visible && self.panel_tab == tab {
@@ -772,6 +810,7 @@ impl CodeApp {
                     self.new_terminal_with(ctx, &profile.command, Some(profile.name));
                 }
             }
+            PickerKind::SshHost => self.open_ssh_terminal(ctx, label),
             PickerKind::CodeAction => self.pick_code_action(label),
             PickerKind::CodeLens => self.pick_code_lens(ctx, label),
             PickerKind::Branch => self.pick_branch(ctx, label),

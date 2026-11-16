@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 121, partial 112,
-missing 236, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 121, partial 115,
+missing 233, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -21,7 +21,7 @@ specification is right: every row in it exists.
 | 3 Debugging and performance | 14 | 3 | 21 | |
 | 4 Git and collaboration | 9 | 2 | 7 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
-| 6 Terminal | 9 | 3 | 6 | |
+| 6 Terminal | 9 | 4 | 5 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 13 | 4 | 6 | |
@@ -33,7 +33,7 @@ specification is right: every row in it exists.
 | 15 Testing | 6 | 6 | 9 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
-| 18 Remote | 1 | | 13 | 1 |
+| 18 Remote | 1 | 2 | 11 | 1 |
 | 19 Plugins | 6 | 4 | 9 | 1 |
 | 20 Workspace | 3 | 10 | 4 | |
 | 21 Experimental | 7 | 10 | 20 | |
@@ -227,7 +227,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Command suggestions from project context | Missing | |
 | Environment variable editor | Done | Settings > Terminal: add, change, take away; yours or the project's |
 | Environment profile management | Partial | `[env]` for the user and per project, with an editor in Settings; no named profiles |
-| SSH terminal integration | Missing | `ssh` runs in a tab, without integration |
+| SSH terminal integration | Partial | Terminal: New SSH Terminal..., hosts from `~/.ssh/config` |
 | Remote shell support | Missing | |
 | Task automation through terminal commands | Partial | Run configurations |
 | Terminal output linked to source locations | Done | Ctrl+click `file:line[:col]`; errors also go to Problems |
@@ -526,7 +526,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 |---|---|---|
 | SSH remote development | Missing | Planned through `ssh` and `sftp` |
 | Remote project explorer | Missing | |
-| Remote terminal | Missing | |
+| Remote terminal | Partial | An ssh terminal to a host from `~/.ssh/config` |
 | Remote LSP execution | Missing | |
 | Remote debugging | Done | See Debugging: gdbserver over ssh |
 | Remote build execution | Missing | |
@@ -536,7 +536,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Remote environment configuration | Missing | |
 | Container-based development environments | Missing | |
 | Cloud development workspaces | Network | |
-| Connection management | Missing | |
+| Connection management | Partial | Hosts read from `~/.ssh/config`; no editor |
 | Remote session recovery | Missing | |
 | Remote performance monitoring | Missing | |
 

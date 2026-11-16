@@ -130,7 +130,9 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   exists is underlined. **Profiles**: the ▾ beside + (or **Terminal: New Terminal With
   Profile...**) starts any shell found (Windows: PowerShell, PowerShell 7, Command Prompt,
   Git Bash, MSYS2, WSL; elsewhere the shells in `/etc/shells`) or one of your own,
-  `[[terminal.profiles]]` with `name` and `command`. **Split** (the split button or
+  `[[terminal.profiles]]` with `name` and `command`. **Terminal: New SSH Terminal...** lists the
+  hosts named in `~/.ssh/config` and opens a terminal running `ssh` to the one picked (ssh asks
+  for a password or passphrase there); the tab stays open after ssh ends, with its last words. **Split** (the split button or
   `Ctrl+Shift+5`) shows a second terminal beside the active one; a click gives one the
   keyboard. The shells open when Coiman closes start again next time, in their folders,
   with the split (`terminal.restore`); programs run in a tab don't. **Maximize
