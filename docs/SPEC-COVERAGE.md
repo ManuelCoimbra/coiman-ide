@@ -1,7 +1,7 @@
 # Coverage of the IDE Feature Specification
 
-Each item of `IDE Feature Specification.md`, checked against the code as of 2026-11-14 (v0.4.1,
-plus B4 run history and the SQLite diagram and query plans). Status:
+Each item of `IDE Feature Specification.md`, checked against the code as of 2026-11-16 (v0.5.0).
+Status:
 
 - **Done**: works and is documented in `docs/FEATURES.md`.
 - **Partial**: some of it exists; the note says what.
@@ -10,18 +10,18 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 119, partial 108,
-missing 242, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 121, partial 112,
+missing 236, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
 |---|---|---|---|---|
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
-| 2 Architecture | 13 | 4 | 12 | |
-| 3 Debugging and performance | 12 | 3 | 23 | |
-| 4 Git and collaboration | 9 | 1 | 8 | 9 |
+| 2 Architecture | 14 | 5 | 10 | |
+| 3 Debugging and performance | 14 | 3 | 21 | |
+| 4 Git and collaboration | 9 | 2 | 7 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
-| 6 Terminal | 9 | 2 | 7 | |
+| 6 Terminal | 9 | 3 | 6 | |
 | 7 Documentation | 1 | 5 | 13 | |
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 13 | 4 | 6 | |
@@ -29,12 +29,12 @@ specification is right: every row in it exists.
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 2 | 4 | 9 | |
-| 14 DevOps | 1 | 3 | 18 | 2 |
-| 15 Testing | 5 | 5 | 11 | |
+| 14 DevOps | 1 | 4 | 17 | 2 |
+| 15 Testing | 6 | 6 | 9 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
-| 18 Remote | | | 14 | 1 |
-| 19 Plugins | 4 | 4 | 11 | 1 |
+| 18 Remote | 1 | | 13 | 1 |
+| 19 Plugins | 6 | 4 | 9 | 1 |
 | 20 Workspace | 3 | 10 | 4 | |
 | 21 Experimental | 7 | 10 | 20 | |
 
@@ -81,8 +81,8 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Track dependency changes between commits | Missing | |
 | Identify unused dependencies | Missing | Packages declared but not used |
 | Show transitive dependency trees | Partial | Maven dependency tree; Cargo crates in the project tree |
-| Compare dependency versions | Missing | |
-| Detect outdated dependencies | Missing | |
+| Compare dependency versions | Partial | The version locked and the newest, side by side in Code Health's Dependencies |
+| Detect outdated dependencies | Done | Code Health, Dependencies: Check for updates (`cargo update --dry-run`, `npm outdated`, `pip list --outdated`) |
 | Files depending on a selected class or function | Partial | Per file (Impact); per symbol through LSP references |
 | Identify potential breaking changes | Missing | |
 | Show affected tests after a modification | Done | Impact |
@@ -125,7 +125,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | CPU profiler | Done | py-spy (Python), perf (Linux); profiles from elsewhere too |
 | Flame graphs | Done | PROFILE panel: zoom, hottest functions, jump to code |
 | Function execution times | Done | The profiler: share and time per function, sampled |
-| Function call frequency | Missing | B5 |
+| Function call frequency | Missing | The profiler samples time; it doesn't count calls |
 | Allocation profiling | Missing | |
 | Thread performance analysis | Missing | |
 | I/O performance analysis | Missing | |
@@ -147,7 +147,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Branch comparison | Done | Git Graph: commits each way, files changed |
 | Visualise repository history | Done | Git Graph, file history, blame |
 | Search through commit history | Missing | |
-| Compare arbitrary commits | Missing | |
+| Compare arbitrary commits | Partial | Git Graph: a branch or commit against the current branch (commits on each side, files changed) |
 | Git worktree management | Done | Git Graph: list, add, open, remove, prune |
 | Submodule management | Missing | |
 | Git hooks management | Missing | |
@@ -163,7 +163,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Inline comments on code | Missing | |
 | Code review interface | Missing | |
 | Review requests and approvals | Network | Possible through `gh` |
-| Integration with GitHub and GitLab | Partial | Publish to GitHub through `gh` |
+| Integration with GitHub and GitLab | Partial | GitHub through `gh`: publish, Actions runs, logs and re-runs; no GitLab |
 | Conflict detection during collaborative editing | Network | |
 
 ## 5. Build systems and dependency management
@@ -226,7 +226,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Command syntax highlighting | Missing | |
 | Command suggestions from project context | Missing | |
 | Environment variable editor | Done | Settings > Terminal: add, change, take away; yours or the project's |
-| Environment profile management | Missing | |
+| Environment profile management | Partial | `[env]` for the user and per project, with an editor in Settings; no named profiles |
 | SSH terminal integration | Missing | `ssh` runs in a tab, without integration |
 | Remote shell support | Missing | |
 | Task automation through terminal commands | Partial | Run configurations |
@@ -305,7 +305,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Database migration management | Missing | |
 | Schema comparison | Missing | |
 | Database backup and restore | Missing | |
-| Multiple database connections | Partial | One window per database file |
+| Multiple database connections | Partial | Named connections kept (SQLite files, PostgreSQL, MySQL); one open per window |
 | Connection profiles | Done | Recent connections with names of their own (no passwords) |
 | SQLite | Done | Through `sqlite3` |
 | PostgreSQL | Done | Through `psql` |
@@ -437,7 +437,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | CI/CD pipeline editor | Missing | |
 | GitHub Actions integration | Done | ACTIONS panel through `gh`: runs, jobs, failed log, re-run, step in its workflow |
 | GitLab CI integration | Missing | |
-| Pipeline execution history | Missing | |
+| Pipeline execution history | Partial | GitHub Actions runs, jobs and failed logs through `gh` |
 | Deployment configuration | Missing | |
 | Cloud resource explorer | Network | |
 | Remote development environments | Missing | |
