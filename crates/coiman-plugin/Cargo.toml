@@ -7,4 +7,3 @@ description = "Builds, signs and publishes Coiman IDE plugins"
 [dependencies]
 getrandom = "0.4.3"
 coiman-core = { path = "../coiman-core" }
-wit-component = "0.261"

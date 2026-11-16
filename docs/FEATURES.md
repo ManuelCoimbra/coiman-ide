@@ -632,6 +632,18 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   - a warning if the signing key changed.
 - **Install from Folder…** installs an unsigned plugin you are developing (marked
   unsigned).
+- **Plugins: New Plugin...** asks for a name, a folder and a template: **Command and status
+  bar item**, **Panel**, or **Problems on save**. It writes a folder that builds as it is
+  (`Cargo.toml`, `plugin.toml`, `src/lib.rs`, a copy of `wit/plugin.wit`, `.gitignore`, a
+  README) and opens it. The id is `dev.` and the name in lowercase with dashes.
+- **Plugins: Start Dev Mode** works on the open plugin folder: it runs `cargo build --release
+  --target wasm32-unknown-unknown` (Rust's wasm32 target is needed), turns the module into
+  the component Coiman loads, and loads it, asking first for its permissions as an install
+  does. After that, each save of a `.rs`, `.toml` or `.wit` file in the folder builds and
+  loads it again, quietly while it asks for no more than was granted; a new permission brings
+  the prompt back. Cargo's output goes to the Output panel; a build that fails leaves the last
+  one running. The Extensions view shows **Dev mode** with **Stop**
+  (**Plugins: Stop Dev Mode**); the plugin stays installed as last built.
 
 **Built in**, as plugins you can turn off in the Extensions view:
 

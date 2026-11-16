@@ -546,7 +546,8 @@ impl coiman::plugin::host::Host for State {
         let root = self.workspace()?;
         let limit = limit.min(MAX_LIST) as usize;
         let mut out = Vec::new();
-        for entry in ignore::WalkBuilder::new(&root).build().filter_map(Result::ok) {
+        // The same files as Quick Open: .gitignore kept (git repository or not), target and the like left out.
+        for entry in crate::project::finder::walker(&root).build().filter_map(Result::ok) {
             if out.len() >= limit {
                 break;
             }

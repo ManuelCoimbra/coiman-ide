@@ -7,6 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A plugin's `list-files` returned build output and ignored files in a folder that isn't a
+  Git repository; it now lists what Quick Open lists.
 - In the Dock layout the editor (and the side bar) touched the window's left edge while
   keeping a gap on the right; both sides now keep the same gap.
 - `[symbols]` in settings no longer reports each of its names as an unknown setting.
@@ -21,6 +23,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Plugins: New Plugin...` makes a plugin folder from a template (a command and status bar
+  item, a panel, or problems on save) that builds as it is. `Plugins: Start Dev Mode` builds
+  the open plugin folder, loads it, and builds and loads it again on every save.
 - `Debug: Remote (gdbserver)...`: debug a program on another machine with gdb. Over ssh,
   Coiman starts gdbserver there (copying the program first with scp if asked) and carries its
   port here; or gdb connects to a gdbserver already running. Kept per project.

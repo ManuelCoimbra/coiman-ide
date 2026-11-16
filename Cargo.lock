@@ -841,6 +841,7 @@ dependencies = [
  "unicode-width",
  "url",
  "wasmtime",
+ "wit-component",
 ]
 
 [[package]]
@@ -866,7 +867,6 @@ version = "0.4.3"
 dependencies = [
  "coiman-core",
  "getrandom 0.4.3",
- "wit-component",
 ]
 
 [[package]]

@@ -938,6 +938,7 @@ impl CodeApp {
         self.run_history_window(&ctx);
         self.snapshots_window(&ctx);
         self.remote_debug_window(&ctx);
+        self.new_plugin_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

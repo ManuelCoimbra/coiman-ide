@@ -217,6 +217,9 @@ impl CodeApp {
             Command::ShowExtensions => self.show_extensions(),
             Command::CheckPluginUpdates => self.check_registry(ctx),
             Command::InstallPluginFromFolder => self.install_plugin_from_folder(ctx),
+            Command::NewPlugin => self.show_new_plugin(),
+            Command::StartPluginDevMode => self.start_plugin_dev(ctx),
+            Command::StopPluginDevMode => self.stop_plugin_dev(),
             Command::DebugTestAtCursor => match self.test_item_at_cursor() {
                 Some((target, item)) => self.debug_test(ctx, target, item),
                 None => self.status = Some("No test at the cursor".to_owned()),

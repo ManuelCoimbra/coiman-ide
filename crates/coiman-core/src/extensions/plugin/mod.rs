@@ -2,6 +2,7 @@
 //! contribution points, installed from signed registries and pinned by a
 //! lockfile. See `wit/plugin.wit` for the API plugins are written against.
 
+pub mod dev;
 pub mod host;
 pub mod manifest;
 pub mod registry;

@@ -55,10 +55,7 @@ fn keygen(path: &Path) -> Result<(), String> {
 
 fn componentize(module: &Path, out: &Path) -> Result<(), String> {
     let bytes = std::fs::read(module).map_err(|e| format!("{}: {e}", module.display()))?;
-    let component = wit_component::ComponentEncoder::default()
-        .module(&bytes)
-        .and_then(|e| e.validate(true).encode())
-        .map_err(|e| format!("{e:#}"))?;
+    let component = coiman_core::extensions::plugin::dev::componentize(&bytes)?;
     std::fs::write(out, &component).map_err(|e| format!("{}: {e}", out.display()))?;
     println!("{} ({} KB)", out.display(), component.len() / 1024);
     Ok(())

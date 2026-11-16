@@ -307,6 +307,11 @@ pub enum Command {
     ShowExtensions,
     CheckPluginUpdates,
     InstallPluginFromFolder,
+    /// A new plugin's folder from a template.
+    NewPlugin,
+    /// Build and load the open plugin folder, again on every save.
+    StartPluginDevMode,
+    StopPluginDevMode,
 }
 
 pub const COMMANDS: &[(Command, &str)] = &[
@@ -589,6 +594,9 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::OpenLog, "Developer: Open Log"),
     (Command::OpenCrashLog, "Developer: Open Crash Log"),
     (Command::InstallPluginFromFolder, "Plugins: Install from Folder..."),
+    (Command::NewPlugin, "Plugins: New Plugin..."),
+    (Command::StartPluginDevMode, "Plugins: Start Dev Mode (Build and Reload on Save)"),
+    (Command::StopPluginDevMode, "Plugins: Stop Dev Mode"),
     (Command::DebugTestAtCursor, "Test: Debug Test at Cursor"),
 ];
 
@@ -875,6 +883,9 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowExtensions, "workbench.view.extensions"),
     (Command::CheckPluginUpdates, "workbench.extensions.action.checkForUpdates"),
     (Command::InstallPluginFromFolder, "workbench.extensions.action.installVSIX"),
+    (Command::NewPlugin, "coiman.plugins.new"),
+    (Command::StartPluginDevMode, "coiman.plugins.startDevMode"),
+    (Command::StopPluginDevMode, "coiman.plugins.stopDevMode"),
     (Command::DebugTestAtCursor, "testing.debugAtCursor"),
 ];
 

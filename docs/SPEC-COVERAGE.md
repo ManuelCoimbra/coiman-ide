@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 117, partial 108,
-missing 244, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 119, partial 108,
+missing 242, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -545,7 +545,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Item | Status | Note |
 |---|---|---|
 | Public plugin SDK | Done | `coiman-plugin` |
-| Plugin development templates | Missing | |
+| Plugin development templates | Done | Plugins: New Plugin..., three templates that build as they are |
 | Plugin documentation generator | Missing | |
 | Plugin API versioning | Done | API v2; older plugins are stopped with the reason |
 | Plugin compatibility checker | Done | Same |
@@ -563,7 +563,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Plugin installation profiles | Missing | |
 | Workspace-specific plugin configurations | Missing | |
 | Plugin discovery through the command palette | Partial | Plugin commands are in the palette; installing isn't |
-| Plugin development mode with automatic reload | Missing | |
+| Plugin development mode with automatic reload | Done | Plugins: Start Dev Mode: build, load, rebuild on save |
 
 ## 20. Workspace and project management
 

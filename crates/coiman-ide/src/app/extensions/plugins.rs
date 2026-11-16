@@ -115,7 +115,12 @@ enum Job {
         result: Result<Box<Package>, String>,
         diff: Option<Box<UpdateDiff>>,
     },
+    /// A dev mode build has ended.
+    DevBuilt(Box<dev::Built>),
 }
+
+#[path = "plugin_dev.rs"]
+mod dev;
 
 /// Waiting for the user to approve an install or update.
 struct Consent {
@@ -157,6 +162,10 @@ pub(crate) struct PluginState {
     /// All plugins' coloring per file key, by line.
     highlights: HashMap<PathBuf, Arc<HashMap<usize, Vec<Highlight>>>>,
     problems: HashMap<(String, PathBuf), (PathBuf, Vec<lt::Diagnostic>)>,
+    /// Dev mode, while a plugin folder is being worked on.
+    dev: Option<dev::DevMode>,
+    /// Plugins: New Plugin...'s form while it's open.
+    new_plugin: Option<dev::NewPlugin>,
 }
 
 /// Command Palette key for a plugin command.
@@ -609,6 +618,7 @@ impl CodeApp {
         if let Some(host) = &self.plugins.host {
             host.event(EventKind::Saved, Event::Saved(rel));
         }
+        self.plugin_dev_saved(&path);
     }
 
     pub(crate) fn plugins_opened(&mut self, path: &Path) {
@@ -691,6 +701,7 @@ impl CodeApp {
                     self.status = Some(format!("Could not download {}: {e}", entry.name));
                     self.plugins.registry_error = Some(e);
                 }
+                Job::DevBuilt(built) => self.on_dev_built(ctx, *built),
             }
             ctx.request_repaint();
         }
@@ -877,6 +888,7 @@ impl CodeApp {
         if let Some(busy) = &self.plugins.busy {
             ui.label(RichText::new(busy).color(pal.text_dim));
         }
+        self.plugin_dev_ui(ui);
 
         let mut accept = false;
         let mut cancel = false;
