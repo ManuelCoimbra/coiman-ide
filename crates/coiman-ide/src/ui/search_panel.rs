@@ -95,6 +95,12 @@ impl SearchPanel {
                     *on = !*on;
                 }
             };
+            toggle(
+                ui,
+                &mut self.query.docs_only,
+                "Doc",
+                "Documentation only: Markdown and other doc files, and doc comments in code",
+            );
             toggle(ui, &mut self.query.regex, ".*", "Use Regular Expression");
             toggle(ui, &mut self.query.whole_word, "ab", "Match Whole Word");
             toggle(ui, &mut self.query.match_case, "Aa", "Match Case");
@@ -196,6 +202,10 @@ impl SearchPanel {
     /// What Replace All should do: the search that produced the results shown.
     pub fn project_replace(&self) -> Option<ProjectReplace> {
         let q = self.searched.as_ref()?;
+        // Replace All works on whole files: not on the doc comments alone.
+        if q.docs_only {
+            return None;
+        }
         Some(ProjectReplace {
             options: FindOptions {
                 query: q.text.clone(),

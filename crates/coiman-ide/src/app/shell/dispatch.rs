@@ -350,6 +350,13 @@ impl CodeApp {
                 self.sidebar_view = SidebarView::Search;
                 self.search.focus_requested = true;
             }
+            Command::FindInDocumentation => {
+                self.welcome_sidebar = true;
+                self.sidebar_visible = true;
+                self.sidebar_view = SidebarView::Search;
+                self.search.query.docs_only = true;
+                self.search.focus_requested = true;
+            }
             Command::ReplaceInFiles => {
                 // From Search Everywhere, what was typed comes along.
                 let typed = self.palette.take_everywhere_query();

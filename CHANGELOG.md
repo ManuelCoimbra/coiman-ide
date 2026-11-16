@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Find in Files' **Doc** switch, and `Search: Find in Documentation`: only documentation is
+  searched (doc files, and doc comments in code).
 - Code Health's **Undocumented** tab: public items with no doc comment, in Rust, Go, Python,
   JavaScript and TypeScript, each a link to its line.
 - `Terminal: New SSH Terminal...`: pick a host named in `~/.ssh/config` and get a terminal

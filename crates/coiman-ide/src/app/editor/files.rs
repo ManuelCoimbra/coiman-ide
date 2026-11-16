@@ -270,7 +270,12 @@ impl CodeApp {
     /// Replace All in the Search view. Open files change in the editor, with
     /// undo, and stay unsaved; others change on disk (local history sees that).
     pub(crate) fn replace_in_project(&mut self, now: f64) {
-        let Some(job) = self.search.project_replace() else { return };
+        let Some(job) = self.search.project_replace() else {
+            if self.search.query.docs_only {
+                self.status = Some("Replace All works on whole files: turn Doc off first".to_owned());
+            }
+            return;
+        };
         let (mut count, mut files, mut failed) = (0, 0, Vec::new());
         for path in &job.files {
             let done = if let Some(doc) =

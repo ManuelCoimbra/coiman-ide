@@ -116,6 +116,9 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   include/exclude globs, binary files skipped; clicking a result selects the match.
   Replace in files (`Ctrl+Shift+H`, or **Replace…** in Search Everywhere, which brings what
   was typed) opens the same sheet with its replace row
+  **Doc** (or **Search: Find in Documentation**) keeps to documentation: Markdown, reST,
+  AsciiDoc and text files whole, and in code only doc comments (`///`, `//!`, `/** */`,
+  Python docstrings, Go's comments). Replace All is off while it's on.
 - External changes: files edited by other programs reload automatically when the tab has no
   unsaved changes; otherwise a bar offers Reload or Keep mine. Deleted files are flagged
   (saving recreates them). The explorer and Quick Open index follow created/deleted files

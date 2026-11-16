@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Search the project's documentation (Find in Files' Doc switch).
 - Code Health lists public items without a doc comment.
 - Plugin templates and dev mode.
 - Remote debugging: gdbserver over ssh, or one already running.
@@ -33,7 +34,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
   next, the remote folder in the Explorer).
 - **Experimental:** a project overview, flow views, session statistics.
 - **Documentation**
-  - Search across the project's documentation.
   - PlantUML preview.
 
 ## Later, each needing a download first

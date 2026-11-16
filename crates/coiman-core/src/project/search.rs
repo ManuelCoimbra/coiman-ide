@@ -50,6 +50,45 @@ pub struct Query {
     pub regex: bool,
     pub include: String,
     pub exclude: String,
+    /// Only documentation: doc files whole, and doc-comment lines of code.
+    pub docs_only: bool,
+}
+
+/// What documentation a file holds, by its name: all of it (Markdown and the like), its
+/// doc-comment lines (code), or none.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DocKind {
+    Whole,
+    Comments,
+    None,
+}
+
+pub fn doc_kind(path: &Path) -> DocKind {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    match ext.as_str() {
+        "md" | "markdown" | "mdx" | "rst" | "adoc" | "asciidoc" | "txt" | "org" | "textile" => DocKind::Whole,
+        "rs" | "go" | "py" | "pyi" | "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" | "java" | "kt"
+        | "cs" | "c" | "h" | "cpp" | "cc" | "hpp" | "hh" | "swift" | "php" | "rb" | "scala" | "dart" | "zig" => {
+            DocKind::Comments
+        }
+        _ => DocKind::None,
+    }
+}
+
+/// Whether one line of code is documentation, on its own: `///`, `//!`, `/**` and the `*`
+/// lines of such blocks, Python's docstring lines that open with quotes, Go's and Zig's `//`.
+pub fn is_doc_line(path: &Path, line: &str) -> bool {
+    let t = line.trim_start();
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
+    if t.starts_with("///") || t.starts_with("//!") || t.starts_with("/**") || t.starts_with("* ") || t == "*" {
+        return true;
+    }
+    match ext.as_str() {
+        "py" | "pyi" => t.starts_with("\"\"\"") || t.starts_with("'''") || t.starts_with("r\"\"\""),
+        "go" | "zig" => t.starts_with("//"),
+        "rb" => t.starts_with("# "),
+        _ => false,
+    }
 }
 
 /// A running search. Dropping it (or starting another) cancels it.
@@ -159,6 +198,7 @@ fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>
 
     let total = Arc::new(AtomicUsize::new(0));
     let files = Arc::new(AtomicUsize::new(0));
+    let docs_only = q.docs_only;
     walk.build_parallel().run(|| {
         let (matcher, tx, cancel, total, files) =
             (matcher.clone(), tx.clone(), cancel.clone(), total.clone(), files.clone());
@@ -171,9 +211,17 @@ fn run_search(q: &Query, root: &Path, tx: &Sender<Msg>, cancel: &Arc<AtomicBool>
             if !entry.file_type().is_some_and(|t| t.is_file()) {
                 return WalkState::Continue;
             }
+            let kind = if docs_only { doc_kind(entry.path()) } else { DocKind::Whole };
+            if kind == DocKind::None {
+                return WalkState::Continue;
+            }
             files.fetch_add(1, Ordering::Relaxed);
             let mut matches = Vec::new();
+            let path = entry.path().to_path_buf();
             let sink = UTF8(|line_number, line| {
+                if kind == DocKind::Comments && !is_doc_line(&path, line) {
+                    return Ok(true);
+                }
                 if let Some(m) = line_match(&matcher, line_number as usize, line) {
                     matches.push(m);
                 }
@@ -297,6 +345,35 @@ mod tests {
 
         let (files, _) = search(&dir, Query { exclude: "*.md".to_owned(), ..q("foo") });
         assert!(files.iter().all(|f| !f.path.ends_with("notes.md")));
+
+        // Documentation only: the Markdown file, and doc comments in code, not code.
+        std::fs::write(
+            dir.join("src/b.rs"),
+            "/// Makes a foo.
+fn foo() {}
+// foo, not documentation
+",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.join("src/c.py"),
+            "def f():
+    \"\"\"Returns foo.\"\"\"
+    return foo
+",
+        )
+        .unwrap();
+        let (files, _) = search(&dir, Query { docs_only: true, ..q("foo") });
+        let found: Vec<(String, Vec<usize>)> = files
+            .iter()
+            .map(|f| {
+                (f.path.file_name().unwrap().to_string_lossy().into_owned(), f.matches.iter().map(|m| m.line).collect())
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [("notes.md".to_owned(), vec![1]), ("b.rs".to_owned(), vec![1]), ("c.py".to_owned(), vec![2])]
+        );
 
         let (_, err) = search(&dir, Query { regex: true, ..q("(") });
         assert!(err.is_some(), "invalid regex is reported");

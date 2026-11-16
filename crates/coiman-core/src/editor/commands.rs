@@ -40,6 +40,8 @@ pub enum Command {
     ShowSearch,
     /// The search sheet, with its replace row open.
     ReplaceInFiles,
+    /// Find in Files over documentation only.
+    FindInDocumentation,
     Find,
     Replace,
     GoToLine,
@@ -336,6 +338,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::OpenFileManager, "View: Open File Manager"),
     (Command::ShowSearch, "View: Show Search"),
     (Command::ReplaceInFiles, "Search: Replace in Files"),
+    (Command::FindInDocumentation, "Search: Find in Documentation"),
     (Command::Find, "Find"),
     (Command::Replace, "Replace"),
     (Command::GoToLine, "Go to Line..."),
@@ -637,6 +640,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::OpenFileManager, "coiman.openFileManager"),
     (Command::ShowSearch, "workbench.view.search"),
     (Command::ReplaceInFiles, "workbench.action.replaceInFiles"),
+    (Command::FindInDocumentation, "coiman.findInDocumentation"),
     (Command::Find, "actions.find"),
     (Command::Replace, "editor.action.startFindReplaceAction"),
     (Command::GoToLine, "workbench.action.gotoLine"),
@@ -907,6 +911,7 @@ pub fn runs_in_terminal(cmd: Command) -> bool {
             | ShowExplorer
             | ShowSearch
             | ReplaceInFiles
+            | FindInDocumentation
             | ShowProblems
             | ShowSourceControl
             | ShowTesting
