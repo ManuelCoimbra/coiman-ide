@@ -8,6 +8,7 @@ pub mod duplicates;
 pub mod lockfiles;
 pub mod packages;
 pub mod secrets;
+pub mod undocumented;
 
 /// Folders of downloaded or built things, never the project's own code: skipped even where
 /// no `.gitignore` says so.

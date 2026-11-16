@@ -8,7 +8,7 @@ use std::sync::mpsc;
 
 use coiman_core::analysis::lockfiles::{self, Ecosystem, Lock, Outdated};
 use coiman_core::analysis::packages::{self, Advisory, Kind, Licensed};
-use coiman_core::analysis::{complexity, duplicates, secrets};
+use coiman_core::analysis::{complexity, duplicates, secrets, undocumented};
 use eframe::egui::{self, RichText, Stroke};
 
 use crate::app::CodeApp;
@@ -23,15 +23,17 @@ enum Tab {
     Secrets,
     Complexity,
     Duplicates,
+    Undocumented,
     Dependencies,
     Licences,
     Audits,
 }
 
-const TABS: [(Tab, &str); 6] = [
+const TABS: [(Tab, &str); 7] = [
     (Tab::Secrets, "Secrets"),
     (Tab::Complexity, "Complexity"),
     (Tab::Duplicates, "Duplicates"),
+    (Tab::Undocumented, "Undocumented"),
     (Tab::Dependencies, "Dependencies"),
     (Tab::Licences, "Licences"),
     (Tab::Audits, "Audits"),
@@ -43,6 +45,8 @@ struct Scan {
     secrets: Vec<secrets::Finding>,
     functions: Vec<complexity::Function>,
     duplicates: Vec<duplicates::Duplicate>,
+    /// Public items with no doc comment.
+    undocumented: Vec<undocumented::Item>,
     licences: Vec<Licensed>,
     licence_note: Option<String>,
     /// The lockfiles, read, and what couldn't be.
@@ -105,6 +109,7 @@ impl CodeApp {
             let mut functions = complexity::scan(&root);
             functions.truncate(TOP_FUNCTIONS);
             let duplicates = duplicates::scan(&root);
+            let undocumented = undocumented::scan(&root);
             let (licences, licence_note) = if trusted {
                 packages::licences(&root)
             } else {
@@ -119,6 +124,7 @@ impl CodeApp {
                 secrets,
                 functions,
                 duplicates,
+                undocumented,
                 licences,
                 licence_note,
                 locks,
@@ -246,6 +252,7 @@ impl CodeApp {
                     Tab::Secrets => s.secrets.len(),
                     Tab::Complexity => s.functions.iter().filter(|f| f.complexity > 10).count(),
                     Tab::Duplicates => s.duplicates.len(),
+                    Tab::Undocumented => s.undocumented.len(),
                     Tab::Dependencies => {
                         s.locks.iter().map(|l| l.conflicts().len()).sum::<usize>()
                             + h.updates.as_ref().map_or(0, |u| u.0.len())
@@ -366,6 +373,31 @@ impl CodeApp {
                         ui.add_space(6.0);
                     }
                 }
+            }
+            Tab::Undocumented => {
+                ui.label(dim(
+                    "Public items with no doc comment: Rust's pub items (/// above), Go's exported names (// above), Python's public top-level def and class (a docstring), JavaScript's and TypeScript's exports (/** */ above). Tests are left out."
+                        .to_owned(),
+                ));
+                ui.add_space(6.0);
+                if scan.undocumented.is_empty() {
+                    ui.label("Every public item has a doc comment.");
+                    return;
+                }
+                let mut files: Vec<&str> = scan.undocumented.iter().map(|i| i.path.as_str()).collect();
+                files.dedup();
+                ui.label(dim(format!("{} in {}", plural(scan.undocumented.len(), "item"), plural(files.len(), "file"))));
+                ui.add_space(4.0);
+                egui::Grid::new("health_undocumented").striped(true).num_columns(3).show(ui, |ui| {
+                    for item in &scan.undocumented {
+                        ui.label(dim(item.kind.to_owned()));
+                        ui.label(RichText::new(&item.name).monospace());
+                        if ui.link(format!("{}:{}", item.path, item.line)).clicked() {
+                            action = Some(open(&item.path, item.line));
+                        }
+                        ui.end_row();
+                    }
+                });
             }
             Tab::Dependencies => {
                 let python = python.clone();

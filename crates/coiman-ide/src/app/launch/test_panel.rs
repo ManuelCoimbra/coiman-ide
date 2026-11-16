@@ -526,7 +526,7 @@ impl CodeApp {
         let tip = if cargo {
             "How many tests run at once (RUST_TEST_THREADS, or NEXTEST_TEST_THREADS for nextest)"
         } else {
-            "How many tests, or test files, each runner runs at once: Go's -parallel, pytest-xdist's -n,              node --test's --test-concurrency, Jest's and Vitest's --maxWorkers, dotnet's MaxCpuCount,              Maven's forkCount, Gradle's --max-workers"
+            "How many tests, or test files, each runner runs at once: Go's -parallel, pytest-xdist's -n, node --test's --test-concurrency, Jest's and Vitest's --maxWorkers, dotnet's MaxCpuCount, Maven's forkCount, Gradle's --max-workers"
         };
         ui.horizontal(|ui| {
             ui.label(RichText::new("At once").small()).on_hover_text(tip);

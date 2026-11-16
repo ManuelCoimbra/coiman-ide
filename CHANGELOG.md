@@ -5,8 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The "Tests at once" tooltip had long runs of spaces inside it.
+
 ### Added
 
+- Code Health's **Undocumented** tab: public items with no doc comment, in Rust, Go, Python,
+  JavaScript and TypeScript, each a link to its line.
 - `Terminal: New SSH Terminal...`: pick a host named in `~/.ssh/config` and get a terminal
   running `ssh` to it; the tab stays open after ssh ends, with its last words.
 

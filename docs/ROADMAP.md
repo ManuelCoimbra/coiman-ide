@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Code Health lists public items without a doc comment.
 - Plugin templates and dev mode.
 - Remote debugging: gdbserver over ssh, or one already running.
 - Breakpoint groups.
@@ -33,7 +34,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 - **Experimental:** a project overview, flow views, session statistics.
 - **Documentation**
   - Search across the project's documentation.
-  - Public functions without a doc comment.
   - PlantUML preview.
 
 ## Later, each needing a download first

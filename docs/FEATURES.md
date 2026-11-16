@@ -890,6 +890,10 @@ left out. A click on a place opens the file there.
 - **Complexity:** each function's cyclomatic complexity and length, through tree-sitter, for
   Rust, Python, JavaScript, TypeScript, Java, C, C++, C# and Go. It shows the 200 most
   complex. Up to 10 is plain, to 20 complex, above that very complex.
+- **Undocumented:** public items with no doc comment, each a link to its line: Rust's `pub`
+  items (no `///` above), Go's exported names (no `//` above), Python's public top-level `def`
+  and `class` (no docstring), JavaScript's and TypeScript's `export`s (no `/** */` above).
+  Tests are left out.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.
