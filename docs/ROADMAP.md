@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Remote debugging: gdbserver over ssh, or one already running.
 - Breakpoint groups.
 - Tests at once: one setting for every test runner.
 - Snapshot testing: Review Snapshots (insta), Update Snapshots (Jest, Vitest).
@@ -26,8 +27,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **Debugging**
-  - Remote debugging through `gdbserver` over `ssh`.
 - **Plugins:** templates for a new plugin, and a dev mode that reloads it as it's edited.
 - **SSH remote projects**, through `ssh`.
 - **Experimental:** a project overview, flow views, session statistics.

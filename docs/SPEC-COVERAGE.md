@@ -10,8 +10,8 @@ plus B4 run history and the SQLite diagram and query plans). Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 116, partial 108,
-missing 245, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 117, partial 108,
+missing 244, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -108,7 +108,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Visualisation of call stacks | Done | Call stack view |
 | Thread activity visualisation | Partial | Thread list |
 | Better multi-threaded debugging | Partial | Threads, pause and step per thread |
-| Remote debugging | Missing | Possible through `ssh`/`gdbserver` |
+| Remote debugging | Done | gdb with gdbserver, started over ssh (scp copy optional) or already running |
 | Attach to running processes | Done | |
 | Debug multiple processes simultaneously | Missing | |
 | Heap visualisation | Missing | |
@@ -528,7 +528,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Remote project explorer | Missing | |
 | Remote terminal | Missing | |
 | Remote LSP execution | Missing | |
-| Remote debugging | Missing | |
+| Remote debugging | Done | See Debugging: gdbserver over ssh |
 | Remote build execution | Missing | |
 | Remote test execution | Missing | |
 | Remote file synchronisation | Missing | |

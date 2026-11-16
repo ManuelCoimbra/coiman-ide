@@ -205,6 +205,7 @@ impl CodeApp {
             Command::ConditionalBreakpoint => self.edit_breakpoint(false),
             Command::AddLogpoint => self.edit_breakpoint(true),
             Command::AttachToProcess => self.attach_to_process(ctx),
+            Command::DebugRemote => self.show_remote_debug(),
             Command::ExportBreakpoints => self.export_breakpoints(),
             Command::ImportBreakpoints => self.import_breakpoints(),
             Command::ShowDebug => {

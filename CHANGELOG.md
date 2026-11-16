@@ -21,6 +21,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Debug: Remote (gdbserver)...`: debug a program on another machine with gdb. Over ssh,
+  Coiman starts gdbserver there (copying the program first with scp if asked) and carries its
+  port here; or gdb connects to a gdbserver already running. Kept per project.
 - Breakpoint groups: right-click a breakpoint in BREAKPOINTS to put it in a group, new or
   one there is; a group's box turns all its breakpoints on or off at once. Groups are kept
   with the breakpoints and in exports.

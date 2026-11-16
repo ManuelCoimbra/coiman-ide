@@ -565,6 +565,16 @@ downloaded unless you click **Download**.
   it); **Import Breakpoints...** adds a file's breakpoints to those set. Both are under
   BREAKPOINTS too. Without exporting, each project's line, function and exception breakpoints
   are kept between runs of the app.
+- **Remote debugging**: **Debug: Remote (gdbserver)...** debugs a program on another machine
+  with gdb, using a copy of the same build here for its symbols. **Start gdbserver over ssh**
+  runs `ssh host gdbserver :PORT program args` with key login only (no password prompt), and
+  `-L` carries the port here (to another local port if the same number is taken);
+  **Copy the program there first** sends it with scp. **ssh options** go to both ssh and scp
+  (`-i key`, `-o Port=2222`, `-F file`). **Connect to a gdbserver running** attaches to
+  `host:port`. gdbserver stops the program as gdb connects; Continue runs it to the
+  breakpoints. If gdb hears nothing for 15 seconds the debug console says so (wrong host or
+  port, gdbserver not running), and Stop gives up. Stop ends the program, gdbserver and ssh;
+  Restart starts it all again. The form is kept in the project's `.coiman/remote_debug.toml`.
 - **Attach to a process**: **Debug: Attach to Process...** (also in the Run menu) lists what's
   running, then asks which debugger: gdb, CodeLLDB, debugpy, js-debug or Delve, the likeliest
   first (debugpy for `python.exe`, js-debug for `node.exe`). Stop detaches and leaves the

@@ -91,6 +91,8 @@ struct Launch {
     cwd: PathBuf,
     /// A running process to attach to, in place of starting `program`.
     attach: Option<u32>,
+    /// A program on another machine, under gdbserver, to attach to.
+    remote: Option<coiman_core::launch::remote_debug::RemoteTarget>,
 }
 
 enum AdapterState {
@@ -176,7 +178,15 @@ struct Session {
     stop_gen: u64,
     capabilities: hexdata::Capabilities,
     support: Support,
+    /// When it started, and whether a remote session that never stopped has been reported:
+    /// gdb says yes to `attach` before it connects, and stays quiet when it can't.
+    started: std::time::Instant,
+    remote_warned: bool,
 }
+
+/// How long a remote session may go without its first stop (gdbserver stops the program as
+/// gdb connects) before Coiman says it may not have connected.
+const REMOTE_QUIET: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Results of background work (finding binaries, building, installing).
 enum Msg {
@@ -187,7 +197,12 @@ enum Msg {
     DebugpyInstalled(Launch, Result<(), String>),
     /// The processes running here, to attach to.
     Processes(Result<Vec<Process>, String>),
+    /// Remote debugging: the copy, ssh's lines, its end.
+    Remote(remote::RemoteMsg),
 }
+
+#[path = "remote_debug.rs"]
+mod remote;
 
 pub(crate) struct DebugState {
     /// What the Debug picker is choosing from.
@@ -226,6 +241,11 @@ pub(crate) struct DebugState {
     attach_to: Option<Process>,
     /// Breakpoints of every project, as kept in the session (read when first needed).
     kept: Option<BTreeMap<PathBuf, bpx::Saved>>,
+    /// Debug: Remote's form while it's open.
+    remote_form: Option<coiman_core::launch::remote_debug::RemoteTarget>,
+    /// ssh running gdbserver there, and the target while gdbserver isn't ready yet.
+    remote_child: Option<std::process::Child>,
+    remote_waiting: Option<coiman_core::launch::remote_debug::RemoteTarget>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
 }
@@ -258,6 +278,9 @@ impl Default for DebugState {
             processes: Vec::new(),
             attach_to: None,
             kept: None,
+            remote_form: None,
+            remote_child: None,
+            remote_waiting: None,
             tx,
             rx,
         }
@@ -347,6 +370,7 @@ impl CodeApp {
                         Err(e) => self.refuse_run(ctx, format!("Could not install debugpy: {e}")),
                     }
                 }
+                Msg::Remote(m) => self.on_remote_msg(ctx, m),
                 Msg::Processes(Err(e)) => self.status = Some(format!("Could not list processes: {e}")),
                 Msg::Processes(Ok(list)) => {
                     self.status = None;
@@ -375,8 +399,27 @@ impl CodeApp {
         for ev in events {
             self.on_dap_event(ctx, ev);
         }
+        if let Some(s) = &mut self.debug.session
+            && let Some(t) = &s.launch.remote
+            && s.stop_gen == 0
+            && !s.remote_warned
+        {
+            let elapsed = s.started.elapsed();
+            if elapsed >= REMOTE_QUIET {
+                s.remote_warned = true;
+                let to = t.target();
+                self.push_console(&format!(
+                    "No word from gdbserver at {to} after {} s: check the host and port, and that gdbserver is running there. Stop gives up.",
+                    REMOTE_QUIET.as_secs()
+                ));
+                self.status = Some(format!("gdb hasn't reached {to} yet (see the debug console)"));
+            } else {
+                ctx.request_repaint_after(REMOTE_QUIET - elapsed);
+            }
+        }
         if self.debug.session.as_ref().is_some_and(|s| s.state == RunState::Ended) {
             self.debug.session = None;
+            self.stop_remote();
             self.status = Some("Debugging stopped".to_owned());
         }
     }
@@ -479,6 +522,11 @@ impl CodeApp {
                 let step_into_std = self.settings.debug.step_into_std;
                 if let Some(pid) = l.attach {
                     let args = l.kind.attach_args(pid, step_into_std);
+                    self.request("attach", args, Pending::Launch);
+                    return;
+                }
+                if let Some(t) = &l.remote {
+                    let args = t.attach_args();
                     self.request("attach", args, Pending::Launch);
                     return;
                 }
@@ -941,7 +989,7 @@ impl CodeApp {
         };
         let cwd = self.explorer.root.clone().unwrap_or_else(std::env::temp_dir);
         let program = PathBuf::from(&p.name);
-        let launch = Launch { kind, name: p.name, program, args: Vec::new(), cwd, attach: Some(p.pid) };
+        let launch = Launch { kind, name: p.name, program, args: Vec::new(), cwd, attach: Some(p.pid), remote: None };
         // debugpy attaches only from a Python that has it: offer to install it first.
         let DebugKind::Python { python, .. } = &launch.kind else {
             self.start_session(ctx, launch);
@@ -1156,6 +1204,10 @@ impl CodeApp {
         self.debug.session = None;
         self.debug.console.clear();
         match launch.attach {
+            None if launch.remote.is_some() => {
+                let to = launch.remote.as_ref().map(|t| t.target()).unwrap_or_default();
+                self.push_console(&format!("Attaching gdb to {to}, symbols from {}", launch.program.display()));
+            }
             Some(pid) => {
                 let how = format!("Attaching {} to {} (process {pid})", launch.kind.name(), launch.name);
                 self.push_console(&how);
@@ -1191,6 +1243,8 @@ impl CodeApp {
                     stop_gen: 0,
                     capabilities: Default::default(),
                     support: Support::default(),
+                    started: std::time::Instant::now(),
+                    remote_warned: false,
                 });
                 // A data breakpoint's id only means something to the session that gave it.
                 self.debug.data.clear();
@@ -1309,12 +1363,20 @@ impl CodeApp {
                     args: built.args,
                     cwd: built.cwd,
                     attach: None,
+                    remote: None,
                 })
             });
             return;
         }
-        let launch =
-            Launch { kind: kind.clone(), name, program: file.to_path_buf(), args: Vec::new(), cwd, attach: None };
+        let launch = Launch {
+            kind: kind.clone(),
+            name,
+            program: file.to_path_buf(),
+            args: Vec::new(),
+            cwd,
+            attach: None,
+            remote: None,
+        };
         let DebugKind::Python { python, .. } = kind else {
             self.start_session(ctx, launch);
             return;
@@ -1367,6 +1429,7 @@ impl CodeApp {
                 args: Vec::new(),
                 cwd: target.dir,
                 attach: None,
+                remote: None,
             })
         });
     }
@@ -1393,6 +1456,7 @@ impl CodeApp {
                 args: run_args,
                 cwd: target.dir.clone(),
                 attach: None,
+                remote: None,
             })
         });
     }
@@ -1517,6 +1581,12 @@ impl CodeApp {
         let launch = self.debug.last_launch.clone();
         self.debug_stop();
         self.debug.session = None;
+        self.stop_remote();
+        // A remote program starts again the way it started: over ssh, or by connecting.
+        if let Some(t) = launch.as_ref().and_then(|l| l.remote.clone()) {
+            self.start_remote(ctx, t);
+            return;
+        }
         if let Some(l) = launch {
             self.start_session(ctx, l);
         }
