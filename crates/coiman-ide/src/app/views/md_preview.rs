@@ -46,7 +46,22 @@ pub(crate) struct MdPreview {
 }
 
 fn is_markdown(doc: &crate::document::Document) -> bool {
-    matches!(doc.extension().as_str(), "md" | "markdown") || is_mermaid(doc)
+    matches!(doc.extension().as_str(), "md" | "markdown") || is_mermaid(doc) || is_plantuml(doc)
+}
+
+/// A PlantUML file: previewed as its diagram.
+fn is_plantuml(doc: &crate::document::Document) -> bool {
+    matches!(doc.extension().as_str(), "puml" | "plantuml" | "pu" | "iuml" | "wsd")
+}
+
+/// A fenced block's language that is a diagram: Mermaid or PlantUML.
+fn diagram_lang(lang: &str) -> Option<bool> {
+    let lang = lang.to_ascii_lowercase();
+    match lang.as_str() {
+        "mermaid" => Some(false),
+        "plantuml" | "puml" => Some(true),
+        _ => None,
+    }
 }
 
 /// A Mermaid file: previewed as the one diagram it holds.
@@ -362,12 +377,27 @@ fn diagram_look() -> coiman_core::language::mermaid::Look {
     }
 }
 
-/// Draws a Mermaid diagram in the background; the picture, and its size in points.
-fn draw_diagram(ctx: &egui::Context, text: String, ppp: f32) -> Picture {
+/// Draws a PlantUML diagram: SVG from PlantUML, then pixels.
+fn draw_plantuml(text: &str, dark: bool) -> Result<(egui::ColorImage, egui::Vec2), String> {
+    use coiman_core::language::plantuml;
+    let runner = plantuml::find().ok_or_else(plantuml::missing)?;
+    let svg = plantuml::svg(&runner, text, dark)?;
+    let (size, pixels, natural) = crate::app::views::svg_preview::draw(&svg)?;
+    Ok((egui::ColorImage::from_rgba_premultiplied(size, &pixels), egui::vec2(natural[0], natural[1])))
+}
+
+/// Draws a Mermaid (or PlantUML) diagram in the background; the picture, and its size in points.
+fn draw_diagram(ctx: &egui::Context, text: String, ppp: f32, plantuml: bool) -> Picture {
     let (tx, rx) = mpsc::channel();
     let wake = repaint(ctx);
     let look = diagram_look();
     std::thread::spawn(move || {
+        if plantuml {
+            let dark = !matches!(look, coiman_core::language::mermaid::Look::Light);
+            let _ = tx.send(draw_plantuml(&text, dark));
+            wake();
+            return;
+        }
         let drawn = coiman_core::language::mermaid::png(&text, look, ppp).and_then(|png| {
             let image =
                 image::load_from_memory_with_format(&png, image::ImageFormat::Png).map_err(|e| e.to_string())?;
@@ -382,12 +412,12 @@ fn draw_diagram(ctx: &egui::Context, text: String, ppp: f32) -> Picture {
     Picture::Loading(rx)
 }
 
-/// A ```mermaid block as its diagram. While an edit is drawn, the last picture stays; a
-/// diagram that can't be drawn shows its text and why.
-fn mermaid_block(ui: &mut egui::Ui, d: &mut Draw, text: &str, salt: usize) {
+/// A ```mermaid (or ```plantuml) block as its diagram. While an edit is drawn, the last
+/// picture stays; a diagram that can't be drawn shows its text and why.
+fn diagram_block(ui: &mut egui::Ui, d: &mut Draw, plantuml: bool, text: &str, salt: usize) {
     let pal = theme::colors();
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    (text, diagram_look(), d.ppp.to_bits(), theme_generation()).hash(&mut hasher);
+    (text, plantuml, diagram_look(), d.ppp.to_bits(), theme_generation()).hash(&mut hasher);
     let key = hasher.finish();
     let ctx = ui.ctx().clone();
     if d.diagrams.len() > MAX_DIAGRAMS {
@@ -395,12 +425,12 @@ fn mermaid_block(ui: &mut egui::Ui, d: &mut Draw, text: &str, salt: usize) {
         d.diagrams.retain(|k, _| keep.contains(k));
     }
     let ppp = d.ppp;
-    let entry = d.diagrams.entry(key).or_insert_with(|| draw_diagram(&ctx, text.to_owned(), ppp));
+    let entry = d.diagrams.entry(key).or_insert_with(|| draw_diagram(&ctx, text.to_owned(), ppp, plantuml));
     if let Picture::Loading(rx) = entry
         && let Ok(result) = rx.try_recv()
     {
         *entry = match result {
-            Ok((image, size)) => Picture::Ready(ctx.load_texture("mermaid", image, egui::TextureOptions::LINEAR), size),
+            Ok((image, size)) => Picture::Ready(ctx.load_texture("diagram", image, egui::TextureOptions::LINEAR), size),
             Err(why) => Picture::Failed(why),
         };
     }
@@ -420,9 +450,10 @@ fn mermaid_block(ui: &mut egui::Ui, d: &mut Draw, text: &str, salt: usize) {
         }
         Some(Picture::Failed(why)) => {
             let why = why.clone();
-            code_block(ui, d, "mermaid", text, salt);
+            let (lang, name) = if plantuml { ("plantuml", "PlantUML") } else { ("mermaid", "Mermaid") };
+            code_block(ui, d, lang, text, salt);
             ui.label(
-                egui::RichText::new(format!("Mermaid: {why}"))
+                egui::RichText::new(format!("{name}: {why}"))
                     .font(FontId::proportional(d.size * 0.9))
                     .color(pal.bracket_unexpected),
             );
@@ -619,8 +650,8 @@ fn one_block(ui: &mut egui::Ui, d: &mut Draw, block: &Block, i: usize, depth: us
             ui.painter().vline(r.left() + 3.0, r.y_range(), Stroke::new(3.0, pal.border));
             ui.add_space(4.0);
         }
-        Block::Code { lang, text } if lang.eq_ignore_ascii_case("mermaid") => {
-            mermaid_block(ui, d, text, salt);
+        Block::Code { lang, text } if diagram_lang(lang).is_some() => {
+            diagram_block(ui, d, diagram_lang(lang) == Some(true), text, salt);
             ui.add_space(6.0);
         }
         Block::Code { lang, text } => {
@@ -642,7 +673,7 @@ impl CodeApp {
         if self.active_is_markdown() {
             self.md_preview.open = !self.md_preview.open;
         } else {
-            self.status = Some("Open a Markdown or Mermaid file to preview it".to_owned());
+            self.status = Some("Open a Markdown, Mermaid or PlantUML file to preview it".to_owned());
         }
     }
 
@@ -666,6 +697,8 @@ impl CodeApp {
                 Vec::new()
             } else if is_mermaid(doc) {
                 vec![Block::Code { lang: "mermaid".to_owned(), text: doc.text() }]
+            } else if is_plantuml(doc) {
+                vec![Block::Code { lang: "plantuml".to_owned(), text: doc.text() }]
             } else {
                 markdown::parse(&doc.text())
             };

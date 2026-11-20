@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- PlantUML preview (the user's PlantUML draws it).
 - Remote folders: a command's errors there link to the files here.
 - SSH remote folders: deletes and renames go there; a terminal and commands in the folder.
 - SSH remote folders: mirrored here, saves sent back over ssh.
@@ -36,8 +37,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **Documentation**
-  - PlantUML preview.
+- Nothing left: what's next is under "Later", each needing a download first.
 
 ## Later, each needing a download first
 

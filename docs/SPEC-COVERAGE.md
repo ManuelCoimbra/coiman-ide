@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 129, partial 121,
-missing 219, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 130, partial 121,
+missing 218, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -22,7 +22,7 @@ specification is right: every row in it exists.
 | 4 Git and collaboration | 9 | 2 | 7 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
 | 6 Terminal | 9 | 4 | 5 | |
-| 7 Documentation | 3 | 6 | 10 | |
+| 7 Documentation | 4 | 6 | 9 | |
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 13 | 4 | 6 | |
 | 10 Data science | 2 | 4 | 16 | |
@@ -250,7 +250,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Preview documentation in different formats | Partial | Markdown, SVG, Mermaid |
 | Markdown documentation workspace | Partial | Preview, outline |
 | Mermaid diagram preview | Done | |
-| PlantUML integration | Missing | |
+| PlantUML integration | Done | Markdown blocks and .puml files, drawn by the user's PlantUML |
 | LaTeX preview and editing | Missing | |
 | Documentation templates | Partial | Doc comment templates |
 | Generate documentation from code comments | Missing | |

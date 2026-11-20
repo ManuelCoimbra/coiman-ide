@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- PlantUML preview: ```plantuml blocks in Markdown and `.puml` files, drawn by a PlantUML
+  jar in the config folder's `tools/plantuml` or a `plantuml` program.
 - `Remote: Run Command There...`: errors and warnings it prints go to Problems and link to
   the files here, from remote absolute or relative paths.
 - Remote folders: deletes and renames go there too; `Remote: Open Terminal There` and
