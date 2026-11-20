@@ -7,11 +7,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Folders are watched the whole tree at once again on Windows and macOS (one at a time stays
+  for Linux), so changes deep in folders not yet listed are seen.
+- Linux startup with a large folder: folders are watched as the Explorer lists them instead of
+  all at once before the first frame (a contributor's change).
+- Terminal: programs that ask for the mouse get it (TUIs); Shift still selects. Equal padding.
+- Open VSX: `.vsix` packages unpack with `unzip` on Linux and macOS.
 - The Python REPL's Jupyter kernel didn't see `jupyter_client` installed with `pip --user`.
 - The "Tests at once" tooltip had long runs of spaces inside it.
 
 ### Added
 
+- **Agents** panel (from a contributor): drives the `opencode` program installed on this
+  computer, with sessions, models, context chips and a working set; it asks before acting
+  (Manual) unless switched to Auto. `workbench.agents_enabled` hides it.
+- Settings can open as an editor tab (`workbench.settings_in_tab`).
+- **Sticky scroll** (`editor.sticky_scroll`, off by default).
 - Jupyter notebooks: `.ipynb` opens as cells, run in a Python kernel, with printed text,
   values, errors and plots; saved back keeping what Coiman doesn't edit.
 - `Android: Devices and Logcat`: devices through adb, logcat filtered by level, text and app,

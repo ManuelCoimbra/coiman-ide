@@ -1,7 +1,7 @@
 //! Watches the open folder and the folders shown in the Explorer, plus open
 //! files outside it, for changes made by other programs.
 //!
-//! Watches are added on a worker thread and only for folders the editor has
+//! Watches are added on a worker thread. On Linux, only for folders the editor has
 //! listed (or an open file lives in). Watching a whole tree recursively up front
 //! is fast on Windows but on Linux it means an `inotify` watch per directory, so
 //! opening a large folder or a home directory used to block the first frame for
@@ -78,7 +78,15 @@ impl FileWatcher {
         }
         let Some(root) = root else { return };
         if let Some(commands) = &self.commands {
-            let _ = commands.send(WatchCmd::Dir(root.to_path_buf()));
+            // Linux: one inotify watch per folder, so the tree is watched as it's listed.
+            // Windows and macOS watch a whole tree in one call, and then miss nothing deep
+            // inside it (a checkout, a build writing sources).
+            let whole = !cfg!(target_os = "linux");
+            let _ = commands.send(if whole {
+                WatchCmd::Tree(root.to_path_buf())
+            } else {
+                WatchCmd::Dir(root.to_path_buf())
+            });
             // Git's refs are folders below `.git`; the index and HEAD are watched
             // with it. It is small, unlike the project around it.
             let git = root.join(".git");
@@ -103,6 +111,10 @@ impl FileWatcher {
     /// The Explorer calls this for every folder it lists, so changes in the
     /// folders on screen are reported without watching the whole tree.
     pub fn watch_dir(&mut self, dir: &Path) {
+        // Inside a root watched whole, it's watched already.
+        if !cfg!(target_os = "linux") && self.root.as_deref().is_some_and(|r| dir.starts_with(r)) {
+            return;
+        }
         if !self.extra_dirs.insert(dir.to_path_buf()) {
             return;
         }
@@ -222,13 +234,16 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("coiman-watch-nested-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("a/b")).unwrap();
-        let file = dir.join("a/b/c.txt");
+        // Joined a part at a time: "a/b/c.txt" would keep its slashes on Windows, unlike the
+        // paths events carry.
+        let nested = dir.join("a").join("b");
+        let file = nested.join("c.txt");
         std::fs::write(&file, "one").unwrap();
 
         let mut w = FileWatcher::new(|| {});
         w.set_root(Some(&dir));
         // The Explorer listing a folder is what brings its watch in.
-        w.watch_dir(&dir.join("a/b"));
+        w.watch_dir(&nested);
         std::thread::sleep(Duration::from_millis(200));
         std::fs::write(&file, "two").unwrap();
         assert!(wait_for(&mut w, |c| c.paths.iter().any(|p| same_path(p, &file))), "nested change reported");
