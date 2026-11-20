@@ -145,6 +145,8 @@ pub struct CodeApp {
     snapshots: launch::snapshots::Snapshots,
     /// Active time per project, for the session statistics.
     activity: shell::activity::Tracker,
+    /// Remote: Open SSH Folder's form and its downloads and uploads.
+    remote_folders: project::remote_folder_ui::RemoteFolders,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -347,6 +349,7 @@ impl CodeApp {
             run_history: Default::default(),
             snapshots: Default::default(),
             activity: Default::default(),
+            remote_folders: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -514,6 +517,7 @@ impl CodeApp {
         self.pump_preview(&ctx);
         self.check_baseline();
         self.pump_cpp(&ctx);
+        self.pump_remote_folders(&ctx);
         self.pump_repl(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
@@ -943,6 +947,7 @@ impl CodeApp {
         self.snapshots_window(&ctx);
         self.remote_debug_window(&ctx);
         self.new_plugin_window(&ctx);
+        self.remote_folder_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

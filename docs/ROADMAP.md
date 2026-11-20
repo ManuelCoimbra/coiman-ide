@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- SSH remote folders: mirrored here, saves sent back over ssh.
 - A function's flowchart (Architecture: Show Flow of Function at Cursor).
 - Session statistics: active time per project, kept locally.
 - Project: Generate Overview.
@@ -33,8 +34,8 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **SSH remote projects**, through `ssh` (started: an ssh terminal to a host from `~/.ssh/config`;
-  next, the remote folder in the Explorer).
+- **SSH remote projects**, next steps: send deletes and renames, run builds and language servers
+  there.
 - **Documentation**
   - PlantUML preview.
 

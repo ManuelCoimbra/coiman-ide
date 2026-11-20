@@ -619,6 +619,7 @@ impl CodeApp {
             host.event(EventKind::Saved, Event::Saved(rel));
         }
         self.plugin_dev_saved(&path);
+        self.remote_saved(&path);
     }
 
     pub(crate) fn plugins_opened(&mut self, path: &Path) {

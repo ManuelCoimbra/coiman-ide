@@ -912,6 +912,13 @@ left out. A click on a place opens the file there.
   returns to the end and breaks out of their loop; plain statements in a row share one box.
   Rust, Python, JavaScript, TypeScript, Java, C, C++, C# and Go. A `let … else` or a
   `?` stays inside its box.
+- **Remote: Open SSH Folder...** works on a folder on another machine: it asks for the ssh
+  host, the folder there and any ssh options, brings the folder here with `ssh … tar` (build
+  folders such as `target` and `node_modules` left out) into a mirror in the config folder,
+  and opens the mirror as the project. Each file saved there goes back over ssh, its folders
+  made first. **Remote: Download Folder Again** brings the remote folder's current state
+  (changed files must be saved first). Deleting or renaming isn't sent; ssh logs in with a
+  key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

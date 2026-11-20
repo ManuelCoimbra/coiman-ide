@@ -6,3 +6,4 @@ pub(crate) mod git;
 pub(crate) mod git_graph_ui;
 pub(crate) mod git_setup;
 pub(crate) mod health;
+pub(crate) mod remote_folder_ui;

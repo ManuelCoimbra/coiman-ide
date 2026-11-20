@@ -148,6 +148,9 @@ pub enum Command {
     NewTerminalWithProfile,
     /// A terminal running `ssh` to a host named in ~/.ssh/config.
     NewSshTerminal,
+    /// A folder on another machine, mirrored here; saves go back over ssh.
+    OpenRemoteFolder,
+    DownloadRemoteFolder,
     SplitTerminal,
     KillTerminal,
     ClearTerminal,
@@ -439,6 +442,8 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
     (Command::NewSshTerminal, "Terminal: New SSH Terminal..."),
+    (Command::OpenRemoteFolder, "Remote: Open SSH Folder..."),
+    (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),
@@ -748,6 +753,8 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NewTerminal, "workbench.action.terminal.new"),
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
     (Command::NewSshTerminal, "coiman.terminal.newSsh"),
+    (Command::OpenRemoteFolder, "coiman.remote.openFolder"),
+    (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),
     (Command::KillTerminal, "workbench.action.terminal.kill"),
     (Command::ClearTerminal, "workbench.action.terminal.clear"),

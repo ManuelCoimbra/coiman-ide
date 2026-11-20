@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 126, partial 118,
-missing 225, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 126, partial 122,
+missing 221, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -29,11 +29,11 @@ specification is right: every row in it exists.
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 2 | 4 | 9 | |
-| 14 DevOps | 1 | 4 | 17 | 2 |
+| 14 DevOps | 1 | 5 | 16 | 2 |
 | 15 Testing | 6 | 6 | 9 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
-| 18 Remote | 1 | 2 | 11 | 1 |
+| 18 Remote | 1 | 5 | 8 | 1 |
 | 19 Plugins | 6 | 4 | 9 | 1 |
 | 20 Workspace | 3 | 10 | 4 | |
 | 21 Experimental | 10 | 12 | 15 | |
@@ -441,7 +441,7 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Deployment configuration | Missing | |
 | Cloud resource explorer | Network | |
 | Remote development environments | Missing | |
-| SSH project access | Missing | |
+| SSH project access | Partial | Remote: Open SSH Folder (a mirror; saves go back) |
 | Development containers | Missing | |
 | Cloud workspace management | Network | |
 
@@ -524,14 +524,14 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 
 | Item | Status | Note |
 |---|---|---|
-| SSH remote development | Missing | Planned through `ssh` and `sftp` |
-| Remote project explorer | Missing | |
+| SSH remote development | Partial | A remote folder mirrored here, saves sent back, an ssh terminal; builds run here |
+| Remote project explorer | Partial | The mirror in the Explorer; deletes and renames aren't sent |
 | Remote terminal | Partial | An ssh terminal to a host from `~/.ssh/config` |
 | Remote LSP execution | Missing | |
 | Remote debugging | Done | See Debugging: gdbserver over ssh |
 | Remote build execution | Missing | |
 | Remote test execution | Missing | |
-| Remote file synchronisation | Missing | |
+| Remote file synchronisation | Partial | Saves go up; Download Folder Again comes down |
 | Remote workspace profiles | Missing | |
 | Remote environment configuration | Missing | |
 | Container-based development environments | Missing | |

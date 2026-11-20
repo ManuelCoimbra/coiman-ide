@@ -165,6 +165,8 @@ impl CodeApp {
                     self.palette.show_picker(PickerKind::SshHost, hosts, "", "Open a terminal on which host?");
                 }
             }
+            Command::OpenRemoteFolder => self.show_remote_folder(),
+            Command::DownloadRemoteFolder => self.download_remote_again(ctx),
             Command::KillTerminal => self.terminal.kill_active(),
             Command::ClearTerminal => self.terminal.clear_active(),
             Command::DetachTerminal => {

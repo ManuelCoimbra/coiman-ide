@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Remote: Open SSH Folder...`: a folder on another machine, mirrored here over ssh and tar;
+  each save goes back. `Remote: Download Folder Again` refreshes it.
 - `Architecture: Show Flow of Function at Cursor`: the function as a Mermaid flowchart (ifs,
   loops, returns, breaks), opened with its preview.
 - `Project: Show Session Statistics`: active time per project and day, kept on this

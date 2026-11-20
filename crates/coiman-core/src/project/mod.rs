@@ -12,6 +12,7 @@ pub mod git_graph;
 pub mod history;
 pub mod project_tree;
 pub mod recent;
+pub mod remote_folder;
 pub mod search;
 pub mod session;
 pub mod ssh_hosts;
