@@ -907,6 +907,11 @@ left out. A click on a place opens the file there.
   front and something was typed or clicked in the last two minutes. The page shows today,
   the last 7 and 30 days, the days with use, today's projects, the last 14 days and every
   project's total.
+- **Architecture: Show Flow of Function at Cursor** draws the function around the cursor as a
+  Mermaid flowchart, opened with its preview: ifs with yes and no, loops with each and done,
+  returns to the end and breaks out of their loop; plain statements in a row share one box.
+  Rust, Python, JavaScript, TypeScript, Java, C, C++, C# and Go. A `let … else` or a
+  `?` stays inside its box.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

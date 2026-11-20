@@ -137,6 +137,16 @@ fn kinds(lang: Lang) -> Option<Kinds> {
     })
 }
 
+/// What `lang` calls a function (for the flow view).
+pub(crate) fn function_kinds(lang: Lang) -> Option<&'static [&'static str]> {
+    kinds(lang).map(|k| k.functions)
+}
+
+/// A function node's name (for the flow view).
+pub(crate) fn name_of_function(node: Node, src: &[u8]) -> String {
+    name_of(node, src)
+}
+
 /// A function's name: its `name` field, else "(anonymous)" with what holds it.
 fn name_of(node: Node, src: &[u8]) -> String {
     let named = node.child_by_field_name("name").or_else(|| {

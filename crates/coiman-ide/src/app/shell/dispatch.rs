@@ -543,6 +543,7 @@ impl CodeApp {
                 None => self.status = Some("Open a folder to see its overview".to_owned()),
             },
             Command::SessionStatistics => self.show_session_statistics(),
+            Command::ShowFunctionFlow => self.show_function_flow(),
             Command::ShowRunHistory => self.show_run_history(),
             Command::ReviewSnapshots => self.show_snapshots(),
             Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),

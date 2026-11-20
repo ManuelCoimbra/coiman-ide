@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- A function's flowchart (Architecture: Show Flow of Function at Cursor).
 - Session statistics: active time per project, kept locally.
 - Project: Generate Overview.
 - Search the project's documentation (Find in Files' Doc switch).
@@ -34,7 +35,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 - **SSH remote projects**, through `ssh` (started: an ssh terminal to a host from `~/.ssh/config`;
   next, the remote folder in the Explorer).
-- **Experimental:** flow views.
 - **Documentation**
   - PlantUML preview.
 

@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Architecture: Show Flow of Function at Cursor`: the function as a Mermaid flowchart (ifs,
+  loops, returns, breaks), opened with its preview.
 - `Project: Show Session Statistics`: active time per project and day, kept on this
   computer only.
 - `Project: Generate Overview`: a Markdown page about the open folder (languages, lines,
