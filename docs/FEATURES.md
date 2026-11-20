@@ -916,9 +916,11 @@ left out. A click on a place opens the file there.
   host, the folder there and any ssh options, brings the folder here with `ssh … tar` (build
   folders such as `target` and `node_modules` left out) into a mirror in the config folder,
   and opens the mirror as the project. Each file saved there goes back over ssh, its folders
-  made first. **Remote: Download Folder Again** brings the remote folder's current state
-  (changed files must be saved first). Deleting or renaming isn't sent; ssh logs in with a
-  key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
+  made first; deleting (or moving to the Recycle Bin) and renaming in the Explorer happen there
+  too. **Remote: Download Folder Again** brings the remote folder's current state (changed
+  files must be saved first). **Remote: Open Terminal There** opens a shell in the remote
+  folder, and **Remote: Run Command There...** runs a command in it (`cargo build`, `make`),
+  the shell staying for more. ssh logs in with a key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

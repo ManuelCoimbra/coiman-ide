@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Remote folders: deletes and renames go there too; `Remote: Open Terminal There` and
+  `Remote: Run Command There...` work in the remote folder.
 - `Remote: Open SSH Folder...`: a folder on another machine, mirrored here over ssh and tar;
   each save goes back. `Remote: Download Folder Again` refreshes it.
 - `Architecture: Show Flow of Function at Cursor`: the function as a Mermaid flowchart (ifs,

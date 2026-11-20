@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- SSH remote folders: deletes and renames go there; a terminal and commands in the folder.
 - SSH remote folders: mirrored here, saves sent back over ssh.
 - A function's flowchart (Architecture: Show Flow of Function at Cursor).
 - Session statistics: active time per project, kept locally.
@@ -34,8 +35,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **SSH remote projects**, next steps: send deletes and renames, run builds and language servers
-  there.
+- **SSH remote projects**, next step: language servers and problem links for builds run there.
 - **Documentation**
   - PlantUML preview.
 

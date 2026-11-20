@@ -1017,6 +1017,7 @@ impl CodeApp {
                 self.finish_breakpoint_edit(false, &text)
             }
             Some(PaletteResult::Input(InputKind::Logpoint, text)) => self.finish_breakpoint_edit(true, &text),
+            Some(PaletteResult::Input(InputKind::RemoteCommand, text)) => self.remote_terminal(&ctx, Some(&text)),
             Some(PaletteResult::Input(InputKind::MavenGoal, text)) => self.maven_goal_typed(&ctx, &text),
             Some(PaletteResult::Input(InputKind::MavenSearch, text)) => self.maven_search(&ctx, &text),
             Some(PaletteResult::Input(InputKind::MavenGroupId, text)) => self.maven_group_typed(&text),

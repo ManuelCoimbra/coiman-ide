@@ -72,11 +72,46 @@ impl RemoteFolder {
     /// `ssh` arguments that write stdin to `rel` (with `/`) in the folder there, making its
     /// folders first.
     pub fn upload_args(&self, rel: &str) -> Vec<String> {
+        let full = self.full(rel);
+        let dir = full.rsplit_once('/').map_or(".", |(d, _)| d).to_owned();
+        self.run(format!("mkdir -p {} && cat > {}", quote(&dir), quote(&full)))
+    }
+
+    /// The remote path of `rel` (with `/`).
+    fn full(&self, rel: &str) -> String {
+        format!("{}/{}", self.path.trim().trim_end_matches('/'), rel.trim_start_matches('/'))
+    }
+
+    /// `ssh` arguments that run a shell command there.
+    fn run(&self, command: String) -> Vec<String> {
         let mut args = self.options();
         args.push(self.host.trim().to_owned());
-        let full = format!("{}/{}", self.path.trim().trim_end_matches('/'), rel.trim_start_matches('/'));
-        let dir = full.rsplit_once('/').map_or(".", |(d, _)| d).to_owned();
-        args.push(format!("mkdir -p {} && cat > {}", quote(&dir), quote(&full)));
+        args.push(command);
+        args
+    }
+
+    /// `ssh` arguments that delete files or folders there.
+    pub fn delete_args(&self, rels: &[String]) -> Vec<String> {
+        let paths: Vec<String> = rels.iter().map(|r| quote(&self.full(r))).collect();
+        self.run(format!("rm -rf -- {}", paths.join(" ")))
+    }
+
+    /// `ssh` arguments that rename `old` to `new` there.
+    pub fn rename_args(&self, old: &str, new: &str) -> Vec<String> {
+        self.run(format!("mv -- {} {}", quote(&self.full(old)), quote(&self.full(new))))
+    }
+
+    /// `ssh` arguments for a terminal in the folder there: an interactive shell, or `command` run
+    /// there (then the shell stays, so what it printed can be read and more typed). MSYS2's
+    /// shell goes home unless `CHERE_INVOKING` is set; elsewhere it means nothing.
+    pub fn terminal_args(&self, command: Option<&str>) -> Vec<String> {
+        let mut args = self.options();
+        args.extend(["-t".to_owned(), self.host.trim().to_owned()]);
+        let cd = format!("cd {}", quote(self.path.trim()));
+        args.push(match command.map(str::trim).filter(|c| !c.is_empty()) {
+            Some(c) => format!("{cd} && {c}; CHERE_INVOKING=1 exec \"${{SHELL:-sh}}\" -i"),
+            None => format!("{cd} && CHERE_INVOKING=1 exec \"${{SHELL:-sh}}\" -i"),
+        });
         args
     }
 
@@ -121,6 +156,18 @@ mod tests {
         let up = r.upload_args("src/main.rs");
         assert_eq!(up[5], "mkdir -p '/home/pi/my app/src' && cat > '/home/pi/my app/src/main.rs'");
         assert!(r.mirror_dir(Path::new("/c")).ends_with("remote/pi_board_my_app"));
+        assert_eq!(
+            r.delete_args(&["a.txt".into(), "old dir".into()])[5],
+            "rm -rf -- '/home/pi/my app/a.txt' '/home/pi/my app/old dir'"
+        );
+        assert_eq!(
+            r.rename_args("src/a.rs", "src/b.rs")[5],
+            "mv -- '/home/pi/my app/src/a.rs' '/home/pi/my app/src/b.rs'"
+        );
+        let t = r.terminal_args(Some("cargo build"));
+        assert_eq!(t[4..6], ["-t", "pi@board"]);
+        assert_eq!(t[6], "cd '/home/pi/my app/' && cargo build; CHERE_INVOKING=1 exec \"${SHELL:-sh}\" -i");
+        assert_eq!(r.terminal_args(None)[6], "cd '/home/pi/my app/' && CHERE_INVOKING=1 exec \"${SHELL:-sh}\" -i");
         assert_eq!(RemoteFolder::default().problem(), Some("Name the ssh host (user@host)"));
         assert_eq!(r.problem(), None);
     }

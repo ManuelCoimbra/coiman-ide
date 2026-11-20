@@ -20,6 +20,9 @@ impl CodeApp {
         let Some(rx) = &self.deleting else { return };
         let Ok((gone, message)) = rx.try_recv() else { return };
         self.deleting = None;
+        // In a remote folder's mirror, what is really gone here goes there too.
+        let removed: Vec<std::path::PathBuf> = gone.iter().filter(|p| !p.exists()).cloned().collect();
+        self.remote_deleted(&removed);
         self.explorer.forget(&gone);
         self.explorer.refresh();
         self.finder.mark_stale();
@@ -481,6 +484,7 @@ impl CodeApp {
                 }
                 self.explorer.refresh();
                 self.finder.mark_stale();
+                self.remote_renamed(&old, &new);
             }
             Err(e) => self.status = Some(format!("Could not rename: {e}")),
         }

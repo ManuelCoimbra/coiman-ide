@@ -167,6 +167,12 @@ impl CodeApp {
             }
             Command::OpenRemoteFolder => self.show_remote_folder(),
             Command::DownloadRemoteFolder => self.download_remote_again(ctx),
+            Command::RemoteTerminal => self.remote_terminal(ctx, None),
+            Command::RemoteRunCommand => self.palette.show_input(
+                crate::ui::palette::InputKind::RemoteCommand,
+                "",
+                "A command to run in the remote folder, e.g. cargo build (Enter)",
+            ),
             Command::KillTerminal => self.terminal.kill_active(),
             Command::ClearTerminal => self.terminal.clear_active(),
             Command::DetachTerminal => {

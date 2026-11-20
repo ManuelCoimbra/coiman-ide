@@ -15,7 +15,8 @@ use crate::ui::theme;
 
 pub(crate) enum Msg {
     Downloaded(RemoteFolder, PathBuf, Result<(), String>),
-    Uploaded(String, Result<(), String>),
+    /// A save, delete or rename sent there: what was done, and whether it was.
+    Sent(String, Result<(), String>),
 }
 
 pub(crate) struct RemoteFolders {
@@ -85,16 +86,17 @@ fn download(remote: &RemoteFolder, mirror: &Path) -> Result<(), String> {
     std::fs::rename(&fresh, mirror).map_err(|e| format!("{}: {e}", mirror.display()))
 }
 
-fn upload(remote: &RemoteFolder, rel: &str, bytes: &[u8]) -> Result<(), String> {
+/// Runs ssh with `args`, `input` on its stdin.
+fn ssh(args: &[String], input: &[u8]) -> Result<(), String> {
     let mut ssh = quiet_command(Path::new(&program("ssh")))
-        .args(remote.upload_args(rel))
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| format!("ssh: {e}"))?;
-    if let Some(mut input) = ssh.stdin.take() {
-        input.write_all(bytes).map_err(|e| e.to_string())?;
+    if let Some(mut stdin) = ssh.stdin.take() {
+        stdin.write_all(input).map_err(|e| e.to_string())?;
     }
     if ssh.wait().map_err(|e| e.to_string())?.success() { Ok(()) } else { Err(stderr_of(&mut ssh)) }
 }
@@ -134,22 +136,84 @@ impl CodeApp {
         });
     }
 
-    /// A file saved in a mirror goes back to the remote folder.
-    pub(crate) fn remote_saved(&mut self, path: &Path) {
-        let Some(root) = self.explorer.root.clone() else { return };
-        let Some(remote) = RemoteFolder::of_mirror(&root) else { return };
-        let Some(rel) = RemoteFolder::relative(&root, path) else { return };
-        let Ok(bytes) = std::fs::read(path) else { return };
+    /// Runs `args` with ssh in the background; `done` is what the status says when it worked.
+    fn send(&mut self, args: Vec<String>, input: Vec<u8>, done: String) {
         let tx = self.remote_folders.tx.clone();
         let wake = self.remote_folders.ctx.clone();
-        self.status = Some(format!("Sending {rel}…"));
         std::thread::spawn(move || {
-            let result = upload(&remote, &rel, &bytes);
-            let _ = tx.send(Msg::Uploaded(rel, result));
+            let result = ssh(&args, &input);
+            let _ = tx.send(Msg::Sent(done, result));
             if let Some(ctx) = wake {
                 ctx.request_repaint();
             }
         });
+    }
+
+    /// The open mirror's remote folder and root, if the project is one.
+    fn mirror(&self) -> Option<(RemoteFolder, PathBuf)> {
+        let root = self.explorer.root.clone()?;
+        Some((RemoteFolder::of_mirror(&root)?, root))
+    }
+
+    /// A file saved in a mirror goes back to the remote folder.
+    pub(crate) fn remote_saved(&mut self, path: &Path) {
+        let Some((remote, root)) = self.mirror() else { return };
+        let Some(rel) = RemoteFolder::relative(&root, path) else { return };
+        let Ok(bytes) = std::fs::read(path) else { return };
+        self.status = Some(format!("Sending {rel}…"));
+        self.send(remote.upload_args(&rel), bytes, format!("Sent {rel}"));
+    }
+
+    /// Files or folders deleted in a mirror are deleted there too.
+    pub(crate) fn remote_deleted(&mut self, paths: &[PathBuf]) {
+        let Some((remote, root)) = self.mirror() else { return };
+        let rels: Vec<String> = paths.iter().filter_map(|p| RemoteFolder::relative(&root, p)).collect();
+        if rels.is_empty() {
+            return;
+        }
+        let what = format!("Deleted {} there", rels.join(", "));
+        self.send(remote.delete_args(&rels), Vec::new(), what);
+    }
+
+    /// A rename in a mirror happens there too.
+    pub(crate) fn remote_renamed(&mut self, old: &Path, new: &Path) {
+        let Some((remote, root)) = self.mirror() else { return };
+        let (Some(a), Some(b)) = (RemoteFolder::relative(&root, old), RemoteFolder::relative(&root, new)) else {
+            return;
+        };
+        let what = format!("Renamed {a} to {b} there");
+        self.send(remote.rename_args(&a, &b), Vec::new(), what);
+    }
+
+    /// Remote: Open Terminal There, or Remote: Run Command There (`command`).
+    pub(crate) fn remote_terminal(&mut self, ctx: &egui::Context, command: Option<&str>) {
+        let Some((remote, root)) = self.mirror() else {
+            self.status = Some("Open a remote folder first (Remote: Open SSH Folder...)".to_owned());
+            return;
+        };
+        let program = program("ssh");
+        let args = remote.terminal_args(command);
+        let env = self.environment_variables();
+        let title = match command {
+            Some(c) => format!("{}: {c}", remote.host),
+            None => format!("ssh {}", remote.host),
+        };
+        let task = crate::ui::terminal::Task {
+            title: &title,
+            program: &program,
+            args: &args,
+            env: &env,
+            cwd: &root,
+            scan: None,
+        };
+        let scrollback = self.settings.terminal.scrollback;
+        match self.terminal.run_task(ctx, task, scrollback) {
+            Ok(()) => {
+                self.panel_visible = true;
+                self.panel_tab = crate::app::PanelTab::Terminal;
+            }
+            Err(e) => self.status = Some(format!("Couldn't start ssh: {e}")),
+        }
     }
 
     pub(crate) fn pump_remote_folders(&mut self, ctx: &egui::Context) {
@@ -182,8 +246,8 @@ impl CodeApp {
                     self.remote_folders.downloading = false;
                     self.status = Some(format!("Couldn't download {}:{}: {e}", remote.host, remote.path));
                 }
-                Msg::Uploaded(rel, Ok(())) => self.status = Some(format!("Sent {rel}")),
-                Msg::Uploaded(rel, Err(e)) => self.status = Some(format!("Couldn't send {rel}: {e}")),
+                Msg::Sent(done, Ok(())) => self.status = Some(done),
+                Msg::Sent(done, Err(e)) => self.status = Some(format!("Not done there ({done}): {e}")),
             }
         }
     }
