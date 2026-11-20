@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Android: Devices and Logcat`: devices through adb, logcat filtered by level, text and app,
+  stack frames in the project as links, a shell, and APK installs.
 - `Docker: Show Containers, Images and Compose`: containers (start, stop, restart, remove,
   logs, shell), images (remove) and the project's Compose services (up, down, build, logs).
 - PlantUML preview: ```plantuml blocks in Markdown and `.puml` files, drawn by a PlantUML

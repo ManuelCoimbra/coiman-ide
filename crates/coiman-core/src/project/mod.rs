@@ -2,6 +2,7 @@
 
 pub mod actions;
 pub mod activity;
+pub mod adb;
 pub mod dialog_dirs;
 pub mod dir_listing;
 pub mod docker;

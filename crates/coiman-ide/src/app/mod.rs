@@ -149,6 +149,8 @@ pub struct CodeApp {
     remote_folders: project::remote_folder_ui::RemoteFolders,
     /// Docker: Show Containers and Images.
     docker: project::docker_ui::DockerView,
+    /// Android: Devices and Logcat.
+    android: project::android_ui::AndroidView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -353,6 +355,7 @@ impl CodeApp {
             activity: Default::default(),
             remote_folders: Default::default(),
             docker: Default::default(),
+            android: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -952,6 +955,7 @@ impl CodeApp {
         self.new_plugin_window(&ctx);
         self.remote_folder_window(&ctx);
         self.docker_window(&ctx);
+        self.android_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

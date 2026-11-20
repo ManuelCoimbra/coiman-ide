@@ -152,6 +152,8 @@ pub enum Command {
     OpenRemoteFolder,
     /// Docker's containers, images and the project's Compose services.
     ShowDocker,
+    /// Android devices through adb: logcat, shell, installs.
+    ShowAndroid,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -448,6 +450,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NewSshTerminal, "Terminal: New SSH Terminal..."),
     (Command::OpenRemoteFolder, "Remote: Open SSH Folder..."),
     (Command::ShowDocker, "Docker: Show Containers, Images and Compose"),
+    (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -762,6 +765,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NewSshTerminal, "coiman.terminal.newSsh"),
     (Command::OpenRemoteFolder, "coiman.remote.openFolder"),
     (Command::ShowDocker, "coiman.docker.show"),
+    (Command::ShowAndroid, "coiman.android.show"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),
