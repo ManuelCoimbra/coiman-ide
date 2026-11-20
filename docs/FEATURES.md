@@ -933,6 +933,13 @@ left out. A click on a place opens the file there.
   `docker-compose.yml`: its services with status and ports, **up** (with `--build`) and
   **build** and **logs** in terminals, **down**. Without Docker, or with its engine stopped,
   the window says which.
+- **Android: Devices and Logcat** asks `adb` (on PATH, in the Android SDK, or unpacked into
+  the config folder's `tools/platform-tools`). It lists the devices, saying what to do with one
+  that is unauthorized or offline. **Logcat** follows a device's log live, colored by level,
+  filtered by level, by text in the tag or message, and by app (`com.example.app`: its running
+  processes); **Pause** and **Clear**. A Java or Kotlin stack frame naming a file of the open
+  project is a link to its line. **Shell** opens `adb shell` in a terminal, and **Install APK…**
+  runs `adb install -r` there. Closing the window or Coiman stops logcat.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 134, partial 121,
-missing 215, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 136, partial 121,
+missing 212, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -28,8 +28,8 @@ specification is right: every row in it exists.
 | 10 Data science | 2 | 4 | 16 | |
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
-| 13 Mobile | 2 | 4 | 9 | |
-| 14 DevOps | 4 | 5 | 13 | 2 |
+| 13 Mobile | 4 | 5 | 6 | |
+| 14 DevOps | 5 | 4 | 13 | 2 |
 | 15 Testing | 6 | 6 | 9 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
@@ -403,11 +403,11 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | Android project support | Partial | Android folders in the project tree |
 | Android SDK management | Missing | |
 | Android emulator integration | Missing | |
-| Android device manager | Missing | |
-| ADB terminal integration | Missing | |
+| Android device manager | Partial | Devices listed with their state; no emulators started |
+| ADB terminal integration | Done | adb shell per device, in a terminal |
 | APK inspection | Missing | |
 | APK build and signing | Missing | |
-| Android logcat viewer | Missing | |
+| Android logcat viewer | Done | Live, by level, text and app; project frames as links |
 | Gradle Android integration | Missing | |
 | Flutter development support | Done | Run, stack traces |
 | Dart language tools | Done | |
