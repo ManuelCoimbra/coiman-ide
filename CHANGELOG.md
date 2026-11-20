@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Remote: Run Command There...`: errors and warnings it prints go to Problems and link to
+  the files here, from remote absolute or relative paths.
 - Remote folders: deletes and renames go there too; `Remote: Open Terminal There` and
   `Remote: Run Command There...` work in the remote folder.
 - `Remote: Open SSH Folder...`: a folder on another machine, mirrored here over ssh and tar;

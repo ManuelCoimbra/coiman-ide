@@ -1301,9 +1301,18 @@ impl CodeApp {
                 None => matchers::scan(&output.lines),
             };
             let bases = [output.cwd.to_path_buf()];
+            // Output from a remote folder's command names files there: they're the mirror's.
+            let remote = coiman_core::project::remote_folder::RemoteFolder::of_mirror(output.cwd);
             let placed: Vec<(PathBuf, lt::Diagnostic)> = found
                 .into_iter()
-                .filter_map(|p| Some((crate::app::prints::resolve(&p.file, &bases)?, problem_diagnostic(p))))
+                .filter_map(|p| {
+                    let file = match &remote {
+                        Some(r) => r.local_path(output.cwd, &p.file),
+                        None => None,
+                    };
+                    let file = file.or_else(|| crate::app::prints::resolve(&p.file, &bases))?;
+                    Some((file, problem_diagnostic(p)))
+                })
                 .collect();
             // A program that ended goes in the run history, with what its output reported.
             if output.ended {

@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 128, partial 121,
-missing 220, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 129, partial 121,
+missing 219, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -33,7 +33,7 @@ specification is right: every row in it exists.
 | 15 Testing | 6 | 6 | 9 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
-| 18 Remote | 3 | 4 | 7 | 1 |
+| 18 Remote | 4 | 4 | 6 | 1 |
 | 19 Plugins | 6 | 4 | 9 | 1 |
 | 20 Workspace | 3 | 10 | 4 | |
 | 21 Experimental | 10 | 12 | 15 | |
@@ -527,9 +527,9 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 | SSH remote development | Partial | A remote folder mirrored here, saves sent back, an ssh terminal; builds run here |
 | Remote project explorer | Done | The mirror in the Explorer; saves, deletes and renames go there |
 | Remote terminal | Done | Remote: Open Terminal There, in the remote folder; ssh terminals to `~/.ssh/config` hosts |
-| Remote LSP execution | Missing | |
+| Remote LSP execution | Partial | Language servers run here, on the copy; not on the remote machine |
 | Remote debugging | Done | See Debugging: gdbserver over ssh |
-| Remote build execution | Partial | Remote: Run Command There (in a terminal); no problem links yet |
+| Remote build execution | Done | Remote: Run Command There; its errors go to Problems on the files here |
 | Remote test execution | Missing | |
 | Remote file synchronisation | Partial | Saves go up; Download Folder Again comes down |
 | Remote workspace profiles | Missing | |

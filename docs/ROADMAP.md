@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Remote folders: a command's errors there link to the files here.
 - SSH remote folders: deletes and renames go there; a terminal and commands in the folder.
 - SSH remote folders: mirrored here, saves sent back over ssh.
 - A function's flowchart (Architecture: Show Flow of Function at Cursor).
@@ -35,7 +36,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Next, nothing to download
 
-- **SSH remote projects**, next step: language servers and problem links for builds run there.
 - **Documentation**
   - PlantUML preview.
 

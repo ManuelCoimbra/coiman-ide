@@ -126,6 +126,14 @@ impl RemoteFolder {
         toml::from_str(&std::fs::read_to_string(root.join(MARKER)).ok()?).ok()
     }
 
+    /// `file` as written by a program there (`/home/pi/app/src/a.rs`), as the file in the
+    /// mirror at `root`; None when it isn't inside the remote folder.
+    pub fn local_path(&self, root: &Path, file: &str) -> Option<PathBuf> {
+        let base = self.path.trim().trim_end_matches('/');
+        let rest = file.strip_prefix(base)?.strip_prefix('/')?;
+        Some(rest.split('/').filter(|s| !s.is_empty()).fold(root.to_path_buf(), |p, s| p.join(s)))
+    }
+
     /// The relative path to send for `file` saved under `root`, if it should go (not the marker,
     /// not a skipped folder).
     pub fn relative(root: &Path, file: &Path) -> Option<String> {
@@ -170,6 +178,10 @@ mod tests {
         assert_eq!(r.terminal_args(None)[6], "cd '/home/pi/my app/' && CHERE_INVOKING=1 exec \"${SHELL:-sh}\" -i");
         assert_eq!(RemoteFolder::default().problem(), Some("Name the ssh host (user@host)"));
         assert_eq!(r.problem(), None);
+        let local = r.local_path(Path::new("/m"), "/home/pi/my app/src/main.rs").unwrap();
+        assert_eq!(local, Path::new("/m").join("src").join("main.rs"));
+        assert!(r.local_path(Path::new("/m"), "/home/pi/other/x.rs").is_none());
+        assert!(r.local_path(Path::new("/m"), "/home/pi/my apple/x.rs").is_none());
     }
 
     #[test]

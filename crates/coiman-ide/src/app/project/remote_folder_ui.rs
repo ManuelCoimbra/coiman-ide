@@ -198,14 +198,11 @@ impl CodeApp {
             Some(c) => format!("{}: {c}", remote.host),
             None => format!("ssh {}", remote.host),
         };
-        let task = crate::ui::terminal::Task {
-            title: &title,
-            program: &program,
-            args: &args,
-            env: &env,
-            cwd: &root,
-            scan: None,
-        };
+        // A command's output is read for problems (paths there map to the mirror); a plain
+        // shell's isn't.
+        let scan = command.map(|_| None);
+        let task =
+            crate::ui::terminal::Task { title: &title, program: &program, args: &args, env: &env, cwd: &root, scan };
         let scrollback = self.settings.terminal.scrollback;
         match self.terminal.run_task(ctx, task, scrollback) {
             Ok(()) => {

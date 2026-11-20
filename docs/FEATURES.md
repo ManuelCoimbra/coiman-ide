@@ -920,7 +920,10 @@ left out. A click on a place opens the file there.
   too. **Remote: Download Folder Again** brings the remote folder's current state (changed
   files must be saved first). **Remote: Open Terminal There** opens a shell in the remote
   folder, and **Remote: Run Command There...** runs a command in it (`cargo build`, `make`),
-  the shell staying for more. ssh logs in with a key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
+  the shell staying for more; errors and warnings it prints go to Problems, paths in the
+  remote folder (absolute or relative) pointing at the files here, and Ctrl+click opens them
+  in the terminal too. Language servers run here, on the copy, with the tools installed on
+  this computer. ssh logs in with a key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

@@ -1006,8 +1006,16 @@ fn handle_keys(ui: &mut egui::Ui, session: &Session) {
 /// the project's.
 fn existing_file(file: &str, tab_cwd: &Path, project: &Path) -> Option<PathBuf> {
     let path = Path::new(file);
-    let candidates =
-        if path.is_absolute() { vec![path.to_path_buf()] } else { vec![tab_cwd.join(path), project.join(path)] };
+    // A remote folder's mirror: paths there stand for files here.
+    let remote =
+        coiman_core::project::remote_folder::RemoteFolder::of_mirror(project).and_then(|r| r.local_path(project, file));
+    let candidates = if let Some(local) = remote {
+        vec![local]
+    } else if path.is_absolute() {
+        vec![path.to_path_buf()]
+    } else {
+        vec![tab_cwd.join(path), project.join(path)]
+    };
     candidates.into_iter().find(|p| p.is_file())
 }
 
