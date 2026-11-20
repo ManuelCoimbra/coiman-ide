@@ -668,6 +668,36 @@ fn one_block(ui: &mut egui::Ui, d: &mut Draw, block: &Block, i: usize, depth: us
     }
 }
 
+/// Draws Markdown text (a notebook's cell) as the preview would; returns a link clicked.
+pub(crate) fn draw_markdown(
+    ui: &mut egui::Ui,
+    preview: &mut MdPreview,
+    text: &str,
+    dir: Option<&Path>,
+    root: Option<&Path>,
+    size: f32,
+    salt: usize,
+) -> Option<String> {
+    let max_side = ui.ctx().input(|i| i.max_texture_side).max(1024);
+    let mut d = Draw {
+        size,
+        dir,
+        root,
+        max_side,
+        pictures: &mut preview.pictures,
+        diagrams: &mut preview.diagrams,
+        shown_diagrams: &mut preview.shown_diagrams,
+        ppp: ui.ctx().pixels_per_point(),
+        code: &mut preview.code,
+        scroll_to: &mut preview.scroll_to,
+        clicked: None,
+    };
+    for (i, block) in markdown::parse(text).iter().enumerate() {
+        one_block(ui, &mut d, block, i, 0, salt * 10_000 + i);
+    }
+    d.clicked
+}
+
 impl CodeApp {
     pub(crate) fn toggle_markdown_preview(&mut self) {
         if self.active_is_markdown() {
@@ -767,7 +797,13 @@ impl CodeApp {
     }
 
     /// A web address opens in the browser, `#part` scrolls the preview, and a file opens here.
-    fn follow_markdown_link(&mut self, ctx: &egui::Context, url: &str, dir: Option<&Path>, root: Option<&Path>) {
+    pub(crate) fn follow_markdown_link(
+        &mut self,
+        ctx: &egui::Context,
+        url: &str,
+        dir: Option<&Path>,
+        root: Option<&Path>,
+    ) {
         coiman_core::applog::info(&format!("markdown link {url}"));
         if is_remote(url) {
             ctx.open_url(egui::OpenUrl::new_tab(url));

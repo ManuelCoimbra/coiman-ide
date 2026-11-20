@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 136, partial 121,
-missing 212, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 139, partial 120,
+missing 210, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -25,7 +25,7 @@ specification is right: every row in it exists.
 | 7 Documentation | 4 | 6 | 9 | |
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 13 | 4 | 6 | |
-| 10 Data science | 2 | 4 | 16 | |
+| 10 Data science | 5 | 3 | 14 | |
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 4 | 5 | 6 | |
@@ -318,9 +318,9 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 
 | Item | Status | Note |
 |---|---|---|
-| Interactive notebook editor | Missing | |
-| Jupyter notebook support | Partial | Jupyter kernel sessions (REPL); no `.ipynb` |
-| Python notebook execution | Missing | |
+| Interactive notebook editor | Done | .ipynb as cells: edit, run, outputs, save |
+| Jupyter notebook support | Done | .ipynb with a Python kernel through jupyter_client |
+| Python notebook execution | Done | Cells run in a Python kernel; plots shown |
 | R notebook support | Missing | R REPL |
 | Julia notebook support | Missing | Julia REPL |
 | Interactive variable explorer | Partial | Debugger variables |

@@ -168,7 +168,9 @@ impl Bridge {
     fn python(address: &str, options: &ConnectOptions, wake: impl Fn() + Send + 'static) -> Result<Self, String> {
         let python = options.python.clone().or_else(|| which("python")).ok_or("No Python found")?;
         let script = write_bridge("kernel_bridge.py", KERNEL_BRIDGE)?;
-        let mut args = vec!["-I".to_owned(), "-u".to_owned(), script.to_string_lossy().into_owned()];
+        // Not -I: it hides packages installed with `pip install --user`, where jupyter_client
+        // often is. Run by its path, the script's own folder leads the imports, not the project.
+        let mut args = vec!["-u".to_owned(), script.to_string_lossy().into_owned()];
         let file = address.trim();
         if !file.is_empty() {
             args.push(file.to_owned());
@@ -218,6 +220,10 @@ impl Bridge {
             "OUT" => events.push(LiveEvent::Output { id: id(), text: text(), error: false }),
             "ERR" => events.push(LiveEvent::Output { id: id(), text: text(), error: true }),
             "VALUE" => events.push(LiveEvent::Value { id: id(), text: text() }),
+            "IMAGE" => {
+                let png = parts.get(1).and_then(|w| crate::data::notebook::base64_decode(w)).unwrap_or_default();
+                events.push(LiveEvent::Image { id: id(), png });
+            }
             "FAIL" => events.push(LiveEvent::Failed { id: id(), text: text() }),
             "INPUT" => events.push(LiveEvent::NeedInput { id: id() }),
             "DONE" => events.push(LiveEvent::Done { id: id(), namespace: None }),

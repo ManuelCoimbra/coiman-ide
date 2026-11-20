@@ -115,8 +115,12 @@ class Bridge:
             if kinds == "stream":
                 self.say("ERR" if content["name"] == "stderr" else "OUT", number, b64(content["text"]))
             elif kinds in ("execute_result", "display_data"):
+                png = content["data"].get("image/png")
                 text = content["data"].get("text/plain")
-                if text:
+                if png:
+                    # Already base64, as the kernel sends it.
+                    self.say("IMAGE", number, "".join(png.split()))
+                elif text:
                     self.say("VALUE", number, b64(text))
             elif kinds == "error":
                 self.say("FAIL", number, b64("%s: %s" % (content["ename"], content["evalue"])))

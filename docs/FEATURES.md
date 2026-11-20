@@ -940,6 +940,13 @@ left out. A click on a place opens the file there.
   processes); **Pause** and **Clear**. A Java or Kotlin stack frame naming a file of the open
   project is a link to its line. **Shell** opens `adb shell` in a terminal, and **Install APK…**
   runs `adb install -r` there. Closing the window or Coiman stops logcat.
+- **Jupyter notebooks**: an `.ipynb` file opens as its cells. Markdown cells are drawn as
+  the Markdown preview draws them (double-click to edit); code cells are edited in place and
+  run in a Python kernel (`jupyter_client` and `ipykernel` in that Python): ▶ or Shift+Enter, or
+  **Run All**, **Interrupt**, **Restart**. Below each cell: what it printed (stderr in red), its
+  value, its error, and pictures (plots). Cells can be added, moved, deleted and switched
+  between code and Markdown. **Save** (Ctrl+S) writes nbformat 4, keeping every field Coiman
+  doesn't edit and the outputs of cells not run again; **Open as JSON** shows the file's text.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

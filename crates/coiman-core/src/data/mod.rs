@@ -4,5 +4,6 @@ pub mod data_tree;
 pub mod database;
 pub mod hexdata;
 pub mod logfile;
+pub mod notebook;
 pub mod server_db;
 pub mod table;

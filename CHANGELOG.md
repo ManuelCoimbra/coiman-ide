@@ -7,10 +7,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The Python REPL's Jupyter kernel didn't see `jupyter_client` installed with `pip --user`.
 - The "Tests at once" tooltip had long runs of spaces inside it.
 
 ### Added
 
+- Jupyter notebooks: `.ipynb` opens as cells, run in a Python kernel, with printed text,
+  values, errors and plots; saved back keeping what Coiman doesn't edit.
 - `Android: Devices and Logcat`: devices through adb, logcat filtered by level, text and app,
   stack frames in the project as links, a shell, and APK installs.
 - `Docker: Show Containers, Images and Compose`: containers (start, stop, restart, remove,

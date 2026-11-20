@@ -242,6 +242,10 @@ impl CodeApp {
         if self.open_image_file(path) {
             return;
         }
+        // A Jupyter notebook opens as its cells ("Open as JSON" there gives its text).
+        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ipynb")) && self.open_notebook(path) {
+            return;
+        }
         // Text only in name: it would come out garbled, and could be saved that way.
         if !self.docs.iter().any(|d| d.path.as_deref().is_some_and(|p| same_path(p, path)))
             && self.open_binary_file(path)

@@ -69,6 +69,11 @@ pub enum LiveEvent {
         id: u64,
         text: String,
     },
+    /// A picture the code showed (a plot): PNG bytes.
+    Image {
+        id: u64,
+        png: Vec<u8>,
+    },
     /// It failed, or the server wouldn't take it.
     Failed {
         id: u64,

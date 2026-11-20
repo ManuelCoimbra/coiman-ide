@@ -151,6 +151,8 @@ pub struct CodeApp {
     docker: project::docker_ui::DockerView,
     /// Android: Devices and Logcat.
     android: project::android_ui::AndroidView,
+    /// A Jupyter notebook open as its cells.
+    notebook: views::notebook_ui::NotebookView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -356,6 +358,7 @@ impl CodeApp {
             remote_folders: Default::default(),
             docker: Default::default(),
             android: Default::default(),
+            notebook: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -956,6 +959,7 @@ impl CodeApp {
         self.remote_folder_window(&ctx);
         self.docker_window(&ctx);
         self.android_window(&ctx);
+        self.notebook_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

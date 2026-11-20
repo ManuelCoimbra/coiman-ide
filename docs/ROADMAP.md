@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Jupyter notebooks: cells, a Python kernel, outputs and plots.
 - Android: devices, logcat (filters, links to the project's frames), shell and APK installs through adb.
 - Docker and Compose window (tested with a stand-in docker: no engine here).
 - PlantUML preview (the user's PlantUML draws it).
@@ -45,7 +46,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 Downloads are asked for first, with the file, where it comes from and its size.
 
-- Notebooks (Jupyter).
 - A serial monitor, and binary size, for embedded work.
 - Shaders.
 - SQL Server, MongoDB and Redis.

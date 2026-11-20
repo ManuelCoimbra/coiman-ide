@@ -199,6 +199,11 @@ impl CodeApp {
                         self.repls.set_answer(place.uid, place.line, place.line_text.clone(), answer);
                     }
                 }
+                LiveEvent::Image { png, .. } => {
+                    // The REPL is text: a plot is said, and shows in notebooks.
+                    let note = format!("[a picture, {} KB: open a notebook to see plots]", png.len() / 1024);
+                    add_text(&mut state.transcript, Kind::Note, &note);
+                }
                 LiveEvent::Failed { id, text } => {
                     add_text(&mut state.transcript, Kind::Error, &text);
                     if let Some(place) = state.in_editor.get_mut(&id) {
