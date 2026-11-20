@@ -327,6 +327,7 @@ impl Palette {
         self.show_with("");
         self.selected = items.iter().position(|l| l.eq_ignore_ascii_case(current)).unwrap_or(0);
         self.picker = Some(Picker { kind, items, placeholder, details: Vec::new(), removable: false });
+        self.hover = None;
     }
 
     /// A picker whose items have notes after them and can be removed (a × on each row,
@@ -390,6 +391,8 @@ impl Palette {
             self.open = false;
             return None;
         }
+        let picker_kind = self.picker.as_ref().map(|p| p.kind);
+        let now = ctx.input(|i| i.time);
 
         if let Some((kind, placeholder)) = self.input {
             return self.input_ui(ctx, kind, placeholder);
@@ -534,6 +537,9 @@ impl Palette {
             }
             self.selected = self.selected.min(items.len() - 1);
         }
+        if (up || down) && picker_kind == Some(PickerKind::Theme) && !items.is_empty() {
+            self.hover = Some((PickerKind::Theme, items[self.selected].0.clone(), now));
+        }
 
         let mut result = None;
         let mut replace_clicked = false;
@@ -592,6 +598,7 @@ impl Palette {
                     }
                     if edit.changed() {
                         self.selected = 0;
+                        self.hover = None;
                     }
                     ui.add_space(6.0);
                     if let Some(tab) = shown_tab {

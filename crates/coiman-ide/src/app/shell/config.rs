@@ -359,7 +359,7 @@ impl CodeApp {
     pub(crate) fn preview_theme(&mut self, ctx: &egui::Context) {
         let lingering = self
             .palette
-            .lingering(ctx, 1.0)
+            .lingering(ctx, 0.5)
             .and_then(|(kind, label)| (kind == crate::ui::palette::PickerKind::Theme).then(|| label.to_owned()));
         if let Some(label) = lingering {
             if self.theme_preview.as_deref() != Some(label.as_str()) {
@@ -378,6 +378,7 @@ impl CodeApp {
     }
 
     pub(crate) fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
+        self.theme_preview = None;
         let value = toml::Value::String(label.to_owned()).to_string();
         match self.write_user_setting(ctx, "workbench", "color_theme", &value) {
             Ok(()) if self.settings.workbench.color_theme != label => {

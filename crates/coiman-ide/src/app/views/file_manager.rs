@@ -320,6 +320,16 @@ pub(crate) struct FileManager {
     to_open: Option<(Option<PathBuf>, Option<PickFor>)>,
 }
 
+impl FileManager {
+    pub(crate) fn is_showing(&self) -> bool {
+        self.view.as_ref().is_some_and(|v| v.showing)
+    }
+
+    pub(crate) fn current_dir(&self) -> Option<PathBuf> {
+        self.view.as_ref().filter(|v| v.showing).map(|v| v.focused().dir.clone())
+    }
+}
+
 fn name_of(path: &Path) -> String {
     path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
 }

@@ -67,6 +67,8 @@ pub struct Options {
     /// Draw the cursor as a block (Vim/Helix normal mode).
     pub block_cursor: bool,
     pub smooth_scrolling: bool,
+    /// Keep the enclosing symbol at the top while scrolling.
+    pub sticky_scroll: bool,
     /// A picture of the whole file in place of the vertical scrollbar.
     pub minimap: bool,
     /// Draw the editor font's ligatures (`->`, `!=`), when it has them.
@@ -545,7 +547,7 @@ pub fn show(
     let digits = doc.buffer.len_lines().to_string().len().max(2);
     let m = Metrics {
         // The numbers, 3 px either side, then the Git bar and the fold chevrons.
-        gutter_w: digits as f32 * char_w + 6.0 + CHANGE_ZONE + RUN_ZONE + BULB_ZONE + FOLD_ZONE,
+        gutter_w: digits as f32 * char_w + 3.0 + CHANGE_ZONE + RUN_ZONE + BULB_ZONE + FOLD_ZONE,
         font_id,
         row_h,
         char_w,
@@ -1960,11 +1962,44 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             let color =
                 if row.line == primary_line { theme::colors().line_number_active } else { theme::colors().line_number };
             painter.text(
-                Pos2::new(text_rect.left() - CHANGE_ZONE - FOLD_ZONE - 3.0, y),
+                Pos2::new(text_rect.left() - CHANGE_ZONE - FOLD_ZONE - 1.5, y),
                 egui::Align2::RIGHT_TOP,
                 (row.line + 1).to_string(),
                 m.font_id.clone(),
                 color,
+            );
+        }
+    }
+
+    // Sticky scroll: the symbols around the first visible line stay at the top, as in VS Code.
+    if opts.sticky_scroll && first_row > 0 {
+        let top_line = layout.row(doc, view, first_row).line;
+        let mut starts: Vec<usize> = doc
+            .structure()
+            .symbols
+            .iter()
+            .filter(|s| s.start_line < top_line && top_line <= s.end_line && s.end_line > s.start_line)
+            .map(|s| s.start_line)
+            .collect();
+        starts.sort_unstable();
+        starts.dedup();
+        let chain: Vec<usize> = starts.into_iter().rev().take(3).collect();
+        for (i, line) in chain.into_iter().rev().enumerate() {
+            let rect = Rect::from_min_size(
+                Pos2::new(text_rect.left(), text_rect.top() + i as f32 * m.row_h),
+                Vec2::new(text_rect.width(), m.row_h),
+            );
+            painter.rect_filled(rect, 0.0, pal.sidebar_bg);
+            painter.hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, pal.border));
+            let text = doc.buffer.line_text(line);
+            let text = text.trim_end();
+            let indent = indent_cols(&doc.buffer, line).min(12) as f32 * m.char_w;
+            painter.text(
+                Pos2::new(rect.left() + 8.0 + indent, rect.center().y),
+                egui::Align2::LEFT_CENTER,
+                text,
+                m.font_id.clone(),
+                pal.text,
             );
         }
     }
@@ -2322,8 +2357,13 @@ fn paint_minimap(
     let view_h = text_rect.height();
     let first = minimap_first(layout.total_rows, track.height(), view.scroll.y, m.row_h);
     let start = first.floor() as usize;
-    let shift = (first - start as f32) * MINI_ROW;
-    let rows = (track.height() / MINI_ROW).ceil() as usize + 1;
+    // A short file is stretched to fill the scrollbar, so the minimap starts at its top
+    // and ends at its bottom; a long one keeps the normal scale and scrolls.
+    let content_h = layout.total_rows as f32 * MINI_ROW;
+    let scale = if content_h > 0.0 && content_h < track.height() { track.height() / content_h } else { 1.0 };
+    let mini_row = MINI_ROW * scale;
+    let shift = (first - start as f32) * mini_row;
+    let rows = (track.height() / mini_row).ceil() as usize + 1;
     let max_cols = ((track.width() - 8.0) / MINI_COL) as usize;
     // Colored as the text is: tree-sitter's spans for these lines, else the grammar's.
     let last_row = (start + rows).min(layout.total_rows.max(1) - 1);
@@ -2354,7 +2394,7 @@ fn paint_minimap(
         let Some((_, chars, line_start, colors)) = cached.as_ref() else { continue };
         // Faint, as VS Code's: the shape of the code, its colors a hint.
         let ink = |i: usize| colors.get(i).copied().unwrap_or(pal.text).gamma_multiply(0.6);
-        let y = track.top() + k as f32 * MINI_ROW - shift;
+        let y = track.top() + k as f32 * mini_row - shift;
         let (a, b) = (row.start - line_start, (row.end - line_start).min(chars.len()));
         let mut col = 0usize;
         // A run of one color: (first column, color).
@@ -2365,7 +2405,7 @@ fn paint_minimap(
             if to > from {
                 let x = track.left() + 5.0 + from as f32 * MINI_COL;
                 painter.rect_filled(
-                    Rect::from_min_size(Pos2::new(x, y), Vec2::new((to - from) as f32 * MINI_COL, MINI_ROW * 0.7)),
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new((to - from) as f32 * MINI_COL, mini_row * 0.7)),
                     0.0,
                     color,
                 );
@@ -2398,10 +2438,10 @@ fn paint_minimap(
         }
     }
     // The part in view.
-    let top = track.top() + (view.scroll.y / m.row_h - first) * MINI_ROW;
+    let top = track.top() + (view.scroll.y / m.row_h - first) * mini_row;
     let band = Rect::from_min_size(
         Pos2::new(track.left() + 1.0, top),
-        Vec2::new(track.width() - 1.0, view_h / m.row_h * MINI_ROW),
+        Vec2::new(track.width() - 1.0, (view_h / m.row_h * mini_row).min(track.height())),
     );
     let hovered = ui.rect_contains_pointer(track);
     painter.rect_filled(band, 0.0, pal.text.gamma_multiply(if hovered { 0.16 } else { 0.09 }));

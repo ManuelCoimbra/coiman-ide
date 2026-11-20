@@ -571,6 +571,7 @@ impl CodeApp {
                 ui.separator();
                 item(ui, "Explorer", Command::ShowExplorer);
                 item(ui, "Search", Command::ShowSearch);
+                item(ui, "Agents", Command::ShowAgents);
                 item(ui, "Problems", Command::ShowProblems);
                 item(ui, "Terminal", Command::ToggleTerminal);
                 item(ui, "Toggle Side Bar", Command::ToggleSidebar);
@@ -710,7 +711,13 @@ impl CodeApp {
             // The open tool's icon hides the side bar, as in VS Code; it keeps the tool for
             // the next time it shows.
             if resp.on_hover_text(tip).clicked() {
-                cmd = Some(if active { Command::ToggleSidebar } else { c });
+                // The terminal is a panel, not a side tool: its active state is the panel,
+                // so clicking it must not toggle the side bar.
+                cmd = Some(if active && !matches!(c, Command::ToggleTerminal | Command::ShowAgents) {
+                    Command::ToggleSidebar
+                } else {
+                    c
+                });
             }
         };
         let side = self.sidebar_visible.then_some(self.sidebar_view);
@@ -728,6 +735,10 @@ impl CodeApp {
         }
         let extensions = side == Some(SidebarView::Extensions);
         icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
+        if self.settings.workbench.agents_enabled {
+            let agents = self.agents.is_open();
+            icon(ui, Icon::Agent, "Agents", agents, Command::ShowAgents);
+        }
         let terminal = self.panel_visible && self.panel_tab == PanelTab::Terminal;
         icon(ui, Icon::Terminal, "Terminal (Ctrl+`)", terminal, Command::ToggleTerminal);
         cmd
@@ -739,7 +750,12 @@ impl CodeApp {
         // runs over the other however narrow the panel gets.
         let text = ui.text_style_height(&egui::TextStyle::Body);
         let full = ui.available_rect_before_wrap();
-        let row = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), (text + 10.0).max(26.0)));
+        // The terminal's top bar lines up with the terminal text, not the frame's edge.
+        let header_pad = if self.panel_tab == PanelTab::Terminal { crate::ui::terminal::HEADER_SIDE_PAD } else { 0.0 };
+        let row = egui::Rect::from_min_size(
+            full.min + egui::vec2(header_pad, 0.0),
+            egui::vec2((full.width() - 2.0 * header_pad).max(80.0), (text + 10.0).max(26.0)),
+        );
         let mut right =
             ui.new_child(egui::UiBuilder::new().max_rect(row).layout(egui::Layout::right_to_left(Align::Center)));
         let (mut action, used) = self.panel_buttons(&mut right);
@@ -934,30 +950,34 @@ impl CodeApp {
         if !self.terminal.detached {
             return;
         }
-        let builder =
-            egui::ViewportBuilder::default().with_title("Terminal - Coiman IDE").with_inner_size([900.0, 520.0]);
         let mut action = None;
-        let mut closed = false;
+        let mut open = true;
         let font_size = self.terminal_font();
         let terminal = &mut self.terminal;
-        ctx.show_viewport_immediate(egui::ViewportId::from_hash_of("terminal_window"), builder, |ui, _class| {
-            if ui.ctx().input(|i| i.viewport().close_requested()) {
-                closed = true;
-            }
-            egui::Frame::new().fill(theme::colors().editor_bg).inner_margin(egui::Margin::symmetric(8, 6)).show(
-                ui,
-                |ui| {
-                    ui.set_min_size(ui.available_size());
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("TERMINAL").small().color(theme::colors().tab_active_fg));
-                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| action = terminal.header(ui));
-                    });
-                    ui.add_space(4.0);
-                    terminal.body(ui, font_size);
-                },
-            );
-        });
-        if closed {
+        egui::Window::new(RichText::new("Terminal - Coiman IDE").size(15.0).strong())
+            .id(egui::Id::unique("terminal_window"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(egui::vec2(900.0, 520.0))
+            .default_pos(ctx.content_rect().center() - egui::vec2(450.0, 260.0))
+            .frame(
+                egui::Frame::window(&ctx.global_style())
+                    .fill(theme::colors().editor_bg)
+                    .stroke(egui::Stroke::new(1.0, theme::colors().editor_bg))
+                    .corner_radius(12.0)
+                    .inner_margin(egui::Margin::symmetric(6, 4)),
+            )
+            .show(ctx, |ui| {
+                ui.set_min_size(egui::vec2(420.0, 240.0));
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("TERMINAL").small().color(theme::colors().tab_active_fg));
+                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| action = terminal.header(ui));
+                });
+                ui.add_space(4.0);
+                terminal.body(ui, font_size);
+            });
+        if !open {
             action = Some(TerminalAction::Attach);
         }
         self.open_terminal_link();
@@ -1145,6 +1165,7 @@ impl CodeApp {
             SidebarView::Testing => self.testing_view(ui),
             SidebarView::Debug => self.debug_view(ui),
             SidebarView::Extensions => self.extensions_view(ui),
+            SidebarView::Agents => {}
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
                 let jump = self.search.ui(ui, self.explorer.root.as_deref());

@@ -23,7 +23,6 @@ id=io.github.manuelcoimbra.CoimanIde
 # Libraries the window loads at run time (not linked, so no tool finds them on its own):
 # OpenGL through EGL or GLX, and X11 or Wayland with the keyboard map.
 deb_libs="libc6, libgl1, libegl1, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libx11-6, libxcursor1, libxrandr2, libxi6"
-rpm_libs="libEGL.so.1()(64bit) libGL.so.1()(64bit) libxkbcommon.so.0()(64bit) libxkbcommon-x11.so.0()(64bit) libwayland-client.so.0()(64bit) libX11.so.6()(64bit) libXcursor.so.1()(64bit) libXrandr.so.2()(64bit) libXi.so.6()(64bit)"
 
 # Portable archive: the tree under no prefix, with install.sh and uninstall.sh.
 name=coiman-ide-$version-linux-$arch
@@ -61,41 +60,7 @@ fi
 
 # RPM package (Fedora, openSUSE, RHEL): library names, so it fits each distribution's packages.
 if command -v rpmbuild >/dev/null; then
-    root=$work/rpmroot
-    "$here/stage.sh" "$bin" "$root" /usr
-    {
-        echo "Name: coiman-ide"
-        echo "Version: $version"
-        echo "Release: 1"
-        echo "Summary: Code editor and IDE written in Rust"
-        echo "License: MIT"
-        echo "URL: https://github.com/ManuelCoimbra/coiman-ide"
-        for lib in $rpm_libs; do echo "Requires: $lib"; done
-        echo "Recommends: git"
-        echo
-        echo "%description"
-        echo "Edits, runs, tests and debugs code, and works with Git. No AI features,"
-        echo "and no network connections of its own."
-        echo
-        echo "%install"
-        echo "cp -a $root/. %{buildroot}/"
-        echo
-        echo "%files"
-        echo "/usr/bin/coiman-ide"
-        echo "/usr/share/applications/$id.desktop"
-        echo "/usr/share/metainfo/$id.metainfo.xml"
-        echo "/usr/share/icons/hicolor/*/apps/$id.*"
-        echo "%doc /usr/share/doc/coiman-ide"
-        echo "%license /usr/share/licenses/coiman-ide"
-    } > "$work/coiman-ide.spec"
-    rpmbuild -bb --quiet \
-        --define "_topdir $work/rpmbuild" \
-        --define "_build_id_links none" \
-        --define "debug_package %{nil}" \
-        --define "__strip /bin/true" \
-        "$work/coiman-ide.spec"
-    cp "$work"/rpmbuild/RPMS/*/coiman-ide-*.rpm "$out/"
-    echo "made $(basename "$work"/rpmbuild/RPMS/*/coiman-ide-*.rpm)"
+    "$here/build-rpm.sh" "$bin" "$version" "$out"
 else
     echo "no rpmbuild: skipping the rpm"
 fi

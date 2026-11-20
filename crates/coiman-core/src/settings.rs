@@ -230,6 +230,8 @@ pub struct EditorSettings {
     pub code_lens: bool,
     /// Glide to the new position when keys move the view, instead of jumping.
     pub smooth_scrolling: bool,
+    /// Keep the enclosing function or section at the top while scrolling, as VS Code does.
+    pub sticky_scroll: bool,
     /// A small picture of the whole file in place of the scrollbar, as Kate and VS Code have.
     pub minimap: bool,
     /// Draw the code font's ligatures (`->`, `!=`, `=>`), for fonts that have them.
@@ -288,6 +290,10 @@ pub struct WorkbenchSettings {
     pub double_shift: bool,
     /// Search Everywhere's box in the middle of the top bar; off, a magnifier on the right.
     pub search_in_top_bar: bool,
+    /// Open Settings as a tab in the editor area instead of a floating window.
+    pub settings_in_tab: bool,
+    /// Show the Agents window and its tool.
+    pub agents_enabled: bool,
     /// Most frames a second while something moves (scrolling output, animations); 0
     /// follows the display. The window draws nothing while nothing changes either way.
     pub max_fps: u32,
@@ -518,6 +524,7 @@ impl Default for EditorSettings {
             include_paths: Vec::new(),
             code_lens: true,
             smooth_scrolling: true,
+            sticky_scroll: false,
             minimap: false,
             font_ligatures: true,
             font_ligatures_off: Vec::new(),
@@ -551,6 +558,8 @@ impl Default for WorkbenchSettings {
             reduced_motion: false,
             double_shift: true,
             search_in_top_bar: true,
+            settings_in_tab: false,
+            agents_enabled: true,
             max_fps: 0,
             ui: "dock".to_owned(),
             compact_folders: true,

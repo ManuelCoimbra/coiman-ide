@@ -18,13 +18,14 @@ pub(crate) enum RailTool {
     Panel(PanelTab),
 }
 
-const SIDE_TOOLS: [(SidebarView, &str, Icon, &str, Command); 6] = [
+const SIDE_TOOLS: [(SidebarView, &str, Icon, &str, Command); 7] = [
     (SidebarView::Explorer, "explorer", Icon::Files, "Project (Ctrl+Shift+E)", Command::ShowExplorer),
     (SidebarView::Search, "search", Icon::Search, "Search (Ctrl+Shift+F)", Command::ShowSearch),
     (SidebarView::Git, "git", Icon::SourceControl, "Source Control (Ctrl+Shift+G)", Command::ShowSourceControl),
     (SidebarView::Testing, "testing", Icon::Beaker, "Testing", Command::ShowTesting),
     (SidebarView::Debug, "debug", Icon::Bug, "Run and Debug (Ctrl+Shift+D)", Command::ShowDebug),
     (SidebarView::Extensions, "extensions", Icon::Extensions, "Extensions (Ctrl+Shift+X)", Command::ShowExtensions),
+    (SidebarView::Agents, "agents", Icon::Agent, "Agents", Command::ShowAgents),
 ];
 
 const PANEL_TOOLS: [(PanelTab, Icon, &str, Command); 3] = [
@@ -160,18 +161,24 @@ impl CodeApp {
             let available = match view {
                 SidebarView::Testing => self.testing_available(),
                 SidebarView::Debug => self.can_debug(),
+                SidebarView::Agents => self.settings.workbench.agents_enabled,
                 _ => true,
             };
             if !available || self.rails.right_tools.contains(&view) != right {
                 continue;
             }
-            let open = if right {
+            let agents = matches!(view, SidebarView::Agents);
+            let open = if agents {
+                self.agents.is_open()
+            } else if right {
                 self.rails.right_view == Some(view)
             } else {
                 self.sidebar_shown() && self.sidebar_view == view
             };
             if self.rail_icon(ui, RailTool::Side(view), icon, tip, open) {
-                if !open {
+                if agents {
+                    self.agents.toggle();
+                } else if !open {
                     cmd = Some(command);
                 } else if right {
                     self.rails.right_view = None;
