@@ -207,7 +207,7 @@ impl AgentsUi {
         }
         self.prefs_loaded = true;
         self.mode = "build".to_owned();
-        self.permissions = "auto".to_owned();
+        self.permissions = "manual".to_owned();
         let Some(path) = Self::config_file() else { return };
         let Ok(text) = std::fs::read_to_string(path) else { return };
         let Ok(value) = serde_json::from_str::<Value>(&text) else { return };
@@ -2539,6 +2539,8 @@ impl CodeApp {
 }
 
 #[cfg(test)]
+// The tests build panels in many states, field by field.
+#[allow(clippy::field_reassign_with_default, clippy::type_complexity)]
 mod tests {
     use super::*;
 
@@ -2689,8 +2691,10 @@ mod tests {
         modifiers: egui::Modifiers,
         mut events: Vec<egui::Event>,
     ) -> egui::Rect {
-        let mut raw = egui::RawInput::default();
-        raw.screen_rect = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(420.0, 320.0)));
+        let mut raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(420.0, 320.0))),
+            ..Default::default()
+        };
         // egui derives the frame's modifiers from this event, like a real window.
         events.insert(0, egui::Event::ModifiersChanged(modifiers));
         raw.events = events;
@@ -2769,15 +2773,16 @@ mod tests {
     fn focus_request_lands_in_the_box() {
         let ctx = egui::Context::default();
         // toggle() / focus_chat() / attach() set this flag.
-        let mut agents = AgentsUi::default();
-        agents.focus_input = true;
+        let mut agents = AgentsUi { focus_input: true, ..Default::default() };
         composer_frame(&ctx, &mut agents, false, egui::Modifiers::default(), vec![]);
         assert!(agents.input_focused, "focus_input focuses the box");
     }
 
     fn panel_frame(ctx: &egui::Context, agents: &mut AgentsUi) {
-        let mut raw = egui::RawInput::default();
-        raw.screen_rect = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(520.0, 400.0)));
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(520.0, 400.0))),
+            ..Default::default()
+        };
         let mut output = ctx.run_ui(raw, |ui| agents.panel(ui));
         output.textures_delta.clear();
     }
@@ -2785,8 +2790,13 @@ mod tests {
     /// Runs the panel like `mod.rs` does — inside a right `Panel` — and returns
     /// the panel's rect, so the width ratchet can be measured.
     fn panel_with_chrome(ctx: &egui::Context, agents: &mut AgentsUi, screen: egui::Vec2) -> egui::Rect {
-        let mut raw = egui::RawInput::default();
-        raw.screen_rect = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), screen));
+        // As if opencode were installed (it isn't on CI): otherwise the panel only says so.
+        agents.checked_opencode = true;
+        agents.opencode.get_or_insert_with(|| PathBuf::from("opencode"));
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), screen)),
+            ..Default::default()
+        };
         let mut rect = egui::Rect::ZERO;
         let mut output = ctx.run_ui(raw, |ui| {
             egui::CentralPanel::no_frame().show(ui, |ui| {
@@ -2951,8 +2961,7 @@ mod tests {
 
     #[test]
     fn stop_clears_the_queue() {
-        let mut agents = AgentsUi::default();
-        agents.queue = vec!["a queued message".to_owned()];
+        let mut agents = AgentsUi { queue: vec!["a queued message".to_owned()], ..Default::default() };
         // A pid that does not exist: stop() must not touch a real process.
         agents.child_pid = Some(999_999);
         agents.stop();
@@ -2979,8 +2988,10 @@ mod tests {
 
     #[test]
     fn resumed_session_loads_through_poll() {
-        let mut agents = AgentsUi::default();
-        agents.messages = vec![Message { role: Role::Agent, parts: vec![Part::Text("old".to_owned())] }];
+        let mut agents = AgentsUi {
+            messages: vec![Message { role: Role::Agent, parts: vec![Part::Text("old".to_owned())] }],
+            ..Default::default()
+        };
         agents.session_loading = true;
         let (tx, rx) = mpsc::channel();
         tx.send(AgentMsg::Session(vec![Message { role: Role::User, parts: vec![Part::Text("resumed".to_owned())] }]))
@@ -2996,8 +3007,10 @@ mod tests {
     #[test]
     fn fit_text_truncates_to_the_width() {
         let ctx = egui::Context::default();
-        let mut raw = egui::RawInput::default();
-        raw.screen_rect = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 300.0)));
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 300.0))),
+            ..Default::default()
+        };
         let mut result = String::new();
         let mut output = ctx.run_ui(raw, |ui| {
             result = fit_text(
@@ -3041,8 +3054,10 @@ mod tests {
                 ],
             },
         ];
-        let mut raw = egui::RawInput::default();
-        raw.screen_rect = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(520.0, 400.0)));
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(520.0, 400.0))),
+            ..Default::default()
+        };
         let mut output = ctx.run_ui(raw, |ui| agents.panel(ui));
         output.textures_delta.clear();
         // egui paints an error text for id clashes; none must appear.
@@ -3123,8 +3138,7 @@ mod tests {
         let value: Value = serde_json::from_str(export).unwrap();
         let messages = parse_export(&Some(value));
         assert_eq!(messages.len(), 6, "idle markers are skipped (3 user + 3 assistant)");
-        let mut agents = AgentsUi::default();
-        agents.messages = messages;
+        let mut agents = AgentsUi { messages, ..Default::default() };
         agents.session_title = Some("Greeting".to_owned());
         agents.last_changed_files = files_touched(&agents.messages);
         agents.last_turn_tools = tools_in_last_turn(&agents.messages);
@@ -3187,11 +3201,12 @@ mod tests {
         agents.running = None;
 
         // Narrow windows must not panic (the negative-size crash class).
-        let mut narrow = AgentsUi::default();
-        narrow.history_open = true;
+        let mut narrow = AgentsUi { history_open: true, ..Default::default() };
         narrow.messages = agents.messages.clone();
-        let mut raw = egui::RawInput::default();
-        raw.screen_rect = Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(240.0, 400.0)));
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(240.0, 400.0))),
+            ..Default::default()
+        };
         let mut output = ctx.run_ui(raw, |ui| narrow.panel(ui));
         output.textures_delta.clear();
     }
@@ -3215,8 +3230,10 @@ mod tests {
 
     #[test]
     fn model_search_filters_the_list() {
-        let mut agents = AgentsUi::default();
-        agents.models = vec!["google/gemini-3.5-flash".to_owned(), "kilo/claude".to_owned()];
+        let mut agents = AgentsUi {
+            models: vec!["google/gemini-3.5-flash".to_owned(), "kilo/claude".to_owned()],
+            ..Default::default()
+        };
         agents.model_search = "gem".to_owned();
         assert_eq!(agents.matching_models(), vec!["google/gemini-3.5-flash".to_owned()]);
         agents.model_search.clear();
@@ -3250,8 +3267,8 @@ mod tests {
 
     #[test]
     fn attached_context_prefixes_the_prompt() {
-        let mut agents = AgentsUi::default();
-        agents.attached = vec!["/tmp/a.rs".to_owned(), "/tmp/b.rs".to_owned()];
+        let mut agents =
+            AgentsUi { attached: vec!["/tmp/a.rs".to_owned(), "/tmp/b.rs".to_owned()], ..Default::default() };
         assert_eq!(agents.with_attachments("hi"), "@/tmp/a.rs @/tmp/b.rs\nhi");
         agents.attached.clear();
         assert_eq!(agents.with_attachments("hi"), "hi");
