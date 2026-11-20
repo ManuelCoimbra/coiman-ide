@@ -11,6 +11,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Docker: Show Containers, Images and Compose`: containers (start, stop, restart, remove,
+  logs, shell), images (remove) and the project's Compose services (up, down, build, logs).
 - PlantUML preview: ```plantuml blocks in Markdown and `.puml` files, drawn by a PlantUML
   jar in the config folder's `tools/plantuml` or a `plantuml` program.
 - `Remote: Run Command There...`: errors and warnings it prints go to Problems and link to

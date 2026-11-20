@@ -150,6 +150,8 @@ pub enum Command {
     NewSshTerminal,
     /// A folder on another machine, mirrored here; saves go back over ssh.
     OpenRemoteFolder,
+    /// Docker's containers, images and the project's Compose services.
+    ShowDocker,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -445,6 +447,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
     (Command::NewSshTerminal, "Terminal: New SSH Terminal..."),
     (Command::OpenRemoteFolder, "Remote: Open SSH Folder..."),
+    (Command::ShowDocker, "Docker: Show Containers, Images and Compose"),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -758,6 +761,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
     (Command::NewSshTerminal, "coiman.terminal.newSsh"),
     (Command::OpenRemoteFolder, "coiman.remote.openFolder"),
+    (Command::ShowDocker, "coiman.docker.show"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

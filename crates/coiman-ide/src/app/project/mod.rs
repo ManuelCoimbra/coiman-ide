@@ -2,6 +2,7 @@
 
 pub(crate) mod actions_ui;
 pub(crate) mod architecture;
+pub(crate) mod docker_ui;
 pub(crate) mod git;
 pub(crate) mod git_graph_ui;
 pub(crate) mod git_setup;

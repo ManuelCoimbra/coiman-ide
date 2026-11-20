@@ -12,6 +12,7 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 ## Done lately
 
+- Docker and Compose window (tested with a stand-in docker: no engine here).
 - PlantUML preview (the user's PlantUML draws it).
 - Remote folders: a command's errors there link to the files here.
 - SSH remote folders: deletes and renames go there; a terminal and commands in the folder.
@@ -43,7 +44,6 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`â€
 
 Downloads are asked for first, with the file, where it comes from and its size.
 
-- Docker and Compose.
 - ADB and logcat, for Android devices.
 - Notebooks (Jupyter).
 - A serial monitor, and binary size, for embedded work.

@@ -924,6 +924,15 @@ left out. A click on a place opens the file there.
   remote folder (absolute or relative) pointing at the files here, and Ctrl+click opens them
   in the terminal too. Language servers run here, on the copy, with the tools installed on
   this computer. ssh logs in with a key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
+- **Docker: Show Containers, Images and Compose** asks the `docker` program (Docker
+  Desktop, Docker Engine or anything that answers like it). **Containers**: name, image,
+  status and ports, running ones in green; **Stop**, **Restart** and **Shell** (bash, else sh,
+  in a terminal) for running ones, **Start** and **Remove** for stopped ones, **Logs** (followed,
+  in a terminal) for all. **Images**: size and age, **Remove** (Docker refuses one a container
+  uses, and says so). **Compose**, when the folder has `compose.yaml` or
+  `docker-compose.yml`: its services with status and ports, **up** (with `--build`) and
+  **build** and **logs** in terminals, **down**. Without Docker, or with its engine stopped,
+  the window says which.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.

@@ -147,6 +147,8 @@ pub struct CodeApp {
     activity: shell::activity::Tracker,
     /// Remote: Open SSH Folder's form and its downloads and uploads.
     remote_folders: project::remote_folder_ui::RemoteFolders,
+    /// Docker: Show Containers and Images.
+    docker: project::docker_ui::DockerView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -350,6 +352,7 @@ impl CodeApp {
             snapshots: Default::default(),
             activity: Default::default(),
             remote_folders: Default::default(),
+            docker: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -948,6 +951,7 @@ impl CodeApp {
         self.remote_debug_window(&ctx);
         self.new_plugin_window(&ctx);
         self.remote_folder_window(&ctx);
+        self.docker_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

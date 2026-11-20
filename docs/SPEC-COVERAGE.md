@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 130, partial 121,
-missing 218, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 134, partial 121,
+missing 215, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -29,7 +29,7 @@ specification is right: every row in it exists.
 | 11 Systems and embedded | 1 | 5 | 18 | |
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 2 | 4 | 9 | |
-| 14 DevOps | 1 | 5 | 16 | 2 |
+| 14 DevOps | 4 | 5 | 13 | 2 |
 | 15 Testing | 6 | 6 | 9 | |
 | 16 Security and quality | 5 | 5 | 9 | |
 | 17 Accessibility and UX | 9 | 7 | 4 | |
@@ -420,12 +420,12 @@ Every AI item (the assistant, chat, code generation, AI editing, models and prov
 
 | Item | Status | Note |
 |---|---|---|
-| Docker integration | Partial | Run rule for a Dockerfile |
-| Container management | Missing | |
-| Container image inspection | Missing | |
+| Docker integration | Done | Docker window over the `docker` program; run rule for a Dockerfile |
+| Container management | Done | Start, stop, restart, remove, logs |
+| Container image inspection | Partial | Images listed with size and age, removed; layers not shown |
 | Dockerfile editor and diagnostics | Partial | Editing and run; no diagnostics |
-| Docker Compose management | Partial | Run through `docker compose` |
-| Container terminal | Missing | |
+| Docker Compose management | Done | Services with status and ports; up, down, build, logs |
+| Container terminal | Done | Shell into a running container, in a terminal |
 | Container debugging | Missing | |
 | Kubernetes integration | Missing | |
 | Kubernetes resource explorer | Missing | |
