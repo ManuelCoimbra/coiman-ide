@@ -222,15 +222,55 @@ pub fn installed() -> Vec<(PathBuf, Contents)> {
 /// Unpacks a `.vsix`, which is a zip file, and returns the extension's folder in `into`.
 pub fn unpack_vsix(file: &Path, into: &Path) -> Result<PathBuf, String> {
     std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
-    // Git's tar may come first on the path, and can't read zip files.
-    let system = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe"));
-    let tar = system.filter(|p| p.exists()).unwrap_or_else(|| PathBuf::from("tar"));
-    let status = crate::language::lsp::discovery::quiet_command(&tar).arg("-xf").arg(file).arg("-C").arg(into).status();
-    match status {
-        Ok(done) if done.success() => {}
-        Ok(done) => return Err(format!("Couldn't unpack {}: tar said {done}", file.display())),
-        Err(e) => return Err(format!("Couldn't unpack {}: {e}", file.display())),
-    }
+    // A VSIX is a zip. Windows' tar (bsdtar) reads one; on Linux and macOS GNU tar does not,
+    // so use unzip there and keep tar as the fallback for a bsdtar that can.
+    #[cfg(windows)]
+    {
+        let system = std::env::var_os("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe"));
+        let tar = system.filter(|p| p.exists()).unwrap_or_else(|| PathBuf::from("tar"));
+        let status =
+            crate::language::lsp::discovery::quiet_command(&tar).arg("-xf").arg(file).arg("-C").arg(into).status();
+        match status {
+            Ok(done) if done.success() => {}
+            Ok(done) => return Err(format!("Couldn't unpack {}: tar said {done}", file.display())),
+            Err(e) => return Err(format!("Couldn't unpack {}: {e}", file.display())),
+        }
+    };
+    #[cfg(not(windows))]
+    {
+        let unzip = crate::language::lsp::servers::which("unzip");
+        if let Some(unzip) = unzip {
+            let status = crate::language::lsp::discovery::quiet_command(&unzip)
+                .args(["-q", "-o"])
+                .arg(file)
+                .arg("-d")
+                .arg(into)
+                .status();
+            match status {
+                Ok(done) if done.success() => {}
+                Ok(done) => return Err(format!("Couldn't unpack {}: unzip said {done}", file.display())),
+                Err(e) => return Err(format!("Couldn't unpack {}: {e}", file.display())),
+            }
+        } else {
+            // Some systems ship bsdtar as tar; it reads zip. GNU tar fails with a clear error.
+            let status = crate::language::lsp::discovery::quiet_command(Path::new("tar"))
+                .args(["-xf"])
+                .arg(file)
+                .arg("-C")
+                .arg(into)
+                .status();
+            match status {
+                Ok(done) if done.success() => {}
+                Ok(done) => {
+                    return Err(format!(
+                        "Couldn't unpack {}: tar said {done}. Install unzip, or use a bsdtar-based tar.",
+                        file.display()
+                    ));
+                }
+                Err(e) => return Err(format!("Couldn't unpack {}: {e}", file.display())),
+            }
+        }
+    };
     let folder = into.join("extension");
     if folder.join("package.json").exists() { Ok(folder) } else { Err("That file has no extension in it".to_owned()) }
 }

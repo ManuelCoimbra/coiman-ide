@@ -848,6 +848,8 @@ dependencies = [
 name = "coiman-ide"
 version = "0.5.0"
 dependencies = [
+ "arboard",
+ "chrono",
  "coiman-core",
  "eframe",
  "egui",

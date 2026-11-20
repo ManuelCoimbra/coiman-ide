@@ -1,10 +1,15 @@
-//! Watches the open folder (recursively) and open files outside it for
-//! changes made by other programs.
+//! Watches the open folder and the folders shown in the Explorer, plus open
+//! files outside it, for changes made by other programs.
+//!
+//! Watches are added on a worker thread and only for folders the editor has
+//! listed (or an open file lives in). Watching a whole tree recursively up front
+//! is fast on Windows but on Linux it means an `inotify` watch per directory, so
+//! opening a large folder or a home directory used to block the first frame for
+//! seconds.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{Receiver, channel};
-use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 use notify::event::ModifyKind;
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -23,13 +28,23 @@ pub struct Changes {
     pub git: bool,
 }
 
+/// What the worker should watch.
+enum WatchCmd {
+    /// Watch a folder and its children (used for `.git`, which is small).
+    Tree(PathBuf),
+    /// Watch one folder, not its children.
+    Dir(PathBuf),
+    Unwatch(PathBuf),
+}
+
 pub struct FileWatcher {
-    /// Shared with the threads that add watches: on Linux a folder of tens of thousands of
-    /// folders takes inotify seconds to watch, which mustn't hold up the window.
-    watcher: Option<Arc<Mutex<RecommendedWatcher>>>,
+    /// The worker owns the OS watcher: adding watches can take a while on a
+    /// large tree, and must never hold up a frame.
+    commands: Option<Sender<WatchCmd>>,
     rx: Receiver<notify::Result<Event>>,
     root: Option<PathBuf>,
-    /// Folders watched non-recursively for open files outside the root.
+    /// Folders watched one level deep: those the Explorer has listed, and the
+    /// parents of open files.
     extra_dirs: HashSet<PathBuf>,
 }
 
@@ -41,54 +56,65 @@ impl FileWatcher {
             let _ = tx.send(res);
             notify();
         })
-        .ok()
-        .map(|w| Arc::new(Mutex::new(w)));
-        Self { watcher, rx, root: None, extra_dirs: HashSet::new() }
+        .ok();
+        let commands = watcher.map(|watcher| {
+            let (commands, worker) = channel();
+            std::thread::spawn(move || watch_worker(watcher, worker));
+            commands
+        });
+        Self { commands, rx, root: None, extra_dirs: HashSet::new() }
     }
 
+    /// Watches `root` and its `.git` folder. The root itself is watched one
+    /// level deep; folders below it are watched as the Explorer lists them.
     pub fn set_root(&mut self, root: Option<&Path>) {
         if self.root.as_deref() == root {
             return;
         }
-        let Some(w) = &self.watcher else { return };
-        let old = self.root.take();
-        self.root = root.map(Path::to_path_buf);
-        let (w, new) = (Arc::clone(w), self.root.clone());
-        // In the background: events start coming once it's done.
-        std::thread::spawn(move || {
-            let started = std::time::Instant::now();
-            let mut w = w.lock().unwrap_or_else(|e| e.into_inner());
-            if let Some(old) = old {
-                let _ = w.unwatch(&old);
+        if let Some(old) = self.root.take()
+            && let Some(commands) = &self.commands
+        {
+            let _ = commands.send(WatchCmd::Unwatch(old));
+        }
+        let Some(root) = root else { return };
+        if let Some(commands) = &self.commands {
+            let _ = commands.send(WatchCmd::Dir(root.to_path_buf()));
+            // Git's refs are folders below `.git`; the index and HEAD are watched
+            // with it. It is small, unlike the project around it.
+            let git = root.join(".git");
+            if git.is_dir() {
+                let _ = commands.send(WatchCmd::Tree(git));
             }
-            if let Some(new) = new {
-                if let Err(e) = w.watch(&new, RecursiveMode::Recursive) {
-                    crate::applog::warn(&format!("couldn't watch {} for changes: {e}", new.display()));
-                }
-                let took = started.elapsed().as_millis();
-                if took >= 500 {
-                    crate::applog::info(&format!("watching {} for changes took {took} ms", new.display()));
+            // The project's settings are read from `.coiman` (or `.rust-code`).
+            for name in [".coiman", ".rust-code"] {
+                let dir = root.join(name);
+                if dir.is_dir() {
+                    let _ = commands.send(WatchCmd::Dir(dir));
                 }
             }
-        });
+        }
+        self.root = Some(root.to_path_buf());
+        // The root is watched by `Dir` above; remember it so listing it doesn't
+        // add the same watch again.
+        self.extra_dirs.insert(root.to_path_buf());
+    }
+
+    /// Watches one folder (not its children) if it isn't watched already.
+    /// The Explorer calls this for every folder it lists, so changes in the
+    /// folders on screen are reported without watching the whole tree.
+    pub fn watch_dir(&mut self, dir: &Path) {
+        if !self.extra_dirs.insert(dir.to_path_buf()) {
+            return;
+        }
+        if let Some(commands) = &self.commands {
+            let _ = commands.send(WatchCmd::Dir(dir.to_path_buf()));
+        }
     }
 
     /// Makes sure changes to `path` are reported, also outside the open folder.
     pub fn watch_file(&mut self, path: &Path) {
-        if self.root.as_deref().is_some_and(|r| path.starts_with(r)) {
-            return;
-        }
         let Some(dir) = path.parent() else { return };
-        if self.extra_dirs.contains(dir) {
-            return;
-        }
-        let Some(w) = &self.watcher else { return };
-        self.extra_dirs.insert(dir.to_path_buf());
-        let (w, dir) = (Arc::clone(w), dir.to_path_buf());
-        // Not on the window's thread: the folder's watch may still be being set up.
-        std::thread::spawn(move || {
-            let _ = w.lock().unwrap_or_else(|e| e.into_inner()).watch(&dir, RecursiveMode::NonRecursive);
-        });
+        self.watch_dir(dir);
     }
 
     /// Collects events since the last call. Changes inside ignored folders
@@ -113,6 +139,18 @@ impl FileWatcher {
             changes.paths.extend(paths);
         }
         changes
+    }
+}
+
+/// Adds watches as asked. `notify`'s recursive mode walks the whole tree, so it
+/// is only used for `.git`; everything else is watched one folder at a time.
+fn watch_worker(mut watcher: RecommendedWatcher, commands: Receiver<WatchCmd>) {
+    for command in commands {
+        let _ = match command {
+            WatchCmd::Tree(dir) => watcher.watch(&dir, RecursiveMode::Recursive),
+            WatchCmd::Dir(dir) => watcher.watch(&dir, RecursiveMode::NonRecursive),
+            WatchCmd::Unwatch(dir) => watcher.unwatch(&dir),
+        };
     }
 }
 
@@ -176,6 +214,24 @@ mod tests {
         assert!(wait_for(&mut w, |c| { c.structure && c.paths.iter().any(|p| p.ends_with("b.txt")) }));
         seen.paths.extend(w.drain().paths);
         assert!(!seen.paths.iter().any(|p| in_ignored_dir(p)), "target/ events dropped");
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn watches_folders_the_explorer_lists() {
+        let dir = std::env::temp_dir().join(format!("coiman-watch-nested-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("a/b")).unwrap();
+        let file = dir.join("a/b/c.txt");
+        std::fs::write(&file, "one").unwrap();
+
+        let mut w = FileWatcher::new(|| {});
+        w.set_root(Some(&dir));
+        // The Explorer listing a folder is what brings its watch in.
+        w.watch_dir(&dir.join("a/b"));
+        std::thread::sleep(Duration::from_millis(200));
+        std::fs::write(&file, "two").unwrap();
+        assert!(wait_for(&mut w, |c| c.paths.iter().any(|p| same_path(p, &file))), "nested change reported");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

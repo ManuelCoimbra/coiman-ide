@@ -60,6 +60,14 @@ pub enum Icon {
     Maximize,
     /// Corners pointing in: back to the size before.
     Restore,
+    /// A four-point spark: the Agents view.
+    Agent,
+    /// An arrow pointing left: back.
+    ArrowLeft,
+    /// An arrow pointing right: send.
+    Send,
+    /// Two overlapping squares: copy.
+    Copy,
 }
 
 /// Icon-sized painter helpers: coordinates are fractions of the icon box.
@@ -279,6 +287,31 @@ pub fn paint(painter: &egui::Painter, rect: Rect, icon: Icon, color: Color32) {
             pen.line(&[(0.6, 0.18), (0.6, 0.4), (0.82, 0.4)]);
             pen.line(&[(0.82, 0.6), (0.6, 0.6), (0.6, 0.82)]);
             pen.line(&[(0.4, 0.82), (0.4, 0.6), (0.18, 0.6)]);
+        }
+        Icon::Agent => {
+            // A four-point spark: the agent's mark.
+            pen.closed(&[
+                (0.5, 0.08),
+                (0.6, 0.4),
+                (0.92, 0.5),
+                (0.6, 0.6),
+                (0.5, 0.92),
+                (0.4, 0.6),
+                (0.08, 0.5),
+                (0.4, 0.4),
+            ]);
+        }
+        Icon::ArrowLeft => {
+            pen.line(&[(0.85, 0.5), (0.2, 0.5)]);
+            pen.line(&[(0.45, 0.28), (0.2, 0.5), (0.45, 0.72)]);
+        }
+        Icon::Send => {
+            pen.line(&[(0.15, 0.5), (0.85, 0.5)]);
+            pen.line(&[(0.58, 0.28), (0.85, 0.5), (0.58, 0.72)]);
+        }
+        Icon::Copy => {
+            pen.closed(&[(0.38, 0.14), (0.84, 0.14), (0.84, 0.6), (0.38, 0.6), (0.38, 0.14)]);
+            pen.closed(&[(0.16, 0.4), (0.16, 0.86), (0.62, 0.86), (0.62, 0.4), (0.16, 0.4)]);
         }
         Icon::Pin => {
             pen.closed(&[(0.36, 0.12), (0.64, 0.12), (0.6, 0.42), (0.74, 0.58), (0.26, 0.58), (0.4, 0.42)]);

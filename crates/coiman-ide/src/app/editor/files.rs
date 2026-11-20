@@ -30,6 +30,11 @@ impl CodeApp {
     /// conflicts and deletions, refresh the explorer and Quick Open index.
     pub(crate) fn pump_watcher(&mut self, ctx: &egui::Context) {
         self.pump_deleting();
+        // The Explorer lists folders on its own thread; watch the ones it has
+        // shown so changes there are reported without a recursive watch.
+        for dir in self.explorer.take_watch_dirs() {
+            self.watcher.watch_dir(&dir);
+        }
         let changes = self.watcher.drain();
         if changes.git || changes.structure || !changes.paths.is_empty() {
             self.git_refresh_soon(ctx, 0.3);

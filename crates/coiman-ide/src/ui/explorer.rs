@@ -255,6 +255,8 @@ pub struct Explorer {
     /// Folders being read, and listings kept on screen until they're read again.
     pending: HashSet<PathBuf>,
     stale: HashSet<PathBuf>,
+    /// Folders listed since the watcher last asked, to watch one level deep.
+    watch_pending: Vec<PathBuf>,
     /// Bumped when the root or the order changes, so older reads are dropped.
     generation: u64,
     /// The filter box (Ctrl+Alt+F): shown, what's typed, and whether it takes the keyboard.
@@ -342,9 +344,15 @@ impl Explorer {
             self.pending.remove(&dir);
             if generation == self.generation {
                 self.stale.remove(&dir);
-                self.cache.insert(dir, entries);
+                self.cache.insert(dir.clone(), entries);
+                self.watch_pending.push(dir);
             }
         }
+    }
+
+    /// Folders listed since the last call, for the file watcher.
+    pub fn take_watch_dirs(&mut self) -> Vec<PathBuf> {
+        std::mem::take(&mut self.watch_pending)
     }
 
     /// Whether the Explorer has the keyboard.

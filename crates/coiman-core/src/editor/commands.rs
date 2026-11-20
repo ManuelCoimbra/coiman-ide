@@ -35,6 +35,8 @@ pub enum Command {
     ResetLayout,
     ToggleTerminal,
     ShowExplorer,
+    /// The Agents window: OpenCode on this computer, in a chat-like view.
+    ShowAgents,
     /// The File Manager, in place of the editor.
     OpenFileManager,
     ShowSearch,
@@ -339,6 +341,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ResetLayout, "View: Reset Layout"),
     (Command::ToggleTerminal, "View: Toggle Terminal"),
     (Command::ShowExplorer, "View: Show Explorer"),
+    (Command::ShowAgents, "View: Show Agents"),
     (Command::OpenFileManager, "View: Open File Manager"),
     (Command::ShowSearch, "View: Show Search"),
     (Command::ReplaceInFiles, "Search: Replace in Files"),
@@ -643,6 +646,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ResetLayout, "coiman.resetLayout"),
     (Command::ToggleTerminal, "workbench.action.terminal.toggleTerminal"),
     (Command::ShowExplorer, "workbench.view.explorer"),
+    (Command::ShowAgents, "workbench.view.agents"),
     (Command::OpenFileManager, "coiman.openFileManager"),
     (Command::ShowSearch, "workbench.view.search"),
     (Command::ReplaceInFiles, "workbench.action.replaceInFiles"),

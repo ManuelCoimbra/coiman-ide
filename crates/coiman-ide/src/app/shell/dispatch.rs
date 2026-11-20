@@ -344,6 +344,13 @@ impl CodeApp {
                 self.sidebar_visible = true;
                 self.sidebar_view = SidebarView::Explorer;
             }
+            Command::ShowAgents => {
+                if self.settings.workbench.agents_enabled {
+                    self.agents.toggle();
+                } else {
+                    self.status = Some("The Agents window is hidden in Settings".to_owned());
+                }
+            }
             Command::ShowSearch => {
                 self.welcome_sidebar = true;
                 self.sidebar_visible = true;
@@ -492,6 +499,7 @@ impl CodeApp {
             }
             Command::OpenUserSettings => {
                 self.settings_ui.workspace = false;
+                self.settings_ui.tab = self.settings.workbench.settings_in_tab;
                 self.settings_ui.open = true;
             }
             Command::OpenSettingsFile => {
@@ -500,6 +508,7 @@ impl CodeApp {
             Command::OpenWorkspaceSettings => {
                 if self.explorer.root.is_some() {
                     self.settings_ui.workspace = true;
+                    self.settings_ui.tab = self.settings.workbench.settings_in_tab;
                     self.settings_ui.open = true;
                 } else {
                     self.status = Some("Open a folder to use workspace settings".to_owned());
@@ -917,6 +926,14 @@ impl CodeApp {
         if self.double_shift.update(shift, other, now) && self.settings.workbench.double_shift {
             coiman_core::applog::info("double Shift");
             self.open_everywhere();
+        }
+        // Ctrl+Alt+I focuses the Agents chat, like Copilot Chat (Ctrl+L selects lines).
+        if self.settings.workbench.agents_enabled
+            && ctx.input(|i| i.key_pressed(Key::I) && i.modifiers.matches_exact(Modifiers::CTRL | Modifiers::ALT))
+        {
+            ctx.input_mut(|i| i.consume_key(Modifiers::CTRL | Modifiers::ALT, Key::I));
+            self.agents.focus_chat();
+            return;
         }
         if self.zen_mode
             && !self.find.open

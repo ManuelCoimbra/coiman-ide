@@ -22,12 +22,13 @@ const SHEET_GAP: f32 = 8.0;
 
 // No Search here: the top bar's search box is the one way in (Ctrl+Shift+F and Ctrl+Shift+H
 // still open the search sheet, and Search Everywhere's Replace… button does too).
-const SIDE: [(SidebarView, Icon, &str, Command); 5] = [
+const SIDE: [(SidebarView, Icon, &str, Command); 6] = [
     (SidebarView::Explorer, Icon::Files, "Project (Ctrl+Shift+E)", Command::ShowExplorer),
     (SidebarView::Git, Icon::SourceControl, "Source Control (Ctrl+Shift+G)", Command::ShowSourceControl),
     (SidebarView::Testing, Icon::Beaker, "Testing", Command::ShowTesting),
     (SidebarView::Debug, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", Command::ShowDebug),
     (SidebarView::Extensions, Icon::Extensions, "Extensions (Ctrl+Shift+X)", Command::ShowExtensions),
+    (SidebarView::Agents, Icon::Agent, "Agents", Command::ShowAgents),
 ];
 
 const PANELS: [(PanelTab, Icon, &str, Command); 3] = [
@@ -52,6 +53,18 @@ pub(crate) fn panel_frame() -> egui::Frame {
         .corner_radius(14.0)
         .inner_margin(egui::Margin::symmetric(12, 8))
         .outer_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 0 })
+}
+
+/// The terminal's card: the same padding whether it is in the panel, maximized, or in
+/// its own window. The terminal itself adds the side padding, including the scrollbar strip.
+pub(crate) fn terminal_frame(maximized: bool) -> egui::Frame {
+    let pal = theme::colors();
+    let radius = if maximized || !theme::islands() { 0.0 } else { 14.0 };
+    egui::Frame::new()
+        .fill(pal.editor_bg)
+        .stroke(egui::Stroke::new(1.0, pal.editor_bg))
+        .corner_radius(radius)
+        .inner_margin(egui::Margin::symmetric(6, 4))
 }
 
 /// The main menu's button: the Coiman icon.
@@ -153,6 +166,7 @@ impl CodeApp {
             .filter(|(view, ..)| match view {
                 SidebarView::Testing => self.testing_available(),
                 SidebarView::Debug => self.can_debug(),
+                SidebarView::Agents => self.settings.workbench.agents_enabled,
                 _ => true,
             })
             .collect();
@@ -168,13 +182,16 @@ impl CodeApp {
         let mut x = pill.left() + 8.0;
         let mut open_at = None;
         for (view, icon, tip, command) in side {
-            let open = self.sidebar_shown() && self.sidebar_view == view;
+            let agents = matches!(view, SidebarView::Agents);
+            let open = if agents { self.agents.is_open() } else { self.sidebar_shown() && self.sidebar_view == view };
             if open {
                 open_at = Some(x + BUTTON.x / 2.0);
             }
             let rect = egui::Rect::from_min_size(egui::pos2(x, pill.top() + 3.0), BUTTON);
             if self.dock_button(ui, rect, icon, tip, open) {
-                if open {
+                if agents {
+                    self.agents.toggle();
+                } else if open {
                     self.sidebar_visible = false;
                     self.welcome_sidebar = false;
                 } else {

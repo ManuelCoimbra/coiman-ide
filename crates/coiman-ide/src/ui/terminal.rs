@@ -19,6 +19,8 @@ use egui::{Color32, Event, EventFilter, FontId, Key, Modifiers, Pos2, Rect, Sens
 use crate::ui::theme;
 
 const SCROLLBAR: f32 = 10.0;
+/// Extra space in the terminal's top bar so its contents line up with the terminal text.
+pub(crate) const HEADER_SIDE_PAD: f32 = 14.0;
 /// Seconds between finding again while output arrives.
 const SEARCH_REFRESH: f64 = 0.3;
 /// Matches kept at most.
@@ -58,6 +60,8 @@ struct Tab {
     exited: Option<Option<u32>>,
     /// Read this tab's output for problems.
     scan: Option<Scan>,
+    /// The pointer button held while the program asked for mouse reporting.
+    mouse_button: Option<egui::PointerButton>,
     started: std::time::Instant,
     /// The folder it started in: where its output's relative file names are looked up.
     cwd: PathBuf,
@@ -325,6 +329,7 @@ impl Terminals {
             task,
             exited: None,
             scan: None,
+            mouse_button: None,
             started: std::time::Instant::now(),
         });
         self.next_id += 1;
@@ -563,7 +568,13 @@ impl Terminals {
         let font = FontId::monospace(font_size);
         let row_h = ui.fonts_mut(|f| f.row_height(&font));
         let char_w = ui.fonts_mut(|f| f.glyph_width(&font, '0'));
-        let text_rect = Rect::from_min_max(rect.min, Pos2::new(rect.right() - SCROLLBAR, rect.bottom()));
+        // Same space on both sides: the scrollbar's strip counts on the left too, or the
+        // text sits closer to the left edge than to the right one.
+        const SIDE_PAD: f32 = 4.0;
+        let text_rect = Rect::from_min_max(
+            rect.min + Vec2::new(SIDE_PAD + SCROLLBAR, 0.0),
+            Pos2::new(rect.right() - SIDE_PAD - SCROLLBAR, rect.bottom()),
+        );
         let columns = ((text_rect.width() / char_w).floor() as usize).max(2);
         let lines = ((text_rect.height() / row_h).floor() as usize).max(1);
         tab.session.resize(Size { columns, lines });
@@ -1002,6 +1013,121 @@ fn handle_keys(ui: &mut egui::Ui, session: &Session) {
     }
 }
 
+/// The 1-based screen cell under `p`, clamped to the terminal.
+fn mouse_cell(grid: &Grid, p: Pos2, size: Size) -> (u16, u16) {
+    let col = ((p.x - grid.rect.left()) / grid.char_w).floor() as i32 + 1;
+    let row = ((p.y - grid.rect.top()) / grid.row_h).floor() as i32 + 1;
+    (col.clamp(1, size.columns as i32) as u16, row.clamp(1, size.lines as i32) as u16)
+}
+
+/// The X10 modifier bits (shift, meta, ctrl).
+fn mouse_mods(mods: Modifiers) -> u8 {
+    let mut bits = 0;
+    if mods.shift {
+        bits |= 4;
+    }
+    if mods.alt {
+        bits |= 8;
+    }
+    if mods.ctrl || mods.command {
+        bits |= 16;
+    }
+    bits
+}
+
+/// The X10 mouse button byte, with the modifier bits.
+fn mouse_code(button: egui::PointerButton, mods: Modifiers) -> u8 {
+    let base = match button {
+        egui::PointerButton::Primary => 0,
+        egui::PointerButton::Middle => 1,
+        egui::PointerButton::Secondary => 2,
+        egui::PointerButton::Extra1 => 8,
+        egui::PointerButton::Extra2 => 9,
+    };
+    base | mouse_mods(mods)
+}
+
+fn mouse_sequence(code: u8, col: u16, row: u16, pressed: bool, motion: bool, mode: TermMode) -> Option<Vec<u8>> {
+    if !mode.intersects(TermMode::MOUSE_MODE) {
+        return None;
+    }
+    let code = code | if motion { 32 } else { 0 };
+    if mode.contains(TermMode::SGR_MOUSE) {
+        let end = if pressed { 'M' } else { 'm' };
+        return Some(format!("\x1b[<{code};{col};{row}{end}").into_bytes());
+    }
+    if mode.contains(TermMode::UTF8_MOUSE) {
+        let code = if pressed { code } else { 3 };
+        let mut out = String::from("\x1b[");
+        for n in [u32::from(code), u32::from(col), u32::from(row)] {
+            out.push(char::from_u32(n).unwrap_or('?'));
+            out.push(';');
+        }
+        out.pop();
+        out.push('M');
+        return Some(out.into_bytes());
+    }
+    let code = if pressed { code } else { 3 };
+    Some(format!("\x1b[{code};{col};{row}M").into_bytes())
+}
+
+/// Forwards the pointer to a program that asked for mouse reporting.
+fn send_mouse_events(ui: &mut egui::Ui, tab: &mut Tab, grid: &Grid, size: Size, mode: TermMode) {
+    let events = ui.input(|i| i.events.clone());
+    for event in events {
+        match event {
+            Event::PointerButton { pos, button, pressed, modifiers } => {
+                if pressed {
+                    if !grid.rect.contains(pos) {
+                        continue;
+                    }
+                    let (col, row) = mouse_cell(grid, pos, size);
+                    if let Some(bytes) = mouse_sequence(mouse_code(button, modifiers), col, row, true, false, mode) {
+                        tab.session.write(&bytes);
+                        tab.mouse_button = Some(button);
+                    }
+                } else {
+                    let button = tab.mouse_button.take().unwrap_or(button);
+                    let (col, row) = mouse_cell(grid, pos, size);
+                    if let Some(bytes) = mouse_sequence(mouse_code(button, modifiers), col, row, false, false, mode) {
+                        tab.session.write(&bytes);
+                    }
+                }
+            }
+            Event::PointerMoved(pos) => {
+                let inside = grid.rect.contains(pos);
+                let mods = ui.input(|i| i.modifiers);
+                let (col, row) = mouse_cell(grid, pos, size);
+                if let Some(button) = tab.mouse_button {
+                    if (mode.contains(TermMode::MOUSE_DRAG) || mode.contains(TermMode::MOUSE_MOTION))
+                        && let Some(bytes) = mouse_sequence(mouse_code(button, mods), col, row, true, true, mode)
+                    {
+                        tab.session.write(&bytes);
+                    }
+                } else if inside
+                    && mode.contains(TermMode::MOUSE_MOTION)
+                    && let Some(bytes) = mouse_sequence(3, col, row, true, true, mode)
+                {
+                    tab.session.write(&bytes);
+                }
+            }
+            Event::MouseWheel { delta, modifiers, .. } => {
+                let Some(pos) = ui.input(|i| i.pointer.hover_pos()) else { continue };
+                if !grid.rect.contains(pos) || delta.y == 0.0 {
+                    continue;
+                }
+                let (col, row) = mouse_cell(grid, pos, size);
+                let wheel = if delta.y > 0.0 { 64 } else { 65 };
+                if let Some(bytes) = mouse_sequence(wheel | mouse_mods(modifiers), col, row, true, false, mode) {
+                    tab.session.write(&bytes);
+                }
+                ui.input_mut(|i| i.smooth_scroll_delta = Vec2::ZERO);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// A file named in the output, as a path that exists: absolute, or from the tab's folder or
 /// the project's.
 fn existing_file(file: &str, tab_cwd: &Path, project: &Path) -> Option<PathBuf> {
@@ -1058,6 +1184,17 @@ fn handle_mouse(
     project: &Path,
 ) -> Option<(PathBuf, u32, u32)> {
     let size = tab.session.size();
+    let mode = *tab.session.term().mode();
+    if !mode.intersects(TermMode::MOUSE_MODE) {
+        tab.mouse_button = None;
+    }
+    // A program that asked for mouse reporting gets the pointer, not a selection.
+    // Shift still selects, as in xterm, unless a reported drag is already running.
+    let shift_selects = ui.input(|i| i.modifiers.shift) && tab.mouse_button.is_none();
+    if mode.intersects(TermMode::MOUSE_MODE) && !shift_selects {
+        send_mouse_events(ui, tab, grid, size, mode);
+        return None;
+    }
     // Wheel: scroll back through history, or send arrow keys to full-screen
     // programs (less, vim) that use the alternate screen.
     if response.hovered() {
@@ -1369,6 +1506,22 @@ mod tests {
         assert_eq!(key_bytes(Key::Delete, none, false).unwrap(), b"\x1b[3~");
         assert_eq!(key_bytes(Key::F5, none, false).unwrap(), b"\x1b[15~");
         assert!(key_bytes(Key::A, none, false).is_none());
+    }
+
+    #[test]
+    fn mouse_reporting_matches_xterm() {
+        let sgr = TermMode::MOUSE_REPORT_CLICK | TermMode::SGR_MOUSE;
+        assert_eq!(mouse_sequence(0, 3, 5, true, false, sgr).unwrap(), b"\x1b[<0;3;5M");
+        assert_eq!(mouse_sequence(0, 3, 5, false, false, sgr).unwrap(), b"\x1b[<0;3;5m");
+        assert_eq!(mouse_sequence(0, 3, 5, true, true, sgr).unwrap(), b"\x1b[<32;3;5M");
+
+        let plain = TermMode::MOUSE_REPORT_CLICK;
+        assert_eq!(mouse_sequence(0, 3, 5, true, false, plain).unwrap(), b"\x1b[0;3;5M");
+        assert_eq!(mouse_sequence(0, 3, 5, false, false, plain).unwrap(), b"\x1b[3;3;5M");
+
+        let mods = Modifiers::SHIFT | Modifiers::ALT | Modifiers::CTRL;
+        assert_eq!(mouse_code(egui::PointerButton::Primary, mods), 0b11100);
+        assert_eq!(mouse_sequence(64, 3, 5, true, false, sgr).unwrap(), b"\x1b[<64;3;5M");
     }
 
     #[test]

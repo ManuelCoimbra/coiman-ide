@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Receiver};
 
-use eframe::egui::{self, RichText};
+use eframe::egui::{self, Align, RichText};
 use toml::Value;
 
 use crate::app::CodeApp;
@@ -23,6 +23,8 @@ enum Kind {
     /// Nothing to set: a button that runs a command.
     Button(&'static str, Command),
     Font,
+    /// The color theme: its name at the right, and the picker behind it.
+    Theme,
     /// The `[env]` table: a variable to a row, each to change or take away, and one to add.
     Env,
 }
@@ -132,6 +134,13 @@ const SECTIONS: &[(&str, &[Row])] = &[
             ),
             row(
                 "editor",
+                "sticky_scroll",
+                "Sticky scroll",
+                "Keep the enclosing function or section at the top while scrolling.",
+                Kind::Toggle,
+            ),
+            row(
+                "editor",
                 "minimap",
                 "Minimap",
                 "A small picture of the whole file in place of the scrollbar. Click or drag it to move.",
@@ -222,8 +231,17 @@ const SECTIONS: &[(&str, &[Row])] = &[
         ],
     ),
     (
-        "Appearance",
+        "Look",
         &[
+            row("workbench", "color_theme", "Color theme", "The colors of the whole window and the code.", Kind::Theme),
+            row(
+                "workbench",
+                "settings_in_tab",
+                "Open Settings in a tab",
+                "Show Settings in the editor area instead of a floating window.",
+                Kind::Toggle,
+            ),
+            row("workbench", "agents_enabled", "Agents window", "Show the Agents window and its icon.", Kind::Toggle),
             row(
                 "workbench",
                 "import_vscode",
@@ -604,6 +622,8 @@ const SECTIONS: &[(&str, &[Row])] = &[
 #[derive(Default)]
 pub(crate) struct SettingsUi {
     pub(crate) open: bool,
+    /// Show in the editor area as a tab instead of a floating window.
+    pub(crate) tab: bool,
     filter: String,
     /// Change the open folder's settings instead of your own.
     pub(crate) workspace: bool,
@@ -796,6 +816,14 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
                 }
             });
         }
+        Kind::Theme => {
+            let current = value.and_then(Value::as_str).unwrap_or("");
+            let shown = if current.is_empty() { "Coiman Dark" } else { current };
+            let label = format!("{shown}  ▾");
+            if ui.button(label).clicked() {
+                *out = Some(Action::Theme);
+            }
+        }
         Kind::Whole(low, high) => {
             let saved = value.and_then(Value::as_integer).unwrap_or(0) as f64;
             if let Some(v) = number(ui, state, key, saved, low as f64, high as f64, 0) {
@@ -839,14 +867,189 @@ pub(crate) fn searchable() -> Vec<(String, String)> {
 }
 
 impl CodeApp {
+    /// Whether Settings is showing as an editor tab.
+    pub(crate) fn settings_tab_open(&self) -> bool {
+        self.settings_ui.open && self.settings_ui.tab
+    }
+
+    pub(crate) fn open_settings_tab(&mut self) {
+        self.settings_ui.workspace = false;
+        self.settings_ui.tab = true;
+        self.settings_ui.open = true;
+    }
+
+    pub(crate) fn close_settings_tab(&mut self) {
+        self.settings_ui.tab = false;
+        self.settings_ui.open = false;
+    }
+
     /// Opens Settings on one setting.
     pub(crate) fn show_setting(&mut self, label: &str) {
-        self.settings_ui.open = true;
+        self.settings_ui.workspace = false;
         self.settings_ui.filter = label.to_owned();
+        self.settings_ui.tab = self.settings.workbench.settings_in_tab;
+        self.settings_ui.open = true;
+    }
+
+    pub(crate) fn settings_tab_view(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let current = Value::try_from(&self.settings).unwrap_or(Value::Boolean(false));
+        let defaults = Value::try_from(Settings::default()).unwrap_or(Value::Boolean(false));
+        let workspace_allowed = self.explorer.root.is_some() && self.restricted_folder().is_none();
+        if !workspace_allowed {
+            self.settings_ui.workspace = false;
+        }
+        let mut action = None;
+        let state = &mut self.settings_ui;
+        if !state.fonts_loaded {
+            state.fonts_loaded = true;
+            let (tx, rx) = mpsc::channel();
+            state.fonts_loading = Some(rx);
+            let wake = ctx.clone();
+            std::thread::spawn(move || {
+                let _ = tx.send(coiman_core::appearance::fonts::monospace_families(
+                    &coiman_core::appearance::fonts::installed(),
+                ));
+                wake.request_repaint();
+            });
+        }
+        if let Some(fonts) = state.fonts_loading.as_ref().and_then(|rx| rx.try_recv().ok()) {
+            state.fonts = fonts;
+            state.fonts_loading = None;
+        }
+
+        let pal = theme::colors();
+        let frame = egui::Frame::new().fill(pal.editor_bg).inner_margin(egui::Margin::symmetric(18, 12));
+        frame.show(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                let search_w = (ui.available_width() - 280.0).clamp(140.0, 300.0);
+                ui.add(
+                    egui::TextEdit::singleline(&mut state.filter).hint_text("Search settings").desired_width(search_w),
+                );
+                ui.selectable_value(&mut state.workspace, false, "User");
+                ui.add_enabled_ui(workspace_allowed, |ui| {
+                    ui.selectable_value(&mut state.workspace, true, "This folder")
+                        .on_disabled_hover_text("Open a trusted folder to change its settings");
+                });
+                if ui.button("Keyboard Shortcuts").clicked() {
+                    action = Some(Action::KeyboardShortcuts);
+                }
+                if ui.button("Edit as File").clicked() {
+                    action = Some(Action::OpenFile);
+                }
+            });
+            ui.add_space(6.0);
+            let filter = state.filter.to_lowercase();
+            let matches = |r: &Row| {
+                filter.is_empty()
+                    || r.label.to_lowercase().contains(&filter)
+                    || r.help.to_lowercase().contains(&filter)
+                    || r.key.contains(&filter)
+            };
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(6.0, 6.0);
+                for (title, _) in SECTIONS {
+                    let selected = state.jump == Some(title);
+                    if ui.selectable_label(selected, *title).clicked() {
+                        state.jump = Some(title);
+                    }
+                }
+            });
+            ui.add_space(6.0);
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                for (title, rows) in SECTIONS {
+                    let rows: Vec<&Row> = rows.iter().filter(|r| matches(r)).collect();
+                    if rows.is_empty() {
+                        continue;
+                    }
+                    let heading = section_title(ui, title);
+                    if state.jump == Some(title) {
+                        heading.scroll_to_me(Some(Align::TOP));
+                        state.jump = None;
+                    }
+                    card().show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        for row in rows {
+                            let value = lookup(&current, row.table, row.key);
+                            let changed = value != lookup(&defaults, row.table, row.key);
+                            ui.horizontal(|ui| {
+                                ui.vertical(|ui| {
+                                    ui.label(RichText::new(row.label).strong());
+                                    ui.label(RichText::new(row.help).small().color(pal.text_dim));
+                                });
+                                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                    ui.add_space(12.0);
+                                    control(ui, state, row, value, &mut action);
+                                    if changed && ui.small_button("Reset").clicked() {
+                                        action = Some(Action::Reset(row.table, row.key));
+                                    }
+                                });
+                            });
+                            ui.add_space(4.0);
+                        }
+                    });
+                    ui.add_space(8.0);
+                }
+            });
+        });
+
+        let workspace = self.settings_ui.workspace;
+        let result = match action {
+            Some(Action::Set(table, key, value)) => self.change_setting(&ctx, workspace, table, key, Some(&value)),
+            Some(Action::Env(name, value)) => {
+                let value = value.map(|v| literal(Value::String(v)));
+                self.change_setting(&ctx, workspace, "env", &name, value.as_deref())
+            }
+            Some(Action::Reset(table, key)) => self.change_setting(&ctx, workspace, table, key, None),
+            Some(Action::ChoosePath(table, key, folder)) => {
+                let kind = format!("setting_{table}_{key}");
+                let dialog = self.file_dialog(&kind);
+                let chosen = if folder {
+                    dialog.pick_folder()
+                } else {
+                    dialog.add_filter("Pictures", &["png", "jpg", "jpeg", "gif", "webp", "bmp"]).pick_file()
+                };
+                if let Some(path) = &chosen {
+                    self.dialog_chose(&kind, path);
+                }
+                match chosen {
+                    Some(path) => {
+                        let value = literal(Value::String(path.to_string_lossy().into_owned()));
+                        self.change_setting(&ctx, workspace, table, key, Some(&value))
+                    }
+                    None => Ok(()),
+                }
+            }
+            Some(Action::Run(command)) => {
+                self.run_command(&ctx, command);
+                Ok(())
+            }
+            Some(Action::Theme) => {
+                self.run_command(&ctx, Command::SelectTheme);
+                Ok(())
+            }
+            Some(Action::KeyboardShortcuts) => {
+                self.keys_ui.open = true;
+                Ok(())
+            }
+            Some(Action::OpenFile) => {
+                let path = match (&self.explorer.root, workspace) {
+                    (Some(root), true) => Some(settings::workspace_settings_path(root)),
+                    _ => settings::user_settings_path(),
+                };
+                self.open_config_file(path, settings::default_file_contents());
+                self.close_settings_tab();
+                Ok(())
+            }
+            None => Ok(()),
+        };
+        if let Err(e) = result {
+            self.status = Some(e);
+        }
     }
 
     pub(crate) fn settings_window(&mut self, ctx: &egui::Context) {
-        if !self.settings_ui.open {
+        if !self.settings_ui.open || self.settings_ui.tab {
             return;
         }
         let current = Value::try_from(&self.settings).unwrap_or(Value::Boolean(false));
@@ -975,23 +1178,6 @@ impl CodeApp {
                     style.spacing.icon_width *= 1.3;
                     style.spacing.icon_width_inner *= 1.3;
                     let help_size = ui.text_style_height(&egui::TextStyle::Body) * 0.82;
-                    if filter.is_empty() || "color theme".contains(&filter) {
-                        section_title(ui, "Look");
-                        card().show(ui, |ui| {
-                            ui.set_width(ui.available_width());
-                            ui.horizontal(|ui| {
-                                ui.label("Color theme");
-                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    ui.add_space(12.0);
-                                    let name = format!("{}  ▾", self.settings.workbench.color_theme);
-                                    if ui.button(name).clicked() {
-                                        action = Some(Action::Theme);
-                                    }
-                                });
-                            });
-                        });
-                        ui.add_space(10.0);
-                    }
                     for (title, rows) in SECTIONS {
                         if !rows.iter().any(matches) {
                             continue;
@@ -1108,6 +1294,7 @@ impl CodeApp {
                 };
                 self.open_config_file(path, settings::default_file_contents());
                 self.settings_ui.open = false;
+                self.settings_ui.tab = false;
                 Ok(())
             }
             None => Ok(()),

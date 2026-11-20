@@ -9,6 +9,7 @@ pub(crate) enum ViewTab {
     Bytes,
     Image,
     Files,
+    Settings,
 }
 
 impl CodeApp {
@@ -19,6 +20,9 @@ impl CodeApp {
         tabs.extend(self.bytes_tab().map(|(title, shown)| (ViewTab::Bytes, title, shown)));
         tabs.extend(self.image_tab().map(|(title, shown)| (ViewTab::Image, title, shown)));
         tabs.extend(self.file_manager_tab().map(|(title, shown)| (ViewTab::Files, title, shown)));
+        if self.settings_tab_open() {
+            tabs.push((ViewTab::Settings, "Settings".to_owned(), true));
+        }
         tabs
     }
 
@@ -27,6 +31,7 @@ impl CodeApp {
         self.hide_bytes();
         self.hide_image();
         self.hide_file_manager();
+        self.close_settings_tab();
     }
 
     pub(crate) fn show_view_tab(&mut self, tab: ViewTab) {
@@ -36,6 +41,7 @@ impl CodeApp {
             ViewTab::Bytes => self.show_bytes_tab(),
             ViewTab::Image => self.show_image_tab(),
             ViewTab::Files => self.show_file_manager_tab(),
+            ViewTab::Settings => self.open_settings_tab(),
         }
     }
 
@@ -45,6 +51,7 @@ impl CodeApp {
             ViewTab::Bytes => self.close_bytes_tab(),
             ViewTab::Image => self.close_image_tab(),
             ViewTab::Files => self.close_file_manager_tab(),
+            ViewTab::Settings => self.close_settings_tab(),
         }
     }
 
