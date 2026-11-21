@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 141, partial 121,
-missing 207, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 144, partial 121,
+missing 204, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -24,7 +24,7 @@ specification is right: every row in it exists.
 | 6 Terminal | 9 | 4 | 5 | |
 | 7 Documentation | 4 | 6 | 9 | |
 | 8 Web | 1 | 4 | 19 | |
-| 9 Database | 13 | 4 | 6 | |
+| 9 Database | 16 | 4 | 3 | |
 | 10 Data science | 5 | 3 | 14 | |
 | 11 Systems and embedded | 2 | 5 | 17 | |
 | 12 Game | 1 | 6 | 14 | |
@@ -312,9 +312,9 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | SQLite | Done | Through `sqlite3` |
 | PostgreSQL | Done | Through `psql` |
 | MySQL and MariaDB | Done | Through the `mariadb` or `mysql` client |
-| Microsoft SQL Server | Missing | |
-| MongoDB | Missing | |
-| Redis browser | Missing | |
+| Microsoft SQL Server | Done | Through sqlcmd; LocalDB by name |
+| MongoDB | Done | Through mongosh: collections, documents, scripts |
+| Redis browser | Done | Through redis-cli: keys, values, TTL, console |
 
 ## 10. Data science and machine learning
 

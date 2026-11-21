@@ -21,6 +21,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- SQL Server in the Database window, through `sqlcmd` (LocalDB found by name). `Database:
+  Redis...` (keys, values, time to live, a console, through `redis-cli`) and `Database:
+  MongoDB...` (collections, documents found by filter, edit, add, delete, scripts, through
+  `mongosh`).
 - Shaders: GLSL, HLSL and WGSL files are colored. GLSL problems come from the graphics
   driver and WGSL problems from naga, while typing. `Preview: Shader` draws the active
   fragment shader live (Shadertoy and The Book of Shaders uniforms, WGSL through naga).

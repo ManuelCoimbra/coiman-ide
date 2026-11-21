@@ -1038,7 +1038,7 @@ In Restricted Mode, Cargo and npm don't run (they read the project's settings), 
 come from `node_modules` alone, and the audits, update checks and updates wait for the folder
 to be trusted. Lockfiles are read either way.
 
-## Databases (SQLite, PostgreSQL, MySQL)
+## Databases (SQLite, PostgreSQL, MySQL, SQL Server, Redis, MongoDB)
 
 A SQLite file opens in the **Database** window from the Explorer or Quick Open (it is
 recognised by its contents, whatever its name), or with **Database: Open SQLite File...**.
@@ -1062,17 +1062,37 @@ recognised by its contents, whatever its name), or with **Database: Open SQLite 
   front, against the open database. **Database: Explain Query Plan (Selection or File)**
   explains it instead, and **Database: Show Tables Diagram (ER)** opens the diagram.
 
-- **PostgreSQL and MySQL (or MariaDB)**: **Connect...** in the window, or **Database:
-  Connect to PostgreSQL or MySQL...**, asks for the host, port, user, database and password.
+- **PostgreSQL, MySQL (or MariaDB) and SQL Server**: **Connect...** in the window, or
+  **Database: Connect to PostgreSQL, MySQL or SQL Server...**, asks for the host, port, user,
+  database and password.
   The same tables, columns, keys, indexes, results, diagram and query plans follow (the plan
   is the server's `EXPLAIN`; nothing runs). Errors say which statement they're in. **Recent**
   keeps the connections used, without passwords: the password is held only while the app
-  runs, and given to the client for each run (`PGPASSWORD`, `MYSQL_PWD`). A connection can
-  have a **Name** of its own ("Shop, staging"), shown in Recent and the window's title.
+  runs, and given to the client for each run (`PGPASSWORD`, `MYSQL_PWD`, `SQLCMDPASSWORD`). A
+  connection can have a **Name** of its own ("Shop, staging"), shown in Recent and the window's
+  title.
+- **SQL Server** goes through `sqlcmd` (Microsoft's Go version, or the one with SQL Server's
+  tools). An empty user signs in with Windows. The host can be `(localdb)\MSSQLLocalDB`:
+  Coiman starts that LocalDB instance and finds its pipe. Each statement runs in a batch of its
+  own, so `CREATE VIEW` and `CREATE PROCEDURE` work beside others; the plan is
+  `SHOWPLAN_TEXT`. Line breaks and tabs inside values show as spaces.
+- **Database: Redis...** (Redis, Valkey, Memurai, through `redis-cli`): the keys, found with
+  `SCAN` and a pattern (`user:*`), each with its type, size and time to live; a click shows
+  what it holds (a string to edit and save, a hash's fields, a list's items, a set's members,
+  a sorted set's scores, a stream's entries). **Expires in** sets or removes a key's time to
+  live, and **Delete…** asks first. The **console** runs any command and shows the reply as
+  `redis-cli` does. The database number is chosen at the top, with how many keys each holds.
+- **Database: MongoDB...** (through `mongosh`): databases and their collections (with about
+  how many documents), and a collection's documents as a table, found with a **Filter**,
+  **Sort** and **Fields** in the shell's own syntax (`{ price: { $gt: 2 } }`,
+  `ObjectId("…")`), 200 at a time. A click on a document opens it as Extended JSON to edit
+  and **Save**, or **Delete…**; **Add a document** adds one. **Script** runs any shell script
+  in the chosen database and shows its result.
 
 It runs through the `sqlite3` program (on `PATH`, or MSYS2's), in its safe mode, so a
-`.sql` file can't reach the shell with dot-commands; servers through `psql` and the `mariadb`
-or `mysql` client (on `PATH` or where their installers put them). No database code is built
+`.sql` file can't reach the shell with dot-commands; servers through `psql`, the `mariadb`
+or `mysql` client, `sqlcmd`, `redis-cli` and `mongosh` (on `PATH`, where their installers put
+them, or unpacked into the config folder's `tools` folder). No database code is built
 into the app, and it opens no connections of its own: the clients do. Results keep 10,000
 rows each.
 

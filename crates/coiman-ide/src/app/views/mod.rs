@@ -7,6 +7,7 @@ pub(crate) mod file_manager;
 pub(crate) mod image_view;
 pub(crate) mod logs;
 pub(crate) mod md_preview;
+pub(crate) mod nosql_ui;
 pub(crate) mod notebook_ui;
 pub(crate) mod preview;
 pub(crate) mod shader_ui;

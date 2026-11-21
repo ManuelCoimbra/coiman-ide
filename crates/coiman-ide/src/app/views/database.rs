@@ -56,6 +56,7 @@ impl Target {
             Self::Server(s) => match s.kind {
                 Kind::Postgres => "PostgreSQL",
                 Kind::MySql => "MySQL",
+                Kind::SqlServer => "SQL Server",
             },
         }
     }
@@ -187,11 +188,15 @@ impl CodeApp {
                 Target::Server(s) if s.kind == Kind::Postgres => {
                     "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema();"
                 }
+                Target::Server(s) if s.kind == Kind::SqlServer => {
+                    "SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = SCHEMA_NAME();"
+                }
                 Target::Server(_) => "SHOW TABLES;",
             };
             let was_first = ui.sql.trim().is_empty()
                 || ui.sql.starts_with("SELECT name FROM sqlite_schema")
                 || ui.sql.starts_with("SELECT table_name FROM information_schema")
+                || ui.sql.starts_with("SELECT TABLE_NAME FROM INFORMATION_SCHEMA")
                 || ui.sql == "SHOW TABLES;";
             ui.target = Some(target);
             ui.tables.clear();
@@ -220,7 +225,9 @@ impl CodeApp {
     /// The form's Connect: remembers the server (not its password) and reads its tables.
     fn connect_database(&mut self) {
         let Some(form) = self.database.connect.as_mut() else { return };
-        let Ok(port) = form.port.trim().parse::<u16>() else {
+        // SQL Server's LocalDB, named instances and pipes need no port.
+        let no_port = form.server.kind == Kind::SqlServer && form.port.trim().is_empty();
+        let Ok(port) = (if no_port { Ok(0) } else { form.port.trim().parse::<u16>() }) else {
             form.error = Some("The port is a number, like 5432".to_owned());
             return;
         };
@@ -431,7 +438,11 @@ impl CodeApp {
 /// SQL showing a table's rows.
 fn rows_of(target: Option<&Target>, table: &str) -> String {
     let name = target.map_or_else(|| database::quote_name(table), |t| t.quote(table));
-    format!("SELECT * FROM {name} LIMIT 500;")
+    match target {
+        // SQL Server has TOP, not LIMIT.
+        Some(Target::Server(s)) if s.kind == Kind::SqlServer => format!("SELECT TOP 500 * FROM {name};"),
+        _ => format!("SELECT * FROM {name} LIMIT 500;"),
+    }
 }
 
 /// The Connect form, in place of the tables.
@@ -443,7 +454,7 @@ fn connect_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) {
     ui.add_space(4.0);
     let mut kind = form.server.kind;
     egui::ComboBox::from_id_salt("db_kind").selected_text(kind.label()).show_ui(ui, |ui| {
-        for k in [Kind::Postgres, Kind::MySql] {
+        for k in [Kind::Postgres, Kind::MySql, Kind::SqlServer] {
             ui.selectable_value(&mut kind, k, k.label());
         }
     });
@@ -452,11 +463,16 @@ fn connect_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) {
     }
     let mut enter = false;
     egui::Grid::new("db_connect").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+        let sql_server = form.server.kind == Kind::SqlServer;
         for (label, text, hint) in [
-            ("Host", &mut form.server.host, "localhost"),
-            ("Port", &mut form.port, ""),
-            ("User", &mut form.server.user, ""),
-            ("Database", &mut form.server.database, "optional for MySQL"),
+            (
+                "Host",
+                &mut form.server.host,
+                if sql_server { "localhost, or (localdb)\\MSSQLLocalDB" } else { "localhost" },
+            ),
+            ("Port", &mut form.port, if sql_server { "empty for LocalDB or an instance" } else { "" }),
+            ("User", &mut form.server.user, if sql_server { "empty: Windows sign-in" } else { "" }),
+            ("Database", &mut form.server.database, if sql_server { "optional" } else { "optional for MySQL" }),
             ("Name", &mut form.server.name, "optional: Shop, staging"),
         ] {
             ui.label(label);
@@ -490,7 +506,11 @@ fn connect_ui(ui: &mut egui::Ui, state: &mut DatabaseUi, asks: &mut Asks) {
     ui.label(
         RichText::new(format!(
             "Runs through {}: the password goes to it for each run and is never saved.",
-            if form.server.kind == Kind::Postgres { "psql" } else { "the mysql or mariadb client" }
+            match form.server.kind {
+                Kind::Postgres => "psql",
+                Kind::MySql => "the mysql or mariadb client",
+                Kind::SqlServer => "sqlcmd",
+            }
         ))
         .small()
         .color(pal.text_dim),

@@ -1,9 +1,10 @@
-//! PostgreSQL and MySQL (or MariaDB) databases through their own command-line clients, `psql`
-//! and `mysql`/`mariadb`: the same tables, columns, results and plans the SQLite window shows.
+//! PostgreSQL, MySQL (or MariaDB) and SQL Server databases through their own command-line
+//! clients, `psql`, `mysql`/`mariadb` and `sqlcmd`: the same tables, columns, results and plans
+//! the SQLite window shows.
 //!
 //! Like SQLite, no database code is built in and the app opens no connections itself: the
 //! client does, as it would in a terminal. A password is never saved: it's handed to the
-//! client in its environment (`PGPASSWORD`, `MYSQL_PWD`) for that run only.
+//! client in its environment (`PGPASSWORD`, `MYSQL_PWD`, `SQLCMDPASSWORD`) for that run only.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,8 @@ pub enum Kind {
     Postgres,
     /// MySQL or MariaDB: one client speaks to both.
     MySql,
+    /// Microsoft SQL Server (and LocalDB), through `sqlcmd`.
+    SqlServer,
 }
 
 impl Kind {
@@ -32,6 +35,7 @@ impl Kind {
         match self {
             Self::Postgres => "PostgreSQL",
             Self::MySql => "MySQL / MariaDB",
+            Self::SqlServer => "SQL Server",
         }
     }
 
@@ -39,6 +43,7 @@ impl Kind {
         match self {
             Self::Postgres => 5432,
             Self::MySql => 3306,
+            Self::SqlServer => 1433,
         }
     }
 
@@ -46,6 +51,8 @@ impl Kind {
         match self {
             Self::Postgres => "postgres",
             Self::MySql => "root",
+            // Empty: Windows sign-in (integrated security).
+            Self::SqlServer => "",
         }
     }
 
@@ -54,6 +61,7 @@ impl Kind {
         match self {
             Self::Postgres => format!("\"{}\"", name.replace('"', "\"\"")),
             Self::MySql => format!("`{}`", name.replace('`', "``")),
+            Self::SqlServer => format!("[{}]", name.replace(']', "]]")),
         }
     }
 
@@ -62,9 +70,19 @@ impl Kind {
         let names: &[&str] = match self {
             Self::Postgres => &["psql"],
             Self::MySql => &["mariadb", "mysql"],
+            Self::SqlServer => &["sqlcmd"],
         };
         if let Some(found) = names.iter().find_map(|n| which(n)) {
             return Some(found);
+        }
+        if self == Self::SqlServer {
+            // Unpacked into the config folder's tools, or with SQL Server's own tools.
+            let exe = if cfg!(windows) { "sqlcmd.exe" } else { "sqlcmd" };
+            if let Some(bundled) = crate::settings::config_dir().map(|d| d.join("tools").join("sqlcmd").join(exe))
+                && bundled.is_file()
+            {
+                return Some(bundled);
+            }
         }
         if !cfg!(windows) {
             return None;
@@ -75,6 +93,7 @@ impl Kind {
         let prefixes: &[&str] = match self {
             Self::Postgres => &["PostgreSQL"],
             Self::MySql => &["MariaDB", "MySQL"],
+            Self::SqlServer => return sql_server_tool("SQLCMD.EXE"),
         };
         let mut found = Vec::new();
         for root in roots {
@@ -126,8 +145,12 @@ impl Server {
         let scheme = match self.kind {
             Kind::Postgres => "postgres",
             Kind::MySql => "mysql",
+            Kind::SqlServer => "sqlserver",
         };
-        format!("{scheme}://{}@{}:{}/{}", self.user, self.host, self.port, self.database)
+        // No user (Windows sign-in) and no port (LocalDB, a named instance) aren't shown.
+        let user = if self.user.is_empty() { String::new() } else { format!("{}@", self.user) };
+        let port = if self.port == 0 { String::new() } else { format!(":{}", self.port) };
+        format!("{scheme}://{user}{}{port}/{}", self.host, self.database)
     }
 
     /// Its name when it has one, else its address.
@@ -160,8 +183,79 @@ impl Server {
                     cmd.env("MYSQL_PWD", pw);
                 }
             }
+            Kind::SqlServer => {
+                // Stop at the first error, values up to 8000 characters, no padding, columns
+                // split by a character no value holds, and a row a line: line breaks and tabs
+                // in values come as spaces.
+                cmd.args(["-b", "-W", "-y", "8000", "-k", "1", "-s", SEP]);
+                if !self.database.is_empty() {
+                    cmd.args(["-d", &self.database]);
+                }
+                if self.user.is_empty() {
+                    cmd.arg("-E");
+                } else {
+                    cmd.args(["-U", &self.user]);
+                    if let Some(pw) = &self.password {
+                        cmd.env("SQLCMDPASSWORD", pw);
+                    }
+                }
+            }
         }
         cmd
+    }
+
+    /// The address `sqlcmd -S` takes: `tcp:host,port`, a named instance or a pipe as given, and
+    /// a LocalDB instance (`(localdb)\MSSQLLocalDB`) as its pipe, started if it isn't running.
+    fn sql_server_address(&self) -> Result<String, String> {
+        let host = self.host.trim();
+        if let Some(instance) = host.strip_prefix("(localdb)\\").or_else(|| host.strip_prefix("(LocalDB)\\")) {
+            return localdb_pipe(instance);
+        }
+        if host.contains('\\') || host.contains(':') || self.port == 0 {
+            return Ok(host.to_owned());
+        }
+        Ok(format!("tcp:{host},{}", self.port))
+    }
+
+    /// Runs a script through `sqlcmd` (from a file: it reads batches split by `GO`).
+    fn exec_sql_server(&self, script: &str) -> Result<String, String> {
+        let program = self.kind.client().ok_or_else(|| missing_client(self.kind))?;
+        let address = self.sql_server_address()?;
+        let file = std::env::temp_dir().join(format!("coiman-sqlcmd-{}-{}.sql", std::process::id(), unique()));
+        std::fs::write(&file, script).map_err(|e| e.to_string())?;
+        let out = self
+            .command(&program)
+            .args(["-S", &address, "-i"])
+            .arg(&file)
+            .stdin(Stdio::null())
+            .output()
+            .map_err(|e| format!("Couldn't start {}: {e}", program.display()));
+        let _ = std::fs::remove_file(&file);
+        let out = out?;
+        let stdout = String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n");
+        let stderr = String::from_utf8_lossy(&out.stderr).replace("\r\n", "\n");
+        if out.status.success() {
+            return Ok(stdout);
+        }
+        // "Msg 208, Level 16, State 1, Server …, Line 1" and the message on the next line.
+        let both = format!("{stdout}\n{stderr}");
+        let lines: Vec<&str> = both.lines().collect();
+        let error = match lines.iter().position(|l| l.starts_with("Msg ")) {
+            Some(i) => {
+                let head = lines[i].split(", Server").next().unwrap_or(lines[i]);
+                let message: Vec<&str> = lines[i + 1..]
+                    .iter()
+                    .take_while(|l| !l.trim().is_empty() && !l.starts_with("Msg "))
+                    .copied()
+                    .collect();
+                format!("{} ({head})", message.join(" ").trim())
+            }
+            None => {
+                let e = stderr.trim();
+                if e.is_empty() { format!("sqlcmd stopped ({})", out.status) } else { e.to_owned() }
+            }
+        };
+        Err(name_statement(&error, &stdout))
     }
 
     /// Runs a script through the client and gives back its standard output.
@@ -218,6 +312,21 @@ impl Server {
                 }
                 parse_mysql(&self.exec(&script).map_err(|e| mysql_error(&e, &starts))?)?
             }
+            Kind::SqlServer => {
+                // Each statement in a batch of its own (CREATE VIEW must start one), its mark
+                // before it and its count of rows after.
+                let mut script = String::from("SET NOCOUNT ON;\nGO\n");
+                for (i, s) in statements.iter().enumerate() {
+                    // A view, procedure, function or trigger is the whole of its batch: no count.
+                    let count = if whole_batch(s) {
+                        format!("GO\nPRINT '{ROWS} 0';\n")
+                    } else {
+                        format!(";PRINT '{ROWS} ' + CAST(@@ROWCOUNT AS varchar(20));\n")
+                    };
+                    script.push_str(&format!("PRINT '{MARK} {i}';\nGO\n{s}\n{count}GO\n"));
+                }
+                parse_sqlcmd(&self.exec_sql_server(&script)?)
+            }
         };
         outcome.millis = started.elapsed().as_millis();
         Ok(outcome)
@@ -229,6 +338,7 @@ impl Server {
         let (tables, columns, keys, indexes) = match self.kind {
             Kind::Postgres => (PG_TABLES, PG_COLUMNS, PG_KEYS, PG_INDEXES),
             Kind::MySql => (MY_TABLES, MY_COLUMNS, MY_KEYS, MY_INDEXES),
+            Kind::SqlServer => (MS_TABLES, MS_COLUMNS, MS_KEYS, MS_INDEXES),
         };
         let sets = self.run(&format!("{tables};\n{columns};\n{keys};\n{indexes};"))?.sets;
         let [t, c, k, x] = sets.as_slice() else {
@@ -241,11 +351,17 @@ impl Server {
     pub fn explain(&self, sql: &str) -> Result<Vec<Plan>, String> {
         let mut plans = Vec::new();
         for statement in split_statements(sql) {
-            let steps = if explainable(&statement) {
+            let steps = if explainable(&statement) && self.kind == Kind::SqlServer {
+                // The plan in text, without running the statement.
+                let script = format!("SET SHOWPLAN_TEXT ON;\nGO\n{statement}\nGO\nSET SHOWPLAN_TEXT OFF;\nGO\n");
+                let sets = sqlcmd_sets(&self.exec_sql_server(&script)?);
+                ms_plan(&sets)
+            } else if explainable(&statement) {
                 let set = self.run(&format!("EXPLAIN {statement}"))?.sets.into_iter().next().unwrap_or_default();
                 match self.kind {
                     Kind::Postgres => pg_plan(&set),
                     Kind::MySql => mysql_plan(&set),
+                    Kind::SqlServer => Vec::new(),
                 }
             } else {
                 Vec::new()
@@ -295,6 +411,75 @@ const MARK: &str = "__coiman_statement";
 const ROWS: &str = "__coiman_rows";
 /// The column of the extra result giving a MySQL statement's changed rows.
 const CHANGES: &str = "__coiman_changes";
+/// Between `sqlcmd`'s columns (the ASCII unit separator, which no text holds).
+const SEP: &str = "\u{1f}";
+
+/// Whether SQL Server wants `statement` alone in its batch (`CREATE VIEW`, `ALTER PROCEDURE`,
+/// `CREATE OR ALTER FUNCTION`, triggers, schemas).
+fn whole_batch(statement: &str) -> bool {
+    let words: Vec<String> = statement.split_whitespace().take(4).map(str::to_ascii_lowercase).collect();
+    let w: Vec<&str> = words.iter().map(String::as_str).collect();
+    let object = match w.as_slice() {
+        ["create", "or", "alter", o, ..] | ["create", o, ..] | ["alter", o, ..] => *o,
+        _ => return false,
+    };
+    matches!(object, "view" | "procedure" | "proc" | "function" | "trigger" | "schema" | "default" | "rule")
+}
+
+/// A number not used before in this run, for temporary file names.
+fn unique() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// A program among SQL Server's own tools (`SQLCMD.EXE`, `SqlLocalDB.exe`): the newest found
+/// under Program Files' `Microsoft SQL Server`.
+fn sql_server_tool(name: &str) -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let mut found = Vec::new();
+    for root in ["ProgramFiles", "ProgramW6432"].iter().filter_map(std::env::var_os).map(PathBuf::from) {
+        let base = root.join("Microsoft SQL Server");
+        let Ok(versions) = std::fs::read_dir(&base) else { continue };
+        for v in versions.flatten() {
+            for bin in [v.path().join("Tools").join("Binn"), v.path().join("Tools").join("Binn").join("x64")] {
+                let exe = bin.join(name);
+                if exe.is_file() {
+                    found.push(exe);
+                }
+            }
+        }
+        // The ODBC tools: Client SDK\ODBC\170\Tools\Binn.
+        if let Ok(odbc) = std::fs::read_dir(base.join("Client SDK").join("ODBC")) {
+            for v in odbc.flatten() {
+                let exe = v.path().join("Tools").join("Binn").join(name);
+                if exe.is_file() {
+                    found.push(exe);
+                }
+            }
+        }
+    }
+    found.sort();
+    found.pop()
+}
+
+/// A LocalDB instance's pipe (`np:\\.\pipe\LOCALDB#…\tsql\query`), starting it first.
+fn localdb_pipe(instance: &str) -> Result<String, String> {
+    let tool = sql_server_tool("SqlLocalDB.exe").ok_or("SQL Server Express LocalDB isn't installed here")?;
+    let _ = quiet_command(&tool).args(["start", instance]).stdin(Stdio::null()).output();
+    let out = quiet_command(&tool)
+        .args(["info", instance])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("Couldn't start {}: {e}", tool.display()))?;
+    // The pipe is on a line whose label is in the system's language.
+    let text = String::from_utf8_lossy(&out.stdout);
+    text.split_whitespace()
+        .find(|w| w.starts_with("np:"))
+        .map(str::to_owned)
+        .ok_or_else(|| format!("LocalDB has no instance named {instance} (SqlLocalDB info lists them)"))
+}
 
 pub fn missing_client(kind: Kind) -> String {
     match kind {
@@ -304,6 +489,10 @@ pub fn missing_client(kind: Kind) -> String {
             .to_owned(),
         Kind::MySql => "Neither the mariadb nor the mysql program is on this computer. Install MariaDB's or MySQL's \
                         command-line client and try again."
+            .to_owned(),
+        Kind::SqlServer => "The sqlcmd program isn't on this computer. Install Microsoft's sqlcmd (the Go version \
+                            from github.com/microsoft/go-sqlcmd, or the one with SQL Server's tools), or unpack it \
+                            into the config folder's tools/sqlcmd, and try again."
             .to_owned(),
     }
 }
@@ -366,6 +555,105 @@ fn csv_set(text: &str) -> ResultSet {
         set.rows.push(record.into_iter().map(|f| (f != NULL).then_some(f)).collect());
     }
     set
+}
+
+/// `sqlcmd`'s output, marked as [`Server::run`] marks it: per statement, its result sets (if
+/// any), then the count of rows it touched.
+fn parse_sqlcmd(out: &str) -> Outcome {
+    let mut outcome = Outcome::default();
+    let mut body = String::new();
+    let mut in_statement = false;
+    for line in out.split_inclusive('\n') {
+        let bare = line.trim_end_matches(['\n', '\r']);
+        if bare.starts_with(MARK) {
+            in_statement = true;
+            body.clear();
+            continue;
+        }
+        if let Some(count) = bare.strip_prefix(ROWS) {
+            if in_statement {
+                let sets = sqlcmd_sets(&body);
+                if sets.is_empty() {
+                    outcome.changes += count.trim().parse::<u64>().unwrap_or(0);
+                } else {
+                    outcome.sets.extend(sets);
+                }
+            }
+            in_statement = false;
+            body.clear();
+            continue;
+        }
+        if in_statement {
+            body.push_str(line);
+        }
+    }
+    outcome
+}
+
+/// The result sets in `sqlcmd -W -s <SEP>` output: a header, a line of dashes, the rows. A
+/// value with a line break goes on over the next lines: a row is whole once it has all its
+/// columns. `NULL` is SQL's NULL.
+fn sqlcmd_sets(text: &str) -> Vec<ResultSet> {
+    let lines: Vec<&str> = text.lines().collect();
+    let is_dashes = |l: &str, seps: usize| {
+        !l.is_empty() && l.matches(SEP).count() == seps && l.chars().all(|c| c == '-' || c.to_string() == SEP)
+    };
+    let mut sets = Vec::new();
+    let mut i = 0;
+    while i + 1 < lines.len() {
+        let seps = lines[i].matches(SEP).count();
+        if !is_dashes(lines[i + 1], seps) {
+            i += 1;
+            continue;
+        }
+        let mut set = ResultSet { columns: lines[i].split(SEP).map(str::to_owned).collect(), ..ResultSet::default() };
+        i += 2;
+        let mut row = String::new();
+        while i < lines.len() {
+            let line = lines[i];
+            // A blank line ends the set (unless a value is still open).
+            if row.is_empty() && line.trim().is_empty() {
+                break;
+            }
+            if !row.is_empty() {
+                row.push('\n');
+            }
+            row.push_str(line);
+            i += 1;
+            if row.matches(SEP).count() >= seps {
+                let cells = row.split(SEP).map(|v| (v != "NULL").then(|| v.to_owned())).collect();
+                if set.rows.len() >= MAX_ROWS {
+                    set.more += 1;
+                } else {
+                    set.rows.push(cells);
+                }
+                row.clear();
+            }
+        }
+        sets.push(set);
+    }
+    sets
+}
+
+/// SQL Server's text plan (SHOWPLAN_TEXT): the statement, then a step per line, nested by
+/// where its `|--` starts.
+fn ms_plan(sets: &[ResultSet]) -> Vec<PlanStep> {
+    sets.iter()
+        .flat_map(|s| s.rows.iter())
+        .filter_map(|r| r.first().cloned().flatten())
+        .filter_map(|line| {
+            let at = line.find("|--")?;
+            let text = line[at + 3..].trim().to_owned();
+            Some(PlanStep {
+                depth: at / 5,
+                full_scan: text.starts_with("Table Scan")
+                    || text.starts_with("Clustered Index Scan")
+                    || text.starts_with("Index Scan"),
+                temp_sort: text.starts_with("Sort") || text.starts_with("Hash Match"),
+                detail: text,
+            })
+        })
+        .collect()
 }
 
 /// CSV as RFC 4180 writes it: fields in double quotes may hold commas, quotes (doubled) and
@@ -677,6 +965,32 @@ const MY_INDEXES: &str = "SELECT s.table_name AS t, s.index_name AS i, s.non_uni
      FROM information_schema.statistics s WHERE s.table_schema = DATABASE() \
      ORDER BY s.table_name, s.index_name, s.seq_in_index";
 
+const MS_TABLES: &str = "SELECT TABLE_NAME AS t, TABLE_TYPE AS k FROM INFORMATION_SCHEMA.TABLES \
+     WHERE TABLE_SCHEMA = SCHEMA_NAME() ORDER BY 1";
+const MS_COLUMNS: &str = "SELECT c.TABLE_NAME AS t, c.COLUMN_NAME AS c, c.DATA_TYPE + CASE WHEN c.DATA_TYPE IN ('char', 'varchar', \
+     'nchar', 'nvarchar', 'binary', 'varbinary') THEN COALESCE('(' + CASE \
+     WHEN c.CHARACTER_MAXIMUM_LENGTH = -1 THEN 'max' ELSE CAST(c.CHARACTER_MAXIMUM_LENGTH AS varchar(10)) END \
+     + ')', '') ELSE '' END AS ty, CASE WHEN EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc \
+       JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE u ON u.CONSTRAINT_NAME = tc.CONSTRAINT_NAME \
+       AND u.TABLE_SCHEMA = tc.TABLE_SCHEMA WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY' \
+       AND tc.TABLE_SCHEMA = c.TABLE_SCHEMA AND u.TABLE_NAME = c.TABLE_NAME AND u.COLUMN_NAME = c.COLUMN_NAME) \
+     THEN 1 ELSE 0 END AS pk, CASE WHEN c.IS_NULLABLE = 'NO' THEN 1 ELSE 0 END AS nn \
+     FROM INFORMATION_SCHEMA.COLUMNS c WHERE c.TABLE_SCHEMA = SCHEMA_NAME() \
+     ORDER BY c.TABLE_NAME, c.ORDINAL_POSITION";
+const MS_KEYS: &str = "SELECT tp.name AS t, cp.name AS c, tr.name AS rt, cr.name AS rc \
+     FROM sys.foreign_key_columns fkc JOIN sys.tables tp ON tp.object_id = fkc.parent_object_id \
+     JOIN sys.columns cp ON cp.object_id = fkc.parent_object_id AND cp.column_id = fkc.parent_column_id \
+     JOIN sys.tables tr ON tr.object_id = fkc.referenced_object_id \
+     JOIN sys.columns cr ON cr.object_id = fkc.referenced_object_id AND cr.column_id = fkc.referenced_column_id \
+     WHERE tp.schema_id = SCHEMA_ID()";
+const MS_INDEXES: &str = "SELECT t.name AS t, i.name AS i, CAST(i.is_unique AS int) AS u, \
+     CASE WHEN i.is_primary_key = 1 OR i.is_unique_constraint = 1 THEN 1 ELSE 0 END AS a, \
+     CAST(i.has_filter AS int) AS p, c.name AS ic \
+     FROM sys.indexes i JOIN sys.tables t ON t.object_id = i.object_id \
+     JOIN sys.index_columns ic ON ic.object_id = i.object_id AND ic.index_id = i.index_id AND ic.is_included_column = 0 \
+     JOIN sys.columns c ON c.object_id = ic.object_id AND c.column_id = ic.column_id \
+     WHERE t.schema_id = SCHEMA_ID() AND i.name IS NOT NULL ORDER BY t.name, i.name, ic.key_ordinal";
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -728,6 +1042,39 @@ mod tests {
     }
 
     #[test]
+    fn sqlcmd_output_by_statement() {
+        let u = SEP;
+        let out = format!(
+            "__coiman_statement 0\n__coiman_rows 2\n__coiman_statement 1\nid{u}name{u}note\n--{u}----{u}----\n\
+             1{u}a,b{u}NULL\n2{u}two\nlines{u}x\n\n__coiman_rows 2\n__coiman_statement 2\nn\n-\n\n__coiman_rows 0\n"
+        );
+        let o = parse_sqlcmd(&out);
+        assert_eq!(o.changes, 2);
+        assert_eq!(o.sets.len(), 2);
+        assert_eq!(o.sets[0].columns, ["id", "name", "note"]);
+        assert_eq!(
+            o.sets[0].rows,
+            [
+                vec![Some("1".to_owned()), Some("a,b".to_owned()), None],
+                vec![Some("2".to_owned()), Some("two\nlines".to_owned()), Some("x".to_owned())]
+            ]
+        );
+        assert!(o.sets[1].rows.is_empty() && o.sets[1].columns == ["n"]);
+        let plan = ms_plan(&[ResultSet {
+            columns: vec!["StmtText".into()],
+            rows: vec![
+                vec![Some("SELECT * FROM t WHERE a = 1".into())],
+                vec![Some("  |--Sort(ORDER BY:([a] ASC))".into())],
+                vec![Some("       |--Table Scan(OBJECT:([t]))".into())],
+            ],
+            ..ResultSet::default()
+        }]);
+        assert_eq!(plan.len(), 2);
+        assert!(plan[0].temp_sort && plan[1].full_scan && plan[1].depth == plan[0].depth + 1);
+        assert_eq!(Kind::SqlServer.quote_name("a]b"), "[a]]b]");
+    }
+
+    #[test]
     fn passwords_are_not_saved() {
         let s = Server {
             password: Some("secret".into()),
@@ -770,18 +1117,27 @@ ERROR 1054 (42S22) at line 3: Unknown column 'nope' in 'SELECT'";
     /// `COIMAN_TEST_MYSQL` as `host:port:user`, with the clients on PATH.
     #[test]
     fn real_servers() {
-        for (var, kind) in [("COIMAN_TEST_PG", Kind::Postgres), ("COIMAN_TEST_MYSQL", Kind::MySql)] {
+        for (var, kind) in [
+            ("COIMAN_TEST_PG", Kind::Postgres),
+            ("COIMAN_TEST_MYSQL", Kind::MySql),
+            ("COIMAN_TEST_MSSQL", Kind::SqlServer),
+        ] {
             let Ok(spec) = std::env::var(var) else {
                 eprintln!("skipped {}: {var} not set", kind.label());
                 continue;
             };
-            let mut parts = spec.split(':');
+            // SQL Server: `(localdb)\\MSSQLLocalDB::` for LocalDB with Windows sign-in.
+            let mut parts = spec.rsplitn(3, ':').collect::<Vec<_>>().into_iter().rev();
             let host = parts.next().unwrap().to_owned();
-            let port = parts.next().unwrap().parse().unwrap();
-            let user = parts.next().unwrap().to_owned();
+            let port = parts.next().unwrap().parse().unwrap_or(0);
+            let user = parts.next().unwrap_or_default().to_owned();
             let mut server = Server { kind, host, port, user, ..Server::default() };
             if kind == Kind::MySql {
                 server.run("CREATE DATABASE IF NOT EXISTS coiman_test").unwrap();
+                server.database = "coiman_test".to_owned();
+            }
+            if kind == Kind::SqlServer {
+                server.run("IF DB_ID('coiman_test') IS NULL CREATE DATABASE coiman_test").unwrap();
                 server.database = "coiman_test".to_owned();
             }
             let q = |n: &str| kind.quote_name(n);
@@ -821,9 +1177,42 @@ ERROR 1054 (42S22) at line 3: Unknown column 'nope' in 'SELECT'";
             assert!(order.indexes.iter().any(|i| i.name == "order_customer" && i.columns == ["customer"]), "{order:?}");
             let customer = tables.iter().find(|t| t.name == "customer").unwrap();
             assert!(customer.columns.iter().any(|c| c.name == "name" && c.not_null));
-            let plans = server.explain(&format!("SELECT * FROM {} WHERE note = 'x'", q("order"))).unwrap();
+            let plans = server.explain(&format!("SELECT * FROM {} WHERE customer > 0", q("order"))).unwrap();
             assert!(!plans[0].steps.is_empty(), "{plans:?}");
             let err = server.run("SELECT 1; SELECT nope;").unwrap_err();
+            if kind == Kind::SqlServer {
+                // A view starts a batch of its own; NULL comes back as None, a line break in a
+                // value as a space.
+                server.run("CREATE OR ALTER VIEW v_names AS SELECT name FROM customer;").unwrap();
+                let got = server.run("SELECT CAST(NULL AS int) AS n, N'two\nlines' AS t, 3 AS x;").unwrap();
+                // (sqlcmd sends the script's lines joined by CR LF: two spaces.)
+                let row = &got.sets[0].rows[0];
+                assert_eq!((row[0].as_deref(), row[2].as_deref()), (None, Some("3")));
+                assert_eq!(
+                    row[1].as_deref().map(|t| t.split_whitespace().collect::<Vec<_>>()),
+                    Some(vec!["two", "lines"])
+                );
+                let tables = server.schema().unwrap();
+                assert!(tables.iter().any(|t| t.name == "v_names" && t.view));
+                // Lengths for text types that have one, none for the rest.
+                let ty = |t: &str, c: &str| {
+                    tables
+                        .iter()
+                        .find(|x| x.name == t)
+                        .unwrap()
+                        .columns
+                        .iter()
+                        .find(|x| x.name == c)
+                        .unwrap()
+                        .ty
+                        .clone()
+                };
+                assert_eq!(
+                    (ty("customer", "name"), ty("order", "note"), ty("order", "id")),
+                    ("varchar(40)".into(), "text".into(), "int".into())
+                );
+                assert_eq!(server.label(), format!("sqlserver://{}/coiman_test", server.host));
+            }
             assert!(err.contains("nope") && err.starts_with("Statement 2"), "{err}");
             if kind == Kind::Postgres {
                 // A function body with `;` inside stays one statement.

@@ -161,6 +161,10 @@ pub struct CodeApp {
     binary_size: launch::binary_size_ui::BinarySizeView,
     /// GLSL problems from the driver, and Preview: Shader.
     shader: views::shader_ui::ShaderUi,
+    /// Database: Redis.
+    redis: views::nosql_ui::RedisView,
+    /// Database: MongoDB.
+    mongo: views::nosql_ui::MongoView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -372,6 +376,8 @@ impl CodeApp {
             mcp: Default::default(),
             binary_size: Default::default(),
             shader: Default::default(),
+            redis: Default::default(),
+            mongo: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -1039,6 +1045,8 @@ impl CodeApp {
         self.mcp_window(&ctx);
         self.binary_size_window(&ctx);
         self.shader_preview_window(&ctx);
+        self.redis_window(&ctx);
+        self.mongo_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

@@ -162,6 +162,10 @@ pub enum Command {
     AnalyzeBinarySize,
     /// The active fragment shader, drawn live.
     PreviewShader,
+    /// Keys and values of a Redis server, and a console.
+    ShowRedis,
+    /// Databases, collections and documents of a MongoDB server.
+    ShowMongo,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -463,6 +467,8 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
     (Command::PreviewShader, "Preview: Shader"),
+    (Command::ShowRedis, "Database: Redis..."),
+    (Command::ShowMongo, "Database: MongoDB..."),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -516,7 +522,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::LoadCoverage, "Coverage: Load Report"),
     (Command::ProfileFile, "Run: Profile Current File"),
     (Command::OpenProfile, "Profile: Open Profile File..."),
-    (Command::ConnectDatabase, "Database: Connect to PostgreSQL or MySQL..."),
+    (Command::ConnectDatabase, "Database: Connect to PostgreSQL, MySQL or SQL Server..."),
     (Command::ShowActions, "GitHub: Show Actions"),
     (Command::OpenHexView, "Hex: Open File"),
     (Command::ShowMemory, "Debug: Show Memory"),
@@ -782,6 +788,8 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::AnalyzeBinarySize, "coiman.build.binarySize"),
     (Command::PreviewShader, "coiman.preview.shader"),
+    (Command::ShowRedis, "coiman.database.redis"),
+    (Command::ShowMongo, "coiman.database.mongo"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),
