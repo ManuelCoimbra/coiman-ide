@@ -47,7 +47,28 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Next, nothing to download
 
-- Nothing left: what's next is under "Later", each needing a download first.
+From the items `docs/SPEC-COVERAGE.md` still has as missing, in order: each one covers
+several of them, and none needs a download (the network goes through `curl` and `git`).
+
+1. An HTTP client: `.http` files (requests, variables, environments, tokens), sent through
+   `curl`, with the response, its history, and a comparison of two responses. Covers the
+   spec's HTTP request client, REST API testing, request history, environment-based
+   configurations, token management and response comparison.
+2. An OpenAPI viewer: a spec's endpoints and models, each endpoint opening as an `.http`
+   request (OpenAPI viewer, API endpoint explorer).
+3. Git, more of it: search through history (by text, by change: `git log -S/-G`),
+   submodules, hooks, and a `.gitignore` editor that shows what each rule hides.
+4. Terminal: a searchable history of the commands run, completion of paths, and commands
+   suggested from the project (scripts in `package.json`, `Makefile`, `justfile`, Cargo).
+5. Embedded: a memory map from the ELF and the linker map (what sits where in flash and RAM,
+   by section and symbol), and firmware section analysis beside Binary Size.
+6. Databases: compare two schemas (tables, columns, keys, indexes) and write the SQL that
+   turns one into the other; migrations (sqlx, Diesel, Alembic, Flyway folders) listed with
+   which have run.
+7. Security checks in Code Health: SQL built from strings (injection), HTML from user input
+   (XSS), unsafe memory calls in C and C++ (`strcpy`, `gets`, `sprintf`), and `unsafe`
+   blocks in Rust, each with where and why.
+8. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
 
 ## Later, each needing a download first
 
