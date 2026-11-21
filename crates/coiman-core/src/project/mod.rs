@@ -16,6 +16,7 @@ pub mod project_tree;
 pub mod recent;
 pub mod remote_folder;
 pub mod search;
+pub mod serial;
 pub mod session;
 pub mod ssh_hosts;
 pub mod trust;

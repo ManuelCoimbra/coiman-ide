@@ -798,6 +798,7 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "ignore",
+ "libc",
  "lsp-types",
  "merman",
  "merman-export",
@@ -845,6 +846,7 @@ dependencies = [
  "unicode-width",
  "url",
  "wasmtime",
+ "windows-sys 0.61.2",
  "wit-component",
 ]
 

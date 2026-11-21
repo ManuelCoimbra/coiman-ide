@@ -5,6 +5,18 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `Serial: Open Monitor...`: a board's serial port (speed, format, DTR/RTS), what it prints as
+  text with times, hex or a plot of its numbers, sending lines with a chosen ending, and
+  saving the log. A named pipe or FIFO can stand in for a board.
+
+### Fixed
+
+- CI's Android build check again: the clipboard crate the Agents panel uses is left out on
+  Android.
+- Linux packages: `build-rpm.sh` runs again (it had lost its executable bit).
+
 ## [0.6.0] - 2026-11-21
 
 ### Fixed

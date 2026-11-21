@@ -166,6 +166,8 @@ pub enum Command {
     ShowRedis,
     /// Databases, collections and documents of a MongoDB server.
     ShowMongo,
+    /// A board's serial port: what it prints, and sending it text.
+    SerialMonitor,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -469,6 +471,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::PreviewShader, "Preview: Shader"),
     (Command::ShowRedis, "Database: Redis..."),
     (Command::ShowMongo, "Database: MongoDB..."),
+    (Command::SerialMonitor, "Serial: Open Monitor..."),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -790,6 +793,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::PreviewShader, "coiman.preview.shader"),
     (Command::ShowRedis, "coiman.database.redis"),
     (Command::ShowMongo, "coiman.database.mongo"),
+    (Command::SerialMonitor, "coiman.serial.monitor"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

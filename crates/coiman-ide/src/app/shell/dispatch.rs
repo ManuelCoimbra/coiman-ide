@@ -173,6 +173,7 @@ impl CodeApp {
             Command::PreviewShader => self.show_shader_preview(ctx),
             Command::ShowRedis => self.show_redis(),
             Command::ShowMongo => self.show_mongo(),
+            Command::SerialMonitor => self.show_serial(),
             Command::DownloadRemoteFolder => self.download_remote_again(ctx),
             Command::RemoteTerminal => self.remote_terminal(ctx, None),
             Command::RemoteRunCommand => self.palette.show_input(

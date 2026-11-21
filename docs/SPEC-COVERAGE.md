@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 144, partial 121,
-missing 204, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 145, partial 121,
+missing 203, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -26,7 +26,7 @@ specification is right: every row in it exists.
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 16 | 4 | 3 | |
 | 10 Data science | 5 | 3 | 14 | |
-| 11 Systems and embedded | 2 | 5 | 17 | |
+| 11 Systems and embedded | 3 | 5 | 16 | |
 | 12 Game | 1 | 6 | 14 | |
 | 13 Mobile | 4 | 5 | 6 | |
 | 14 DevOps | 5 | 4 | 13 | 2 |
@@ -359,7 +359,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Hardware debugging integration | Missing | |
 | GDB integration | Done | |
 | OpenOCD integration | Missing | |
-| Serial monitor | Missing | |
+| Serial monitor | Done | Serial: Open Monitor: text, hex, plot, send, log |
 | UART communication tools | Missing | |
 | I2C inspection | Missing | |
 | SPI inspection | Missing | |

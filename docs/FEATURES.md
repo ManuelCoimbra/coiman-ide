@@ -880,6 +880,27 @@ and WGSL (`.wgsl`) files are colored. Nothing needs installing.
     `struct Coiman { time: f32, resolution: vec2f, mouse: vec4f }` and
     `@group(0) @binding(0) var<uniform> coiman: Coiman;`.
 
+## Serial monitor
+
+**Serial: Open Monitor...** opens a board's serial port (an Arduino, ESP32 or Pico on USB),
+like the Arduino IDE's monitor. Nothing needs installing: Coiman talks to the port itself.
+
+- **The port** comes from a list of the ports there are (on Windows, what the drivers
+  registered, with the kind of chip; on Linux `ttyUSB`/`ttyACM` and built-in ports; on macOS
+  `cu.*`), or is typed (`COM7`, `/dev/ttyUSB0`). **Refresh** after plugging a board in.
+- **Speed** (300 to 921600 baud, or any typed) and **format** (`8N1`, `8E1`, `8O1`, `7E1`,
+  `8N2`). **DTR** and **RTS** can be switched while connected: many boards restart when DTR
+  goes on.
+- **Text** shows each line as it comes, with the time it came when **Times** is on;
+  **Follow** keeps the newest in view. **Hex** shows the last 64 KiB as bytes. **Plot** draws
+  the numbers on each line over time, one colored line per value, as Arduino's plotter reads
+  them (`21.5,40`, or named: `temp:21.5 hum:40`).
+- **Send** sends a line with the chosen ending (none, LF, CR, or CR LF); Up and Down bring
+  back the lines sent before. **Save log…** writes what came to a file; **Clear** empties
+  the view.
+- A Windows named pipe (`\\.\pipe\name`) or a Unix FIFO opens too, with no settings to
+  apply, so a program can stand in for a board. Closing the window closes the port.
+
 ## Binary size
 
 **Build: Analyze Binary Size...** shows what takes room in a program, a shared library or an

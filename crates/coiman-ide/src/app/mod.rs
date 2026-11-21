@@ -165,6 +165,8 @@ pub struct CodeApp {
     redis: views::nosql_ui::RedisView,
     /// Database: MongoDB.
     mongo: views::nosql_ui::MongoView,
+    /// Serial: Open Monitor.
+    serial: project::serial_ui::SerialView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -378,6 +380,7 @@ impl CodeApp {
             shader: Default::default(),
             redis: Default::default(),
             mongo: Default::default(),
+            serial: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -1047,6 +1050,7 @@ impl CodeApp {
         self.shader_preview_window(&ctx);
         self.redis_window(&ctx);
         self.mongo_window(&ctx);
+        self.serial_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

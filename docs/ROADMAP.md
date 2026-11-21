@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- A serial monitor: text, hex and plot views, sending, DTR/RTS (tested with a pipe standing in for a board).
 - SQL Server (with LocalDB), Redis and MongoDB, each through its own command-line client.
 - Shaders: GLSL, HLSL and WGSL colored; GLSL and WGSL problems while typing; a live preview.
 - Binary size: groups by crate or namespace, symbols, sections, flash and RAM.
@@ -52,7 +53,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 Downloads are asked for first, with the file, where it comes from and its size.
 
-- A serial monitor, for embedded work.
+- Nothing left here for now.
 
 ## Releases
 
