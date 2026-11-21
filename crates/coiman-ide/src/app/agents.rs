@@ -1493,7 +1493,9 @@ impl AgentsUi {
                             });
                         }
                     }
-                    // An image pasted from the clipboard attaches as a file.
+                    // An image pasted from the clipboard attaches as a file (arboard has no
+                    // Android clipboard).
+                    #[cfg(not(target_os = "android"))]
                     if ui.input(|i| i.key_pressed(egui::Key::V) && i.modifiers.ctrl)
                         && let Ok(mut clipboard) = arboard::Clipboard::new()
                         && let Ok(image) = clipboard.get_image()
