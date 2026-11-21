@@ -16,5 +16,6 @@ pub mod mermaid;
 pub mod null_check;
 pub mod path_complete;
 pub mod plantuml;
+pub mod shader;
 pub mod syntax;
 pub mod tree_rules;

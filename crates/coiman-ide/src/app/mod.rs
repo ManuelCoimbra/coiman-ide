@@ -159,6 +159,8 @@ pub struct CodeApp {
     mcp: extensions::mcp_ui::McpView,
     /// Build: Analyze Binary Size.
     binary_size: launch::binary_size_ui::BinarySizeView,
+    /// GLSL problems from the driver, and Preview: Shader.
+    shader: views::shader_ui::ShaderUi,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -369,6 +371,7 @@ impl CodeApp {
             notebook: Default::default(),
             mcp: Default::default(),
             binary_size: Default::default(),
+            shader: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -552,6 +555,7 @@ impl CodeApp {
         self.pump_constant(&ctx);
         self.pump_likely(&ctx);
         self.pump_markup(&ctx);
+        self.pump_shaders(&ctx);
         self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
@@ -1034,6 +1038,7 @@ impl CodeApp {
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);
         self.binary_size_window(&ctx);
+        self.shader_preview_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

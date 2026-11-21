@@ -66,6 +66,8 @@ pulldown-cmark = { version = "0.13.6", default-features = false }
 object = { version = "0.40", default-features = false, features = ["read", "std"] }
 rustc-demangle = "0.1.28"
 cpp_demangle = "0.5.1"
+# Shaders: WGSL checked, and turned into GLSL for the preview (the version already in Cargo.lock).
+naga = { version = "30.0.1", default-features = false, features = ["wgsl-in", "glsl-out"] }
 
 
 

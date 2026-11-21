@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 140, partial 120,
-missing 209, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 141, partial 121,
+missing 207, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -27,7 +27,7 @@ specification is right: every row in it exists.
 | 9 Database | 13 | 4 | 6 | |
 | 10 Data science | 5 | 3 | 14 | |
 | 11 Systems and embedded | 2 | 5 | 17 | |
-| 12 Game | | 5 | 16 | |
+| 12 Game | 1 | 6 | 14 | |
 | 13 Mobile | 4 | 5 | 6 | |
 | 14 DevOps | 5 | 4 | 13 | 2 |
 | 15 Testing | 6 | 6 | 9 | |
@@ -382,8 +382,8 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Texture viewer | Partial | Image viewer |
 | Animation preview | Partial | Animated GIF and WebP |
 | Audio asset preview | Missing | |
-| Shader editor | Missing | |
-| Shader compilation and diagnostics | Missing | |
+| Shader editor | Done | GLSL, HLSL and WGSL colored; Preview: Shader draws fragment shaders live |
+| Shader compilation and diagnostics | Partial | GLSL by the graphics driver and WGSL by naga while typing; HLSL needs dxc |
 | GPU debugging integration | Missing | |
 | Scene file inspection | Missing | |
 | Game resource dependency analysis | Missing | |

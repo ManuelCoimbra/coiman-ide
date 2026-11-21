@@ -855,6 +855,31 @@ Java: imports, wildcards, static imports and classes of the same package. C#: ty
 `using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
 project's own headers.
 
+## Shaders
+
+GLSL (`.glsl`, `.vert`, `.frag`, `.geom`, `.comp`, `.tesc`, `.tese`), HLSL (`.hlsl`, `.fx`)
+and WGSL (`.wgsl`) files are colored. Nothing needs installing.
+
+- **Problems while typing.** WGSL is read and checked by naga (the checker wgpu uses), as
+  you type. GLSL is compiled by your graphics driver itself after each pause in typing,
+  through the OpenGL that draws Coiman, and its messages land on the file's own lines
+  (NVIDIA, AMD, Intel and Mesa write them differently; all are read). HLSL is colored only:
+  checking it needs Microsoft's `dxc`.
+- **Preview: Shader** draws the active fragment shader live in a window beside the code. It
+  follows the file as you type; when the file doesn't compile, the last picture that did
+  stays and the errors show under it. **Pause**, **Play** and **Restart** control the time.
+  - Shadertoy style: a `mainImage(out vec4, in vec2)` with `iTime`, `iTimeDelta`, `iFrame`,
+    `iResolution` and `iMouse` (where the mouse is while pressed, and where it was pressed).
+  - The Book of Shaders style: `void main()` writing `gl_FragColor`, with `u_time`,
+    `u_resolution` and `u_mouse` (where the pointer is over the picture).
+  - Files without `#version` get 1.20 if they write `gl_FragColor`, else 3.30 core. Uniforms
+    the file doesn't declare are added for it.
+  - WGSL: a `@fragment` function, turned into GLSL by naga, with y growing downward as in
+    wgpu. Time, size and mouse come in a
+    uniform block at group 0, binding 0:
+    `struct Coiman { time: f32, resolution: vec2f, mouse: vec4f }` and
+    `@group(0) @binding(0) var<uniform> coiman: Coiman;`.
+
 ## Binary size
 
 **Build: Analyze Binary Size...** shows what takes room in a program, a shared library or an

@@ -55,7 +55,11 @@ impl CodeApp {
                 Ok((uid, version, path, problems)) => {
                     self.markup.waiting = None;
                     self.markup.checked.insert(uid, version);
-                    let found = problems.iter().map(diagnostic).collect();
+                    let mut found: Vec<lt::Diagnostic> = problems.iter().map(diagnostic).collect();
+                    // WGSL goes through here too, read by naga.
+                    if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("wgsl")) {
+                        found.iter_mut().for_each(|d| d.source = Some("WGSL".to_owned()));
+                    }
                     self.markup.found.insert(path_key(&path), (path, found));
                 }
                 Err(mpsc::TryRecvError::Empty) => return,

@@ -802,6 +802,7 @@ dependencies = [
  "merman",
  "merman-export",
  "merman-render",
+ "naga",
  "notify",
  "nucleo",
  "object",

@@ -170,6 +170,7 @@ impl CodeApp {
             Command::ShowAndroid => self.show_android(ctx),
             Command::ShowMcpServers => self.show_mcp(),
             Command::AnalyzeBinarySize => self.show_binary_size(ctx),
+            Command::PreviewShader => self.show_shader_preview(ctx),
             Command::DownloadRemoteFolder => self.download_remote_again(ctx),
             Command::RemoteTerminal => self.remote_terminal(ctx, None),
             Command::RemoteRunCommand => self.palette.show_input(

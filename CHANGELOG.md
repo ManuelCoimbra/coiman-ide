@@ -21,6 +21,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Shaders: GLSL, HLSL and WGSL files are colored. GLSL problems come from the graphics
+  driver and WGSL problems from naga, while typing. `Preview: Shader` draws the active
+  fragment shader live (Shadertoy and The Book of Shaders uniforms, WGSL through naga).
 - `Build: Analyze Binary Size...`: what takes room in a program, library or object file (ELF,
   PE, Mach-O, COFF): symbols grouped by crate or namespace, symbols, sections, flash and RAM
   for embedded programs, and what changed since it was last analyzed.

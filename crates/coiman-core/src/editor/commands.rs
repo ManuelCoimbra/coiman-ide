@@ -160,6 +160,8 @@ pub enum Command {
     ShowMcpServers,
     /// What takes room in a program: groups, symbols, sections.
     AnalyzeBinarySize,
+    /// The active fragment shader, drawn live.
+    PreviewShader,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -460,6 +462,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
+    (Command::PreviewShader, "Preview: Shader"),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -778,6 +781,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowAndroid, "coiman.android.show"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::AnalyzeBinarySize, "coiman.build.binarySize"),
+    (Command::PreviewShader, "coiman.preview.shader"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

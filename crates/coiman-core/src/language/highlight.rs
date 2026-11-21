@@ -51,7 +51,16 @@ pub struct Highlighter {
 
 fn syntaxes() -> &'static SyntaxSet {
     static SET: OnceLock<SyntaxSet> = OnceLock::new();
-    SET.get_or_init(SyntaxSet::load_defaults_newlines)
+    SET.get_or_init(|| {
+        // syntect's own set, and the shader languages it doesn't have.
+        let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
+        for text in crate::language::shader::SYNTAXES {
+            if let Ok(def) = syntect::parsing::SyntaxDefinition::load_from_str(text, true, None) {
+                builder.add(def);
+            }
+        }
+        builder.build()
+    })
 }
 
 /// The current color theme as a syntect theme, rebuilt when the theme changes.
