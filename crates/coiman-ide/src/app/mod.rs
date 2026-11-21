@@ -169,6 +169,8 @@ pub struct CodeApp {
     serial: project::serial_ui::SerialView,
     /// HTTP Client: `.http` requests and their responses.
     http: project::http_ui::HttpView,
+    /// OpenAPI: a spec's endpoints and models.
+    openapi: project::openapi_ui::OpenApiView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -384,6 +386,7 @@ impl CodeApp {
             mongo: Default::default(),
             serial: Default::default(),
             http: Default::default(),
+            openapi: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -569,6 +572,7 @@ impl CodeApp {
         self.pump_markup(&ctx);
         self.pump_shaders(&ctx);
         self.pump_http();
+        self.pump_openapi();
         self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
@@ -1056,6 +1060,7 @@ impl CodeApp {
         self.mongo_window(&ctx);
         self.serial_window(&ctx);
         self.http_window(&ctx);
+        self.openapi_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

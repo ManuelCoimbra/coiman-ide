@@ -508,6 +508,10 @@ impl CodeApp {
                 self.http_copy_curl(ctx, line);
                 return;
             }
+            crate::app::project::openapi_ui::SHOW => {
+                self.show_openapi();
+                return;
+            }
             "rust-analyzer.showReferences" | "editor.action.showReferences" | "java.show.references" => {
                 self.on_locations("References", &title, arg(2));
                 return;

@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- OpenAPI and Swagger files (JSON or YAML): `OpenAPI: Show Endpoints` lists the endpoints by tag
+  and the models; an endpoint opens as a request in a `.http` file beside the spec, with an
+  example body made from its schema.
 - HTTP client: `.http` and `.rest` files (JetBrains' and VS Code's format) get ▶ Send and
   Copy as curl above each request, sent through `curl`, with variables, environments,
   values from earlier responses, a history of responses and a comparison of two.

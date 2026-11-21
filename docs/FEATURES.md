@@ -905,6 +905,25 @@ Code's REST Client use, are sent through `curl`: Coiman opens no connection itse
   project). Choose **A** and **B** to **Compare** them: the status, headers that differ
   (dates and request ids left out), and the body line by line.
 
+## OpenAPI
+
+An OpenAPI (3.x) or Swagger (2.0) file, in JSON or YAML, gets a line at its top saying how
+many endpoints and models it has; a click (or **OpenAPI: Show Endpoints**) opens the
+**OpenAPI** window.
+
+- **Endpoints** by tag, each with its method in color (deprecated ones struck through), and a
+  filter. One shows its parameters (where each goes, its type, whether it's required), its
+  body with an example made from the schema, its responses, and the security it needs.
+- **Open as request** adds it to a `.http` file beside the spec (`shop.yaml` → `shop.http`,
+  made with `@baseUrl` from the spec's server if new), ready for ▶ Send: path and required
+  query parameters as `{{variables}}`, optional ones in a comment, the auth header the spec
+  asks for (`Authorization: Bearer {{token}}`, an API key's header), and the example body
+  (read-only fields left out). One already there is shown, not added twice. **All as a
+  .http file** writes every endpoint at once.
+- **Models** lists the schemas with their fields, types and which are required.
+- `$ref`s, `allOf`/`oneOf`, server variables and Swagger 2's `host`, `basePath` and body
+  parameters are followed. **Go to it** jumps to where the spec declares an endpoint.
+
 ## Serial monitor
 
 **Serial: Open Monitor...** opens a board's serial port (an Arduino, ESP32 or Pico on USB),

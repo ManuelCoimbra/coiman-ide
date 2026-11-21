@@ -172,6 +172,8 @@ pub enum Command {
     HttpSend,
     /// The HTTP Client window.
     HttpShow,
+    /// The endpoints and models of the OpenAPI spec in the editor.
+    OpenApiShow,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -478,6 +480,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::SerialMonitor, "Serial: Open Monitor..."),
     (Command::HttpSend, "HTTP: Send Request at Cursor"),
     (Command::HttpShow, "HTTP: Show Client"),
+    (Command::OpenApiShow, "OpenAPI: Show Endpoints"),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -802,6 +805,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::SerialMonitor, "coiman.serial.monitor"),
     (Command::HttpSend, "coiman.http.sendAtCursor"),
     (Command::HttpShow, "coiman.http.show"),
+    (Command::OpenApiShow, "coiman.openapi.showEndpoints"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

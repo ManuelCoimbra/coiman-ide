@@ -68,6 +68,8 @@ rustc-demangle = "0.1.28"
 cpp_demangle = "0.5.1"
 # Shaders: WGSL checked, and turned into GLSL for the preview (the version already in Cargo.lock).
 naga = { version = "30.0.1", default-features = false, features = ["wgsl-in", "glsl-out"] }
+# OpenAPI specs in YAML (the version syntect already brings).
+yaml-rust = "0.4.5"
 
 
 

@@ -13,6 +13,7 @@ pub mod git;
 pub mod git_graph;
 pub mod history;
 pub mod http_client;
+pub mod openapi;
 pub mod project_tree;
 pub mod recent;
 pub mod remote_folder;
