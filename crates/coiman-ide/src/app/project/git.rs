@@ -152,7 +152,7 @@ struct Confirm {
 }
 
 pub(crate) struct GitState {
-    repo: Option<Repo>,
+    pub(crate) repo: Option<Repo>,
     /// Folder the repository was looked up for.
     pub(crate) discovered_for: Option<PathBuf>,
     /// In a workspace of several folders, the one Git follows (else the project's).

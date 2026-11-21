@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 153, partial 121,
-missing 195, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 157, partial 121,
+missing 191, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -148,13 +148,13 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Commit graph visualisation | Done | Git Graph, every branch |
 | Branch comparison | Done | Git Graph: commits each way, files changed |
 | Visualise repository history | Done | Git Graph, file history, blame |
-| Search through commit history | Missing | |
+| Search through commit history | Done | Git Tools: by message, author, file, or a change that adds or removes a text (`-S`, `-G`) |
 | Compare arbitrary commits | Partial | Git Graph: a branch or commit against the current branch (commits on each side, files changed) |
 | Git worktree management | Done | Git Graph: list, add, open, remove, prune |
-| Submodule management | Missing | |
-| Git hooks management | Missing | |
+| Submodule management | Done | Git Tools: state, fetch, newest commit, add, remove |
+| Git hooks management | Done | Git Tools: create, edit, turn off and on, run now |
 | Git LFS integration | Missing | |
-| Advanced `.gitignore` editor | Missing | |
+| Advanced `.gitignore` editor | Done | Git Tools: what each rule hides, why a path is ignored, a rule tried before it's added |
 | Live collaborative editing | Network | |
 | Shared cursors | Network | |
 | Shared selections | Network | |

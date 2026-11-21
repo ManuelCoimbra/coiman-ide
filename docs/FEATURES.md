@@ -235,6 +235,25 @@ network, and only when you ask. All git work runs in the background.
 - **Branches**: the branch in the status bar (with `*` for uncommitted changes and
   ahead/behind counts) opens **Git: Checkout to...**, which can also create a branch.
   Switching runs in the background and open files reload when they change.
+- **Git Tools**, one window with a tab for each:
+  - **Search History** (**Git: Search History...**): commits by words in the message, by
+    author, by file or folder, or by a change: **Added or removed text** finds the commits
+    where a name or text came in or went out (`git log -S`), **Changed lines matching** takes
+    a regular expression (`-G`). It can be kept to a file or folder, and cover all branches.
+    A commit lists its files (a click shows what it changed in one) and, for a change search,
+    the lines that match.
+  - **Submodules** (**Git: Submodules**): each one's folder, state (up to date, not fetched,
+    at another commit, in conflict), URL and branch, with **Fetch** (at the recorded commit),
+    **Newest** (its branch's newest commit; commit to record it) and **Remove…** (asks
+    first). **Fetch all** fetches every one; a URL and a folder add a new one.
+  - **Hooks** (**Git: Hooks**): the scripts Git runs at points of its work, each on, off,
+    an example only, or none. **Create** writes a shell script and opens it, **Off** renames
+    it so Git skips it (**On** brings it back), **Run** runs it now as Git would and shows
+    what it printed. A `core.hooksPath` set by a tool such as Husky is shown.
+  - **.gitignore** (**Git: Explain .gitignore**): every rule, from which file and line, and
+    what it hides now (a click lists it); a rule that hides nothing can go. **Why is … ignored?**
+    names the rule that hides a path; **New rule** shows what a rule would hide (and the tracked
+    files it would match, which stay tracked) before **Add to .gitignore**.
 
 ## Run, test and check (Cargo)
 
