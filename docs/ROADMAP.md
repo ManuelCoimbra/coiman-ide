@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Binary size: groups by crate or namespace, symbols, sections, flash and RAM.
 - Agents: MCP Servers: the tools opencode gives the agent, for the project or every project.
 - The Agents panel (a contributor's): chats with the `opencode` program.
 - Jupyter notebooks: cells, a Python kernel, outputs and plots.
@@ -49,7 +50,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 Downloads are asked for first, with the file, where it comes from and its size.
 
-- A serial monitor, and binary size, for embedded work.
+- A serial monitor, for embedded work.
 - Shaders.
 - SQL Server, MongoDB and Redis.
 

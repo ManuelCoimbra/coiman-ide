@@ -21,6 +21,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Build: Analyze Binary Size...`: what takes room in a program, library or object file (ELF,
+  PE, Mach-O, COFF): symbols grouped by crate or namespace, symbols, sections, flash and RAM
+  for embedded programs, and what changed since it was last analyzed.
 - `Agents: MCP Servers...` (also a button in the Agents panel): the MCP servers opencode
   gives the agent, for this project (`opencode.json`) or every project
   (`~/.config/opencode/opencode.json`): add a program or an address, edit, turn on and off,

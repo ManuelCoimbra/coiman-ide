@@ -158,6 +158,8 @@ pub enum Command {
     ShowAndroid,
     /// The MCP servers the Agents panel's opencode gets.
     ShowMcpServers,
+    /// What takes room in a program: groups, symbols, sections.
+    AnalyzeBinarySize,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -457,6 +459,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowDocker, "Docker: Show Containers, Images and Compose"),
     (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
+    (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -774,6 +777,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowDocker, "coiman.docker.show"),
     (Command::ShowAndroid, "coiman.android.show"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
+    (Command::AnalyzeBinarySize, "coiman.build.binarySize"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

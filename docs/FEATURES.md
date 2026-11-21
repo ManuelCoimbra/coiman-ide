@@ -855,6 +855,27 @@ Java: imports, wildcards, static imports and classes of the same package. C#: ty
 `using` and the namespace. Go: packages of the module in `go.mod`. C and C++: `#include` of the
 project's own headers.
 
+## Binary size
+
+**Build: Analyze Binary Size...** shows what takes room in a program, a shared library or an
+object file (ELF, PE, Mach-O and COFF, read by Coiman itself: no tool needed). It picks the file
+open in the editor if it is one, else the newest one in the project's build folders (`target`,
+`build`, `out`, `cmake-build-*`); **Choose…** opens another.
+
+- The summary gives the format and processor, the file's size and what is loaded with the
+  program, split into code, read-only data, data and zero-filled data. For an ELF program
+  (embedded firmware) it adds **flash** (code, read-only data and data's start values) and
+  **RAM** (data and zero-filled data), as `size` counts them.
+- **Groups** adds up the symbols by crate (Rust) or namespace (C++), names demangled: what
+  `core`, `std`, `serde_json` or the program's own code cost. Click one for its symbols.
+- **Symbols** lists them biggest first, with a filter. Where the file gives no sizes (PE,
+  COFF, Mach-O), a symbol runs to the next one.
+- **Sections** lists `.text`, `.rodata`, `.data`, `.bss`, debug info and the rest.
+- **Analyze again** after a build shows the change: in total, and for each group (bigger in
+  red, smaller in green).
+- A program built with Visual C++ (or Rust's MSVC toolchain) keeps its symbols in a `.pdb`
+  beside it; the window says so and shows the sections only.
+
 ## Profiling
 
 - **Run: Profile Current File** runs the file to its end under a sampling profiler, then shows

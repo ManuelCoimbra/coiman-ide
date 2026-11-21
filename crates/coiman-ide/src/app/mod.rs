@@ -157,6 +157,8 @@ pub struct CodeApp {
     notebook: views::notebook_ui::NotebookView,
     /// Agents: MCP Servers.
     mcp: extensions::mcp_ui::McpView,
+    /// Build: Analyze Binary Size.
+    binary_size: launch::binary_size_ui::BinarySizeView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -366,6 +368,7 @@ impl CodeApp {
             android: Default::default(),
             notebook: Default::default(),
             mcp: Default::default(),
+            binary_size: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -1030,6 +1033,7 @@ impl CodeApp {
         self.android_window(&ctx);
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);
+        self.binary_size_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

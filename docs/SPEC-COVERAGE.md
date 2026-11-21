@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 139, partial 120,
-missing 210, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 140, partial 120,
+missing 209, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -26,7 +26,7 @@ specification is right: every row in it exists.
 | 8 Web | 1 | 4 | 19 | |
 | 9 Database | 13 | 4 | 6 | |
 | 10 Data science | 5 | 3 | 14 | |
-| 11 Systems and embedded | 1 | 5 | 18 | |
+| 11 Systems and embedded | 2 | 5 | 17 | |
 | 12 Game | | 5 | 16 | |
 | 13 Mobile | 4 | 5 | 6 | |
 | 14 DevOps | 5 | 4 | 13 | 2 |
@@ -369,7 +369,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Arduino development support | Missing | |
 | ESP-IDF integration | Missing | |
 | Memory map visualisation | Missing | |
-| Binary size analysis | Missing | |
+| Binary size analysis | Done | Build: Analyze Binary Size: groups, symbols, sections, flash and RAM, changes |
 | Firmware section analysis | Missing | |
 
 ## 12. Game development
