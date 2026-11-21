@@ -3,8 +3,9 @@
 What's planned for Coiman IDE, in order. `docs/SPEC-COVERAGE.md` has each item of the
 feature specification and where it stands; `docs/AUDIT.md` §11 has the phases.
 
-Coiman has no AI features, and opens no network connections of its own: where something needs
-the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`…).
+Coiman opens no network connections of its own: where something needs the network, a program
+of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`…). AI works the same way: the Agents
+panel drives the `opencode` program, if it is installed, and asks before the agent acts.
 
 ## Now
 
@@ -12,6 +13,8 @@ the network, a program of its own does it (`git`, `gh`, `cargo`, `npm`, `psql`�
 
 ## Done lately
 
+- Agents: MCP Servers: the tools opencode gives the agent, for the project or every project.
+- The Agents panel (a contributor's): chats with the `opencode` program.
 - Jupyter notebooks: cells, a Python kernel, outputs and plots.
 - Android: devices, logcat (filters, links to the project's frames), shell and APK installs through adb.
 - Docker and Compose window (tested with a stand-in docker: no engine here).

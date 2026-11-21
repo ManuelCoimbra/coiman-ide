@@ -57,12 +57,20 @@ struct SessionInfo {
     directory: Option<PathBuf>,
 }
 
+/// How the ids Coiman makes for new sessions start.
+const NEW_SESSION: &str = "ses_coiman_";
+
+/// Manual for an older OpenCode: edits, commands and fetches need asking.
+const MANUAL_PERMISSIONS: &str = r#"{"permission":{"edit":"ask","bash":"ask","webfetch":"ask"}}"#;
+
 enum AgentMsg {
     Text(String),
     Thinking(String),
     Tool(ToolPart),
     Models(Vec<String>),
     Session(Vec<Message>),
+    /// The id OpenCode gave the session the run is in.
+    SessionId(String),
     End(Option<i32>),
 }
 
@@ -129,6 +137,8 @@ pub(crate) struct AgentsUi {
     pub(crate) diff_request: Option<PathBuf>,
     /// Ask the app to open Settings.
     pub(crate) requests_settings: bool,
+    /// The MCP servers button was clicked.
+    pub(crate) requests_mcp: bool,
     /// Set when Continue last session was chosen before the list was loaded.
     continue_requested: bool,
     /// True while the transcript is scrolled to the bottom, for the jump pill.
@@ -169,11 +179,11 @@ impl AgentsUi {
     fn new_session() -> String {
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
         // OpenCode requires session ids to start with "ses".
-        format!("ses_coiman_{}_{}", std::process::id(), nanos)
+        format!("{NEW_SESSION}{}_{}", std::process::id(), nanos)
     }
 
     fn opencode_command(program: &Path) -> Command {
-        let mut command = Command::new(program);
+        let mut command = coiman_core::language::lsp::discovery::quiet_command(program);
         // Coiman may itself run inside an OpenCode session. Those variables would make the
         // child join that session and its folder instead of the one open here.
         for key in [
@@ -187,6 +197,34 @@ impl AgentsUi {
             command.env_remove(key);
         }
         command
+    }
+
+    /// Whether this OpenCode has `--standalone` (newer ones, which also run a background
+    /// service). Older ones (1.19) don't: they take no made-up session id, and export a
+    /// session with `opencode export`. Asked once.
+    fn standalone(program: &Path) -> bool {
+        static STANDALONE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *STANDALONE.get_or_init(|| {
+            Self::opencode_command(program)
+                .args(["run", "--help"])
+                .stdin(Stdio::null())
+                .output()
+                .map(|o| {
+                    String::from_utf8_lossy(&o.stdout).contains("--standalone")
+                        || String::from_utf8_lossy(&o.stderr).contains("--standalone")
+                })
+                .unwrap_or(true)
+        })
+    }
+
+    /// `args` after `--standalone` where this OpenCode has it.
+    fn with_standalone<'a>(program: &Path, args: &[&'a str]) -> Vec<&'a str> {
+        let mut out = Vec::with_capacity(args.len() + 1);
+        if Self::standalone(program) {
+            out.push("--standalone");
+        }
+        out.extend_from_slice(args);
+        out
     }
 
     fn opencode(&mut self) -> Option<PathBuf> {
@@ -268,7 +306,9 @@ impl AgentsUi {
         self.running_history = Some(rx);
         std::thread::spawn(move || {
             let mut command = Self::opencode_command(&program);
-            command.args(["--standalone", "session", "list", "--format", "json", "-n", "50"]).stdin(Stdio::null());
+            command
+                .args(Self::with_standalone(&program, &["session", "list", "--format", "json", "-n", "50"]))
+                .stdin(Stdio::null());
             if let Some(root) = &root {
                 command.current_dir(root);
                 command.env("PWD", root);
@@ -334,7 +374,7 @@ impl AgentsUi {
         self.running_delete = Some(rx);
         std::thread::spawn(move || {
             let mut command = Self::opencode_command(&program);
-            command.args(["--standalone", "session", "delete", &session.id]).stdin(Stdio::null());
+            command.args(Self::with_standalone(&program, &["session", "delete", &session.id])).stdin(Stdio::null());
             if let Some(root) = &root {
                 command.current_dir(root);
                 command.env("PWD", root);
@@ -388,7 +428,12 @@ impl AgentsUi {
         let root = self.session_root.clone();
         std::thread::spawn(move || {
             let mut command = Self::opencode_command(&program);
-            command.args(["--standalone", "session", "export", &session.id]).stdin(Stdio::null());
+            if Self::standalone(&program) {
+                command.args(["--standalone", "session", "export", &session.id]);
+            } else {
+                command.args(["export", &session.id]);
+            }
+            command.stdin(Stdio::null());
             if let Some(root) = &root {
                 command.current_dir(root);
                 command.env("PWD", root);
@@ -510,6 +555,11 @@ impl AgentsUi {
                     self.models_loaded = true;
                 }
                 Ok(AgentMsg::Session(_)) => {}
+                Ok(AgentMsg::SessionId(id)) => {
+                    if self.session.starts_with(NEW_SESSION) && !id.is_empty() {
+                        self.session = id;
+                    }
+                }
                 Ok(AgentMsg::End(code)) => {
                     // Don't break: the reader threads may still deliver lines that
                     // were buffered before the process exited.
@@ -587,14 +637,20 @@ impl AgentsUi {
         self.load_models();
 
         let mut command = Self::opencode_command(&program);
-        command
-            .args(["run", "--standalone", "--thinking", "--format", "json", "--session", &self.session])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+        command.args(Self::with_standalone(&program, &["run", "--thinking", "--format", "json"]));
+        // An older OpenCode won't take a session id it didn't make: a new chat starts without
+        // one, and the id arrives with the first event.
+        if Self::standalone(&program) || !self.session.starts_with(NEW_SESSION) {
+            command.args(["--session", &self.session]);
+        }
+        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
         // The permission level: Auto approves the agent's tool use, Manual doesn't.
         if self.permissions != "manual" {
             command.arg("--auto");
+        } else if !Self::standalone(&program) && std::env::var_os("OPENCODE_CONFIG_CONTENT").is_none() {
+            // An older OpenCode edits and runs commands without asking unless its config
+            // says "ask"; with no one to ask in `run`, it then turns them down.
+            command.env("OPENCODE_CONFIG_CONTENT", MANUAL_PERMISSIONS);
         }
         if self.mode == "plan" {
             // The plan agent discusses; it doesn't edit files.
@@ -638,6 +694,7 @@ impl AgentsUi {
             let wake = wake.clone();
             std::thread::spawn(move || {
                 for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                    let line = stderr_line(&line);
                     if !line.trim().is_empty() && tx.send(AgentMsg::Text(format!("{line}\n"))).is_err() {
                         break;
                     }
@@ -776,6 +833,11 @@ impl AgentsUi {
                         ui.close();
                     }
                 });
+                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Extensions, "MCP servers: the agent's tools")
+                    .clicked()
+                {
+                    self.requests_mcp = true;
+                }
                 if crate::ui::icons::button(ui, crate::ui::icons::Icon::Gear, "Chat settings").clicked() {
                     self.requests_settings = true;
                 }
@@ -2188,6 +2250,7 @@ fn parse_event(line: &str) -> Option<AgentMsg> {
     match kind {
         "text" if part_type != Some("reasoning") => Some(AgentMsg::Text(text?.to_owned())),
         "reasoning" => Some(AgentMsg::Thinking(text?.to_owned())),
+        "step_start" => Some(AgentMsg::SessionId(value.get("sessionID").and_then(Value::as_str)?.to_owned())),
         "tool_use" => {
             let part = part?;
             let id = part.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
@@ -2216,12 +2279,56 @@ fn parse_event(line: &str) -> Option<AgentMsg> {
     }
 }
 
+/// A line OpenCode wrote to stderr, without its colors; a permission it turned down (Manual,
+/// with nobody to ask) says so plainly.
+fn stderr_line(line: &str) -> String {
+    let line = coiman_core::project::actions::strip_colors(line);
+    let plain = line.trim_start_matches(['!', ' ']);
+    match plain.strip_prefix("permission requested: ").and_then(|rest| rest.strip_suffix("; auto-rejecting")) {
+        Some(what) => format!("Not allowed in Manual: {what}. Switch to Auto to let the agent do this."),
+        None => line,
+    }
+}
+
 fn json_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
         Value::String(text) => text.clone(),
         _ => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
     }
+}
+
+/// An item of an older OpenCode's `opencode export` (`{info: {role}, parts}`) in the shape
+/// `session export` gives (`{type, text}` or `{type, content}`); others as they are.
+fn older_export_item(item: &Value) -> Value {
+    let (Some(role), Some(parts)) = (
+        item.get("info").and_then(|i| i.get("role")).and_then(Value::as_str),
+        item.get("parts").and_then(Value::as_array),
+    ) else {
+        return item.clone();
+    };
+    if role == "user" {
+        let text: Vec<&str> = parts
+            .iter()
+            .filter(|p| p.get("type").and_then(Value::as_str) == Some("text"))
+            .filter_map(|p| p.get("text").and_then(Value::as_str))
+            .collect();
+        return serde_json::json!({ "type": "user", "text": text.join("\n") });
+    }
+    let content: Vec<Value> = parts
+        .iter()
+        .map(|p| {
+            let mut p = p.clone();
+            // The tool's output is a string here, blocks there.
+            if let Some(state) = p.get_mut("state").and_then(Value::as_object_mut)
+                && let Some(Value::String(output)) = state.get("output").cloned()
+            {
+                state.insert("content".into(), serde_json::json!([{ "type": "text", "text": output }]));
+            }
+            p
+        })
+        .collect();
+    serde_json::json!({ "type": "assistant", "content": content })
 }
 
 /// The transcript of a past session, from `opencode session export`.
@@ -2231,6 +2338,7 @@ fn parse_export(value: &Option<Value>) -> Vec<Message> {
     };
     let mut messages: Vec<Message> = Vec::new();
     for item in items {
+        let item = &older_export_item(item);
         match item.get("type").and_then(Value::as_str) {
             Some("user") => {
                 let text = item.get("text").and_then(Value::as_str).unwrap_or_default();
@@ -3024,6 +3132,41 @@ mod tests {
         output.textures_delta.clear();
         assert!(result.ends_with('…'), "long text is ellipsized: {result:?}");
         assert!(result.len() < 40, "the fit is short: {result:?}");
+    }
+
+    #[test]
+    fn turned_down_permissions_read_plainly() {
+        let line = "\x1b[93m\x1b[1m! \x1b[0mpermission requested: edit (C:\\p\\note.txt); auto-rejecting";
+        assert_eq!(
+            stderr_line(line),
+            "Not allowed in Manual: edit (C:\\p\\note.txt). Switch to Auto to let the agent do this."
+        );
+        assert_eq!(stderr_line("\x1b[91mError: \x1b[0mSession not found"), "Error: Session not found");
+    }
+
+    #[test]
+    fn an_older_opencode_session() {
+        let start = r#"{"type":"step_start","sessionID":"ses_abc","part":{"type":"step-start"}}"#;
+        assert!(matches!(parse_event(start), Some(AgentMsg::SessionId(id)) if id == "ses_abc"));
+        let export = serde_json::json!({"info": {}, "messages": [
+            {"info": {"role": "user"}, "parts": [{"type": "text", "text": "hi"}]},
+            {"info": {"role": "assistant"}, "parts": [
+                {"type": "step-start"},
+                {"type": "tool", "tool": "tiny_hello", "id": "t1",
+                 "state": {"status": "completed", "input": {}, "output": "hello from tiny"}},
+                {"type": "text", "text": "done"}
+            ]}
+        ]});
+        let messages = parse_export(&Some(export));
+        assert_eq!(messages.len(), 2);
+        assert!(matches!(&messages[0].parts[..], [Part::Text(t)] if t == "hi"));
+        match &messages[1].parts[..] {
+            [Part::Tool(tool), Part::Text(t)] => {
+                assert_eq!((tool.name.as_str(), tool.output.as_str()), ("tiny_hello", "hello from tiny"));
+                assert_eq!(t, "done");
+            }
+            _ => panic!("assistant parts"),
+        }
     }
 
     #[test]

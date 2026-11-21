@@ -156,6 +156,8 @@ pub enum Command {
     ShowDocker,
     /// Android devices through adb: logcat, shell, installs.
     ShowAndroid,
+    /// The MCP servers the Agents panel's opencode gets.
+    ShowMcpServers,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -454,6 +456,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::OpenRemoteFolder, "Remote: Open SSH Folder..."),
     (Command::ShowDocker, "Docker: Show Containers, Images and Compose"),
     (Command::ShowAndroid, "Android: Devices and Logcat"),
+    (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -770,6 +773,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::OpenRemoteFolder, "coiman.remote.openFolder"),
     (Command::ShowDocker, "coiman.docker.show"),
     (Command::ShowAndroid, "coiman.android.show"),
+    (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

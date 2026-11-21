@@ -595,6 +595,24 @@ downloaded unless you click **Download**.
 - **Not into std**: stepping skips `std`, `core` and `alloc`. Set
   `debug.step_into_std = true` to step into them.
 
+## Agents (opencode)
+
+The **Agents** panel chats with the `opencode` program installed on this computer
+(`npm install -g opencode-ai`); Coiman itself opens no connection. It keeps opencode's sessions,
+picks the model, adds the open file or the selection as context, and shows the files the agent
+changed. By default the agent asks before it edits a file or runs a command (**Manual**);
+where opencode has no one to ask, it is turned down and the panel says so. **Auto** lets it
+act. Newer opencode releases and older ones (1.19) both work. `workbench.agents_enabled = false`
+hides the panel.
+
+**Agents: MCP Servers...** (or the panel's MCP button) lists the MCP servers opencode gives the
+agent as tools, for **This project** (`opencode.json`, or `opencode.jsonc`, in its folder) or **Every project**
+(`~/.config/opencode/opencode.json`). A server is a program opencode starts (a command, and
+environment variables) or an address (with headers, such as `Authorization`). Servers can be
+added, edited, turned on and off and removed; **Save** writes only the file's `mcp` section,
+keeping the rest (its comments are dropped, and the window says so first). **Check with
+opencode** runs `opencode mcp list` to show which servers it reaches.
+
 ## Plugins (WebAssembly)
 
 Plugins are WebAssembly components written against `crates/coiman-core/wit/plugin.wit` and run in

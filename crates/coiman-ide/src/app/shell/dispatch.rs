@@ -168,6 +168,7 @@ impl CodeApp {
             Command::OpenRemoteFolder => self.show_remote_folder(),
             Command::ShowDocker => self.show_docker(ctx),
             Command::ShowAndroid => self.show_android(ctx),
+            Command::ShowMcpServers => self.show_mcp(),
             Command::DownloadRemoteFolder => self.download_remote_again(ctx),
             Command::RemoteTerminal => self.remote_terminal(ctx, None),
             Command::RemoteRunCommand => self.palette.show_input(

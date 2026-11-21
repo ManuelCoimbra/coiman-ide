@@ -155,6 +155,8 @@ pub struct CodeApp {
     android: project::android_ui::AndroidView,
     /// A Jupyter notebook open as its cells.
     notebook: views::notebook_ui::NotebookView,
+    /// Agents: MCP Servers.
+    mcp: extensions::mcp_ui::McpView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -363,6 +365,7 @@ impl CodeApp {
             docker: Default::default(),
             android: Default::default(),
             notebook: Default::default(),
+            mcp: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -720,6 +723,9 @@ impl CodeApp {
             if let Some(path) = self.agents.diff_request.take() {
                 self.open_diff(&ctx, &path, false);
             }
+            if std::mem::take(&mut self.agents.requests_mcp) {
+                self.show_mcp();
+            }
             if self.agents.requests_settings {
                 self.agents.requests_settings = false;
                 self.run_command(&ctx, crate::commands::Command::OpenUserSettings);
@@ -1023,6 +1029,7 @@ impl CodeApp {
         self.docker_window(&ctx);
         self.android_window(&ctx);
         self.notebook_window(&ctx);
+        self.mcp_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

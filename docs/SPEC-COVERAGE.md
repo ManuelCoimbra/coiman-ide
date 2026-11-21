@@ -40,8 +40,10 @@ specification is right: every row in it exists.
 
 ## 1. AI integration and project intelligence
 
-Every AI item (the assistant, chat, code generation, AI editing, models and providers) is
-**No AI**. The analysis items work without AI:
+The AI items (the assistant, chat, code generation, AI editing, models and providers) were left
+out until the Agents panel arrived: it drives the `opencode` program (chat, sessions, models,
+edits it asks before making), and `Agents: MCP Servers...` sets the tools it gets. Coiman itself
+still opens no connection; those items aren't recounted here yet. The analysis items work without AI:
 
 | Item | Status | Note |
 |---|---|---|

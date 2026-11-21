@@ -33,6 +33,22 @@ pub struct Database {
     pub entries: Vec<Entry>,
 }
 
+/// Words as one command line, quoting those with spaces or quotes: the reverse of
+/// [`split_command`].
+pub fn join_command(words: &[String]) -> String {
+    words
+        .iter()
+        .map(|w| {
+            if w.is_empty() || w.contains([' ', '\t', '"', '\'']) || w.contains(r"\\") {
+                format!("\"{}\"", w.replace('\\', "\\\\").replace('"', "\\\""))
+            } else {
+                w.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 /// Splits a shell command as the database format defines it: quotes group, a
 /// backslash escapes only a quote or another backslash, so Windows paths survive.
 pub fn split_command(command: &str) -> Vec<String> {
@@ -771,6 +787,11 @@ mod tests {
         assert_eq!(words(r#"cc "-DX=\"a b\"" -I"C:/My Dir""#), ["cc", r#"-DX="a b""#, "-IC:/My Dir"]);
         assert_eq!(words(r"C:\tools\cl.exe /c a.cpp"), [r"C:\tools\cl.exe", "/c", "a.cpp"]);
         assert_eq!(words(r#"a\\b 'c d' """#), [r"a\b", "c d", ""]);
+        // Joining is the reverse.
+        let all: Vec<String> = ["npx", "-y", r"C:\My Dir\x", r#"say "hi""#, "", r"C:\tools\cl.exe", r"\\server\share"]
+            .map(String::from)
+            .into();
+        assert_eq!(words(&join_command(&all)), all);
     }
 
     #[test]

@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Agents: works with older opencode releases too (1.19, which has no `--standalone`): new
+  chats, sessions reopened, and Manual really asks there (edits and commands it can't ask
+  about are turned down, and the panel says so). No console window flashes on Windows.
 - Folders are watched the whole tree at once again on Windows and macOS (one at a time stays
   for Linux), so changes deep in folders not yet listed are seen.
 - Linux startup with a large folder: folders are watched as the Explorer lists them instead of
@@ -18,6 +21,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `Agents: MCP Servers...` (also a button in the Agents panel): the MCP servers opencode
+  gives the agent, for this project (`opencode.json`) or every project
+  (`~/.config/opencode/opencode.json`): add a program or an address, edit, turn on and off,
+  remove, and ask opencode which it reaches. Only the `mcp` section of the file changes.
 - **Agents** panel (from a contributor): drives the `opencode` program installed on this
   computer, with sessions, models, context chips and a working set; it asks before acting
   (Manual) unless switched to Auto. `workbench.agents_enabled` hides it.
