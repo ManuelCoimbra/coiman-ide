@@ -54,7 +54,7 @@ fn syntaxes() -> &'static SyntaxSet {
     SET.get_or_init(|| {
         // syntect's own set, and the shader languages it doesn't have.
         let mut builder = SyntaxSet::load_defaults_newlines().into_builder();
-        for text in crate::language::shader::SYNTAXES {
+        for text in crate::language::shader::SYNTAXES.into_iter().chain([crate::project::http_client::SYNTAX]) {
             if let Ok(def) = syntect::parsing::SyntaxDefinition::load_from_str(text, true, None) {
                 builder.add(def);
             }

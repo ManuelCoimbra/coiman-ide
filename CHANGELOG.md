@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- HTTP client: `.http` and `.rest` files (JetBrains' and VS Code's format) get ▶ Send and
+  Copy as curl above each request, sent through `curl`, with variables, environments,
+  values from earlier responses, a history of responses and a comparison of two.
 - `Serial: Open Monitor...`: a board's serial port (speed, format, DTR/RTS), what it prints as
   text with times, hex or a plot of its numbers, sending lines with a chosen ending, and
   saving the log. A named pipe or FIFO can stand in for a board.

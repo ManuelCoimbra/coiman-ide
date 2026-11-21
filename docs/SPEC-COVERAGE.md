@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 145, partial 121,
-missing 203, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 151, partial 121,
+missing 197, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -23,7 +23,7 @@ specification is right: every row in it exists.
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
 | 6 Terminal | 9 | 4 | 5 | |
 | 7 Documentation | 4 | 6 | 9 | |
-| 8 Web | 1 | 4 | 19 | |
+| 8 Web | 7 | 4 | 13 | |
 | 9 Database | 16 | 4 | 3 | |
 | 10 Data science | 5 | 3 | 14 | |
 | 11 Systems and embedded | 3 | 5 | 16 | |
@@ -276,17 +276,17 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Visual component tree | Missing | |
 | React, Vue, Angular component inspection | Missing | |
 | Hot module replacement management | Missing | |
-| HTTP request client | Missing | Possible through `curl` |
-| REST API testing environment | Missing | |
+| HTTP request client | Done | `.http` files sent through curl |
+| REST API testing environment | Done | `.http` files, environments, history |
 | GraphQL explorer | Missing | |
 | WebSocket client | Missing | |
 | API endpoint explorer | Missing | |
 | OpenAPI specification viewer | Missing | |
 | API documentation generation | Missing | |
-| Request history | Missing | |
-| Environment-based API configurations | Missing | |
-| Authentication token management | Missing | |
-| API response comparison | Missing | |
+| Request history | Done | The last 50 responses of each `.http` file |
+| Environment-based API configurations | Done | http-client.env.json and private, VS Code's settings |
+| Authentication token management | Done | Named responses' values (`{{login.response.body.$.token}}`) |
+| API response comparison | Done | Compare two responses from the history |
 
 ## 9. Database development
 

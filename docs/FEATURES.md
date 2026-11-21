@@ -880,6 +880,31 @@ and WGSL (`.wgsl`) files are colored. Nothing needs installing.
     `struct Coiman { time: f32, resolution: vec2f, mouse: vec4f }` and
     `@group(0) @binding(0) var<uniform> coiman: Coiman;`.
 
+## HTTP client
+
+Requests written in `.http` (or `.rest`) files, the format JetBrains' HTTP Client and VS
+Code's REST Client use, are sent through `curl`: Coiman opens no connection itself.
+
+- **Writing them:** `###` between requests (with a title after it), `METHOD URL`, headers,
+  a blank line and the body; `< ./file.json` sends a file. `@name = value` lines define
+  variables; `{{name}}` uses them. `# @name login` names a request, so later ones can use
+  its response: `{{login.response.body.$.token}}` (a path into its JSON) or
+  `{{login.response.headers.Location}}`. Also `{{$uuid}}`, `{{$timestamp}}`,
+  `{{$randomInt 1 10}}`, `{{$datetime iso8601}}`, `{{$processEnv NAME}}` and
+  `{{$dotenv NAME}}` (from `.env`). `# @no-redirect`, `# @timeout 10` and `# @insecure`
+  change how it's sent. The files are colored.
+- **Sending:** **▶ Send** above each request, or **HTTP: Send Request at Cursor**.
+  **Copy as curl** beside it copies the request, values filled in, as a command.
+- **Environments:** `http-client.env.json` beside the file (or in a folder above it), with
+  `http-client.private.env.json` over it for secrets (keep that one out of Git), or VS
+  Code's `rest-client.environmentVariables`. The **HTTP Client** window chooses one per
+  folder; an undefined name says which and where to define it.
+- **The response** (in the HTTP Client window, **HTTP: Show Client**): status, time, size,
+  where redirects ended; the body (JSON indented), to copy or open in a tab; the headers.
+- **History:** each file keeps its last 50 responses (in the config folder, not the
+  project). Choose **A** and **B** to **Compare** them: the status, headers that differ
+  (dates and request ids left out), and the body line by line.
+
 ## Serial monitor
 
 **Serial: Open Monitor...** opens a board's serial port (an Arduino, ESP32 or Pico on USB),

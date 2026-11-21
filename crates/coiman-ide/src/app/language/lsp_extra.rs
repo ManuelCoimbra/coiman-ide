@@ -414,6 +414,14 @@ impl CodeApp {
         self.rebuild_inlays(uid);
     }
 
+    /// Lenses made here, not by a server (`.http` files' Send).
+    pub(crate) fn set_local_lenses(&mut self, uid: u64, lenses: Vec<lt::CodeLens>) {
+        let Some(i) = self.doc_index(uid) else { return };
+        let lines = self.docs[i].buffer.len_lines();
+        self.lsp.extra.lenses.insert(uid, (lines, lenses));
+        self.rebuild_inlays(uid);
+    }
+
     /// Merges inlay hints and lens titles, the titles at the end of their line.
     fn rebuild_inlays(&mut self, uid: u64) {
         let Some(i) = self.doc_index(uid) else { return };
@@ -489,7 +497,17 @@ impl CodeApp {
     fn run_lens_command(&mut self, ctx: &egui::Context, command: lt::Command) {
         let title = command.title.clone();
         let arg = |at: usize| command.arguments.as_ref().and_then(|a| a.get(at)).cloned().unwrap_or(Value::Null);
+        // Lenses of `.http` files: the line of their request.
+        let line = arg(0).as_u64().map(|l| l as usize);
         match command.command.as_str() {
+            crate::app::project::http_ui::SEND => {
+                self.http_send(ctx, line);
+                return;
+            }
+            crate::app::project::http_ui::CURL => {
+                self.http_copy_curl(ctx, line);
+                return;
+            }
             "rust-analyzer.showReferences" | "editor.action.showReferences" | "java.show.references" => {
                 self.on_locations("References", &title, arg(2));
                 return;

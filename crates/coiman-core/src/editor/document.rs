@@ -468,6 +468,7 @@ fn built_in_language_name(ext: &str) -> &'static str {
         "ejs" => "EJS",
         "twig" => "Twig",
         "liquid" => "Liquid",
+        "http" | "rest" => "HTTP Request",
         _ if crate::language::shader::kind(ext).is_some() => match crate::language::shader::kind(ext) {
             Some(crate::language::shader::Kind::Wgsl) => "WGSL",
             Some(crate::language::shader::Kind::Hlsl) => "HLSL",
