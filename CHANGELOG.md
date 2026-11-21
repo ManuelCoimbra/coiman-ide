@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-21
+
 ### Fixed
 
 - Agents: works with older opencode releases too (1.19, which has no `--standalone`): new
