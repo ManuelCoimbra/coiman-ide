@@ -359,6 +359,56 @@ pub enum Command {
     StopPluginDevMode,
 }
 
+impl Command {
+    /// The pack (see [`crate::packs`]) a command belongs to; `None` for the editor's own.
+    pub fn pack(self) -> Option<&'static str> {
+        use crate::packs::*;
+        Some(match self {
+            Command::HttpSend | Command::HttpShow | Command::OpenApiShow => WEB,
+            Command::ConnectDatabase
+            | Command::RunSqlInDatabase
+            | Command::ExplainSqlInDatabase
+            | Command::ShowDatabaseDiagram
+            | Command::ShowRedis
+            | Command::ShowMongo => DATA,
+            Command::ShowDocker
+            | Command::ShowActions
+            | Command::DownloadRemoteFolder
+            | Command::RemoteTerminal
+            | Command::RemoteRunCommand
+            | Command::NewSshTerminal
+            | Command::DebugRemote => DEVOPS,
+            Command::SerialMonitor | Command::AnalyzeBinarySize | Command::ShowMemory | Command::ShowDisassembly => {
+                SYSTEMS
+            }
+            Command::ShowAndroid => MOBILE,
+            Command::PreviewShader => GRAPHICS,
+            Command::ShowArchitecture
+            | Command::ShowImpactOfFile
+            | Command::ShowFunctionFlow
+            | Command::ShowCodeHealth
+            | Command::ProjectOverview
+            | Command::SessionStatistics
+            | Command::ShowRunHistory
+            | Command::ShowCoverage
+            | Command::LoadCoverage
+            | Command::ProfileFile
+            | Command::RulesCheckProject
+            | Command::RulesFixFile
+            | Command::RulesFixHere
+            | Command::AnalyzeStackTrace
+            | Command::ShowTreeSearch => ANALYSIS,
+            Command::GitShowGraph
+            | Command::GitSearchHistory
+            | Command::GitSubmodules
+            | Command::GitHooks
+            | Command::GitIgnoreRules => GIT,
+            Command::ShowAgents | Command::ShowMcpServers => AGENTS,
+            _ => return None,
+        })
+    }
+}
+
 pub const COMMANDS: &[(Command, &str)] = &[
     (Command::SearchEverywhere, "Search Everywhere"),
     (Command::NewFile, "File: New Untitled File"),

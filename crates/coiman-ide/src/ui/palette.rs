@@ -251,6 +251,8 @@ pub struct Palette {
     pub symbols: Vec<(String, String)>,
     /// Commands that don't apply here.
     pub hidden_commands: &'static [Command],
+    /// Packs not installed: their commands aren't offered.
+    pub packs_off: Vec<&'static str>,
     /// When set, the palette is Search Everywhere, on this tab.
     everywhere: Option<EverywhereTab>,
     /// The folder Search Everywhere searches.
@@ -438,7 +440,11 @@ impl Palette {
             if wanted(EverywhereTab::Commands) && (!all || !q.is_empty()) {
                 let commands: Vec<&(Command, &str)> = COMMANDS
                     .iter()
-                    .filter(|(cmd, name)| !self.hidden_commands.contains(cmd) && (!all || words_match(name, &q)))
+                    .filter(|(cmd, name)| {
+                        !self.hidden_commands.contains(cmd)
+                            && cmd.pack().is_none_or(|p| !self.packs_off.contains(&p))
+                            && (!all || words_match(name, &q))
+                    })
                     .collect();
                 for (i, hl) in rank(commands.iter().map(|(_, name)| *name), &q).into_iter().take(cap(6, 500)) {
                     let (cmd, name) = commands[i];
@@ -467,7 +473,9 @@ impl Palette {
             let commands: Vec<(&str, String, PaletteResult)> =
                 COMMANDS
                     .iter()
-                    .filter(|(cmd, _)| !self.hidden_commands.contains(cmd))
+                    .filter(|(cmd, _)| {
+                        !self.hidden_commands.contains(cmd) && cmd.pack().is_none_or(|p| !self.packs_off.contains(&p))
+                    })
                     .map(|(cmd, name)| (*name, keymap.shortcut_text(*cmd), PaletteResult::Run(*cmd)))
                     .chain(self.plugin_commands.iter().map(|(title, key)| {
                         (title.as_str(), "plugin".to_owned(), PaletteResult::RunPlugin(key.clone()))

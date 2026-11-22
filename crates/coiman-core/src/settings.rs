@@ -39,6 +39,30 @@ pub struct Settings {
     /// the app was started with it: `PATH = "${PATH};C:/tools"`.
     pub env: std::collections::BTreeMap<String, String>,
     pub workspace: WorkspaceSettings,
+    pub packs: PackSettings,
+}
+
+impl Settings {
+    /// Whether pack `id` (see [`crate::packs`]) is installed.
+    pub fn pack_on(&self, id: &str) -> bool {
+        crate::packs::is_on(&self.packs.installed, id)
+    }
+}
+
+/// Which packs of extras are installed (see [`crate::packs`]); a project's own settings can
+/// name its own.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct PackSettings {
+    /// Pack ids, or `"all"`. New installs start with none; settings from before packs have
+    /// every one, so nothing goes missing.
+    pub installed: Vec<String>,
+}
+
+impl Default for PackSettings {
+    fn default() -> Self {
+        Self { installed: vec!["all".to_owned()] }
+    }
 }
 
 /// More than one folder in a window (a project's own setting, in `.coiman/settings.toml`).

@@ -161,7 +161,9 @@ impl CodeApp {
             let available = match view {
                 SidebarView::Testing => self.testing_available(),
                 SidebarView::Debug => self.can_debug(),
-                SidebarView::Agents => self.settings.workbench.agents_enabled,
+                SidebarView::Agents => {
+                    self.settings.workbench.agents_enabled && self.settings.pack_on(coiman_core::packs::AGENTS)
+                }
                 _ => true,
             };
             if !available || self.rails.right_tools.contains(&view) != right {

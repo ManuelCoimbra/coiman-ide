@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Packs: every extra in a pack by kind of work, installed only when wanted.
 - Class diagrams from the code, as an extension that comes with Coiman (UML, 13 languages, SVG/Mermaid/PlantUML).
 - Extensions that come with Coiman, installed only when wanted; the first, Terminal Commands: history, Ctrl+Space suggestions, project commands.
 - Git Tools: history search (by text and by change), submodules, hooks, `.gitignore` rules.
@@ -52,11 +53,17 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Extensions, not built in
 
-New features come as extensions that ship with Coiman and run only once installed, so each
-user keeps Coiman as light or as full as they like. The plugin API grows with what each one
-needs (a drawing canvas, forms, windows of their own), and the features already built in move
-out one at a time, the heavy views first (the dependency graph, Git Graph, the database
-windows).
+Everything beyond editing is in packs (see `docs/FEATURES.md`, Packs), installed only when
+wanted. New features come as extensions in a pack. The features still built into the program
+move into their pack's extensions one at a time, as the plugin API grows to carry them, so the
+program itself gets smaller too:
+
+1. Code analysis: the dependency graph onto `show-graph` (beside Class Diagram), then code
+   health and the overview.
+2. Git, more of it: Git Graph onto `show-graph`, Git Tools as panels.
+3. Web and APIs: the HTTP client and OpenAPI (they run curl and read files: panels and jobs).
+4. Databases, Containers, Embedded, Mobile: once the API has forms and tables to edit.
+5. Graphics and Agents last: shader previews and the agents panel need the most from the host.
 
 ## Next, nothing to download
 

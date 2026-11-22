@@ -774,13 +774,14 @@ impl CodeApp {
                 PanelTab::Prints => self.cargo_project,
                 _ => true,
             });
+            let analysis = self.settings.pack_on(coiman_core::packs::ANALYSIS);
             if self.preview_running() {
                 tabs.push((PanelTab::PageConsole, "PAGE".to_owned()));
             }
             if self.at_cursor_tab_shown() {
                 tabs.push((PanelTab::AtCursor, "AT CURSOR".to_owned()));
             }
-            if self.tree_search_tab_shown() {
+            if analysis && self.tree_search_tab_shown() {
                 tabs.push((PanelTab::TreeSearch, "TREE SEARCH".to_owned()));
             }
             if self.live_tab_shown() {
@@ -789,16 +790,16 @@ impl CodeApp {
             if self.constant_tab_shown() {
                 tabs.push((PanelTab::Constant, "PREVIEW".to_owned()));
             }
-            if self.has_coverage() {
+            if analysis && self.has_coverage() {
                 tabs.push((PanelTab::Coverage, "COVERAGE".to_owned()));
             }
-            if self.traces.used {
+            if analysis && self.traces.used {
                 tabs.push((PanelTab::StackTrace, "STACK TRACE".to_owned()));
             }
-            if self.profiler.used {
+            if analysis && self.profiler.used {
                 tabs.push((PanelTab::Profile, "PROFILE".to_owned()));
             }
-            if self.actions.used {
+            if self.actions.used && self.settings.pack_on(coiman_core::packs::DEVOPS) {
                 tabs.push((PanelTab::Actions, "ACTIONS".to_owned()));
             }
             for (i, p) in self.plugins.panels.iter().enumerate() {

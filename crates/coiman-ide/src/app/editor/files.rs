@@ -240,7 +240,7 @@ impl CodeApp {
             return;
         }
         // A SQLite database opens in the Database window, not as bytes.
-        if coiman_core::data::database::is_sqlite_file(path) {
+        if self.settings.pack_on(coiman_core::packs::DATA) && coiman_core::data::database::is_sqlite_file(path) {
             self.open_database(path);
             return;
         }
@@ -248,7 +248,10 @@ impl CodeApp {
             return;
         }
         // A Jupyter notebook opens as its cells ("Open as JSON" there gives its text).
-        if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ipynb")) && self.open_notebook(path) {
+        if self.settings.pack_on(coiman_core::packs::DATA)
+            && path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ipynb"))
+            && self.open_notebook(path)
+        {
             return;
         }
         // Text only in name: it would come out garbled, and could be saved that way.

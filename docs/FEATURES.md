@@ -634,6 +634,34 @@ added, edited, turned on and off and removed; **Save** writes only the file's `m
 keeping the rest (its comments are dropped, and the window says so first). **Check with
 opencode** runs `opencode mcp list` to show which servers it reaches.
 
+## Packs
+
+Coiman itself is the editor: files, languages and their servers, search, the terminal, Run,
+Debug and testing, Git's status, commits, branches and diffs, settings and looks. What goes
+beyond that comes in **packs**, one per kind of work, installed from the **PACKS** section of
+the Extensions view. A pack that isn't installed adds nothing: its commands aren't in the
+palette (a shortcut to one says which pack has it), its windows, panels and code lenses don't
+appear, and its background work doesn't run.
+
+| Pack | What it brings |
+| --- | --- |
+| Web and APIs | HTTP client, OpenAPI |
+| Databases | SQLite, PostgreSQL, MySQL, SQL Server, Redis, MongoDB; Jupyter notebooks |
+| Containers, remote and CI | Docker, GitHub Actions, remote folders and SSH terminals, remote debugging |
+| Embedded and systems | Serial monitor, binary size, memory and disassembly views |
+| Mobile | Android |
+| Graphics | Shader problems while typing, shader preview |
+| Code analysis | Class diagrams, architecture, flow, code health, overview, session statistics, profiler, coverage, run history, stack traces, rules, search by syntax tree |
+| Git, more of it | Git Graph, history search, submodules, hooks, `.gitignore` rules |
+| Agents | Agents (opencode), MCP servers |
+| Terminal extras | Command history and Ctrl+Space suggestions |
+
+Installing a pack also offers its extensions (Class Diagram comes with Code analysis, Terminal
+Commands with Terminal extras); removing it uninstalls them. The choice is `[packs] installed`
+in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
+so a project gets the environment it needs. A new install starts with none; settings from
+before packs have every pack, so an update takes nothing away.
+
 ## Plugins (WebAssembly)
 
 Plugins are WebAssembly components written against `crates/coiman-core/wit/plugin.wit` and run in

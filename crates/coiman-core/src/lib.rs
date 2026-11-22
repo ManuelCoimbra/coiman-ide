@@ -13,6 +13,7 @@ pub mod extensions;
 pub mod language;
 pub mod launch;
 pub mod mobile;
+pub mod packs;
 pub mod platform;
 pub mod project;
 pub mod selection;

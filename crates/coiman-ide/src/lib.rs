@@ -106,6 +106,7 @@ pub fn run_desktop() -> eframe::Result {
         unsafe { std::env::set_var("PATH", path) };
     }
     let adopted = coiman_core::settings::adopt_old_config();
+    app::extensions::plugins::packs::first_run_packs();
     coiman_core::applog::start();
     if let Some(what) = adopted {
         coiman_core::applog::info(&what);

@@ -3,7 +3,7 @@
 
 mod agents;
 mod editor;
-mod extensions;
+pub(crate) mod extensions;
 mod language;
 mod launch;
 mod project;
@@ -551,7 +551,9 @@ impl CodeApp {
             self.reload_settings(&ctx);
         }
         self.track_window(&ctx);
-        self.track_activity(&ctx);
+        if self.settings.pack_on(coiman_core::packs::ANALYSIS) {
+            self.track_activity(&ctx);
+        }
         self.pump_environment(&ctx);
         self.pump_run_configs(&ctx);
         self.pump_run_problems(&ctx);
@@ -573,9 +575,13 @@ impl CodeApp {
         self.pump_constant(&ctx);
         self.pump_likely(&ctx);
         self.pump_markup(&ctx);
-        self.pump_shaders(&ctx);
-        self.pump_http();
-        self.pump_openapi();
+        if self.settings.pack_on(coiman_core::packs::GRAPHICS) {
+            self.pump_shaders(&ctx);
+        }
+        if self.settings.pack_on(coiman_core::packs::WEB) {
+            self.pump_http();
+            self.pump_openapi();
+        }
         self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
@@ -1083,6 +1089,8 @@ impl CodeApp {
 
         if self.palette.open {
             self.palette.plugin_commands = self.plugin_commands();
+            self.palette.packs_off =
+                coiman_core::packs::PACKS.iter().map(|p| p.id).filter(|id| !self.settings.pack_on(id)).collect();
             self.palette.hidden_commands = if self.cargo_project {
                 &[]
             } else if self.can_debug() {

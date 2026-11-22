@@ -7,6 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Packs: what goes beyond editing comes in packs by kind of work (Web and APIs, Databases,
+  Containers/remote/CI, Embedded and systems, Mobile, Graphics, Code analysis, Git, Agents,
+  Terminal extras), installed from the Extensions view. A pack that isn't installed adds no
+  commands, windows, panels, lenses or background work. New installs start with none; settings
+  from before keep every pack. A project can pick its own with `[packs] installed`.
 - Extensions that come with Coiman: new features ship as extensions that nothing runs until
   you install them (Extensions view, **COMES WITH COIMAN**), so Coiman stays as light as you
   keep it. The first is **Terminal Commands**: commands run in a shell are kept (with the

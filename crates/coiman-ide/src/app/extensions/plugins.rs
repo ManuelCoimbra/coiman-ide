@@ -128,6 +128,9 @@ mod pick;
 #[path = "plugin_graph.rs"]
 mod graph;
 
+#[path = "plugin_packs.rs"]
+pub(crate) mod packs;
+
 /// Waiting for the user to approve an install or update.
 struct Consent {
     pkg: Package,
@@ -1101,6 +1104,7 @@ impl CodeApp {
         ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             self.installed_section(ui, &ctx);
+            self.packs_section(ui);
             self.shipped_section(ui);
             if !self.plugins.updates.is_empty() {
                 ui.add_space(8.0);
@@ -1181,6 +1185,8 @@ impl CodeApp {
         let shipped = self.plugins.shipped.get_or_insert_with(shipped_extensions).clone();
         let offered: Vec<_> = shipped
             .iter()
+            // Those of a pack are installed with it.
+            .filter(|(_, m)| coiman_core::packs::pack_of_extension(&m.id).is_none())
             .filter(|(_, m)| {
                 self.plugins.lock.get(&m.id).is_none_or(|l| {
                     l.source.starts_with(SHIPPED_SOURCE)

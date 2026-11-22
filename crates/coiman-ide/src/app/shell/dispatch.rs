@@ -45,6 +45,15 @@ impl CodeApp {
 
     pub(crate) fn run_command(&mut self, ctx: &egui::Context, cmd: Command) {
         coiman_core::applog::info(&format!("command {cmd:?}"));
+        // An extra whose pack isn't installed: say where it is.
+        if let Some(id) = cmd.pack()
+            && !self.settings.pack_on(id)
+        {
+            let name = coiman_core::packs::pack(id).map_or(id, |p| p.name);
+            self.status = Some(format!("That comes with the {name} pack: install it in the Extensions view"));
+            self.show_extensions();
+            return;
+        }
         // A side view asked for on the Welcome page shows there.
         if matches!(
             cmd,
