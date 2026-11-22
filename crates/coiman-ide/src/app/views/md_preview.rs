@@ -699,6 +699,30 @@ pub(crate) fn draw_markdown(
 }
 
 impl CodeApp {
+    /// Shows Mermaid text rendered, in a Markdown draft with one ```mermaid block; the draft
+    /// the last preview made is reused while it's open and unsaved.
+    pub(crate) fn preview_mermaid(&mut self, text: &str) {
+        let markdown = format!("```mermaid\n{text}```\n");
+        // The draft the last preview made, if it's still open and hasn't been saved.
+        let draft = self
+            .md_preview
+            .forced
+            .and_then(|uid| self.docs.iter().position(|doc| doc.uid == uid && doc.path.is_none()));
+        match draft {
+            Some(i) => {
+                self.docs[i].buffer.replace_all(&markdown, coiman_core::editor::buffer::Selection::cursor(0));
+                self.active = i;
+            }
+            None => {
+                self.untitled_counter += 1;
+                let doc = crate::document::Document::untitled_with(self.untitled_counter, &markdown);
+                self.add_doc(doc);
+            }
+        }
+        self.md_preview.open = true;
+        self.md_preview.forced = Some(self.docs[self.active].uid);
+    }
+
     pub(crate) fn toggle_markdown_preview(&mut self) {
         if self.active_is_markdown() {
             self.md_preview.open = !self.md_preview.open;

@@ -146,7 +146,7 @@ fn graph_ui(ui: &mut egui::Ui, shown: &mut Shown) -> Option<Action> {
     let pal = theme::colors();
     let mut action = None;
     ui.horizontal(|ui| {
-        let r = ui.add(egui::TextEdit::singleline(&mut shown.filter).hint_text("Find a class").desired_width(200.0));
+        let r = ui.add(egui::TextEdit::singleline(&mut shown.filter).hint_text("Find by name").desired_width(200.0));
         if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let f = shown.filter.to_lowercase();
             if let Some(i) = shown.graph.nodes.iter().position(|n| n.label.to_lowercase().contains(&f)) {
@@ -154,7 +154,10 @@ fn graph_ui(ui: &mut egui::Ui, shown: &mut Shown) -> Option<Action> {
                 shown.center = true;
             }
         }
-        if ui.checkbox(&mut shown.members, "Members").changed() {
+        // Only boxes with something inside them have members to show or hide.
+        if shown.graph.nodes.iter().any(|n| !n.members.is_empty())
+            && ui.checkbox(&mut shown.members, "Members").changed()
+        {
             shown.placed = uml::layout(&shown.graph, shown.members);
         }
         if ui.button("Fit").clicked() {
@@ -175,7 +178,7 @@ fn graph_ui(ui: &mut egui::Ui, shown: &mut Shown) -> Option<Action> {
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let (n, e) = (shown.graph.nodes.len(), shown.graph.edges.len());
-            ui.label(RichText::new(format!("{n} types · {e} relations")).color(pal.text_dim));
+            ui.label(RichText::new(format!("{n} shown · {e} links")).color(pal.text_dim));
         });
     });
     let rect = ui.available_rect_before_wrap();
@@ -273,12 +276,13 @@ fn canvas(ui: &mut egui::Ui, rect: Rect, shown: &mut Shown) -> Option<Action> {
         // The ends, and the points next to them, for the arrowheads.
         let (p, p1, q0, q) = (pts[0], pts[1], pts[last - 1], pts[last]);
         let on = shown.selected.is_some_and(|s| s == a || s == b);
+        let own = e.accent.map(rgb).unwrap_or(line);
         let color = if on {
             pal.accent
         } else if shown.selected.is_some() || !filter.is_empty() {
-            line.gamma_multiply(0.25)
+            own.gamma_multiply(0.25)
         } else {
-            line
+            own
         };
         let stroke = Stroke::new((1.2 * z.sqrt()).max(0.8), color);
         let size = (12.0 * z).clamp(5.0, 16.0);
@@ -335,7 +339,7 @@ fn canvas(ui: &mut egui::Ui, rect: Rect, shown: &mut Shown) -> Option<Action> {
         } else if related.contains(&i) {
             AMBER
         } else {
-            pal.border
+            node.accent.map(rgb).unwrap_or(pal.border)
         };
         painter.rect_filled(r, 6.0 * z, fill.gamma_multiply(dim.max(0.6)));
         painter.rect_stroke(r, 6.0 * z, Stroke::new(1.2, edge.gamma_multiply(dim)), egui::StrokeKind::Inside);
@@ -412,7 +416,7 @@ fn canvas(ui: &mut egui::Ui, rect: Rect, shown: &mut Shown) -> Option<Action> {
         painter.text(
             egui::pos2(rect.center().x, rect.top() + 18.0),
             egui::Align2::CENTER_CENTER,
-            format!("No type here is called “{}”", shown.filter.trim()),
+            format!("Nothing here is called “{}”", shown.filter.trim()),
             egui::FontId::proportional(13.0),
             AMBER,
         );
@@ -426,6 +430,11 @@ fn canvas(ui: &mut egui::Ui, rect: Rect, shown: &mut Shown) -> Option<Action> {
         pal.text_dim,
     );
     action
+}
+
+/// A plugin's 0xRRGGBB.
+fn rgb(c: u32) -> Color32 {
+    Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8)
 }
 
 /// The direction from `from` to `to`, and the side of it, scaled to `size`.

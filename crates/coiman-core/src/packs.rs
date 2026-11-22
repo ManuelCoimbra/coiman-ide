@@ -95,7 +95,7 @@ pub const PACKS: [Pack; 10] = [
             "Profiler, coverage, run history, stack trace analysis",
             "Rules, and search by syntax tree",
         ],
-        extensions: &["coiman.class-diagram"],
+        extensions: &["coiman.class-diagram", "coiman.architecture"],
     },
     Pack {
         id: GIT,

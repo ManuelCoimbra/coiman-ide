@@ -12,6 +12,7 @@ $tool = Join-Path $root 'target\debug\coiman-plugin.exe'
 $env:CARGO_TARGET_DIR = Join-Path $root 'target\plugins'
 $dirs = 'plugins\built-in\comment-highlights', 'plugins\built-in\trailing-spaces', 'plugins\built-in\color-preview',
     'plugins\built-in\scs-sii', 'plugins\extensions\terminal-commands', 'plugins\extensions\class-diagram',
+    'plugins\extensions\architecture',
     'plugins\examples\word-count', 'plugins\examples\tool-runner',
     'crates\coiman-core\tests\fixtures\test-plugin'
 foreach ($dir in $dirs) {

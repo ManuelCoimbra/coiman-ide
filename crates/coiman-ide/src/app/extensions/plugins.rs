@@ -940,6 +940,13 @@ impl CodeApp {
         self.refresh_infos();
         self.load_plugin(ctx, &id);
         self.status = Some(format!("Installed {} {}", c.pkg.manifest.name, c.pkg.manifest.version));
+        // The pack's next extension, if it has more to install.
+        if let Some(pack) = coiman_core::packs::pack_of_extension(&id)
+            && self.settings.pack_on(pack.id)
+            && let Some(next) = pack.extensions.iter().find(|e| self.plugins.lock.get(e).is_none())
+        {
+            self.offer_shipped(next);
+        }
     }
 
     fn uninstall_plugin(&mut self, id: &str) {

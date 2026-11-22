@@ -1,0 +1,21 @@
+id = "coiman.architecture"
+name = "Architecture"
+version = "1.0.0"
+description = "Which file imports which (Rust, Python, JavaScript, TypeScript, Java, C#, Go, C, C++), read from the import lines without a build: the graph by file or folder, cycles, the most used and unused files, and what a change to a file reaches."
+permissions = ["workspace-read", "editor-read"]
+
+[[commands]]
+id = "files"
+title = "Architecture: Show Dependency Graph"
+
+[[commands]]
+id = "folders"
+title = "Architecture: Show Folder Graph"
+
+[[commands]]
+id = "impact"
+title = "Architecture: Impact of Current File"
+
+[[panels]]
+id = "report"
+title = "Architecture"

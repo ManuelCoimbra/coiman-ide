@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Architecture moved out of the program into an extension (Code analysis pack).
 - Packs: every extra in a pack by kind of work, installed only when wanted.
 - Class diagrams from the code, as an extension that comes with Coiman (UML, 13 languages, SVG/Mermaid/PlantUML).
 - Extensions that come with Coiman, installed only when wanted; the first, Terminal Commands: history, Ctrl+Space suggestions, project commands.
@@ -58,7 +59,7 @@ wanted. New features come as extensions in a pack. The features still built into
 move into their pack's extensions one at a time, as the plugin API grows to carry them, so the
 program itself gets smaller too:
 
-1. Code analysis: the dependency graph onto `show-graph` (beside Class Diagram), then code
+1. Code analysis: the dependency graph is done (the Architecture extension); next code
    health and the overview.
 2. Git, more of it: Git Graph onto `show-graph`, Git Tools as panels.
 3. Web and APIs: the HTTP client and OpenAPI (they run curl and read files: panels and jobs).

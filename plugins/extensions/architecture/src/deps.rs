@@ -3,18 +3,15 @@
 //! Only files of the project are nodes; libraries from outside it are left out.
 //!
 //! Nothing here runs a compiler or a language server: imports are read as text and resolved
-//! against the files on disk, so a graph of a large project takes a moment, not a build.
+//! against the project's files, so a graph of a large project takes a moment, not a build. In
+//! the extension, paths are the open folder's files under a root of `/`, and files beyond
+//! the source files (Cargo.toml, go.mod) are read through the editor.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 use regex::Regex;
-
-/// How many source files a graph takes at most.
-pub const MAX_FILES: usize = 20_000;
-/// Files bigger than this are read only for their first part, where imports are.
-const MAX_READ: usize = 512 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Lang {
@@ -40,18 +37,6 @@ impl Lang {
             "c" | "h" | "cc" | "cpp" | "cxx" | "hpp" | "hh" | "hxx" => Self::C,
             _ => return None,
         })
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Rust => "Rust",
-            Self::Python => "Python",
-            Self::Script => "JavaScript/TypeScript",
-            Self::Java => "Java",
-            Self::CSharp => "C#",
-            Self::Go => "Go",
-            Self::C => "C/C++",
-        }
     }
 }
 
@@ -86,10 +71,6 @@ impl Graph {
         self.nodes.iter().position(|n| n.path == path)
     }
 
-    pub fn full_path(&self, node: usize) -> PathBuf {
-        self.root.join(&self.nodes[node].path)
-    }
-
     /// Each node's outgoing and incoming neighbours.
     pub fn adjacency(&self) -> (Vec<Vec<usize>>, Vec<Vec<usize>>) {
         let mut out = vec![Vec::new(); self.nodes.len()];
@@ -102,61 +83,44 @@ impl Graph {
     }
 }
 
-/// Reads every source file under `root` (honouring `.gitignore`) and links each to the
-/// project files it imports.
-pub fn scan(root: &Path) -> Graph {
-    let mut files = Vec::new();
-    let mut truncated = false;
-    let walk = ignore::WalkBuilder::new(root)
-        .hidden(true)
-        .filter_entry(|e| {
-            let name = e.file_name().to_string_lossy();
-            !matches!(name.as_ref(), "target" | "node_modules" | "build" | "dist" | "out" | "bin" | "obj" | "venv")
-                && !name.starts_with(".venv")
-        })
-        .build();
-    for entry in walk.flatten() {
-        if !entry.file_type().is_some_and(|t| t.is_file()) {
-            continue;
-        }
-        let path = entry.path();
-        if let Some(lang) = Lang::of(path) {
-            if files.len() >= MAX_FILES {
-                truncated = true;
-                break;
-            }
-            files.push((path.to_path_buf(), lang));
-        }
-    }
-    files.sort_by(|a, b| a.0.cmp(&b.0));
-    let texts: Vec<String> = files.iter().map(|(p, _)| read_head(p)).collect();
-    let mut graph = build(root, &files, &texts);
-    graph.truncated = truncated;
-    graph
-}
-
-fn read_head(path: &Path) -> String {
-    let Ok(bytes) = std::fs::read(path) else { return String::new() };
-    let end = bytes.len().min(MAX_READ);
-    String::from_utf8_lossy(&bytes[..end]).into_owned()
-}
-
 fn rel(root: &Path, path: &Path) -> String {
     path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/")
 }
 
-/// The graph of these files, with their text: what [`scan`] does after reading the disk.
-pub fn build(root: &Path, files: &[(PathBuf, Lang)], texts: &[String]) -> Graph {
-    let index: HashMap<PathBuf, usize> = files.iter().enumerate().map(|(i, (p, _))| (normal(p), i)).collect();
+/// Reads a file by its path (under `root`), when it is there.
+pub type Read<'a> = &'a dyn Fn(&Path) -> Option<String>;
+
+/// The graph of these files, with their text; `read` gives other files (Cargo.toml, go.mod).
+#[cfg(test)]
+pub fn build(root: &Path, files: &[(PathBuf, Lang)], texts: &[String], read: Read) -> Graph {
+    let mut graph = nodes(root, files, texts);
+    graph.edges = edges(root, files, texts, read, 0..files.len());
+    graph
+}
+
+/// The graph's nodes, without edges yet.
+pub fn nodes(root: &Path, files: &[(PathBuf, Lang)], texts: &[String]) -> Graph {
     let nodes: Vec<Node> = files
         .iter()
         .zip(texts)
         .map(|((p, lang), text)| Node { path: rel(root, p), lang: *lang, test: is_test(p, *lang, text) })
         .collect();
-    let ctx = Context::new(root, files, texts, &index);
-    let mut seen = HashSet::new();
+    Graph { root: root.to_path_buf(), nodes, edges: Vec::new(), truncated: false }
+}
+
+/// The imports of the files in `range`: a graph of a large project is made a part at a time.
+pub fn edges(
+    root: &Path,
+    files: &[(PathBuf, Lang)],
+    texts: &[String],
+    read: Read,
+    range: std::ops::Range<usize>,
+) -> Vec<Edge> {
+    let index: HashMap<PathBuf, usize> = files.iter().enumerate().map(|(i, (p, _))| (normal(p), i)).collect();
+    let ctx = Context::new(root, files, texts, &index, read);
     let mut edges = Vec::new();
-    for (from, ((path, lang), text)) in files.iter().zip(texts).enumerate() {
+    for from in range {
+        let ((path, lang), text) = (&files[from], &texts[from]);
         let found = match lang {
             Lang::Rust => ctx.rust(path, text),
             Lang::Python => ctx.python(path, text),
@@ -166,13 +130,15 @@ pub fn build(root: &Path, files: &[(PathBuf, Lang)], texts: &[String]) -> Graph 
             Lang::Go => ctx.go(path, text),
             Lang::C => ctx.c(path, text),
         };
+        // Each import once per file.
+        let mut seen = HashSet::new();
         for (to, line) in found {
-            if to != from && seen.insert((from, to)) {
+            if to != from && seen.insert(to) {
                 edges.push(Edge { from, to, line });
             }
         }
     }
-    Graph { root: root.to_path_buf(), nodes, edges, truncated: false }
+    edges
 }
 
 /// A path as the index keeps it: `..` and `.` taken out, without resolving links.
@@ -269,6 +235,9 @@ struct Context<'a> {
     go_modules: Vec<(String, PathBuf)>,
     go_dirs: HashMap<PathBuf, Vec<usize>>,
     texts: &'a [String],
+    read: Read<'a>,
+    /// Whether a path is there, as found: the same Cargo.toml is asked about for every file.
+    seen: std::cell::RefCell<HashMap<PathBuf, bool>>,
 }
 
 impl<'a> Context<'a> {
@@ -277,6 +246,7 @@ impl<'a> Context<'a> {
         files: &'a [(PathBuf, Lang)],
         texts: &'a [String],
         index: &'a HashMap<PathBuf, usize>,
+        read: Read<'a>,
     ) -> Self {
         let mut crates = HashMap::new();
         let mut go_modules = Vec::new();
@@ -286,14 +256,14 @@ impl<'a> Context<'a> {
             loop {
                 if *lang == Lang::Rust
                     && manifests.insert(dir.join("Cargo.toml"))
-                    && let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml"))
+                    && let Some(text) = read(&dir.join("Cargo.toml"))
                     && let Some(name) = package_name(&text)
                 {
                     crates.insert(name.replace('-', "_"), dir.join("src"));
                 }
                 if *lang == Lang::Go
                     && manifests.insert(dir.join("go.mod"))
-                    && let Ok(text) = std::fs::read_to_string(dir.join("go.mod"))
+                    && let Some(text) = read(&dir.join("go.mod"))
                     && let Some(line) = text.lines().find(|l| l.trim_start().starts_with("module "))
                 {
                     let module = line.trim_start()["module ".len()..].trim().to_owned();
@@ -342,6 +312,8 @@ impl<'a> Context<'a> {
         }
         Self {
             root,
+            read,
+            seen: Default::default(),
             files,
             index,
             crates,
@@ -360,6 +332,24 @@ impl<'a> Context<'a> {
         self.index.get(&normal(path)).copied()
     }
 
+    /// Whether a file is there: one of the source files, or one the editor can read.
+    fn exists(&self, path: &Path) -> bool {
+        let path = normal(path);
+        if self.index.contains_key(&path) {
+            return true;
+        }
+        // Every source file is in the index: one that isn't there isn't there.
+        if Lang::of(&path).is_some() {
+            return false;
+        }
+        if let Some(&known) = self.seen.borrow().get(&path) {
+            return known;
+        }
+        let there = (self.read)(&path).is_some();
+        self.seen.borrow_mut().insert(path, there);
+        there
+    }
+
     // ---- Rust ----
 
     /// The crate a file is in: its `src` folder and the file that is the crate's root.
@@ -369,9 +359,9 @@ impl<'a> Context<'a> {
             if dir.file_name().is_some_and(|n| n == "bin") && dir.parent().is_some_and(|p| p.ends_with("src")) {
                 return Some((dir.parent()?.to_path_buf(), file.to_path_buf()));
             }
-            if dir.join("Cargo.toml").exists() {
+            if self.exists(&dir.join("Cargo.toml")) {
                 let src = dir.join("src");
-                let root_file = ["lib.rs", "main.rs"].iter().map(|f| src.join(f)).find(|f| f.exists())?;
+                let root_file = ["lib.rs", "main.rs"].iter().map(|f| src.join(f)).find(|f| self.exists(f))?;
                 return Some((src, root_file));
             }
             if dir == self.root {
@@ -464,7 +454,7 @@ impl<'a> Context<'a> {
                         name => match self.crates.get(name) {
                             Some(other_src) => {
                                 let other_root =
-                                    ["lib.rs", "main.rs"].iter().map(|f| other_src.join(f)).find(|f| f.exists());
+                                    ["lib.rs", "main.rs"].iter().map(|f| other_src.join(f)).find(|f| self.exists(f));
                                 let Some(other_root) = other_root else { continue };
                                 if let Some(i) = self.rust_resolve(other_src, &other_root, rest) {
                                     out.push((i, line));
@@ -500,7 +490,7 @@ impl<'a> Context<'a> {
         // Where absolute imports start: the project, `src`, the file's folder, and the folder
         // above its outermost package (a package imports itself by its own name).
         let mut top = dir;
-        while top.join("__init__.py").exists()
+        while self.exists(&top.join("__init__.py"))
             && let Some(up) = top.parent()
         {
             top = up;
@@ -739,9 +729,20 @@ impl<'a> Context<'a> {
     }
 }
 
+/// `name` under `[package]` in a Cargo.toml (read line by line: no TOML library in the sandbox).
 fn package_name(manifest: &str) -> Option<String> {
-    let value: toml::Value = toml::from_str(manifest).ok()?;
-    value.get("package")?.get("name")?.as_str().map(str::to_owned)
+    let mut in_package = false;
+    for line in manifest.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package
+            && let Some((key, value)) = line.split_once('=')
+            && key.trim() == "name"
+        {
+            return Some(value.trim().trim_matches(['"', '\'']).to_owned());
+        }
+    }
+    None
 }
 
 fn first_line_with(text: &str, word: &str) -> usize {
@@ -805,6 +806,27 @@ fn rust_paths(text: &str) -> Vec<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Reads every source file under `root`, as the extension reads the open folder.
+    fn scan(root: &Path) -> Graph {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            let mut entries: Vec<_> =
+                std::fs::read_dir(dir).into_iter().flatten().flatten().map(|e| e.path()).collect();
+            entries.sort();
+            for p in entries {
+                if p.is_dir() {
+                    walk(&p, out);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+        let mut paths = Vec::new();
+        walk(root, &mut paths);
+        let files: Vec<(PathBuf, Lang)> = paths.into_iter().filter_map(|p| Lang::of(&p).map(|l| (p, l))).collect();
+        let texts: Vec<String> = files.iter().map(|(p, _)| std::fs::read_to_string(p).unwrap_or_default()).collect();
+        build(root, &files, &texts, &|p: &Path| std::fs::read_to_string(p).ok())
+    }
 
     fn graph(files: &[(&str, &str)]) -> (tempdir::Dir, Graph) {
         let dir = tempdir::Dir::new("deps");
@@ -961,5 +983,37 @@ mod tests {
         assert!(has(&g, "src/main.c", "src/util.h"));
         assert!(has(&g, "src/main.c", "include/shop/cart.h"));
         assert_eq!(g.edges.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod timing {
+    use super::*;
+
+    /// How long this repository takes: `cargo test --release timing -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn this_repository() {
+        fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
+            for e in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+                let p = e.path();
+                let name = e.file_name().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    if !name.starts_with('.') && name != "target" && name != "node_modules" {
+                        walk(&p, out);
+                    }
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let mut paths = Vec::new();
+        walk(&root, &mut paths);
+        let files: Vec<(PathBuf, Lang)> = paths.into_iter().filter_map(|p| Lang::of(&p).map(|l| (p, l))).collect();
+        let texts: Vec<String> = files.iter().map(|(p, _)| std::fs::read_to_string(p).unwrap_or_default()).collect();
+        let start = std::time::Instant::now();
+        let g = build(&root, &files, &texts, &|p: &Path| std::fs::read_to_string(p).ok());
+        println!("{} files, {} imports, built in {:?}", g.nodes.len(), g.edges.len(), start.elapsed());
     }
 }

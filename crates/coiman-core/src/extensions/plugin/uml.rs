@@ -66,19 +66,21 @@ pub fn layout(graph: &Graph, members: bool) -> Placed {
         return Placed::default();
     }
     let index: HashMap<&str, usize> = graph.nodes.iter().enumerate().map(|(i, node)| (node.id.as_str(), i)).collect();
-    // Parent to child.
+    // Upper to lower: a parent above what inherits it, a user above what it uses.
     let mut down: Vec<Vec<usize>> = vec![Vec::new(); n];
     let mut up: Vec<Vec<usize>> = vec![Vec::new(); n];
     for e in &graph.edges {
-        if !matches!(e.kind, EdgeKind::Inherits | EdgeKind::Implements) {
-            continue;
-        }
-        let (Some(&child), Some(&parent)) = (index.get(e.source.as_str()), index.get(e.target.as_str())) else {
+        let (Some(&s), Some(&t)) = (index.get(e.source.as_str()), index.get(e.target.as_str())) else {
             continue;
         };
-        if child != parent && !down[parent].contains(&child) {
-            down[parent].push(child);
-            up[child].push(parent);
+        let (upper, lower) = match e.kind {
+            EdgeKind::Inherits | EdgeKind::Implements => (t, s),
+            EdgeKind::Uses => (s, t),
+            EdgeKind::Has => continue,
+        };
+        if upper != lower && !down[upper].contains(&lower) {
+            down[upper].push(lower);
+            up[lower].push(upper);
         }
     }
     // Back edges (a type that ends up inheriting itself) are left out of the layering.
@@ -231,8 +233,59 @@ fn plain(text: &str) -> String {
     text.replace(['{', '}', '"'], "")
 }
 
-/// The graph as a Mermaid class diagram.
+/// Whether a graph is a plain graph of what uses what (no members, only `uses`): exported as a
+/// flowchart rather than a class diagram.
+pub fn is_flow(graph: &Graph) -> bool {
+    graph.nodes.iter().all(|n| n.members.is_empty()) && graph.edges.iter().all(|e| e.kind == EdgeKind::Uses)
+}
+
+/// The graph as a Mermaid flowchart: one subgraph per group, colours kept.
+fn to_mermaid_flow(graph: &Graph) -> String {
+    let index: HashMap<&str, usize> = graph.nodes.iter().enumerate().map(|(i, n)| (n.id.as_str(), i)).collect();
+    let mut out = String::from("flowchart TD\n");
+    let mut groups: Vec<&str> = graph.nodes.iter().map(|n| n.group.as_str()).collect();
+    groups.sort_unstable();
+    groups.dedup();
+    let label = |text: &str| text.replace('"', "'");
+    for (g, group) in groups.iter().enumerate() {
+        let members: Vec<usize> = (0..graph.nodes.len()).filter(|&i| graph.nodes[i].group == *group).collect();
+        let indent = if group.is_empty() { "  " } else { "    " };
+        if !group.is_empty() {
+            out.push_str(&format!("  subgraph G{g}[\"{}\"]\n", label(group)));
+        }
+        for i in members {
+            out.push_str(&format!("{indent}{}[\"{}\"]\n", ident(i), label(&graph.nodes[i].label)));
+        }
+        if !group.is_empty() {
+            out.push_str("  end\n");
+        }
+    }
+    let mut styled = Vec::new();
+    // Mermaid numbers the arrows as they are written.
+    let mut k = 0;
+    for e in &graph.edges {
+        let (Some(&a), Some(&b)) = (index.get(e.source.as_str()), index.get(e.target.as_str())) else { continue };
+        let text = if e.label.is_empty() { String::new() } else { format!("|{}|", label(&e.label)) };
+        out.push_str(&format!("  {} -->{text} {}\n", ident(a), ident(b)));
+        if let Some(c) = e.accent {
+            styled.push(format!("  linkStyle {k} stroke:#{c:06x}\n"));
+        }
+        k += 1;
+    }
+    for (i, n) in graph.nodes.iter().enumerate() {
+        if let Some(c) = n.accent {
+            out.push_str(&format!("  style {} stroke:#{c:06x}\n", ident(i)));
+        }
+    }
+    out.extend(styled);
+    out
+}
+
+/// The graph as Mermaid: a class diagram, or a flowchart for a plain graph of what uses what.
 pub fn to_mermaid(graph: &Graph, members: bool) -> String {
+    if is_flow(graph) {
+        return to_mermaid_flow(graph);
+    }
     let index: HashMap<&str, usize> = graph.nodes.iter().enumerate().map(|(i, n)| (n.id.as_str(), i)).collect();
     let mut out = String::from("classDiagram\n");
     for (i, node) in graph.nodes.iter().enumerate() {
@@ -438,11 +491,12 @@ mod tests {
             members: members.iter().map(|m| (*m).to_owned()).collect(),
             path: String::new(),
             line: 1,
+            accent: None,
         }
     }
 
     fn edge(from: &str, to: &str, kind: EdgeKind) -> GraphEdge {
-        GraphEdge { source: from.into(), target: to.into(), kind, label: String::new() }
+        GraphEdge { source: from.into(), target: to.into(), kind, label: String::new(), accent: None }
     }
 
     fn sample() -> Graph {
@@ -509,5 +563,28 @@ mod tests {
         assert_eq!(route([0.0, 0.0, 50.0, 30.0], [0.0, 100.0, 50.0, 30.0]), [(25.0, 30.0), (25.0, 100.0)]);
         let generic = node("List<T>", "class", &["+ get(i: int) {x}"]);
         assert!(to_mermaid(&Graph { nodes: vec![generic], edges: vec![], ..sample() }, true).contains("List~T~"));
+    }
+
+    #[test]
+    fn graphs_of_what_uses_what() {
+        // main uses lib, lib uses util: top to bottom.
+        let mut g = Graph {
+            nodes: vec![node("util", "", &[]), node("main", "", &[]), node("lib", "", &[])],
+            edges: vec![edge("main", "lib", EdgeKind::Uses), edge("lib", "util", EdgeKind::Uses)],
+            ..sample()
+        };
+        g.nodes[1].group = "src".into();
+        g.nodes[2].group = "src".into();
+        g.nodes[0].accent = Some(0xE5484D);
+        g.edges[1].accent = Some(0x57C06A);
+        let p = layout(&g, true);
+        let y = |i: usize| p.rects[i][1];
+        assert!(y(1) < y(2) && y(2) < y(0), "{:?}", p.rects);
+        assert!(is_flow(&g) && !is_flow(&sample()));
+        let m = to_mermaid(&g, true);
+        assert!(m.starts_with("flowchart TD\n"), "{m}");
+        assert!(m.contains("  subgraph G1[\"src\"]\n    C1[\"main\"]\n    C2[\"lib\"]\n  end\n"), "{m}");
+        assert!(m.contains("  C1 --> C2\n  C2 --> C0\n"), "{m}");
+        assert!(m.contains("  style C0 stroke:#e5484d\n") && m.contains("  linkStyle 1 stroke:#57c06a\n"), "{m}");
     }
 }

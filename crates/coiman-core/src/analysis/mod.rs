@@ -1,9 +1,7 @@
-//! Reading a project as a whole: what imports what, cycles, coupling and the reach of a change,
-//! and its health: secrets, complexity, duplicates, licences and audits.
+//! Reading a project as a whole, and its health: secrets, complexity, duplicates, licences and
+//! audits. (What imports what is the Architecture extension's.)
 
-pub mod arch;
 pub mod complexity;
-pub mod deps;
 pub mod duplicates;
 pub mod flow;
 pub mod lockfiles;

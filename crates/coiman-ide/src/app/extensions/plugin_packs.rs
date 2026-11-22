@@ -44,7 +44,7 @@ impl CodeApp {
     }
 
     /// Asks to install an extension that comes with Coiman (the usual consent prompt).
-    fn offer_shipped(&mut self, id: &str) {
+    pub(super) fn offer_shipped(&mut self, id: &str) {
         let Some(folder) = self.shipped_folder(id) else {
             self.status = Some(format!("{id} isn't beside this copy of Coiman"));
             return;
@@ -71,7 +71,7 @@ impl CodeApp {
             ids.push(pack.id.to_owned());
         }
         self.write_packs(&ids);
-        // Its first extension not installed yet is offered; the others show Install… below.
+        // Its first extension not installed yet is offered; each accepted one offers the next.
         if let Some(ext) = pack.extensions.iter().find(|e| self.plugins.lock.get(e).is_none()) {
             self.offer_shipped(ext);
         }

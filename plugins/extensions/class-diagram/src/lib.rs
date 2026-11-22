@@ -63,6 +63,7 @@ fn graph_of(built: Built, title: String) -> Graph {
                 members: n.members,
                 path: n.path,
                 line: n.line,
+                accent: None,
             })
             .collect(),
         edges: built
@@ -77,6 +78,7 @@ fn graph_of(built: Built, title: String) -> Graph {
                     Kind::Has => EdgeKind::Has,
                 },
                 label: e.label,
+                accent: None,
             })
             .collect(),
         focus: built.focus,

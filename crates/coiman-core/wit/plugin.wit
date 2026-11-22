@@ -196,6 +196,8 @@ interface types {
         /// Where it is, relative to the open folder ("" for none), and its 1-based line.
         path: string,
         line: u32,
+        /// A colour for its border, 0xRRGGBB: tests green, a cycle red...
+        accent: option<u32>,
     }
 
     /// How two nodes are related, drawn as UML draws it.
@@ -206,7 +208,8 @@ interface types {
         implements,
         /// `source` holds a `target` (a field): a solid line with a diamond at `source`.
         has,
-        /// `source` uses `target`: a dashed arrow.
+        /// `source` uses `target`: a dashed arrow; `source` sits above `target`, so a graph of
+        /// imports reads from the top down.
         uses,
     }
 
@@ -215,6 +218,8 @@ interface types {
         target: string,
         kind: edge-kind,
         label: string,
+        /// A colour for the line, 0xRRGGBB.
+        accent: option<u32>,
     }
 
     /// A graph drawn by the editor in a window: laid out with what is inherited above what

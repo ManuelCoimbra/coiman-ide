@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Architecture is now an extension of the Code analysis pack (the dependency graph, by file or
+  folder; cycles, most used and unused files in a panel; the impact of the current file),
+  drawn in the same graph window as the class diagrams, and read in steps. The built-in
+  window and its code left the program.
 - Packs: what goes beyond editing comes in packs by kind of work (Web and APIs, Databases,
   Containers/remote/CI, Embedded and systems, Mobile, Graphics, Code analysis, Git, Agents,
   Terminal extras), installed from the Extensions view. A pack that isn't installed adds no

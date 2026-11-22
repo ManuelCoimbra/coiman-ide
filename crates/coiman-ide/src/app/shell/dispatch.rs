@@ -577,7 +577,6 @@ impl CodeApp {
             }
             Command::NextHiddenCharacter => self.next_hidden_char(),
             Command::ShowLanguageServers => self.show_lsp_room(),
-            Command::ShowArchitecture => self.show_architecture(ctx),
             Command::ShowCodeHealth => self.show_code_health(ctx),
             Command::ProjectOverview => match self.explorer.root.clone() {
                 Some(root) => self.open_markdown_page(&coiman_core::analysis::overview::overview(&root)),
@@ -587,7 +586,6 @@ impl CodeApp {
             Command::ShowFunctionFlow => self.show_function_flow(),
             Command::ShowRunHistory => self.show_run_history(),
             Command::ReviewSnapshots => self.show_snapshots(),
-            Command::ShowImpactOfFile => self.show_impact_of_current_file(ctx),
             Command::OpenDatabase => self.choose_database(),
             Command::RunSqlInDatabase => self.run_database_sql(true),
             Command::ExplainSqlInDatabase => self.explain_database_sql(true),

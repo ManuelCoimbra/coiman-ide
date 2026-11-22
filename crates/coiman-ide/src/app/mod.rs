@@ -18,7 +18,7 @@ use editor::{
 use extensions::plugins;
 use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room};
 use launch::{cargo, coverage, debug, live, maven, prints, profiler, repl, test_panel, traces};
-use project::{architecture, git, git_setup};
+use project::{git, git_setup};
 use shell::{
     dock, file_buttons, frames, keys_ui, layout, look, recent_ui, settings_ui, tool_rails, tour, window, workbench,
 };
@@ -141,7 +141,6 @@ pub struct CodeApp {
     layout: layout::Layout,
     /// Android and Termux, when running on a phone.
     phone: coiman_core::mobile::Phone,
-    architecture: architecture::Architecture,
     health: project::health::Health,
     run_history: launch::history::RunHistory,
     snapshots: launch::snapshots::Snapshots,
@@ -372,7 +371,6 @@ impl CodeApp {
             rails: tool_rails::ToolRails::new(),
             layout: layout::Layout::default(),
             phone: coiman_core::mobile::phone().clone(),
-            architecture: Default::default(),
             health: Default::default(),
             run_history: Default::default(),
             snapshots: Default::default(),
@@ -1052,7 +1050,6 @@ impl CodeApp {
         self.lsp_popups(&ctx);
         self.font_preview_ui(&ctx);
         self.lsp_room(&ctx);
-        self.architecture_window(&ctx);
         self.code_health_window(&ctx);
         self.run_history_window(&ctx);
         self.snapshots_window(&ctx);

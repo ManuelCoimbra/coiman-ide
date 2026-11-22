@@ -47,7 +47,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 
 | Item | Status | Note |
 |---|---|---|
-| Automatic project structure analysis | Done | Architecture window |
+| Automatic project structure analysis | Done | Architecture extension |
 | Identify architectural patterns | Missing | |
 | Detect duplicated code | Done | Code Health, Duplicates |
 | Identify potentially unused code | Partial | Files nothing imports (Architecture, Unused); not functions |

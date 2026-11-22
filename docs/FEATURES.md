@@ -656,8 +656,9 @@ appear, and its background work doesn't run.
 | Agents | Agents (opencode), MCP servers |
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
-Installing a pack also offers its extensions (Class Diagram comes with Code analysis, Terminal
-Commands with Terminal extras); removing it uninstalls them. The choice is `[packs] installed`
+Installing a pack also offers its extensions, one after the other (Class Diagram and
+Architecture come with Code analysis, Terminal Commands with Terminal extras); removing it
+uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
 so a project gets the environment it needs. A new install starts with none; settings from
 before packs have every pack, so an update takes nothing away.
@@ -752,6 +753,8 @@ you keep it; uninstalling one takes it out again.
     `package.json` scripts (with npm, pnpm, yarn or bun, by the lock file), Makefile targets
     (with their `##` comment or first line), `justfile` recipes, Taskfile and Deno tasks, and
     Cargo's build, run (each program and example), test, check, clippy and fmt.
+- **Architecture** (`workspace-read`, `editor-read`): the dependency graph, its cycles and
+  what a change reaches; see [Architecture](#architecture).
 - **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,
   enums, structs, records and traits as a UML class diagram, read from the code without a
   compiler: Java, Kotlin, C#, TypeScript and JavaScript, C and C++, Swift, Dart, Scala, PHP,
@@ -927,26 +930,25 @@ default; `history.enabled`, `history.max_entries`, `history.max_days`, `history.
 
 ## Architecture
 
-**Architecture: Show Dependency Graph** reads which file imports which, for Rust, Python,
-JavaScript and TypeScript, Java, C#, Go, and C and C++. It reads the import lines and finds
-them among the project's files, without a build or a language server, so a project of a few
-hundred files takes under a second. Libraries from outside the project are left out.
+The **Architecture** extension (in the Code analysis pack) reads which file imports which, for
+Rust, Python, JavaScript and TypeScript, Java, C#, Go, and C and C++. It reads the import lines
+and finds them among the project's files, without a build or a language server, in steps, so a
+project of a few hundred files takes about a second and the editor stays responsive. Libraries
+from outside the project are left out.
 
-- **Graph:** files, or folders (with **Folders**), in layers: what a file uses sits below it.
-  Imports in a cycle are red, test files green. Drag to move, scroll to zoom, **Fit** to see it
-  all. A click picks a file: what it uses lights blue and what uses it amber. A double click
-  opens the file.
-- **Cycles:** groups of files that import each other round in a circle, largest first.
-- **Most used:** files by how many others import them, with how many they import.
-- **Unused:** files nothing imports and that import nothing. Entry points and scripts show
-  here too.
-- **Impact:** what a change to the picked file reaches, the files that import it and those that
-  reach it through others, and the tests among them. **Architecture: Impact of Current File**
-  opens it on the file in front.
-- **Export SVG** saves the picture; **Copy Mermaid** copies it as a Mermaid flowchart for
-  Markdown and wikis, and **Preview Mermaid** shows that diagram in a Markdown draft. Files of
-  one folder share a subgraph, tests are green, imports in a cycle are red, and past Mermaid's
-  500-arrow limit the folders are exported instead, which stays readable.
+- **Architecture: Show Dependency Graph**: the files in layers, what a file uses below it,
+  imports in a cycle red, test files green, in the graph window (drag, zoom, find, a click
+  lights what a file is linked to, a double click opens it). **Architecture: Show Folder
+  Graph** shows folders instead, each line labelled with how many imports it stands for.
+- The **Architecture** panel lists the **cycles** (files that import each other round in a
+  circle, largest first), the **most used** files (with how many use them and how many they
+  use), and the **unused** ones (nothing imports them and they import nothing; entry points
+  and scripts show here too).
+- **Architecture: Impact of Current File**: the files a change to the file in front reaches,
+  each with how many steps away, and the tests among them, in the panel; the graph shows just
+  them.
+- **Export SVG...**, **Copy Mermaid** (a flowchart, one subgraph per folder, colours kept),
+  **Copy PlantUML** and **Preview Mermaid**.
 
 Rust: `mod x;` means a file contains another, not that it uses it, so it makes no edge.
 Paths through `crate::`, `super::`, `self::`, other crates of the workspace and child modules

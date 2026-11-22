@@ -97,7 +97,6 @@ pub enum Command {
     BrowseOpenVsxThemes,
     ChangeEncoding,
     ShowLanguageServers,
-    ShowArchitecture,
     /// Secrets, complexity, duplicates, licences and audits.
     ShowCodeHealth,
     /// A Markdown overview of the project: languages, folders, tests, Git.
@@ -110,7 +109,6 @@ pub enum Command {
     ShowRunHistory,
     /// Insta's pending snapshots, to accept or reject; Jest and Vitest's `-u`.
     ReviewSnapshots,
-    ShowImpactOfFile,
     OpenDatabase,
     RunSqlInDatabase,
     ExplainSqlInDatabase,
@@ -383,9 +381,7 @@ impl Command {
             }
             Command::ShowAndroid => MOBILE,
             Command::PreviewShader => GRAPHICS,
-            Command::ShowArchitecture
-            | Command::ShowImpactOfFile
-            | Command::ShowFunctionFlow
+            Command::ShowFunctionFlow
             | Command::ShowCodeHealth
             | Command::ProjectOverview
             | Command::SessionStatistics
@@ -510,14 +506,12 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::PreviousProblem, "Go to Previous Problem (Error, Warning, Info)"),
     (Command::RestartLanguageServer, "Language Servers: Restart"),
     (Command::ShowLanguageServers, "Language Servers: Show Status"),
-    (Command::ShowArchitecture, "Architecture: Show Dependency Graph"),
     (Command::ShowCodeHealth, "Code Health: Secrets, Complexity, Duplicates, Licences and Audits"),
     (Command::ProjectOverview, "Project: Generate Overview"),
     (Command::SessionStatistics, "Project: Show Session Statistics"),
     (Command::ShowFunctionFlow, "Architecture: Show Flow of Function at Cursor"),
     (Command::ShowRunHistory, "Testing: Show Run History (Tests, Flaky Tests, Builds)"),
     (Command::ReviewSnapshots, "Testing: Review Snapshots"),
-    (Command::ShowImpactOfFile, "Architecture: Impact of Current File"),
     (Command::OpenDatabase, "Database: Open SQLite File..."),
     (Command::RunSqlInDatabase, "Database: Run SQL (Selection or File)"),
     (Command::ExplainSqlInDatabase, "Database: Explain Query Plan (Selection or File)"),
@@ -806,14 +800,12 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::BrowseOpenVsxThemes, "coiman.browseOpenVsxThemes"),
     (Command::ChangeEncoding, "workbench.action.editor.changeEncoding"),
     (Command::ShowLanguageServers, "coiman.showLanguageServers"),
-    (Command::ShowArchitecture, "coiman.showArchitecture"),
     (Command::ShowCodeHealth, "coiman.showCodeHealth"),
     (Command::ProjectOverview, "coiman.projectOverview"),
     (Command::SessionStatistics, "coiman.sessionStatistics"),
     (Command::ShowFunctionFlow, "coiman.showFunctionFlow"),
     (Command::ShowRunHistory, "coiman.showRunHistory"),
     (Command::ReviewSnapshots, "coiman.reviewSnapshots"),
-    (Command::ShowImpactOfFile, "coiman.showImpactOfFile"),
     (Command::OpenDatabase, "coiman.openDatabase"),
     (Command::AttachToProcess, "coiman.debug.attachToProcess"),
     (Command::DebugRemote, "coiman.debug.remote"),
