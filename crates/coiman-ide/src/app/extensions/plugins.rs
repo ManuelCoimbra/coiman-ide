@@ -125,6 +125,9 @@ mod dev;
 #[path = "plugin_pick.rs"]
 mod pick;
 
+#[path = "plugin_graph.rs"]
+mod graph;
+
 /// Waiting for the user to approve an install or update.
 struct Consent {
     pkg: Package,
@@ -171,6 +174,8 @@ pub(crate) struct PluginState {
     new_plugin: Option<dev::NewPlugin>,
     /// A plugin's pick list on screen.
     pick: Option<pick::Shown>,
+    /// A plugin's graph in its window.
+    graph: Option<graph::Shown>,
     /// Below the terminal's cursor when Ctrl+Space was last pressed there.
     terminal_at: Option<egui::Pos2>,
     /// Extensions that come with Coiman, not installed until asked: (folder, manifest).
@@ -664,6 +669,7 @@ impl CodeApp {
                 }
             }
             Update::Pick { plugin, pick } => self.show_plugin_pick(plugin, pick),
+            Update::Graph { plugin, graph } => self.show_plugin_graph(plugin, graph),
             Update::TerminalType { terminal, text, .. } => {
                 self.terminal.type_into(terminal, &text);
                 self.terminal.show_tab(terminal);

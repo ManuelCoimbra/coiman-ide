@@ -667,6 +667,11 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   `active-changed`, `edited`, and with the `terminal` permission `terminal-command` (a
   command sent with Enter in a shell) and `terminal-suggest` (Ctrl+Space in a shell; the key
   goes to the shell when no plugin listens).
+- **Graphs** (`show-graph`): nodes with a kind, a group, member lines and a place in a file,
+  and edges that inherit, implement, hold or use, drawn by the editor as a UML diagram in a
+  window of its own, with zoom, filtering, opening and export to SVG, Mermaid and PlantUML.
+- **Long work** goes in steps: `continue-later` has the plugin called again (`resumed`) after
+  what is waiting, so no call runs into the time limit and the editor stays responsive.
 - **Storage**: each plugin keeps its own text (`storage-read`, `storage-write`, 4 MB) in
   `<config>\plugins\data`, without a permission.
 - **Registry**: `plugins.registry` is a folder or URL with a `registry.json`. Nothing is
@@ -719,6 +724,22 @@ you keep it; uninstalling one takes it out again.
     `package.json` scripts (with npm, pnpm, yarn or bun, by the lock file), Makefile targets
     (with their `##` comment or first line), `justfile` recipes, Taskfile and Deno tasks, and
     Cargo's build, run (each program and example), test, check, clippy and fmt.
+- **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,
+  enums, structs, records and traits as a UML class diagram, read from the code without a
+  compiler: Java, Kotlin, C#, TypeScript and JavaScript, C and C++, Swift, Dart, Scala, PHP,
+  Python, Rust and Go. Each box has the type's fields and methods with their visibility
+  (`+` public, `-` private, `#` protected, `~` package); lines show what it extends (solid,
+  hollow triangle) and implements (dashed, hollow triangle), and a diamond the project's types
+  it holds in a field. A parent from outside the project (a library's) gets a grey box.
+  - **Class Diagram: Whole Project**: every type, the 400 most related when there are more.
+  - **Class Diagram: Current File**: the types of the file in front, their parents up to the
+    top, their children, and what they hold or are held by.
+
+  The window lays parents above children. Drag to move, scroll to zoom, **Fit**; **Find a
+  class** dims the others (Enter picks the first and centres it); a click picks a box and
+  lights what it is related to; a double click opens the file at the type. **Members** shows
+  or hides the fields and methods. **Export SVG...**, **Copy Mermaid**, **Copy PlantUML** and
+  **Preview Mermaid**.
 
 **Built in**, as plugins you can turn off in the Extensions view:
 

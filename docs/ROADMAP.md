@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Class diagrams from the code, as an extension that comes with Coiman (UML, 13 languages, SVG/Mermaid/PlantUML).
 - Extensions that come with Coiman, installed only when wanted; the first, Terminal Commands: history, Ctrl+Space suggestions, project commands.
 - Git Tools: history search (by text and by change), submodules, hooks, `.gitignore` rules.
 - OpenAPI and Swagger specs: endpoints, models, each endpoint as a `.http` request.
@@ -54,8 +55,8 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 New features come as extensions that ship with Coiman and run only once installed, so each
 user keeps Coiman as light or as full as they like. The plugin API grows with what each one
 needs (a drawing canvas, forms, windows of their own), and the features already built in move
-out one at a time, the heavy views first (the OOP and dependency graphs, Git Graph, the
-database windows).
+out one at a time, the heavy views first (the dependency graph, Git Graph, the database
+windows).
 
 ## Next, nothing to download
 

@@ -31,8 +31,8 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, Decoration, DirEntry, Document, JobResult, Pick, PickAction, PickChoice, PickItem, PickQuery,
-    Problem, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
+    Block, Button, Decoration, DirEntry, Document, EdgeKind, Graph, GraphEdge, GraphNode, JobResult, Pick, PickAction,
+    PickChoice, PickItem, PickQuery, Problem, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -127,6 +127,11 @@ pub enum Update {
         plugin: String,
         terminal: u64,
         text: String,
+    },
+    /// A graph to show in its window (an empty title closes it).
+    Graph {
+        plugin: String,
+        graph: Graph,
     },
 }
 
@@ -756,6 +761,15 @@ impl coiman::plugin::host::Host for State {
         self.need(Permission::Terminal)?;
         self.send(Update::TerminalType { plugin: self.plugin.clone(), terminal, text });
         Ok(())
+    }
+
+    fn show_graph(&mut self, graph: Graph) {
+        self.send(Update::Graph { plugin: self.plugin.clone(), graph });
+    }
+
+    fn continue_later(&mut self, token: String) {
+        // Queued behind what is waiting already, so the editor's own messages come first.
+        let _ = self.messages.send(Msg::Deliver { plugin: self.plugin.clone(), event: Event::Resumed(token) });
     }
 
     fn shell_history(&mut self) -> Result<Vec<String>, String> {

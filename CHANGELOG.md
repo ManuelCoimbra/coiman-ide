@@ -14,7 +14,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   typed, commands run before, the project's, and paths; **Terminal: Search Command History...**
   and **Terminal: Run Project Command...** (`package.json` scripts, Makefile targets, `justfile`
   recipes, Taskfile and Deno tasks, Cargo commands).
-- Plugin API 0.6: pick lists, the `terminal` permission (`terminal-command` and
+- **Class Diagram**, an extension that comes with Coiman: the project's classes, interfaces,
+  enums, structs and traits as an interactive UML class diagram, read from the code (Java,
+  Kotlin, C#, TypeScript, JavaScript, C++, Swift, Dart, Scala, PHP, Python, Rust, Go), for the
+  whole project or the file in front, with export to SVG, Mermaid and PlantUML.
+- Plugin API 0.6: graphs drawn by the editor (`show-graph`), work in steps (`continue-later`),
+  pick lists, the `terminal` permission (`terminal-command` and
   `terminal-suggest` events, `active-terminal-line`, `terminal-type`, `shell-history`),
   `read-dir`, `workspace-path`, and each plugin's own storage. Plugins built for 0.5 need
   rebuilding.

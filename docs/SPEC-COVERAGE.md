@@ -10,14 +10,14 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 160, partial 121,
-missing 188, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 162, partial 121,
+missing 186, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
 |---|---|---|---|---|
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
-| 2 Architecture | 14 | 5 | 10 | |
+| 2 Architecture | 16 | 5 | 8 | |
 | 3 Debugging and performance | 14 | 3 | 21 | |
 | 4 Git and collaboration | 13 | 2 | 3 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
@@ -63,8 +63,8 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 
 | Item | Status | Note |
 |---|---|---|
-| Interactive class diagrams | Missing | |
-| UML class diagrams | Missing | Mermaid class diagrams preview, but none are generated from code |
+| Interactive class diagrams | Done | Class Diagram extension: the project or the file in front; zoom, find, pick, open |
+| UML class diagrams | Done | Class Diagram extension: from the code of 13 languages, exported as SVG, Mermaid or PlantUML |
 | UML sequence diagrams | Missing | Previewed when written in Mermaid |
 | UML activity diagrams | Missing | |
 | UML component diagrams | Missing | |

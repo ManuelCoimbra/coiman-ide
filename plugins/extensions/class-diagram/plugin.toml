@@ -1,0 +1,13 @@
+id = "coiman.class-diagram"
+name = "Class Diagram"
+version = "1.0.0"
+description = "Draws the project's classes, interfaces, enums, structs and traits as a UML class diagram, read from the code (Java, Kotlin, C#, TypeScript, JavaScript, C++, Swift, Dart, Scala, PHP, Python, Rust, Go), with export to SVG, Mermaid and PlantUML."
+permissions = ["workspace-read", "editor-read"]
+
+[[commands]]
+id = "project"
+title = "Class Diagram: Whole Project"
+
+[[commands]]
+id = "file"
+title = "Class Diagram: Current File"

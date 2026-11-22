@@ -7,9 +7,10 @@ pub mod host;
 pub mod manifest;
 pub mod registry;
 pub mod store;
+pub mod uml;
 
 pub use host::{
-    Block, Button, Decoration, DirEntry, Document, Event, Pick, PickAction, PickChoice, PickItem, PickQuery,
-    PluginHost, Problem, Severity, TerminalLine, TreeItem, Update,
+    Block, Button, Decoration, DirEntry, Document, EdgeKind, Event, Graph, GraphEdge, GraphNode, Pick, PickAction,
+    PickChoice, PickItem, PickQuery, PluginHost, Problem, Severity, TerminalLine, TreeItem, Update,
 };
 pub use manifest::{EventKind, Manifest, Permission};
