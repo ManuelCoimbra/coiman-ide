@@ -175,7 +175,6 @@ impl CodeApp {
                 }
             }
             Command::OpenRemoteFolder => self.show_remote_folder(),
-            Command::ShowDocker => self.show_docker(ctx),
             Command::ShowAndroid => self.show_android(ctx),
             Command::ShowMcpServers => self.show_mcp(),
             Command::AnalyzeBinarySize => self.show_binary_size(ctx),

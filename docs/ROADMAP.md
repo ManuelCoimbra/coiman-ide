@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Docker moved out of the program into an extension (Containers pack).
 - The HTTP client and OpenAPI moved out of the program into extensions (Web and APIs pack).
 - Git Graph moved out of the program into an extension; the Git pack is all extensions now.
 - Git Tools moved out of the program into an extension (Git pack); plugins got forms.
@@ -68,7 +69,8 @@ program itself gets smaller too:
    and search by syntax tree, and the function flow (it needs the editor's parser).
 2. Git, more of it: done (Git Graph and Git Tools).
 3. Web and APIs: done (HTTP Client and OpenAPI).
-4. Databases, Containers, Embedded, Mobile: once the API has forms and tables to edit.
+4. Containers: Docker is done; left: GitHub Actions, remote folders and SSH, remote debugging.
+   Then Databases, Embedded, Mobile.
 5. Graphics and Agents last: shader previews and the agents panel need the most from the host.
 
 ## Next, nothing to download

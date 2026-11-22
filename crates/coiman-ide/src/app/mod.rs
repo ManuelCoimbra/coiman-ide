@@ -148,7 +148,6 @@ pub struct CodeApp {
     /// Remote: Open SSH Folder's form and its downloads and uploads.
     remote_folders: project::remote_folder_ui::RemoteFolders,
     /// Docker: Show Containers and Images.
-    docker: project::docker_ui::DockerView,
     /// Android: Devices and Logcat.
     android: project::android_ui::AndroidView,
     /// A Jupyter notebook open as its cells.
@@ -371,7 +370,6 @@ impl CodeApp {
             snapshots: Default::default(),
             activity: Default::default(),
             remote_folders: Default::default(),
-            docker: Default::default(),
             android: Default::default(),
             notebook: Default::default(),
             mcp: Default::default(),
@@ -1043,7 +1041,6 @@ impl CodeApp {
         self.remote_debug_window(&ctx);
         self.new_plugin_window(&ctx);
         self.remote_folder_window(&ctx);
-        self.docker_window(&ctx);
         self.android_window(&ctx);
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);

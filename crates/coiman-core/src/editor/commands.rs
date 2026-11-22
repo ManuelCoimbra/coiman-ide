@@ -148,8 +148,6 @@ pub enum Command {
     NewSshTerminal,
     /// A folder on another machine, mirrored here; saves go back over ssh.
     OpenRemoteFolder,
-    /// Docker's containers, images and the project's Compose services.
-    ShowDocker,
     /// Android devices through adb: logcat, shell, installs.
     ShowAndroid,
     /// The MCP servers the Agents panel's opencode gets.
@@ -353,8 +351,7 @@ impl Command {
             | Command::ShowDatabaseDiagram
             | Command::ShowRedis
             | Command::ShowMongo => DATA,
-            Command::ShowDocker
-            | Command::ShowActions
+            Command::ShowActions
             | Command::DownloadRemoteFolder
             | Command::RemoteTerminal
             | Command::RemoteRunCommand
@@ -495,7 +492,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
     (Command::NewSshTerminal, "Terminal: New SSH Terminal..."),
     (Command::OpenRemoteFolder, "Remote: Open SSH Folder..."),
-    (Command::ShowDocker, "Docker: Show Containers, Images and Compose"),
     (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
@@ -812,7 +808,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
     (Command::NewSshTerminal, "coiman.terminal.newSsh"),
     (Command::OpenRemoteFolder, "coiman.remote.openFolder"),
-    (Command::ShowDocker, "coiman.docker.show"),
     (Command::ShowAndroid, "coiman.android.show"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::AnalyzeBinarySize, "coiman.build.binarySize"),

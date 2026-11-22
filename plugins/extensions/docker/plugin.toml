@@ -1,0 +1,14 @@
+id = "coiman.docker"
+name = "Docker"
+version = "1.0.0"
+description = "Containers, images and the project's Compose services through the docker program: start, stop, restart, remove, logs, a shell inside, compose up and down."
+permissions = ["workspace-read"]
+programs = ["docker"]
+
+[[commands]]
+id = "show"
+title = "Docker: Show Containers, Images and Compose"
+
+[[panels]]
+id = "docker"
+title = "Docker"

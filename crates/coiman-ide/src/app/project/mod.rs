@@ -2,7 +2,6 @@
 
 pub(crate) mod actions_ui;
 pub(crate) mod android_ui;
-pub(crate) mod docker_ui;
 pub(crate) mod git;
 pub(crate) mod git_setup;
 pub(crate) mod merge_conflicts_ui;

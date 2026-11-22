@@ -663,7 +663,7 @@ appear, and its background work doesn't run.
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
-and OpenAPI with Web and APIs, Terminal Commands
+and OpenAPI with Web and APIs, Docker with Containers, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -786,6 +786,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **Docker** (`workspace-read`; program `docker`): containers, images, Compose; see **Docker** further down,
+  beside the remote folders.
 - **HTTP Client** (`workspace-read`, `editor-read`, `environment`; program `curl`): `.http`
   requests, environments, history; see [HTTP client](#http-client).
 - **OpenAPI** (`workspace-read`, `workspace-write`, `editor-read`): a spec's endpoints and
@@ -1203,15 +1205,16 @@ as far as they were approved at install, in trusted folders.
   remote folder (absolute or relative) pointing at the files here, and Ctrl+click opens them
   in the terminal too. Language servers run here, on the copy, with the tools installed on
   this computer. ssh logs in with a key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
-- **Docker: Show Containers, Images and Compose** asks the `docker` program (Docker
+- **Docker** (an extension of the Containers pack; `workspace-read`, program `docker`), in a
+  panel: **Docker: Show Containers, Images and Compose** asks the `docker` program (Docker
   Desktop, Docker Engine or anything that answers like it). **Containers**: name, image,
   status and ports, running ones in green; **Stop**, **Restart** and **Shell** (bash, else sh,
-  in a terminal) for running ones, **Start** and **Remove** for stopped ones, **Logs** (followed,
-  in a terminal) for all. **Images**: size and age, **Remove** (Docker refuses one a container
-  uses, and says so). **Compose**, when the folder has `compose.yaml` or
+  in a terminal) for running ones, **Start** and **Remove…** (asks first) for stopped ones,
+  **Logs** (followed, in a terminal) for all. **Images**: size and age, **Remove…** (Docker
+  refuses one a container uses, and says so). **Compose**, when the folder has `compose.yaml` or
   `docker-compose.yml`: its services with status and ports, **up** (with `--build`) and
   **build** and **logs** in terminals, **down**. Without Docker, or with its engine stopped,
-  the window says which.
+  the panel says which.
 - **Android: Devices and Logcat** asks `adb` (on PATH, in the Android SDK, or unpacked into
   the config folder's `tools/platform-tools`). It lists the devices, saying what to do with one
   that is unauthorized or offline. **Logcat** follows a device's log live, colored by level,

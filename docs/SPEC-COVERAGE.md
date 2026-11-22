@@ -422,7 +422,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 
 | Item | Status | Note |
 |---|---|---|
-| Docker integration | Done | Docker window over the `docker` program; run rule for a Dockerfile |
+| Docker integration | Done | Docker extension over the `docker` program; run rule for a Dockerfile |
 | Container management | Done | Start, stop, restart, remove, logs |
 | Container image inspection | Partial | Images listed with size and age, removed; layers not shown |
 | Dockerfile editor and diagnostics | Partial | Editing and run; no diagnostics |

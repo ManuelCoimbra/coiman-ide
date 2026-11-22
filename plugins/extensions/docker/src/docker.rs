@@ -1,8 +1,6 @@
 //! Docker and Compose, through the `docker` program: its containers, images and a project's
 //! Compose services, read from its JSON output, and the commands that act on them. Coiman
-//! talks to no engine itself; `docker` does.
-
-use std::path::{Path, PathBuf};
+//! talks to no engine itself; `docker` does, run as an approved program.
 
 use serde_json::Value;
 
@@ -126,13 +124,8 @@ pub fn parse_services(out: &str) -> Vec<Service> {
         .collect()
 }
 
-/// The project's Compose file, if it has one (the names Compose looks for, in its order).
-pub fn compose_file(root: &Path) -> Option<PathBuf> {
-    ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"]
-        .iter()
-        .map(|n| root.join(n))
-        .find(|p| p.is_file())
-}
+/// The names Compose looks for, in its order.
+pub const COMPOSE_FILES: [&str; 4] = ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"];
 
 /// What a failed `docker` call means, in a sentence.
 pub fn explain(stderr: &str) -> String {
@@ -161,15 +154,15 @@ pub fn images_args() -> Vec<String> {
     strs(&["images", "--format", "json"])
 }
 
-pub fn compose_ps_args(file: &Path) -> Vec<String> {
+pub fn compose_ps_args(file: &str) -> Vec<String> {
     let mut a = compose(file);
     a.extend(strs(&["ps", "-a", "--format", "json"]));
     a
 }
 
 /// `docker compose -f <file>`.
-pub fn compose(file: &Path) -> Vec<String> {
-    vec!["compose".to_owned(), "-f".to_owned(), file.to_string_lossy().into_owned()]
+pub fn compose(file: &str) -> Vec<String> {
+    vec!["compose".to_owned(), "-f".to_owned(), file.to_owned()]
 }
 
 /// What can be done to a container, and the command for it.
@@ -249,7 +242,7 @@ mod tests {
     #[test]
     fn commands_and_errors() {
         assert_eq!(ContainerAction::Remove.args("web"), ["rm", "web"]);
-        assert_eq!(compose_ps_args(Path::new("compose.yaml"))[..3], ["compose", "-f", "compose.yaml"]);
+        assert_eq!(compose_ps_args("compose.yaml")[..3], ["compose", "-f", "compose.yaml"]);
         assert_eq!(logs_args("web"), ["logs", "-f", "--tail", "500", "web"]);
         assert!(
             explain("error during connect: this error may indicate that the docker daemon is not running")
@@ -257,13 +250,5 @@ mod tests {
         );
         assert!(explain("docker: 'compose' is not a docker command.").contains("Compose isn't installed"));
         assert_eq!(explain("Error: No such container: x\n"), "Error: No such container: x");
-        let dir = std::env::temp_dir().join(format!("coiman-docker-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        assert!(compose_file(&dir).is_none());
-        std::fs::write(dir.join("docker-compose.yml"), "services: {}\n").unwrap();
-        std::fs::write(dir.join("compose.yaml"), "services: {}\n").unwrap();
-        assert!(compose_file(&dir).unwrap().ends_with("compose.yaml"));
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Docker is now an extension of the Containers pack, in a panel (containers, images, Compose,
+  their actions, logs and shells in terminals); removing a container or an image asks first.
+  Its built-in window and code left the program.
 - The Web and APIs pack is all extensions now: **HTTP Client** (`.http` files through curl,
   environments, named responses, history and comparison, in a panel) and **OpenAPI** (a
   spec's endpoints and models, in a panel; an endpoint written to a `.http` file). Their
