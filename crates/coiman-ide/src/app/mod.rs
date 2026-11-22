@@ -170,7 +170,6 @@ pub struct CodeApp {
     /// OpenAPI: a spec's endpoints and models.
     openapi: project::openapi_ui::OpenApiView,
     /// Git Tools: history search, submodules, hooks, ignore rules.
-    git_tools: project::git_tools_ui::GitToolsView,
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
@@ -385,7 +384,6 @@ impl CodeApp {
             serial: Default::default(),
             http: Default::default(),
             openapi: Default::default(),
-            git_tools: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -1064,7 +1062,6 @@ impl CodeApp {
         self.serial_window(&ctx);
         self.http_window(&ctx);
         self.openapi_window(&ctx);
-        self.git_tools_window(&ctx);
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
         self.open_vsx_window(&ctx);

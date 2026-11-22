@@ -237,7 +237,8 @@ network, and only when you ask. All git work runs in the background.
 - **Branches**: the branch in the status bar (with `*` for uncommitted changes and
   ahead/behind counts) opens **Git: Checkout to...**, which can also create a branch.
   Switching runs in the background and open files reload when they change.
-- **Git Tools**, one window with a tab for each:
+- **Git Tools**, an extension of the Git pack (`workspace-read`, `workspace-write`; program
+  `git`), in a panel with a tab for each:
   - **Search History** (**Git: Search History...**): commits by words in the message, by
     author, by file or folder, or by a change: **Added or removed text** finds the commits
     where a name or text came in or went out (`git log -S`), **Changed lines matching** takes
@@ -657,7 +658,8 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture and Code Health come with Code analysis, Terminal Commands with Terminal extras); removing it
+Architecture and Code Health come with Code analysis, Git Tools with Git, Terminal Commands
+with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
 so a project gets the environment it needs. A new install starts with none; settings from
@@ -706,6 +708,12 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   tab; **`show-markdown`** opens a page; **`syntax-functions`** gives a file's functions with
   their length and complexity from the editor's parser. An approved `python` is the project's
   interpreter.
+- **Forms** (`form` blocks): text fields, check boxes and choices on one line with buttons;
+  a press, or Enter in a text field, sends `form-submitted` with what each field holds. What
+  was typed stays until the plugin sends a field a new value. **`open-commit-diff`** shows
+  what a commit changed in a file; **`rename-file`** and **`set-executable`**
+  (`workspace-write`) rename a file and make a script runnable. Git never waits on a password
+  prompt in a program a plugin runs.
 - **Storage**: each plugin keeps its own text (`storage-read`, `storage-write`, 4 MB) in
   `<config>\plugins\data`, without a permission.
 - **Registry**: `plugins.registry` is a folder or URL with a `registry.json`. Nothing is
@@ -763,6 +771,8 @@ you keep it; uninstalling one takes it out again.
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **Git Tools** (`workspace-read`, `workspace-write`; program `git`): history search,
+  submodules, hooks and `.gitignore` rules; see Git Tools under Git.
 - **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,
   enums, structs, records and traits as a UML class diagram, read from the code without a
   compiler: Java, Kotlin, C#, TypeScript and JavaScript, C and C++, Swift, Dart, Scala, PHP,

@@ -31,9 +31,9 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, Decoration, DirEntry, Document, EdgeKind, FileLink, FunctionInfo, Graph, GraphEdge, GraphNode,
-    JobResult, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, Row, ServerResponse, Severity, Span, Table,
-    TerminalLine, TreeItem,
+    Block, Button, Decoration, DirEntry, Document, EdgeKind, FieldKind, FileLink, Form, FormField, FormValues,
+    FunctionInfo, Graph, GraphEdge, GraphNode, JobResult, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem,
+    Row, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -139,6 +139,12 @@ pub enum Update {
         plugin: String,
         title: String,
         text: String,
+    },
+    /// What a commit changed in a file, to show in the diff view.
+    CommitDiff {
+        plugin: String,
+        commit: String,
+        path: String,
     },
     /// A program (already found and approved) to run in a terminal tab, in the open folder.
     RunInTerminal {
@@ -673,6 +679,7 @@ impl coiman::plugin::host::Host for State {
         let exe = self.program(&program)?;
         let mut child = quiet_command(&exe)
             .args(&args)
+            .env("GIT_TERMINAL_PROMPT", "0")
             .current_dir(&root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -823,6 +830,42 @@ impl coiman::plugin::host::Host for State {
         let line = format!("started in a terminal: {} {}", exe.display(), args.join(" "));
         self.send(Update::Log { plugin: self.plugin.clone(), line });
         self.send(Update::RunInTerminal { plugin: self.plugin.clone(), title, program: exe, args, folder });
+        Ok(())
+    }
+
+    fn open_commit_diff(&mut self, commit: String, path: String) -> Result<(), String> {
+        self.need(Permission::WorkspaceRead)?;
+        let ok = !commit.is_empty() && commit.chars().all(|c| c.is_ascii_hexdigit());
+        if !ok {
+            return Err(format!("\"{commit}\" isn't a commit's hash"));
+        }
+        // Inside the open folder (it may be gone from the disk now: only the shape is checked).
+        if path.is_empty()
+            || !Path::new(&path).components().all(|c| matches!(c, PathPart::Normal(_) | PathPart::CurDir))
+        {
+            return Err(format!("\"{path}\" isn't a path inside the open folder"));
+        }
+        self.send(Update::CommitDiff { plugin: self.plugin.clone(), commit, path });
+        Ok(())
+    }
+
+    fn rename_file(&mut self, from: String, to: String) -> Result<(), String> {
+        self.need(Permission::WorkspaceWrite)?;
+        let (a, b) = (self.resolve(&from, true)?, self.resolve(&to, false)?);
+        std::fs::rename(&a, &b).map_err(|e| format!("{from}: {e}"))
+    }
+
+    fn set_executable(&mut self, path: String) -> Result<(), String> {
+        self.need(Permission::WorkspaceWrite)?;
+        let full = self.resolve(&path, true)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut p = std::fs::metadata(&full).map_err(|e| e.to_string())?.permissions();
+            p.set_mode(p.mode() | 0o755);
+            std::fs::set_permissions(&full, p).map_err(|e| e.to_string())?;
+        }
+        let _ = full;
         Ok(())
     }
 

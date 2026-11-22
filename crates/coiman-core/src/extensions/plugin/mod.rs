@@ -10,8 +10,8 @@ pub mod store;
 pub mod uml;
 
 pub use host::{
-    Block, Button, Decoration, DirEntry, Document, EdgeKind, Event, FileLink, Graph, GraphEdge, GraphNode, Pick,
-    PickAction, PickChoice, PickItem, PickQuery, PluginHost, Problem, Row, Severity, Span, TerminalLine, TreeItem,
-    Update,
+    Block, Button, Decoration, DirEntry, Document, EdgeKind, Event, FieldKind, FileLink, Form, FormField, FormValues,
+    Graph, GraphEdge, GraphNode, Pick, PickAction, PickChoice, PickItem, PickQuery, PluginHost, Problem, Row, Severity,
+    Span, TerminalLine, TreeItem, Update,
 };
 pub use manifest::{EventKind, Manifest, Permission};

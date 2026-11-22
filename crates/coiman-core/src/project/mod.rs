@@ -11,7 +11,6 @@ pub mod file_ops;
 pub mod finder;
 pub mod git;
 pub mod git_graph;
-pub mod git_tools;
 pub mod history;
 pub mod http_client;
 pub mod openapi;

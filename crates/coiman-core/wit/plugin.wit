@@ -51,6 +51,45 @@ interface types {
         buttons: list<button>,
     }
 
+    enum field-kind {
+        /// A line of text.
+        text,
+        /// On or off: its value is "true" or "false".
+        check,
+        /// One of `options`.
+        choice,
+    }
+
+    /// A field of a form.
+    record form-field {
+        id: string,
+        /// Shown before it ("" for none).
+        label: string,
+        kind: field-kind,
+        /// What it holds at first. The editor keeps what the user types while the form is
+        /// shown again; a different value sent sets it anew.
+        value: string,
+        /// A choice's options.
+        options: list<string>,
+        /// Shown while a text field is empty.
+        hint: string,
+    }
+
+    /// Fields on one line, with buttons that send them (`form-submitted`); Enter in a text
+    /// field sends with the first button.
+    record form {
+        id: string,
+        fields: list<form-field>,
+        buttons: list<string>,
+    }
+
+    /// What a form held when one of its buttons was pressed.
+    record form-values {
+        form: string,
+        button: string,
+        values: list<tuple<string, string>>,
+    }
+
     /// A piece of a panel declared in `plugin.toml`. Panels are declarative:
     /// the editor draws them with its own widgets.
     variant block {
@@ -69,6 +108,8 @@ interface types {
         links(list<file-link>),
         /// A grid of coloured cells with buttons at the end of each row.
         rows(list<row>),
+        /// Fields to fill in, and buttons that send them.
+        form(form),
     }
 
     /// Colors part of a line. Colors are 0xRRGGBB.
@@ -290,6 +331,8 @@ interface types {
         pick-query-changed(pick-query),
         /// What `continue-later` was given, once the editor has drawn a frame. Always delivered.
         resumed(string),
+        /// A button of one of this plugin's forms was pressed. Always delivered.
+        form-submitted(form-values),
     }
 }
 
@@ -384,6 +427,14 @@ interface host {
     /// and complexity, from the editor's parser (Rust, Python, JavaScript, TypeScript, Java,
     /// C, C++, C#, Go); empty for other languages.
     syntax-functions: func(path: string) -> result<list<function-info>, string>;
+    /// Needs `workspace-read`: opens what a commit changed in a file (relative to the open
+    /// folder, which is a Git repository), in the editor's diff view.
+    open-commit-diff: func(commit: string, path: string) -> result<_, string>;
+    /// Needs `workspace-write`: renames a file of the open folder (both paths relative to it).
+    rename-file: func(%from: string, to: string) -> result<_, string>;
+    /// Needs `workspace-write`: lets a file of the open folder run as a program (does nothing on
+    /// Windows, where scripts run by their kind).
+    set-executable: func(path: string) -> result<_, string>;
 }
 
 world plugin {

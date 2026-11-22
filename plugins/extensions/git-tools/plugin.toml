@@ -1,0 +1,26 @@
+id = "coiman.git-tools"
+name = "Git Tools"
+version = "1.0.0"
+description = "Search the history (by message, author, file, or a change that adds or removes a text), submodules, hooks, and what each .gitignore rule hides."
+permissions = ["workspace-read", "workspace-write"]
+programs = ["git"]
+
+[[commands]]
+id = "search"
+title = "Git: Search History..."
+
+[[commands]]
+id = "submodules"
+title = "Git: Submodules"
+
+[[commands]]
+id = "hooks"
+title = "Git: Hooks"
+
+[[commands]]
+id = "ignore"
+title = "Git: Explain .gitignore"
+
+[[panels]]
+id = "git"
+title = "Git Tools"

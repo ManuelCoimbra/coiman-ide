@@ -170,12 +170,6 @@ pub enum Command {
     HttpShow,
     /// The endpoints and models of the OpenAPI spec in the editor.
     OpenApiShow,
-    /// Commits by message, author, file, or a change that adds or removes a text.
-    GitSearchHistory,
-    GitSubmodules,
-    GitHooks,
-    /// What each .gitignore rule hides, why a path is ignored, a rule tried before adding it.
-    GitIgnoreRules,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -390,11 +384,7 @@ impl Command {
             | Command::RulesFixHere
             | Command::AnalyzeStackTrace
             | Command::ShowTreeSearch => ANALYSIS,
-            Command::GitShowGraph
-            | Command::GitSearchHistory
-            | Command::GitSubmodules
-            | Command::GitHooks
-            | Command::GitIgnoreRules => GIT,
+            Command::GitShowGraph => GIT,
             Command::ShowAgents | Command::ShowMcpServers => AGENTS,
             _ => return None,
         })
@@ -525,10 +515,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::HttpSend, "HTTP: Send Request at Cursor"),
     (Command::HttpShow, "HTTP: Show Client"),
     (Command::OpenApiShow, "OpenAPI: Show Endpoints"),
-    (Command::GitSearchHistory, "Git: Search History..."),
-    (Command::GitSubmodules, "Git: Submodules"),
-    (Command::GitHooks, "Git: Hooks"),
-    (Command::GitIgnoreRules, "Git: Explain .gitignore"),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -850,10 +836,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::HttpSend, "coiman.http.sendAtCursor"),
     (Command::HttpShow, "coiman.http.show"),
     (Command::OpenApiShow, "coiman.openapi.showEndpoints"),
-    (Command::GitSearchHistory, "coiman.git.searchHistory"),
-    (Command::GitSubmodules, "coiman.git.submodules"),
-    (Command::GitHooks, "coiman.git.hooks"),
-    (Command::GitIgnoreRules, "coiman.git.ignoreRules"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Git Tools moved out of the program into an extension (Git pack); plugins got forms.
 - Code Health and the project overview moved out of the program into an extension.
 - Architecture moved out of the program into an extension (Code analysis pack).
 - Packs: every extra in a pack by kind of work, installed only when wanted.
@@ -63,7 +64,7 @@ program itself gets smaller too:
 1. Code analysis: the dependency graph (Architecture) and Code Health with the overview are
    done; left: session statistics, the profiler, coverage, run history, stack traces, rules
    and search by syntax tree, and the function flow (it needs the editor's parser).
-2. Git, more of it: Git Graph onto `show-graph`, Git Tools as panels.
+2. Git, more of it: Git Tools is done; left: Git Graph (it needs a commit-lane graph).
 3. Web and APIs: the HTTP client and OpenAPI (they run curl and read files: panels and jobs).
 4. Databases, Containers, Embedded, Mobile: once the API has forms and tables to edit.
 5. Graphics and Agents last: shader previews and the agents panel need the most from the host.

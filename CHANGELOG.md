@@ -7,6 +7,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Git Tools is now an extension of the Git pack (search history, submodules, hooks,
+  `.gitignore` rules) with a panel and a tab for each, instead of a window; its built-in code
+  left the program.
+- Plugin API: `form` panel blocks (text fields, check boxes, choices and buttons; a press sends
+  `form-submitted`), `open-commit-diff`, `rename-file`, `set-executable`; programs plugins run
+  never wait on a Git password prompt.
 - Code Health is now an extension of the Code analysis pack (secrets, complexity, duplicates,
   undocumented items, dependencies with their tree in the Explorer, licences, audits) with a
   panel instead of a window, and Project: Generate Overview comes with it. The built-in window

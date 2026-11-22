@@ -86,11 +86,6 @@ fn git(dir: &Path, args: &[&str], stdin: Option<&[u8]>) -> Result<Vec<u8>, Strin
     git_env(dir, args, stdin, &[])
 }
 
-/// [`git`] with text to read, its output as text.
-pub(crate) fn git_stdin(dir: &Path, args: &[&str], stdin: &[u8]) -> Result<String, String> {
-    git(dir, args, Some(stdin)).map(text)
-}
-
 /// [`git`] with more environment variables.
 pub(crate) fn git_env(
     dir: &Path,

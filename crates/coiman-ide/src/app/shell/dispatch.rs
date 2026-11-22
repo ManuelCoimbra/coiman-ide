@@ -186,10 +186,6 @@ impl CodeApp {
             Command::HttpSend => self.http_send(ctx, None),
             Command::HttpShow => self.show_http(),
             Command::OpenApiShow => self.show_openapi(),
-            Command::GitSearchHistory => self.show_git_tools(ctx, crate::app::project::git_tools_ui::Tab::Search),
-            Command::GitSubmodules => self.show_git_tools(ctx, crate::app::project::git_tools_ui::Tab::Submodules),
-            Command::GitHooks => self.show_git_tools(ctx, crate::app::project::git_tools_ui::Tab::Hooks),
-            Command::GitIgnoreRules => self.show_git_tools(ctx, crate::app::project::git_tools_ui::Tab::Ignore),
             Command::DownloadRemoteFolder => self.download_remote_again(ctx),
             Command::RemoteTerminal => self.remote_terminal(ctx, None),
             Command::RemoteRunCommand => self.palette.show_input(

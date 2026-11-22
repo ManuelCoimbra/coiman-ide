@@ -148,13 +148,13 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Commit graph visualisation | Done | Git Graph, every branch |
 | Branch comparison | Done | Git Graph: commits each way, files changed |
 | Visualise repository history | Done | Git Graph, file history, blame |
-| Search through commit history | Done | Git Tools: by message, author, file, or a change that adds or removes a text (`-S`, `-G`) |
+| Search through commit history | Done | Git Tools extension: by message, author, file, or a change that adds or removes a text (`-S`, `-G`) |
 | Compare arbitrary commits | Partial | Git Graph: a branch or commit against the current branch (commits on each side, files changed) |
 | Git worktree management | Done | Git Graph: list, add, open, remove, prune |
-| Submodule management | Done | Git Tools: state, fetch, newest commit, add, remove |
-| Git hooks management | Done | Git Tools: create, edit, turn off and on, run now |
+| Submodule management | Done | Git Tools extension: state, fetch, newest commit, add, remove |
+| Git hooks management | Done | Git Tools extension: create, edit, turn off and on, run now |
 | Git LFS integration | Missing | |
-| Advanced `.gitignore` editor | Done | Git Tools: what each rule hides, why a path is ignored, a rule tried before it's added |
+| Advanced `.gitignore` editor | Done | Git Tools extension: what each rule hides, why a path is ignored, a rule tried before it's added |
 | Live collaborative editing | Network | |
 | Shared cursors | Network | |
 | Shared selections | Network | |

@@ -185,6 +185,9 @@ pub(crate) struct PluginState {
     shipped: Option<Vec<(PathBuf, Manifest)>>,
     /// The project's Python interpreter, as the plugins were last told.
     python: Option<PathBuf>,
+    /// Plugin forms' fields: (plugin, form, field) to (the value the plugin last sent, what
+    /// the field holds now).
+    forms: HashMap<(String, String, String), (String, String)>,
 }
 
 /// `Locked::source` prefix of an extension that came with Coiman and was installed on request.
@@ -681,6 +684,10 @@ impl CodeApp {
             Update::Pick { plugin, pick } => self.show_plugin_pick(plugin, pick),
             Update::Graph { plugin, graph } => self.show_plugin_graph(plugin, graph),
             Update::Markdown { text, .. } => self.open_markdown_page(&text),
+            Update::CommitDiff { commit, path, .. } => {
+                let short: String = commit.chars().take(7).collect();
+                self.open_commit_file(ctx, commit, short, path);
+            }
             Update::RunInTerminal { title, program, args, folder, .. } => {
                 let program = program.to_string_lossy().into_owned();
                 let env = self.environment_variables();
@@ -1422,6 +1429,8 @@ impl CodeApp {
         let Some(panel) = self.plugins.panels.get(index) else { return };
         let mut run = None;
         let mut open_at: Option<(String, u32)> = None;
+        let mut forms = std::mem::take(&mut self.plugins.forms);
+        let mut submitted: Option<coiman_core::extensions::plugin::FormValues> = None;
         let rgb = |c: u32| egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             if panel.blocks.is_empty() {
@@ -1503,6 +1512,11 @@ impl CodeApp {
                             run = Some((b.command.clone(), b.argument.clone()));
                         }
                     }
+                    Block::Form(form) => {
+                        if let Some(values) = form_ui(ui, &panel.plugin, form, &mut forms) {
+                            submitted = Some(values);
+                        }
+                    }
                     Block::Links(links) => {
                         for l in links {
                             ui.horizontal(|ui| {
@@ -1563,8 +1577,14 @@ impl CodeApp {
                 }
             }
         });
+        let plugin = panel.plugin.clone();
+        self.plugins.forms = forms;
+        if let Some(values) = submitted
+            && let Some(host) = &self.plugins.host
+        {
+            host.deliver(&plugin, Event::FormSubmitted(values));
+        }
         if let Some((command, argument)) = run {
-            let plugin = panel.plugin.clone();
             self.run_plugin(&plugin, &command, &argument);
         }
         if let Some((path, line)) = open_at
@@ -1616,6 +1636,72 @@ impl CodeApp {
             self.run_plugin(&plugin, &command, &argument);
         }
     }
+}
+
+/// A plugin's form on one line: its fields (keeping what was typed) and buttons. What it holds
+/// when a button is pressed, or Enter in a text field (the first button).
+fn form_ui(
+    ui: &mut egui::Ui,
+    plugin: &str,
+    form: &coiman_core::extensions::plugin::Form,
+    state: &mut HashMap<(String, String, String), (String, String)>,
+) -> Option<coiman_core::extensions::plugin::FormValues> {
+    use coiman_core::extensions::plugin::FieldKind;
+    let mut pressed: Option<String> = None;
+    ui.horizontal_wrapped(|ui| {
+        for field in &form.fields {
+            let key = (plugin.to_owned(), form.id.clone(), field.id.clone());
+            let entry = state.entry(key).or_insert_with(|| (field.value.clone(), field.value.clone()));
+            // The plugin sent another value: it wants the field to hold it.
+            if entry.0 != field.value {
+                *entry = (field.value.clone(), field.value.clone());
+            }
+            if !field.label.is_empty() && field.kind != FieldKind::Check {
+                ui.label(&field.label);
+            }
+            match field.kind {
+                FieldKind::Text => {
+                    let width = if field.hint.len() > 24 { 300.0 } else { 200.0 };
+                    let r =
+                        ui.add(egui::TextEdit::singleline(&mut entry.1).hint_text(&field.hint).desired_width(width));
+                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        pressed = form.buttons.first().cloned();
+                    }
+                }
+                FieldKind::Check => {
+                    let mut on = entry.1 == "true";
+                    if ui.checkbox(&mut on, &field.label).changed() {
+                        entry.1 = on.to_string();
+                    }
+                }
+                FieldKind::Choice => {
+                    egui::ComboBox::from_id_salt((plugin, &form.id, &field.id)).selected_text(entry.1.clone()).show_ui(
+                        ui,
+                        |ui| {
+                            for o in &field.options {
+                                ui.selectable_value(&mut entry.1, o.clone(), o);
+                            }
+                        },
+                    );
+                }
+            }
+        }
+        for b in &form.buttons {
+            if ui.button(b).clicked() {
+                pressed = Some(b.clone());
+            }
+        }
+    });
+    let button = pressed?;
+    let values = form
+        .fields
+        .iter()
+        .map(|f| {
+            let key = (plugin.to_owned(), form.id.clone(), f.id.clone());
+            (f.id.clone(), state.get(&key).map(|v| v.1.clone()).unwrap_or_default())
+        })
+        .collect();
+    Some(coiman_core::extensions::plugin::FormValues { form: form.id.clone(), button, values })
 }
 
 fn diagnostic(p: &Problem, source: &str) -> lt::Diagnostic {
