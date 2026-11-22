@@ -183,9 +183,6 @@ impl CodeApp {
             Command::ShowRedis => self.show_redis(),
             Command::ShowMongo => self.show_mongo(),
             Command::SerialMonitor => self.show_serial(),
-            Command::HttpSend => self.http_send(ctx, None),
-            Command::HttpShow => self.show_http(),
-            Command::OpenApiShow => self.show_openapi(),
             Command::DownloadRemoteFolder => self.download_remote_again(ctx),
             Command::RemoteTerminal => self.remote_terminal(ctx, None),
             Command::RemoteRunCommand => self.palette.show_input(

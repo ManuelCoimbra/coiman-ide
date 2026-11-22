@@ -31,9 +31,10 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind, FileLink, Form,
-    FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobResult, MenuItem, Pick, PickAction,
-    PickChoice, PickItem, PickQuery, Problem, Row, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
+    Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind,
+    FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobResult, MenuItem,
+    Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, Row, ServerResponse, Severity, Span, Table,
+    TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -155,6 +156,14 @@ pub enum Update {
     },
     /// Text for the clipboard.
     CopyText(String),
+    /// A plugin's code lenses for a file (relative to the open folder).
+    CodeLenses {
+        plugin: String,
+        path: String,
+        lenses: Vec<CodeLens>,
+    },
+    /// Text for a new, unsaved tab.
+    OpenText(String),
     /// The Merge Conflicts window, asked for.
     MergeConflicts,
     /// A folder to open as the project.
@@ -883,6 +892,33 @@ impl coiman::plugin::host::Host for State {
         }
         self.send(Update::CompareDiff { plugin: self.plugin.clone(), base, other, path });
         Ok(())
+    }
+
+    fn set_code_lenses(&mut self, path: String, lenses: Vec<CodeLens>) {
+        if self.need(Permission::EditorRead).is_ok() {
+            self.send(Update::CodeLenses { plugin: self.plugin.clone(), path, lenses });
+        }
+    }
+
+    fn now(&mut self) -> Clock {
+        let now = chrono::Local::now();
+        Clock { unix_millis: now.timestamp_millis(), utc_offset_minutes: now.offset().local_minus_utc() / 60 }
+    }
+
+    fn random(&mut self) -> u64 {
+        use std::hash::{BuildHasher, Hasher};
+        let mut h = std::collections::hash_map::RandomState::new().build_hasher();
+        h.write_u128(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos()));
+        h.finish()
+    }
+
+    fn environment_variable(&mut self, name: String) -> Result<Option<String>, String> {
+        self.need(Permission::Environment)?;
+        Ok(std::env::var(name).ok())
+    }
+
+    fn open_text(&mut self, text: String) {
+        self.send(Update::OpenText(text));
     }
 
     fn copy_text(&mut self, text: String) {

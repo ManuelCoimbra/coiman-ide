@@ -5,8 +5,6 @@ pub(crate) mod android_ui;
 pub(crate) mod docker_ui;
 pub(crate) mod git;
 pub(crate) mod git_setup;
-pub(crate) mod http_ui;
 pub(crate) mod merge_conflicts_ui;
-pub(crate) mod openapi_ui;
 pub(crate) mod remote_folder_ui;
 pub(crate) mod serial_ui;

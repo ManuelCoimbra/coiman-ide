@@ -709,9 +709,10 @@ components:
         assert!(pet.get("id").is_none() && pet["name"] == "Rex");
         let file = s.http_file();
         assert!(file.contains("@baseUrl = https://eu.pets.example.com/v1\n@petId = \n"), "{file}");
-        let parsed = crate::project::http_client::parse(&file);
-        assert_eq!(parsed.requests.len(), 2);
-        assert_eq!(parsed.requests[1].method, "POST");
+        // Two requests, the second a POST (the HTTP Client extension reads them).
+        let starts: Vec<&str> = file.lines().filter(|l| l.starts_with("GET ") || l.starts_with("POST ")).collect();
+        assert_eq!(starts.len(), 2);
+        assert!(starts[1].starts_with("POST "));
         assert_eq!(line_of_path(PETS, "/pets"), Some(31));
         assert_eq!(line_of_path(PETS, "/pets/{petId}"), Some(12));
     }

@@ -7,6 +7,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The Web and APIs pack is all extensions now: **HTTP Client** (`.http` files through curl,
+  environments, named responses, history and comparison, in a panel) and **OpenAPI** (a
+  spec's endpoints and models, in a panel; an endpoint written to a `.http` file). Their
+  built-in windows and code left the program; `.http` files are still colored.
+- Plugin API: `set-code-lenses`, `now`, `random`, `environment-variable` (with a new
+  `environment` permission) and `open-text`.
 - Git Graph is now an extension of the Git pack, in a panel: the graph with its lanes, a
   commit's files, cherry-pick, revert, a branch, interactive rebase, compare, merge, rebase
   onto, and worktrees. Its built-in window and code left the program; the Merge Conflicts
@@ -70,6 +76,7 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- An extension's panel tab keeps its name as written ("HTTP Client", not "Http client").
 - An extension installed from the copy that comes with Coiman shows **Update…** when that copy
   changed (rebuilt for a newer plugin API) even with the same version, instead of stopping
   with "built for an older plugin API".

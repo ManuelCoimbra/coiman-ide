@@ -1,0 +1,23 @@
+id = "coiman.http-client"
+name = "HTTP Client"
+version = "1.0.0"
+description = "Sends the requests of .http files (JetBrains and VS Code REST Client style) through curl: environments, named responses, history and comparison."
+permissions = ["workspace-read", "editor-read", "environment"]
+programs = ["curl"]
+events = ["opened", "active-changed", "edited"]
+
+[[commands]]
+id = "send"
+title = "HTTP: Send Request at Cursor"
+
+[[commands]]
+id = "show"
+title = "HTTP: Show Client"
+
+[[commands]]
+id = "curl"
+title = "HTTP: Copy Request as curl"
+
+[[panels]]
+id = "http"
+title = "HTTP Client"

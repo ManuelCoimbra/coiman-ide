@@ -497,19 +497,11 @@ impl CodeApp {
     fn run_lens_command(&mut self, ctx: &egui::Context, command: lt::Command) {
         let title = command.title.clone();
         let arg = |at: usize| command.arguments.as_ref().and_then(|a| a.get(at)).cloned().unwrap_or(Value::Null);
-        // Lenses of `.http` files: the line of their request.
-        let line = arg(0).as_u64().map(|l| l as usize);
         match command.command.as_str() {
-            crate::app::project::http_ui::SEND => {
-                self.http_send(ctx, line);
-                return;
-            }
-            crate::app::project::http_ui::CURL => {
-                self.http_copy_curl(ctx, line);
-                return;
-            }
-            crate::app::project::openapi_ui::SHOW => {
-                self.show_openapi();
+            // A plugin's lens: (plugin, command, argument).
+            crate::app::extensions::plugins::PLUGIN_LENS => {
+                let text = |at: usize| arg(at).as_str().unwrap_or_default().to_owned();
+                self.run_plugin(&text(0), &text(1), &text(2));
                 return;
             }
             "rust-analyzer.showReferences" | "editor.action.showReferences" | "java.show.references" => {

@@ -164,12 +164,6 @@ pub enum Command {
     ShowMongo,
     /// A board's serial port: what it prints, and sending it text.
     SerialMonitor,
-    /// The `.http` request at the cursor, sent.
-    HttpSend,
-    /// The HTTP Client window.
-    HttpShow,
-    /// The endpoints and models of the OpenAPI spec in the editor.
-    OpenApiShow,
     DownloadRemoteFolder,
     RemoteTerminal,
     RemoteRunCommand,
@@ -353,7 +347,6 @@ impl Command {
     pub fn pack(self) -> Option<&'static str> {
         use crate::packs::*;
         Some(match self {
-            Command::HttpSend | Command::HttpShow | Command::OpenApiShow => WEB,
             Command::ConnectDatabase
             | Command::RunSqlInDatabase
             | Command::ExplainSqlInDatabase
@@ -510,9 +503,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowRedis, "Database: Redis..."),
     (Command::ShowMongo, "Database: MongoDB..."),
     (Command::SerialMonitor, "Serial: Open Monitor..."),
-    (Command::HttpSend, "HTTP: Send Request at Cursor"),
-    (Command::HttpShow, "HTTP: Show Client"),
-    (Command::OpenApiShow, "OpenAPI: Show Endpoints"),
     (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
     (Command::RemoteTerminal, "Remote: Open Terminal There"),
     (Command::RemoteRunCommand, "Remote: Run Command There..."),
@@ -830,9 +820,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowRedis, "coiman.database.redis"),
     (Command::ShowMongo, "coiman.database.mongo"),
     (Command::SerialMonitor, "coiman.serial.monitor"),
-    (Command::HttpSend, "coiman.http.sendAtCursor"),
-    (Command::HttpShow, "coiman.http.show"),
-    (Command::OpenApiShow, "coiman.openapi.showEndpoints"),
     (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
     (Command::RemoteTerminal, "coiman.remote.terminal"),
     (Command::RemoteRunCommand, "coiman.remote.runCommand"),

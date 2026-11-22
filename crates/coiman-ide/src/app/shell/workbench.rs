@@ -811,7 +811,11 @@ impl CodeApp {
                 let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
                 let resp = if pills {
                     // Sentence case, in a pill that's lit when chosen.
-                    let label = crate::app::dock::sentence_case(&label);
+                    // A plugin's title as it wrote it: "HTTP Client", not "Http client".
+                    let label = match tab {
+                        PanelTab::Plugin(i) => self.plugins.panels.get(i).map_or(label, |p| p.title.clone()),
+                        _ => crate::app::dock::sentence_case(&label),
+                    };
                     let fill = if active { theme::colors().accent.gamma_multiply(0.18) } else { Color32::TRANSPARENT };
                     egui::Frame::new()
                         .fill(fill)

@@ -166,9 +166,7 @@ pub struct CodeApp {
     /// Serial: Open Monitor.
     serial: project::serial_ui::SerialView,
     /// HTTP Client: `.http` requests and their responses.
-    http: project::http_ui::HttpView,
     /// OpenAPI: a spec's endpoints and models.
-    openapi: project::openapi_ui::OpenApiView,
     /// Git Tools: history search, submodules, hooks, ignore rules.
     database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
@@ -382,8 +380,6 @@ impl CodeApp {
             redis: Default::default(),
             mongo: Default::default(),
             serial: Default::default(),
-            http: Default::default(),
-            openapi: Default::default(),
             database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
@@ -571,10 +567,6 @@ impl CodeApp {
         self.pump_markup(&ctx);
         if self.settings.pack_on(coiman_core::packs::GRAPHICS) {
             self.pump_shaders(&ctx);
-        }
-        if self.settings.pack_on(coiman_core::packs::WEB) {
-            self.pump_http();
-            self.pump_openapi();
         }
         self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
@@ -1060,8 +1052,6 @@ impl CodeApp {
         self.redis_window(&ctx);
         self.mongo_window(&ctx);
         self.serial_window(&ctx);
-        self.http_window(&ctx);
-        self.openapi_window(&ctx);
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
         self.open_vsx_window(&ctx);

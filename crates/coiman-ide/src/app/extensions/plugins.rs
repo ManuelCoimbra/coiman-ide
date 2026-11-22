@@ -192,6 +192,9 @@ pub(crate) struct PluginState {
     forms: HashMap<(String, String, String), (String, String)>,
 }
 
+/// The lens command of a plugin's code lens: its arguments are (plugin, command, argument).
+pub(crate) const PLUGIN_LENS: &str = "coiman.plugin.lens";
+
 /// `Locked::source` prefix of an extension that came with Coiman and was installed on request.
 const SHIPPED_SOURCE: &str = "shipped:";
 
@@ -692,6 +695,12 @@ impl CodeApp {
             }
             Update::CompareDiff { base, other, path, .. } => self.open_compared_file(ctx, base, other, path),
             Update::CopyText(text) => ctx.copy_text(text),
+            Update::CodeLenses { plugin, path, lenses } => self.plugin_code_lenses(&plugin, &path, lenses),
+            Update::OpenText(text) => {
+                self.untitled_counter += 1;
+                let doc = coiman_core::editor::document::Document::untitled_with(self.untitled_counter, &text);
+                self.add_doc(doc);
+            }
             Update::MergeConflicts => self.show_merge_conflicts(),
             Update::OpenFolder(path) => self.open_folder(path),
             Update::RunInTerminal { title, program, args, folder, .. } => {
@@ -772,7 +781,7 @@ impl CodeApp {
         }
     }
 
-    fn run_plugin(&mut self, plugin: &str, command: &str, argument: &str) {
+    pub(crate) fn run_plugin(&mut self, plugin: &str, command: &str, argument: &str) {
         match &self.plugins.host {
             Some(host) if self.plugins.infos.iter().any(|i| i.id == plugin && i.running) => {
                 // The command line as it is now, for `active-terminal-line`.
@@ -1439,6 +1448,41 @@ impl CodeApp {
         if let Some((plugin, command)) = run {
             self.run_plugin(&plugin, &command, "");
         }
+    }
+
+    /// A plugin's code lenses on an open file: each runs the plugin's command when clicked.
+    fn plugin_code_lenses(&mut self, plugin: &str, path: &str, lenses: Vec<coiman_core::extensions::plugin::CodeLens>) {
+        use coiman_core::language::lsp::types as lt;
+        let Some(root) = self.explorer.root.clone() else { return };
+        let full = root.join(path);
+        let Some(uid) = self
+            .docs
+            .iter()
+            .find(|d| d.path.as_deref().is_some_and(|p| coiman_core::project::watcher::same_path(p, &full)))
+            .map(|d| d.uid)
+        else {
+            return;
+        };
+        let lenses = lenses
+            .into_iter()
+            .map(|l| {
+                let at = lt::Position::new(l.line.saturating_sub(1), 0);
+                lt::CodeLens {
+                    range: lt::Range::new(at, at),
+                    command: Some(lt::Command {
+                        title: l.title,
+                        command: PLUGIN_LENS.into(),
+                        arguments: Some(vec![
+                            serde_json::json!(plugin),
+                            serde_json::json!(l.command),
+                            serde_json::json!(l.argument),
+                        ]),
+                    }),
+                    data: None,
+                }
+            })
+            .collect();
+        self.set_local_lenses(uid, lenses);
     }
 
     /// A plugin panel tab: its blocks drawn with the editor's widgets.

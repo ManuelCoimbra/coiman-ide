@@ -17,16 +17,18 @@ pub enum Permission {
     EditorWrite,
     LanguageServer,
     Terminal,
+    Environment,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 6] = [
+    pub const ALL: [Permission; 7] = [
         Permission::WorkspaceRead,
         Permission::WorkspaceWrite,
         Permission::EditorRead,
         Permission::EditorWrite,
         Permission::LanguageServer,
         Permission::Terminal,
+        Permission::Environment,
     ];
 
     pub fn name(self) -> &'static str {
@@ -37,6 +39,7 @@ impl Permission {
             Permission::EditorWrite => "editor-write",
             Permission::LanguageServer => "language-server",
             Permission::Terminal => "terminal",
+            Permission::Environment => "environment",
         }
     }
 
@@ -52,6 +55,7 @@ impl Permission {
                 "See and type the command lines of your terminals, read your shells' history files, and list \
                  folders outside the open folder"
             }
+            Permission::Environment => "Read your environment variables, which may hold passwords and keys",
         }
     }
 }

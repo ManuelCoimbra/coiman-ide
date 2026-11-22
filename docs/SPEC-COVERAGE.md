@@ -276,14 +276,14 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Visual component tree | Missing | |
 | React, Vue, Angular component inspection | Missing | |
 | Hot module replacement management | Missing | |
-| HTTP request client | Done | `.http` files sent through curl |
+| HTTP request client | Done | HTTP Client extension: `.http` files sent through curl |
 | REST API testing environment | Done | `.http` files, environments, history |
 | GraphQL explorer | Missing | |
 | WebSocket client | Missing | |
 | API endpoint explorer | Done | Endpoints by tag, each opening as a `.http` request |
-| OpenAPI specification viewer | Done | OpenAPI: Show Endpoints: endpoints, models, examples |
+| OpenAPI specification viewer | Done | OpenAPI extension: endpoints, models, examples |
 | API documentation generation | Missing | |
-| Request history | Done | The last 50 responses of each `.http` file |
+| Request history | Done | The last 30 responses of each `.http` file |
 | Environment-based API configurations | Done | http-client.env.json and private, VS Code's settings |
 | Authentication token management | Done | Named responses' values (`{{login.response.body.$.token}}`) |
 | API response comparison | Done | Compare two responses from the history |

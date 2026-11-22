@@ -848,7 +848,6 @@ dependencies = [
  "wasmtime",
  "windows-sys 0.61.2",
  "wit-component",
- "yaml-rust",
 ]
 
 [[package]]

@@ -6,6 +6,7 @@ pub mod goals;
 pub mod highlight;
 pub mod html_attributes;
 pub mod html_complete;
+pub mod http_syntax;
 pub mod languages;
 pub mod light_syntax;
 pub mod likely;

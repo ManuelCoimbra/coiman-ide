@@ -1,0 +1,14 @@
+id = "coiman.openapi"
+name = "OpenAPI"
+version = "1.0.0"
+description = "The endpoints and models of OpenAPI 3 and Swagger 2 specs (JSON or YAML); each endpoint as a request in a .http file beside the spec."
+permissions = ["workspace-read", "workspace-write", "editor-read"]
+events = ["opened", "active-changed", "edited"]
+
+[[commands]]
+id = "show"
+title = "OpenAPI: Show Endpoints"
+
+[[panels]]
+id = "openapi"
+title = "OpenAPI"

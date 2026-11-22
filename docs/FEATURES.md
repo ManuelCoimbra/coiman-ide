@@ -662,7 +662,8 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, Terminal Commands
+Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
+and OpenAPI with Web and APIs, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -719,6 +720,10 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   (`workspace-write`) rename a file and make a script runnable. Git never waits on a password
   prompt or opens an editor in a program a plugin runs. A form's `button` field sends the
   form with its id, and `line-break` starts a new line.
+- **Code lenses** (`set-code-lenses`, `editor-read`): lines above lines of a file that run a
+  plugin command. **`now`** (the time, and how far local time is from UTC), **`random`**,
+  **`environment-variable`** (the `environment` permission: they may hold secrets) and
+  **`open-text`** (text in a new tab).
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -781,6 +786,10 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **HTTP Client** (`workspace-read`, `editor-read`, `environment`; program `curl`): `.http`
+  requests, environments, history; see [HTTP client](#http-client).
+- **OpenAPI** (`workspace-read`, `workspace-write`, `editor-read`): a spec's endpoints and
+  models; see [OpenAPI](#openapi).
 - **Git Graph** (`workspace-read`; program `git`): the commit graph and what's done from a
   commit; see Git Graph under Git.
 - **Git Tools** (`workspace-read`, `workspace-write`; program `git`): history search,
@@ -1015,8 +1024,10 @@ and WGSL (`.wgsl`) files are colored. Nothing needs installing.
 
 ## HTTP client
 
-Requests written in `.http` (or `.rest`) files, the format JetBrains' HTTP Client and VS
-Code's REST Client use, are sent through `curl`: Coiman opens no connection itself.
+The **HTTP Client** extension of the Web and APIs pack (`workspace-read`, `editor-read`,
+`environment` for `{{$processEnv}}`; program `curl`). Requests written in `.http` (or `.rest`)
+files, the format JetBrains' HTTP Client and VS Code's REST Client use, are sent through
+`curl`: Coiman opens no connection itself. The files are colored without it.
 
 - **Writing them:** `###` between requests (with a title after it), `METHOD URL`, headers,
   a blank line and the body; `< ./file.json` sends a file. `@name = value` lines define
@@ -1025,27 +1036,29 @@ Code's REST Client use, are sent through `curl`: Coiman opens no connection itse
   `{{login.response.headers.Location}}`. Also `{{$uuid}}`, `{{$timestamp}}`,
   `{{$randomInt 1 10}}`, `{{$datetime iso8601}}`, `{{$processEnv NAME}}` and
   `{{$dotenv NAME}}` (from `.env`). `# @no-redirect`, `# @timeout 10` and `# @insecure`
-  change how it's sent. The files are colored.
+  change how it's sent.
 - **Sending:** **▶ Send** above each request, or **HTTP: Send Request at Cursor**.
   **Copy as curl** beside it copies the request, values filled in, as a command.
 - **Environments:** `http-client.env.json` beside the file (or in a folder above it), with
   `http-client.private.env.json` over it for secrets (keep that one out of Git), or VS
-  Code's `rest-client.environmentVariables`. The **HTTP Client** window chooses one per
+  Code's `rest-client.environmentVariables`. The **HTTP Client** panel chooses one per
   folder; an undefined name says which and where to define it.
-- **The response** (in the HTTP Client window, **HTTP: Show Client**): status, time, size,
+- **The response** (in the HTTP Client panel, **HTTP: Show Client**): status, time, size,
   where redirects ended; the body (JSON indented), to copy or open in a tab; the headers.
-- **History:** each file keeps its last 50 responses (in the config folder, not the
-  project). Choose **A** and **B** to **Compare** them: the status, headers that differ
+- **History:** each file keeps its last 30 responses, bodies up to 64 KB, 3 MB for all files
+  (in the extension's storage in the config folder, not the project). A body is kept as
+  text: a binary download or `< file` isn't kept byte for byte. Choose **A** and **B** to **Compare** them: the status, headers that differ
   (dates and request ids left out), and the body line by line.
 
 ## OpenAPI
 
-An OpenAPI (3.x) or Swagger (2.0) file, in JSON or YAML, gets a line at its top saying how
-many endpoints and models it has; a click (or **OpenAPI: Show Endpoints**) opens the
-**OpenAPI** window.
+The **OpenAPI** extension of the Web and APIs pack (`workspace-read`, `workspace-write`,
+`editor-read`). An OpenAPI (3.x) or Swagger (2.0) file, in JSON or YAML, gets a line at its
+top saying how many endpoints and models it has; a click (or **OpenAPI: Show Endpoints**)
+opens the **OpenAPI** panel.
 
 - **Endpoints** by tag, each with its method in color (deprecated ones struck through), and a
-  filter. One shows its parameters (where each goes, its type, whether it's required), its
+  filter (Enter applies it, to models too). **Details** shows its parameters (where each goes, its type, whether it's required), its
   body with an example made from the schema, its responses, and the security it needs.
 - **Open as request** adds it to a `.http` file beside the spec (`shop.yaml` → `shop.http`,
   made with `@baseUrl` from the spec's server if new), ready for ▶ Send: path and required

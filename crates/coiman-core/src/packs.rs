@@ -34,7 +34,7 @@ pub const PACKS: [Pack; 10] = [
         name: "Web and APIs",
         description: "Send HTTP requests and read OpenAPI specs.",
         features: &["HTTP client (.http files, environments, history)", "OpenAPI and Swagger endpoints and models"],
-        extensions: &[],
+        extensions: &["coiman.http-client", "coiman.openapi"],
     },
     Pack {
         id: DATA,
