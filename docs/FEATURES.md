@@ -656,8 +656,8 @@ appear, and its background work doesn't run.
 | Agents | Agents (opencode), MCP servers |
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
-Installing a pack also offers its extensions, one after the other (Class Diagram and
-Architecture come with Code analysis, Terminal Commands with Terminal extras); removing it
+Installing a pack also offers its extensions, one after the other (Class Diagram,
+Architecture and Code Health come with Code analysis, Terminal Commands with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
 so a project gets the environment it needs. A new install starts with none; settings from
@@ -701,6 +701,11 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   window of its own, with zoom, filtering, opening and export to SVG, Mermaid and PlantUML.
 - **Long work** goes in steps: `continue-later` has the plugin called again (`resumed`) after
   what is waiting, so no call runs into the time limit and the editor stays responsive.
+- **More for panels**: `links` blocks (places in files, a click opens one) and `rows` blocks
+  (coloured cells with buttons). **`run-in-terminal`** runs an approved program in a terminal
+  tab; **`show-markdown`** opens a page; **`syntax-functions`** gives a file's functions with
+  their length and complexity from the editor's parser. An approved `python` is the project's
+  interpreter.
 - **Storage**: each plugin keeps its own text (`storage-read`, `storage-write`, 4 MB) in
   `<config>\plugins\data`, without a permission.
 - **Registry**: `plugins.registry` is a folder or URL with a `registry.json`. Nothing is
@@ -755,6 +760,9 @@ you keep it; uninstalling one takes it out again.
     Cargo's build, run (each program and example), test, check, clippy and fmt.
 - **Architecture** (`workspace-read`, `editor-read`): the dependency graph, its cycles and
   what a change reaches; see [Architecture](#architecture).
+- **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
+  secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
+  overview; see [Code health](#code-health).
 - **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,
   enums, structs, records and traits as a UML class diagram, read from the code without a
   compiler: Java, Kotlin, C#, TypeScript and JavaScript, C and C++, Swift, Dart, Scala, PHP,
@@ -1110,9 +1118,12 @@ Cargo's tests and every Testing runner (pytest, Go, Jest and the others) are rec
 
 ## Code health
 
-**Code Health: Secrets, Complexity, Duplicates, Dependencies, Licences and Audits** reads the project's files
-on its own thread, Git-ignored ones and folders such as `node_modules`, `target` and `dist`
-left out. A click on a place opens the file there.
+The **Code Health** extension (Code analysis pack). **Code Health: Check Project** reads the
+project's files in steps, Git-ignored ones and folders such as `node_modules`, `target` and
+`dist` left out, and shows what it found in the **Code Health** panel, one tab at a time (the
+buttons at its top, each with how many it found; **Scan again**). A click on a place opens the
+file there. The package managers (`cargo`, `npm`, `python`, `poetry`, `uv`) and `git` run only
+as far as they were approved at install, in trusted folders.
 
 - **Secrets:** keys and tokens by their shape: private keys, AWS, GitHub, GitLab, Slack,
   Stripe, Google, npm, OpenAI-style keys, JSON Web Tokens and passwords in URLs. It also
@@ -1122,15 +1133,16 @@ left out. A click on a place opens the file there.
     reported.
   - A line marked `gitleaks:allow`, `pragma: allowlist secret` or `not-a-secret` is skipped.
   - What's found shows masked: only its first four characters.
-- **Complexity:** each function's cyclomatic complexity and length, through tree-sitter, for
+- **Complexity:** each function's cyclomatic complexity and length, through the editor's own
+  parser (tree-sitter, asked with `syntax-functions`), for
   Rust, Python, JavaScript, TypeScript, Java, C, C++, C# and Go. It shows the 200 most
   complex. Up to 10 is plain, to 20 complex, above that very complex.
 - **Undocumented:** public items with no doc comment, each a link to its line: Rust's `pub`
   items (no `///` above), Go's exported names (no `//` above), Python's public top-level `def`
   and `class` (no docstring), JavaScript's and TypeScript's `export`s (no `/** */` above).
   Tests are left out.
-- **Project: Generate Overview** writes a Markdown page about the open folder and opens it
-  with its preview: the README's title and first paragraph, files, lines of code and test
+- **Project: Generate Overview** (Code Health) writes a Markdown page about the open folder
+  and opens it: the README's title and first paragraph, files, lines of code and test
   files, the build files found, languages with files and lines, the largest top-level folders
   and files, and from `git` the branch, commits, first and last dates, authors and last tag.
   Tests inside code files (Rust's `#[cfg(test)]`) aren't counted as test files.
@@ -1183,8 +1195,9 @@ left out. A click on a place opens the file there.
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.
 - **Dependencies:** each lockfile in the folder (`Cargo.lock`, `package-lock.json`,
-  `poetry.lock`, `uv.lock`) as a tree, from the project's own packages down; and the packages
-  pinned at more than one version, with what wants each version.
+  `poetry.lock`, `uv.lock`) as a tree under **Dependencies** in the Explorer, from the
+  project's own packages down, a level opened per click; and the packages pinned at more than
+  one version, with what wants each version.
   - **Check for updates** asks `cargo update --dry-run`, `npm outdated` and, for a Python
     project, the project's `pip list --outdated` (they ask their registries themselves). Each
     package shows its version now, what an update gets within the project's requirement,
@@ -1192,13 +1205,13 @@ left out. A click on a place opens the file there.
   - **Update** and **Remove** run the package manager's own command in a terminal
     (`cargo update -p`, `cargo remove`, `npm update`, `npm uninstall`, `pip install --upgrade`,
     `pip uninstall`, and Poetry's and uv's). Remove is offered for packages the project names
-    itself. When the newest is beyond the requirement, the row says to change it in the
-    manifest.
+    itself. When the newest is beyond the requirement, there is no Update: raise the version
+    in the manifest.
 - **Licences:** each dependency's licence, from `cargo metadata --offline` and npm's
   `node_modules`. Each is rated permissive, weak copyleft (MPL, LGPL, EPL), copyleft (GPL,
   AGPL) or unknown, reading SPDX expressions with `OR` and `AND`.
 - **Audits:** **Run the audits** runs `cargo audit` beside a `Cargo.lock` and `npm audit`
-  beside a `package-lock.json`, most severe first, with the fix and a link to each advisory.
+  beside a `package-lock.json`, most severe first, with the fix and each advisory's address.
   These tools fetch the lists of known vulnerabilities themselves. When one isn't installed,
   the tab says how to get it.
 

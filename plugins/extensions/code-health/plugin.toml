@@ -1,0 +1,30 @@
+id = "coiman.code-health"
+name = "Code Health"
+version = "1.0.0"
+description = "Secrets left in files, the most complex functions, code written twice, public items with no docs, the dependencies (versions pinned twice, what's out of date, a tree), their licences and known vulnerabilities; and a page about the project."
+permissions = ["workspace-read"]
+programs = ["cargo", "npm", "python", "poetry", "uv", "git"]
+
+[[commands]]
+id = "check"
+title = "Code Health: Check Project"
+
+[[commands]]
+id = "updates"
+title = "Code Health: Check for Updates"
+
+[[commands]]
+id = "audit"
+title = "Code Health: Run the Audits"
+
+[[commands]]
+id = "overview"
+title = "Project: Generate Overview"
+
+[[panels]]
+id = "health"
+title = "Code Health"
+
+[[tree_views]]
+id = "deps"
+title = "Dependencies"

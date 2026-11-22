@@ -3,7 +3,6 @@
 //! `git`, when the folder is a repository).
 
 use std::collections::BTreeMap;
-use std::path::Path;
 
 /// A language by file extension, for counting; None for files that aren't code or docs.
 fn language(ext: &str) -> Option<&'static str> {
@@ -61,13 +60,11 @@ fn is_test(rel: &str) -> bool {
         || name.contains(".spec.")
 }
 
-/// The README's title and first paragraph, if there's a README.
-fn readme(root: &Path) -> Option<(String, String)> {
-    let path = ["README.md", "readme.md", "README.markdown", "README.rst", "README.txt", "README"]
-        .iter()
-        .map(|n| root.join(n))
-        .find(|p| p.is_file())?;
-    let text = std::fs::read_to_string(&path).ok()?;
+/// Where a README may be.
+pub const READMES: [&str; 6] = ["README.md", "readme.md", "README.markdown", "README.rst", "README.txt", "README"];
+
+/// A README's title and first paragraph.
+pub fn readme(text: &str) -> (String, String) {
     let mut title = String::new();
     let mut para = Vec::new();
     for line in text.lines().map(str::trim) {
@@ -90,23 +87,12 @@ fn readme(root: &Path) -> Option<(String, String)> {
         }
         para.push(line);
     }
-    Some((title, para.join(" ")))
-}
-
-fn git(root: &Path, args: &[&str]) -> Option<String> {
-    let out = crate::language::lsp::discovery::quiet_command(Path::new("git"))
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_owned())
+    (title, para.join(" "))
 }
 
 /// What the files say, counted.
 #[derive(Default)]
-struct Counts {
+pub struct Counts {
     files: usize,
     /// Language: (files, lines).
     languages: BTreeMap<&'static str, (usize, usize)>,
@@ -117,31 +103,47 @@ struct Counts {
     sizes: Vec<(usize, String)>,
 }
 
-fn count(root: &Path) -> Counts {
-    let mut c = Counts::default();
-    for entry in super::project_files(root, false) {
-        let path = entry.path();
-        let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
-        c.files += 1;
+impl Counts {
+    /// One file of the project, with its text when it is a language counted.
+    pub fn add(&mut self, rel: &str, text: Option<&str>) {
+        self.files += 1;
         let top = rel.split_once('/').map_or(String::new(), |(t, _)| t.to_owned());
-        *c.folders.entry(top).or_default() += 1;
-        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        let Some(lang) = language(&ext) else { continue };
-        if entry.metadata().map_or(true, |m| m.len() > 4 * 1024 * 1024) {
-            continue;
-        }
-        let lines = std::fs::read(path).map_or(0, |b| b.iter().filter(|&&x| x == b'\n').count());
-        let e = c.languages.entry(lang).or_default();
+        *self.folders.entry(top).or_default() += 1;
+        let Some(text) = text else { return };
+        let Some(lang) = language(&extension(rel)) else { return };
+        let lines = text.bytes().filter(|&b| b == b'\n').count();
+        let e = self.languages.entry(lang).or_default();
         e.0 += 1;
         e.1 += lines;
         if lang != "Docs" && lang != "Config" {
-            if is_test(&rel) {
-                c.tests += 1;
+            if is_test(rel) {
+                self.tests += 1;
             }
-            c.sizes.push((lines, rel));
+            self.sizes.push((lines, rel.to_owned()));
         }
     }
-    c
+}
+
+/// A file's extension, lower case.
+pub fn extension(rel: &str) -> String {
+    let name = rel.rsplit('/').next().unwrap_or(rel);
+    name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default()
+}
+
+/// Whether the file's text is worth reading for the counts.
+pub fn counted(rel: &str) -> bool {
+    language(&extension(rel)).is_some()
+}
+
+/// What `git` says of the repository.
+#[derive(Default)]
+pub struct GitFacts {
+    pub branch: Option<String>,
+    pub commits: Option<String>,
+    pub first: Option<String>,
+    pub last: Option<String>,
+    pub authors: Option<usize>,
+    pub tag: Option<String>,
 }
 
 fn thousands(n: usize) -> String {
@@ -156,11 +158,11 @@ fn thousands(n: usize) -> String {
     out
 }
 
-/// The overview of the project at `root`, as Markdown.
-pub fn overview(root: &Path) -> String {
-    let name = root.file_name().map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
+/// The overview, as Markdown: the project's name, its README's text, the counts, the build
+/// files there (by name), and what Git says.
+pub fn overview(name: &str, readme_text: Option<&str>, c: Counts, files: &[String], git: &GitFacts) -> String {
     let mut md = format!("# {name}: overview\n\n");
-    if let Some((title, para)) = readme(root) {
+    if let Some((title, para)) = readme_text.map(readme) {
         if !title.is_empty() && title != name {
             md.push_str(&format!("**{title}**"));
             md.push_str(if para.is_empty() { "\n\n" } else { ": " });
@@ -169,7 +171,6 @@ pub fn overview(root: &Path) -> String {
             md.push_str(&format!("{para}\n\n"));
         }
     }
-    let c = count(root);
     let code_lines: usize =
         c.languages.iter().filter(|(l, _)| **l != "Docs" && **l != "Config").map(|(_, (_, n))| n).sum();
     md.push_str(&format!(
@@ -179,8 +180,11 @@ pub fn overview(root: &Path) -> String {
         thousands(c.tests)
     ));
 
-    let builds: Vec<String> =
-        BUILD_FILES.iter().filter(|(f, _)| root.join(f).is_file()).map(|(f, what)| format!("{what} (`{f}`)")).collect();
+    let builds: Vec<String> = BUILD_FILES
+        .iter()
+        .filter(|(f, _)| files.iter().any(|x| x == f))
+        .map(|(f, what)| format!("{what} (`{f}`)"))
+        .collect();
     if !builds.is_empty() {
         md.push_str(&format!("**Built with:** {}.\n\n", builds.join(", ")));
     }
@@ -216,21 +220,20 @@ pub fn overview(root: &Path) -> String {
         md.push('\n');
     }
 
-    if let Some(branch) = git(root, &["rev-parse", "--abbrev-ref", "HEAD"]) {
+    if let Some(branch) = &git.branch {
         md.push_str("## Git\n\n");
         md.push_str(&format!("- Branch: `{branch}`\n"));
-        if let Some(n) = git(root, &["rev-list", "--count", "HEAD"]) {
+        if let Some(n) = &git.commits {
             md.push_str(&format!("- Commits: {n}\n"));
         }
-        if let Some(first) = git(root, &["log", "--reverse", "--format=%as", "--max-parents=0", "HEAD"]) {
-            let first = first.lines().next().unwrap_or_default();
-            let last = git(root, &["log", "-1", "--format=%as"]).unwrap_or_default();
+        if let Some(first) = &git.first {
+            let last = git.last.clone().unwrap_or_default();
             md.push_str(&format!("- From {first} to {last}\n"));
         }
-        if let Some(authors) = git(root, &["shortlog", "-sn", "HEAD"]) {
-            md.push_str(&format!("- Authors: {}\n", authors.lines().count()));
+        if let Some(n) = git.authors {
+            md.push_str(&format!("- Authors: {n}\n"));
         }
-        if let Some(tag) = git(root, &["describe", "--tags", "--abbrev=0"]) {
+        if let Some(tag) = &git.tag {
             md.push_str(&format!("- Last tag: `{tag}`\n"));
         }
     }
@@ -243,21 +246,30 @@ mod tests {
 
     #[test]
     fn overview_of_a_small_project() {
-        let dir = std::env::temp_dir().join(format!("coiman-overview-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("src")).unwrap();
-        std::fs::create_dir_all(dir.join("tests")).unwrap();
-        std::fs::write(dir.join("README.md"), "# Tool\n\n[![ci](x)](y)\n\nDoes one thing\nwell.\n\nMore.\n").unwrap();
-        std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"tool\"\n").unwrap();
-        std::fs::write(dir.join("src/main.rs"), "fn main() {\n}\n// end\n").unwrap();
-        std::fs::write(dir.join("tests/it.rs"), "#[test]\nfn t() {}\n").unwrap();
-        let md = overview(&dir);
+        let mut c = Counts::default();
+        let readme_text = "# Tool\n\n[![ci](x)](y)\n\nDoes one thing\nwell.\n\nMore.\n";
+        for (rel, text) in [
+            ("README.md", readme_text),
+            ("Cargo.toml", "[package]\nname = \"tool\"\n"),
+            ("src/main.rs", "fn main() {\n}\n// end\n"),
+            ("tests/it.rs", "#[test]\nfn t() {}\n"),
+        ] {
+            c.add(rel, counted(rel).then_some(text));
+        }
+        let files = ["README.md".to_owned(), "Cargo.toml".to_owned()];
+        let git = GitFacts {
+            branch: Some("main".into()),
+            commits: Some("12".into()),
+            authors: Some(2),
+            ..Default::default()
+        };
+        let md = overview("tool", Some(readme_text), c, &files, &git);
         assert!(md.contains("**Tool**: Does one thing well."), "{md}");
         assert!(md.contains("5 lines of code; 1 test files"), "{md}");
         assert!(md.contains("Cargo (`Cargo.toml`)"), "{md}");
         assert!(md.contains("| Rust | 2 | 5 |"), "{md}");
         assert!(md.contains("- `src/main.rs`: 3 lines"), "{md}");
+        assert!(md.contains("- Branch: `main`\n- Commits: 12\n- Authors: 2\n"), "{md}");
         assert_eq!(thousands(1234567), "1,234,567");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

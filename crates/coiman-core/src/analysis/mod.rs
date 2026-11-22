@@ -1,14 +1,9 @@
-//! Reading a project as a whole, and its health: secrets, complexity, duplicates, licences and
-//! audits. (What imports what is the Architecture extension's.)
+//! What the editor reads of code's structure: functions and their complexity (also asked by
+//! extensions through `syntax-functions`), and a function's flow. The project-wide checks are
+//! the Code Health and Architecture extensions'.
 
 pub mod complexity;
-pub mod duplicates;
 pub mod flow;
-pub mod lockfiles;
-pub mod overview;
-pub mod packages;
-pub mod secrets;
-pub mod undocumented;
 
 /// Folders of downloaded or built things, never the project's own code: skipped even where
 /// no `.gitignore` says so.

@@ -31,8 +31,9 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, Decoration, DirEntry, Document, EdgeKind, Graph, GraphEdge, GraphNode, JobResult, Pick, PickAction,
-    PickChoice, PickItem, PickQuery, Problem, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
+    Block, Button, Decoration, DirEntry, Document, EdgeKind, FileLink, FunctionInfo, Graph, GraphEdge, GraphNode,
+    JobResult, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, Row, ServerResponse, Severity, Span, Table,
+    TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -133,6 +134,20 @@ pub enum Update {
         plugin: String,
         graph: Graph,
     },
+    /// A Markdown page to open.
+    Markdown {
+        plugin: String,
+        title: String,
+        text: String,
+    },
+    /// A program (already found and approved) to run in a terminal tab, in the open folder.
+    RunInTerminal {
+        plugin: String,
+        title: String,
+        program: PathBuf,
+        args: Vec<String>,
+        folder: PathBuf,
+    },
 }
 
 /// Editor state plugins may read, kept current by the editor.
@@ -142,6 +157,8 @@ pub struct Context {
     pub document: Option<Document>,
     /// The active shell's command line, when it shows a prompt.
     pub terminal: Option<TerminalLine>,
+    /// The project's Python interpreter: what an approved `python` runs.
+    pub python: Option<PathBuf>,
 }
 
 enum Msg {
@@ -268,6 +285,12 @@ impl PluginHost {
     pub fn set_document(&self, document: Option<Document>) {
         if let Ok(mut c) = self.context.lock() {
             c.document = document;
+        }
+    }
+
+    pub fn set_python(&self, python: Option<PathBuf>) {
+        if let Ok(mut c) = self.context.lock() {
+            c.python = python;
         }
     }
 
@@ -484,6 +507,16 @@ impl State {
         if self.granted.contains(&p) { Ok(()) } else { Err(format!("permission denied: {}", p.name())) }
     }
 
+    /// An approved program, found: `python` is the project's interpreter when it has one.
+    fn program(&self, program: &str) -> Result<PathBuf, String> {
+        if program == "python"
+            && let Some(py) = self.context.lock().ok().and_then(|c| c.python.clone())
+        {
+            return Ok(py);
+        }
+        which(program).ok_or_else(|| format!("{program} isn't on PATH"))
+    }
+
     fn workspace(&self) -> Result<PathBuf, String> {
         self.context.lock().ok().and_then(|c| c.workspace.clone()).ok_or_else(|| "no folder is open".to_owned())
     }
@@ -637,7 +670,7 @@ impl coiman::plugin::host::Host for State {
         if jobs.lock().map_err(|e| e.to_string())?.len() >= MAX_JOBS {
             return Err(format!("this plugin already has {MAX_JOBS} programs running"));
         }
-        let exe = which(&program).ok_or_else(|| format!("{program} isn't on PATH"))?;
+        let exe = self.program(&program)?;
         let mut child = quiet_command(&exe)
             .args(&args)
             .current_dir(&root)
@@ -770,6 +803,42 @@ impl coiman::plugin::host::Host for State {
     fn continue_later(&mut self, token: String) {
         // Queued behind what is waiting already, so the editor's own messages come first.
         let _ = self.messages.send(Msg::Deliver { plugin: self.plugin.clone(), event: Event::Resumed(token) });
+    }
+
+    fn show_markdown(&mut self, title: String, markdown: String) {
+        self.send(Update::Markdown { plugin: self.plugin.clone(), title, text: markdown });
+    }
+
+    fn run_in_terminal(&mut self, title: String, program: String, args: Vec<String>) -> Result<(), String> {
+        if !self.programs.contains(&program) {
+            let line = format!("refused: {program} isn't approved");
+            self.send(Update::Log { plugin: self.plugin.clone(), line });
+            return Err(format!("program not approved: {program}"));
+        }
+        let folder = self.workspace()?;
+        if !crate::project::trust::is_trusted(&folder) {
+            return Err("this folder isn't trusted, so plugins can't start programs in it".to_owned());
+        }
+        let exe = self.program(&program)?;
+        let line = format!("started in a terminal: {} {}", exe.display(), args.join(" "));
+        self.send(Update::Log { plugin: self.plugin.clone(), line });
+        self.send(Update::RunInTerminal { plugin: self.plugin.clone(), title, program: exe, args, folder });
+        Ok(())
+    }
+
+    fn syntax_functions(&mut self, path: String) -> Result<Vec<FunctionInfo>, String> {
+        let text = self.read_file(path.clone())?;
+        let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+        let Some(lang) = crate::language::syntax::Lang::from_extension(&ext) else { return Ok(Vec::new()) };
+        Ok(crate::analysis::complexity::functions_in(lang, &path, &text)
+            .into_iter()
+            .map(|f| FunctionInfo {
+                name: f.name,
+                line: f.line as u32,
+                lines: f.lines as u32,
+                complexity: f.complexity as u32,
+            })
+            .collect())
     }
 
     fn shell_history(&mut self) -> Result<Vec<String>, String> {

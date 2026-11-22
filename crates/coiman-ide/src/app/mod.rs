@@ -141,7 +141,6 @@ pub struct CodeApp {
     layout: layout::Layout,
     /// Android and Termux, when running on a phone.
     phone: coiman_core::mobile::Phone,
-    health: project::health::Health,
     run_history: launch::history::RunHistory,
     snapshots: launch::snapshots::Snapshots,
     /// Active time per project, for the session statistics.
@@ -371,7 +370,6 @@ impl CodeApp {
             rails: tool_rails::ToolRails::new(),
             layout: layout::Layout::default(),
             phone: coiman_core::mobile::phone().clone(),
-            health: Default::default(),
             run_history: Default::default(),
             snapshots: Default::default(),
             activity: Default::default(),
@@ -1050,7 +1048,6 @@ impl CodeApp {
         self.lsp_popups(&ctx);
         self.font_preview_ui(&ctx);
         self.lsp_room(&ctx);
-        self.code_health_window(&ctx);
         self.run_history_window(&ctx);
         self.snapshots_window(&ctx);
         self.remote_debug_window(&ctx);

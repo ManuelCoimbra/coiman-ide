@@ -183,6 +183,8 @@ pub(crate) struct PluginState {
     terminal_at: Option<egui::Pos2>,
     /// Extensions that come with Coiman, not installed until asked: (folder, manifest).
     shipped: Option<Vec<(PathBuf, Manifest)>>,
+    /// The project's Python interpreter, as the plugins were last told.
+    python: Option<PathBuf>,
 }
 
 /// `Locked::source` prefix of an extension that came with Coiman and was installed on request.
@@ -520,13 +522,18 @@ impl CodeApp {
         self.pump_jobs(ctx);
         self.pump_terminal_events();
         let Some(host) = &self.plugins.host else { return };
+        let python = self.python_env().map(|e| e.python.clone());
+        if self.plugins.python != python {
+            host.set_python(python.clone());
+            self.plugins.python = python;
+        }
         if self.plugins.workspace != self.explorer.root {
             self.plugins.workspace = self.explorer.root.clone();
             host.set_workspace(self.explorer.root.clone());
         }
         let updates = host.poll();
         for u in updates {
-            self.on_plugin_update(u);
+            self.on_plugin_update(ctx, u);
         }
         // The document snapshot for `editor-read`, once typing pauses, then
         // the events: plugins read the snapshot when they hear about a change.
@@ -581,7 +588,7 @@ impl CodeApp {
         }
     }
 
-    fn on_plugin_update(&mut self, update: Update) {
+    fn on_plugin_update(&mut self, ctx: &egui::Context, update: Update) {
         match update {
             Update::Activated { plugin } => {
                 if let Some(info) = self.plugins.infos.iter_mut().find(|i| i.id == plugin) {
@@ -673,6 +680,28 @@ impl CodeApp {
             }
             Update::Pick { plugin, pick } => self.show_plugin_pick(plugin, pick),
             Update::Graph { plugin, graph } => self.show_plugin_graph(plugin, graph),
+            Update::Markdown { text, .. } => self.open_markdown_page(&text),
+            Update::RunInTerminal { title, program, args, folder, .. } => {
+                let program = program.to_string_lossy().into_owned();
+                let env = self.environment_variables();
+                let task = crate::ui::terminal::Task {
+                    title: &title,
+                    program: &program,
+                    args: &args,
+                    env: &env,
+                    cwd: &folder,
+                    scan: None,
+                };
+                let scrollback = self.settings.terminal.scrollback;
+
+                match self.terminal.run_task(ctx, task, scrollback) {
+                    Ok(()) => {
+                        self.panel_visible = true;
+                        self.panel_tab = PanelTab::Terminal;
+                    }
+                    Err(e) => self.status = Some(format!("Couldn't start {program}: {e}")),
+                }
+            }
             Update::TerminalType { terminal, text, .. } => {
                 self.terminal.type_into(terminal, &text);
                 self.terminal.show_tab(terminal);
@@ -1392,6 +1421,8 @@ impl CodeApp {
         let pal = theme::colors();
         let Some(panel) = self.plugins.panels.get(index) else { return };
         let mut run = None;
+        let mut open_at: Option<(String, u32)> = None;
+        let rgb = |c: u32| egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8);
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             if panel.blocks.is_empty() {
                 ui.label(RichText::new("Nothing to show yet.").color(pal.text_dim));
@@ -1472,12 +1503,75 @@ impl CodeApp {
                             run = Some((b.command.clone(), b.argument.clone()));
                         }
                     }
+                    Block::Links(links) => {
+                        for l in links {
+                            ui.horizontal(|ui| {
+                                if ui.link(RichText::new(&l.text).monospace()).clicked() {
+                                    open_at = Some((l.path.clone(), l.line));
+                                }
+                                if !l.detail.is_empty() {
+                                    ui.label(RichText::new(&l.detail).color(pal.text_dim));
+                                }
+                            });
+                        }
+                    }
+                    Block::Rows(rows) => {
+                        // Rows without cells are a bar of buttons.
+                        if rows.iter().all(|r| r.cells.is_empty()) {
+                            ui.horizontal_wrapped(|ui| {
+                                for b in rows.iter().flat_map(|r| &r.buttons) {
+                                    if ui.button(&b.label).clicked() {
+                                        run = Some((b.command.clone(), b.argument.clone()));
+                                    }
+                                }
+                            });
+                            continue;
+                        }
+                        let columns = rows.iter().map(|r| r.cells.len() + usize::from(!r.buttons.is_empty())).max();
+                        egui::Grid::new(("plugin_rows", index))
+                            .striped(true)
+                            .spacing([12.0, 3.0])
+                            .num_columns(columns.unwrap_or(1))
+                            .show(ui, |ui| {
+                                for row in rows {
+                                    for span in &row.cells {
+                                        let mut text = RichText::new(&span.text);
+                                        if let Some(c) = span.color {
+                                            text = text.color(rgb(c));
+                                        }
+                                        if span.bold {
+                                            text = text.strong();
+                                        }
+                                        if span.monospace {
+                                            text = text.monospace();
+                                        }
+                                        ui.label(text);
+                                    }
+                                    if !row.buttons.is_empty() {
+                                        ui.horizontal(|ui| {
+                                            for b in &row.buttons {
+                                                if ui.small_button(&b.label).clicked() {
+                                                    run = Some((b.command.clone(), b.argument.clone()));
+                                                }
+                                            }
+                                        });
+                                    }
+                                    ui.end_row();
+                                }
+                            });
+                    }
                 }
             }
         });
         if let Some((command, argument)) = run {
             let plugin = panel.plugin.clone();
             self.run_plugin(&plugin, &command, &argument);
+        }
+        if let Some((path, line)) = open_at
+            && let Some(root) = self.explorer.root.clone()
+        {
+            self.open_file(&root.join(path));
+            self.jump_to_symbol_line(line.saturating_sub(1) as usize);
         }
     }
 

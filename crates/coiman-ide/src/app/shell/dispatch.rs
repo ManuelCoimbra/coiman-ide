@@ -577,11 +577,6 @@ impl CodeApp {
             }
             Command::NextHiddenCharacter => self.next_hidden_char(),
             Command::ShowLanguageServers => self.show_lsp_room(),
-            Command::ShowCodeHealth => self.show_code_health(ctx),
-            Command::ProjectOverview => match self.explorer.root.clone() {
-                Some(root) => self.open_markdown_page(&coiman_core::analysis::overview::overview(&root)),
-                None => self.status = Some("Open a folder to see its overview".to_owned()),
-            },
             Command::SessionStatistics => self.show_session_statistics(),
             Command::ShowFunctionFlow => self.show_function_flow(),
             Command::ShowRunHistory => self.show_run_history(),

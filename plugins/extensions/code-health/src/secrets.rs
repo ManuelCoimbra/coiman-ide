@@ -2,13 +2,13 @@
 //! private keys, and passwords or keys assigned in code that look random enough to be real.
 //! What's found is shown masked; the files are only read.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
 use regex::Regex;
 
 /// Files larger than this aren't read (bundles, data).
-const MAX_BYTES: u64 = 1024 * 1024;
+pub const MAX_BYTES: u64 = 1024 * 1024;
 /// A value assigned to `password`, `token`… counts when it's at least this random.
 const MIN_ENTROPY: f64 = 3.0;
 
@@ -174,7 +174,7 @@ pub fn scan_text(path: &str, text: &str) -> Vec<Finding> {
 }
 
 /// Whether a file is worth reading: text-like, not a lock file or a bundle.
-fn worth_reading(path: &Path) -> bool {
+pub fn worth_reading(path: &Path) -> bool {
     let name = path.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
     let skip_names = ["cargo.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "poetry.lock", "go.sum"];
     if skip_names.contains(&name.as_str()) || name.ends_with(".min.js") || name.ends_with(".map") {
@@ -186,30 +186,6 @@ fn worth_reading(path: &Path) -> bool {
     ];
     let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
     !binary.contains(&ext.as_str())
-}
-
-/// Every secret in the project's files, Git-ignored ones aside (a `.env` that isn't ignored
-/// is read: that's the one that gets committed).
-pub fn scan(root: &Path) -> Vec<Finding> {
-    let mut out = Vec::new();
-    for entry in super::project_files(root, true) {
-        let path: PathBuf = entry.path().to_path_buf();
-        if !entry.file_type().is_some_and(|t| t.is_file()) || !worth_reading(&path) {
-            continue;
-        }
-        if entry.metadata().map_or(true, |m| m.len() > MAX_BYTES) {
-            continue;
-        }
-        let Ok(bytes) = std::fs::read(&path) else { continue };
-        if bytes.contains(&0) {
-            continue;
-        }
-        let text = String::from_utf8_lossy(&bytes);
-        let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
-        out.extend(scan_text(&rel, &text));
-    }
-    out.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
-    out
 }
 
 #[cfg(test)]
@@ -256,22 +232,14 @@ mod tests {
     }
 
     #[test]
-    fn scans_a_folder_and_skips_ignored_and_binary_files() {
-        let dir = std::env::temp_dir().join(format!("coiman_secrets_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("src")).unwrap();
-        // ignore crate reads .gitignore only inside a Git repository.
-        std::fs::create_dir_all(dir.join(".git")).unwrap();
-        std::fs::write(dir.join(".gitignore"), "secret.env\n").unwrap();
-        std::fs::write(dir.join("secret.env"), "API_KEY=f3a9c1e07b2d4c58a6e1\n").unwrap();
+    fn reads_text_files_and_finds_keys() {
+        assert!(worth_reading(Path::new("src/main.rs")) && worth_reading(Path::new(".env")));
+        assert!(!worth_reading(Path::new("logo.png")));
         // Put together at run time: a key-shaped literal here would trip push protection.
         let stripe = ["sk", "live", "abcdefghijklmnopqrstuvwx"].join("_");
-        std::fs::write(dir.join(".env"), format!("STRIPE={stripe}\n")).unwrap();
-        std::fs::write(dir.join("src/main.rs"), "fn main() {}\nconst K: &str = \"AKIAIOSFODNN7EXAMPLE\";\n").unwrap(); // gitleaks:allow
-        std::fs::write(dir.join("logo.png"), "AKIAIOSFODNN7EXAMPLE").unwrap(); // gitleaks:allow
-        let found = scan(&dir);
-        let at: Vec<(String, usize, &str)> = found.iter().map(|f| (f.path.clone(), f.line, f.kind)).collect();
-        assert_eq!(at, [(".env".to_owned(), 1, "Stripe secret key"), ("src/main.rs".to_owned(), 2, "AWS access key")]);
-        std::fs::remove_dir_all(&dir).unwrap();
+        let found = scan_text(".env", &format!("STRIPE={stripe}\n"));
+        assert_eq!(found.iter().map(|f| (f.line, f.kind)).collect::<Vec<_>>(), [(1, "Stripe secret key")]);
+        let found = scan_text("src/main.rs", "fn main() {}\nconst K: &str = \"AKIAIOSFODNN7EXAMPLE\";\n"); // gitleaks:allow
+        assert_eq!(found.iter().map(|f| (f.line, f.kind)).collect::<Vec<_>>(), [(2, "AWS access key")]);
     }
 }

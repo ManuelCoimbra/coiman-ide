@@ -3,8 +3,6 @@
 //! docstring) and JavaScript's and TypeScript's `export`s (no `/** */` above). Read line by
 //! line: what's public is told by the line the item starts on.
 
-use std::path::Path;
-
 /// A public item with no documentation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Item {
@@ -15,7 +13,7 @@ pub struct Item {
     pub name: String,
 }
 
-const MAX_BYTES: u64 = 1024 * 1024;
+pub const MAX_BYTES: u64 = 1024 * 1024;
 
 /// The word after `prefix` at the start of `rest`, if `rest` starts with it.
 fn after<'a>(rest: &'a str, prefix: &str) -> Option<&'a str> {
@@ -170,27 +168,6 @@ pub fn in_text(ext: &str, path: &str, text: &str) -> Vec<Item> {
         }
         _ => {}
     }
-    out
-}
-
-/// Every undocumented public item in the project, by file and line.
-pub fn scan(root: &Path) -> Vec<Item> {
-    let mut out = Vec::new();
-    for entry in super::project_files(root, false) {
-        let path = entry.path();
-        if !entry.file_type().is_some_and(|t| t.is_file()) || entry.metadata().map_or(true, |m| m.len() > MAX_BYTES) {
-            continue;
-        }
-        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
-        // Tests aren't public API.
-        if rel.split('/').any(|c| c == "tests" || c == "test" || c == "__tests__") {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(path) else { continue };
-        out.extend(in_text(&ext, &rel, &text));
-    }
-    out.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
     out
 }
 

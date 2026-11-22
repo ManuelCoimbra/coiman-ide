@@ -5,11 +5,7 @@
 //! is the package manager's own command, run in a terminal.
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-
-use crate::language::lsp::discovery::quiet_command;
-use crate::language::lsp::servers::which;
+use std::path::PathBuf;
 
 /// Which package manager a lockfile is of.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -99,30 +95,23 @@ pub struct Conflict {
     pub versions: Vec<(String, Vec<String>)>,
 }
 
-/// The lockfiles in the project's folder, read.
-pub fn read_locks(root: &Path) -> (Vec<Lock>, Vec<String>) {
-    let mut locks = Vec::new();
-    let mut notes = Vec::new();
-    for (file, eco) in [
-        ("Cargo.lock", Ecosystem::Cargo),
-        ("package-lock.json", Ecosystem::Npm),
-        ("poetry.lock", Ecosystem::Poetry),
-        ("uv.lock", Ecosystem::Uv),
-    ] {
-        let path = root.join(file);
-        let Ok(text) = std::fs::read_to_string(&path) else { continue };
-        let read = match eco {
-            Ecosystem::Cargo => parse_cargo_lock(&text),
-            Ecosystem::Npm => parse_npm_lock(&text),
-            Ecosystem::Poetry | Ecosystem::Uv => parse_python_lock(&text, eco),
-            Ecosystem::Pip => continue,
-        };
-        match read {
-            Ok((packages, roots)) => locks.push(Lock { ecosystem: eco, file: path, packages, roots }),
-            Err(e) => notes.push(format!("{file}: {e}")),
-        }
-    }
-    (locks, notes)
+/// The lockfiles a project may have, and what reads each.
+pub const LOCKFILES: [(&str, Ecosystem); 4] = [
+    ("Cargo.lock", Ecosystem::Cargo),
+    ("package-lock.json", Ecosystem::Npm),
+    ("poetry.lock", Ecosystem::Poetry),
+    ("uv.lock", Ecosystem::Uv),
+];
+
+/// A lockfile's text, read.
+pub fn read_lock(file: &str, eco: Ecosystem, text: &str) -> Result<Lock, String> {
+    let (packages, roots) = match eco {
+        Ecosystem::Cargo => parse_cargo_lock(text),
+        Ecosystem::Npm => parse_npm_lock(text),
+        Ecosystem::Poetry | Ecosystem::Uv => parse_python_lock(text, eco),
+        Ecosystem::Pip => return Err("pip has no lockfile".to_owned()),
+    }?;
+    Ok(Lock { ecosystem: eco, file: PathBuf::from(file), packages, roots })
 }
 
 type Parsed = (Vec<Package>, Vec<usize>);
@@ -396,104 +385,29 @@ pub fn parse_pip_outdated(json: &str) -> Result<Vec<Outdated>, String> {
         .collect())
 }
 
-/// Asks each package manager the project uses what's out of date. They ask their registries
-/// themselves. `python` is the project's interpreter, when it has one.
-pub fn outdated(root: &Path, python: Option<&Path>) -> (Vec<Outdated>, Vec<String>) {
-    let mut out = Vec::new();
-    let mut notes = Vec::new();
-    let run = |program: &Path, args: &[&str]| {
-        quiet_command(program).args(args).current_dir(root).stdin(Stdio::null()).output()
-    };
-    let last_line = |bytes: &[u8]| {
-        let text = String::from_utf8_lossy(bytes);
-        text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_owned()
-    };
-    if root.join("Cargo.toml").is_file() {
-        match which("cargo") {
-            None => notes.push("Cargo isn't installed".to_owned()),
-            Some(cargo) => match run(&cargo, &["update", "--dry-run", "--verbose"]) {
-                Ok(o) => {
-                    // Cargo writes these lines on standard error.
-                    let text = String::from_utf8_lossy(&o.stderr);
-                    let found = parse_cargo_dry_run(&text);
-                    if found.is_empty() && text.contains("error") {
-                        notes.push(format!("cargo update: {}", last_line(&o.stderr)));
-                    }
-                    out.extend(found);
-                }
-                Err(e) => notes.push(format!("cargo: {e}")),
-            },
-        }
-    }
-    if root.join("package.json").is_file() {
-        match which("npm") {
-            None => notes.push("npm isn't installed".to_owned()),
-            Some(npm) => match run(&npm, &["outdated", "--json"]) {
-                // It exits 1 when something is out of date: the JSON says what.
-                Ok(o) => match parse_npm_outdated(&String::from_utf8_lossy(&o.stdout)) {
-                    Ok(list) => out.extend(list),
-                    Err(e) => notes.push(format!("npm outdated: {e}: {}", last_line(&o.stderr))),
-                },
-                Err(e) => notes.push(format!("npm: {e}")),
-            },
-        }
-    }
-    let python_project = ["pyproject.toml", "requirements.txt", "setup.py", "poetry.lock", "uv.lock"]
-        .iter()
-        .any(|f| root.join(f).is_file());
-    if python_project {
-        match python {
-            None => notes.push("No Python environment found for this project".to_owned()),
-            Some(py) => match run(py, &["-m", "pip", "list", "--outdated", "--format=json"]) {
-                Ok(o) if o.status.success() => match parse_pip_outdated(&String::from_utf8_lossy(&o.stdout)) {
-                    Ok(list) => out.extend(list),
-                    Err(e) => notes.push(format!("pip list: {e}")),
-                },
-                Ok(o) => notes.push(format!("pip list: {}", last_line(&o.stderr))),
-                Err(e) => notes.push(format!("{}: {e}", py.display())),
-            },
-        }
-    }
-    if out.is_empty()
-        && notes.is_empty()
-        && !python_project
-        && !root.join("Cargo.toml").is_file()
-        && !root.join("package.json").is_file()
-    {
-        notes.push("No Cargo.toml, package.json or Python project here".to_owned());
-    }
-    out.sort_by(|a, b| a.ecosystem.label().cmp(b.ecosystem.label()).then(a.name.cmp(&b.name)));
-    (out, notes)
-}
-
 /// The command that updates a package (as far as the project's requirement allows), run in
 /// the project's folder: a program and its arguments.
-pub fn update_command(eco: Ecosystem, name: &str, python: Option<&Path>) -> Option<(String, Vec<String>)> {
+pub fn update_command(eco: Ecosystem, name: &str) -> Option<(String, Vec<String>)> {
     let own = |p: &str, args: &[&str]| Some((p.to_owned(), args.iter().map(|a| a.to_string()).collect()));
     match eco {
         Ecosystem::Cargo => own("cargo", &["update", "-p", name]),
         Ecosystem::Npm => own("npm", &["update", name]),
         Ecosystem::Poetry => own("poetry", &["update", name]),
         Ecosystem::Uv => own("uv", &["lock", "--upgrade-package", name]),
-        Ecosystem::Pip => {
-            let py = python?.to_string_lossy().into_owned();
-            Some((py, ["-m", "pip", "install", "--upgrade", name].map(str::to_owned).to_vec()))
-        }
+        // `python` is the project's interpreter.
+        Ecosystem::Pip => own("python", &["-m", "pip", "install", "--upgrade", name]),
     }
 }
 
 /// The command that removes a dependency the project names itself.
-pub fn remove_command(eco: Ecosystem, name: &str, python: Option<&Path>) -> Option<(String, Vec<String>)> {
+pub fn remove_command(eco: Ecosystem, name: &str) -> Option<(String, Vec<String>)> {
     let own = |p: &str, args: &[&str]| Some((p.to_owned(), args.iter().map(|a| a.to_string()).collect()));
     match eco {
         Ecosystem::Cargo => own("cargo", &["remove", name]),
         Ecosystem::Npm => own("npm", &["uninstall", name]),
         Ecosystem::Poetry => own("poetry", &["remove", name]),
         Ecosystem::Uv => own("uv", &["remove", name]),
-        Ecosystem::Pip => {
-            let py = python?.to_string_lossy().into_owned();
-            Some((py, ["-m", "pip", "uninstall", "-y", name].map(str::to_owned).to_vec()))
-        }
+        Ecosystem::Pip => own("python", &["-m", "pip", "uninstall", "-y", name]),
     }
 }
 
@@ -650,25 +564,25 @@ version = "3.7"
 
     #[test]
     fn commands() {
-        assert_eq!(update_command(Ecosystem::Cargo, "serde", None).unwrap().1, ["update", "-p", "serde"]);
+        assert_eq!(update_command(Ecosystem::Cargo, "serde").unwrap().1, ["update", "-p", "serde"]);
         assert_eq!(
-            remove_command(Ecosystem::Npm, "a", None).unwrap(),
+            remove_command(Ecosystem::Npm, "a").unwrap(),
             ("npm".to_owned(), vec!["uninstall".to_owned(), "a".to_owned()])
         );
-        assert!(update_command(Ecosystem::Pip, "x", None).is_none(), "pip needs the project's Python");
+        // `python` is the project's interpreter, found by the editor.
+        let (program, args) = update_command(Ecosystem::Pip, "x").unwrap();
         assert_eq!(
-            update_command(Ecosystem::Pip, "x", Some(Path::new("py"))).unwrap().1,
-            ["-m", "pip", "install", "--upgrade", "x"]
+            (program.as_str(), args),
+            ("python", ["-m", "pip", "install", "--upgrade", "x"].iter().map(|s| s.to_string()).collect())
         );
     }
 
     /// This repository's own Cargo.lock reads, with its packages as roots.
     #[test]
     fn reads_this_repositorys_lock() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let (locks, notes) = read_locks(&root);
-        assert!(notes.is_empty(), "{notes:?}");
-        let cargo = locks.iter().find(|l| l.ecosystem == Ecosystem::Cargo).expect("Cargo.lock");
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
+        let text = std::fs::read_to_string(root.join("Cargo.lock")).unwrap();
+        let cargo = read_lock("Cargo.lock", Ecosystem::Cargo, &text).expect("Cargo.lock reads");
         let roots: Vec<&str> = cargo.roots.iter().map(|&r| cargo.packages[r].name.as_str()).collect();
         assert!(roots.contains(&"coiman-ide") && roots.contains(&"coiman-core"), "{roots:?}");
         let ide = cargo.packages.iter().find(|p| p.name == "coiman-ide").unwrap();

@@ -98,9 +98,7 @@ pub enum Command {
     ChangeEncoding,
     ShowLanguageServers,
     /// Secrets, complexity, duplicates, licences and audits.
-    ShowCodeHealth,
     /// A Markdown overview of the project: languages, folders, tests, Git.
-    ProjectOverview,
     /// Time spent per project and day, kept on this computer.
     SessionStatistics,
     /// The control flow of the function at the cursor, as a Mermaid flowchart.
@@ -382,8 +380,6 @@ impl Command {
             Command::ShowAndroid => MOBILE,
             Command::PreviewShader => GRAPHICS,
             Command::ShowFunctionFlow
-            | Command::ShowCodeHealth
-            | Command::ProjectOverview
             | Command::SessionStatistics
             | Command::ShowRunHistory
             | Command::ShowCoverage
@@ -506,8 +502,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::PreviousProblem, "Go to Previous Problem (Error, Warning, Info)"),
     (Command::RestartLanguageServer, "Language Servers: Restart"),
     (Command::ShowLanguageServers, "Language Servers: Show Status"),
-    (Command::ShowCodeHealth, "Code Health: Secrets, Complexity, Duplicates, Licences and Audits"),
-    (Command::ProjectOverview, "Project: Generate Overview"),
     (Command::SessionStatistics, "Project: Show Session Statistics"),
     (Command::ShowFunctionFlow, "Architecture: Show Flow of Function at Cursor"),
     (Command::ShowRunHistory, "Testing: Show Run History (Tests, Flaky Tests, Builds)"),
@@ -800,8 +794,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::BrowseOpenVsxThemes, "coiman.browseOpenVsxThemes"),
     (Command::ChangeEncoding, "workbench.action.editor.changeEncoding"),
     (Command::ShowLanguageServers, "coiman.showLanguageServers"),
-    (Command::ShowCodeHealth, "coiman.showCodeHealth"),
-    (Command::ProjectOverview, "coiman.projectOverview"),
     (Command::SessionStatistics, "coiman.sessionStatistics"),
     (Command::ShowFunctionFlow, "coiman.showFunctionFlow"),
     (Command::ShowRunHistory, "coiman.showRunHistory"),

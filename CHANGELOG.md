@@ -7,6 +7,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Health is now an extension of the Code analysis pack (secrets, complexity, duplicates,
+  undocumented items, dependencies with their tree in the Explorer, licences, audits) with a
+  panel instead of a window, and Project: Generate Overview comes with it. The built-in window
+  and its six analysis modules left the program; complexity stays in the editor, which plugins
+  ask through `syntax-functions`.
+- Plugin API: `links` and `rows` panel blocks, `run-in-terminal`, `show-markdown`,
+  `syntax-functions`; an approved `python` is the project's interpreter.
 - Architecture is now an extension of the Code analysis pack (the dependency graph, by file or
   folder; cycles, most used and unused files in a panel; the impact of the current file),
   drawn in the same graph window as the class diagrams, and read in steps. The built-in

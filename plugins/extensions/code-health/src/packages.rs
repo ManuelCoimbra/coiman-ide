@@ -3,12 +3,6 @@
 //! metadata (`cargo metadata --offline`) and from `node_modules`. The audits run their own
 //! tools, which fetch the advisory lists themselves.
 
-use std::path::{Path, PathBuf};
-use std::process::Stdio;
-
-use crate::language::lsp::discovery::quiet_command;
-use crate::language::lsp::servers::which;
-
 /// A dependency and its licence.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Licensed {
@@ -128,67 +122,16 @@ fn npm_license(value: &serde_json::Value) -> String {
     }
 }
 
-/// The packages in `node_modules` (scoped ones too), one level deep.
-pub fn npm_licences(root: &Path) -> Vec<Licensed> {
-    let modules = root.join("node_modules");
-    let mut dirs: Vec<PathBuf> = Vec::new();
-    for entry in std::fs::read_dir(&modules).into_iter().flatten().flatten() {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('@') {
-            dirs.extend(std::fs::read_dir(&path).into_iter().flatten().flatten().map(|e| e.path()));
-        } else if !name.starts_with('.') {
-            dirs.push(path);
-        }
-    }
-    let mut out: Vec<Licensed> = dirs
-        .iter()
-        .filter_map(|d| std::fs::read_to_string(d.join("package.json")).ok())
-        .filter_map(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
-        .map(|v| Licensed {
-            ecosystem: "npm",
-            name: v["name"].as_str().unwrap_or("").to_owned(),
-            version: v["version"].as_str().unwrap_or("").to_owned(),
-            license: npm_license(&v),
-        })
-        .filter(|l| !l.name.is_empty())
-        .collect();
-    out.sort_by(|a, b| a.name.cmp(&b.name));
-    out
-}
-
-/// Every dependency's licence the project has: Cargo's when it has a `Cargo.toml` (read
-/// offline, from what's already downloaded), npm's when it has a `node_modules`. A Cargo
-/// error comes back as a note beside what was found.
-pub fn licences(root: &Path) -> (Vec<Licensed>, Option<String>) {
-    let mut out = Vec::new();
-    let mut note = None;
-    if root.join("Cargo.toml").is_file() {
-        match which("cargo") {
-            None => note = Some("Cargo isn't installed, so Rust dependencies aren't listed".to_owned()),
-            Some(cargo) => {
-                let run = quiet_command(&cargo)
-                    .args(["metadata", "--format-version", "1", "--offline"])
-                    .current_dir(root)
-                    .stdin(Stdio::null())
-                    .output();
-                match run {
-                    Ok(o) if o.status.success() => match parse_cargo_metadata(&String::from_utf8_lossy(&o.stdout)) {
-                        Ok(list) => out.extend(list),
-                        Err(e) => note = Some(format!("cargo metadata: {e}")),
-                    },
-                    Ok(o) => {
-                        let err = String::from_utf8_lossy(&o.stderr);
-                        let first = err.lines().find(|l| !l.trim().is_empty()).unwrap_or("failed");
-                        note = Some(format!("cargo metadata: {first} (build once to download the dependencies)"));
-                    }
-                    Err(e) => note = Some(format!("cargo metadata: {e}")),
-                }
-            }
-        }
-    }
-    out.extend(npm_licences(root));
-    (out, note)
+/// One `node_modules/<package>/package.json`, as a licence entry.
+pub fn npm_package(text: &str) -> Option<Licensed> {
+    let v = serde_json::from_str::<serde_json::Value>(text).ok()?;
+    let name = v["name"].as_str().unwrap_or("").to_owned();
+    (!name.is_empty()).then(|| Licensed {
+        ecosystem: "npm",
+        name,
+        version: v["version"].as_str().unwrap_or("").to_owned(),
+        license: npm_license(&v),
+    })
 }
 
 /// A known vulnerability in a dependency.
@@ -305,64 +248,6 @@ pub fn severity_rank(severity: &str) -> u8 {
     }
 }
 
-/// Runs the audits the project calls for: `cargo audit` beside a `Cargo.lock`, `npm audit`
-/// beside a `package-lock.json`. Notes say what couldn't run and how to get it.
-pub fn audit(root: &Path) -> (Vec<Advisory>, Vec<String>) {
-    let mut out = Vec::new();
-    let mut notes = Vec::new();
-    let has_lock = |name: &str| root.join(name).is_file();
-    if has_lock("Cargo.lock") {
-        match which("cargo") {
-            None => notes.push("Cargo isn't installed".to_owned()),
-            Some(cargo) => {
-                let run =
-                    quiet_command(&cargo).args(["audit", "--json"]).current_dir(root).stdin(Stdio::null()).output();
-                match run {
-                    Err(e) => notes.push(format!("cargo audit: {e}")),
-                    Ok(o) => {
-                        let stdout = String::from_utf8_lossy(&o.stdout);
-                        let stderr = String::from_utf8_lossy(&o.stderr);
-                        if stderr.contains("no such command") {
-                            notes.push(
-                                "cargo audit isn't installed: run `cargo install cargo-audit` to add it".to_owned(),
-                            );
-                        } else {
-                            // It exits 1 when it finds something: the JSON says what.
-                            match parse_cargo_audit(&stdout) {
-                                Ok(list) => out.extend(list),
-                                Err(_) => notes.push(format!(
-                                    "cargo audit: {}",
-                                    stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no result")
-                                )),
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    if has_lock("package-lock.json") {
-        match which("npm") {
-            None => notes.push("npm isn't installed".to_owned()),
-            Some(npm) => {
-                let run = quiet_command(&npm).args(["audit", "--json"]).current_dir(root).stdin(Stdio::null()).output();
-                match run {
-                    Err(e) => notes.push(format!("npm audit: {e}")),
-                    Ok(o) => match parse_npm_audit(&String::from_utf8_lossy(&o.stdout)) {
-                        Ok(list) => out.extend(list),
-                        Err(e) => notes.push(format!("npm audit: {e}")),
-                    },
-                }
-            }
-        }
-    }
-    if !has_lock("Cargo.lock") && !has_lock("package-lock.json") {
-        notes.push("No Cargo.lock or package-lock.json here: nothing to audit".to_owned());
-    }
-    out.sort_by(|a, b| severity_rank(&a.severity).cmp(&severity_rank(&b.severity)).then(a.package.cmp(&b.package)));
-    (out, notes)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,21 +277,19 @@ mod tests {
     }
 
     #[test]
-    fn npm_packages_are_read_from_node_modules() {
-        let dir = std::env::temp_dir().join(format!("coiman_npm_{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        for (path, json) in [
-            ("node_modules/left-pad", r#"{"name":"left-pad","version":"1.3.0","license":"WTFPL"}"#),
-            ("node_modules/@scope/old", r#"{"name":"@scope/old","version":"0.1.0","licenses":[{"type":"MIT"}]}"#),
-            ("node_modules/obj", r#"{"name":"obj","version":"2.0.0","license":{"type":"ISC"}}"#),
-        ] {
-            std::fs::create_dir_all(dir.join(path)).unwrap();
-            std::fs::write(dir.join(path).join("package.json"), json).unwrap();
-        }
-        let list = npm_licences(&dir);
+    fn npm_packages_are_read() {
+        let mut list: Vec<Licensed> = [
+            r#"{"name":"left-pad","version":"1.3.0","license":"WTFPL"}"#,
+            r#"{"name":"@scope/old","version":"0.1.0","licenses":[{"type":"MIT"}]}"#,
+            r#"{"name":"obj","version":"2.0.0","license":{"type":"ISC"}}"#,
+            r#"{"version":"1.0.0"}"#,
+        ]
+        .iter()
+        .filter_map(|t| npm_package(t))
+        .collect();
+        list.sort_by(|a, b| a.name.cmp(&b.name));
         let got: Vec<(&str, &str)> = list.iter().map(|l| (l.name.as_str(), l.license.as_str())).collect();
         assert_eq!(got, [("@scope/old", "MIT"), ("left-pad", "WTFPL"), ("obj", "ISC")]);
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

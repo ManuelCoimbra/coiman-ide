@@ -3,13 +3,10 @@
 
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
-use std::path::Path;
-
-use crate::language::syntax::Lang;
 
 /// A run needs this many lines that count to be reported.
 pub const MIN_LINES: usize = 6;
-const MAX_BYTES: u64 = 512 * 1024;
+pub const MAX_BYTES: u64 = 512 * 1024;
 
 /// One run of lines and where it is again.
 #[derive(Clone, Debug, PartialEq)]
@@ -113,27 +110,48 @@ pub fn find(files: &[(String, String)]) -> Vec<Duplicate> {
     out
 }
 
-/// The project's source files, read, then [`find`].
-pub fn scan(root: &Path) -> Vec<Duplicate> {
-    let mut files = Vec::new();
-    for entry in super::project_files(root, false) {
-        let path = entry.path();
-        if !entry.file_type().is_some_and(|t| t.is_file()) || entry.metadata().map_or(true, |m| m.len() > MAX_BYTES) {
-            continue;
-        }
-        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
-        // Code only: data and docs repeat themselves by nature.
-        let code = Lang::from_extension(&ext).is_some_and(|l| {
-            !matches!(l, Lang::Json | Lang::Toml | Lang::Yaml | Lang::Markdown | Lang::Html | Lang::Css)
-        });
-        if !code {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(path) else { continue };
-        let rel = path.strip_prefix(root).unwrap_or(path).to_string_lossy().replace('\\', "/");
-        files.push((rel, text));
-    }
-    find(&files)
+/// Whether a file is code (data and docs repeat themselves by nature).
+pub fn is_code(path: &str) -> bool {
+    let ext = path.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    matches!(
+        ext.as_str(),
+        "rs" | "py"
+            | "pyi"
+            | "js"
+            | "jsx"
+            | "mjs"
+            | "cjs"
+            | "ts"
+            | "tsx"
+            | "mts"
+            | "cts"
+            | "java"
+            | "kt"
+            | "kts"
+            | "c"
+            | "h"
+            | "cc"
+            | "cpp"
+            | "cxx"
+            | "hpp"
+            | "hh"
+            | "hxx"
+            | "cs"
+            | "go"
+            | "rb"
+            | "php"
+            | "swift"
+            | "dart"
+            | "lua"
+            | "zig"
+            | "scala"
+            | "sh"
+            | "bash"
+            | "ps1"
+            | "sql"
+            | "vue"
+            | "svelte"
+    )
 }
 
 #[cfg(test)]

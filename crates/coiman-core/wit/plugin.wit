@@ -34,6 +34,23 @@ interface types {
         rows: list<list<string>>,
     }
 
+    /// A line of a `links` block: a click opens the file at the line.
+    record file-link {
+        text: string,
+        /// Dimmer, after the text.
+        detail: string,
+        /// Relative to the open folder.
+        path: string,
+        /// 1-based.
+        line: u32,
+    }
+
+    /// A row of a `rows` block: coloured cells, then buttons.
+    record row {
+        cells: list<span>,
+        buttons: list<button>,
+    }
+
     /// A piece of a panel declared in `plugin.toml`. Panels are declarative:
     /// the editor draws them with its own widgets.
     variant block {
@@ -48,6 +65,10 @@ interface types {
         table(table),
         /// Unified diff text, with added and removed lines colored.
         diff(string),
+        /// Places in files, each opened by a click.
+        links(list<file-link>),
+        /// A grid of coloured cells with buttons at the end of each row.
+        rows(list<row>),
     }
 
     /// Colors part of a line. Colors are 0xRRGGBB.
@@ -234,6 +255,16 @@ interface types {
         focus: option<string>,
     }
 
+    /// A function, as the editor's own parser (tree-sitter) reads it.
+    record function-info {
+        name: string,
+        /// 1-based.
+        line: u32,
+        lines: u32,
+        /// Cyclomatic: 1, plus one per branch.
+        complexity: u32,
+    }
+
     /// Something that happened in the editor. A plugin receives the kinds
     /// listed under `events` in its `plugin.toml`.
     variant event {
@@ -266,7 +297,7 @@ interface types {
 /// editor need a permission the user granted at install; without it they
 /// return `permission denied: <permission>`.
 interface host {
-    use types.{line-coverage, tree-item, block, document, decoration, problem, pick, terminal-line, dir-entry, graph};
+    use types.{line-coverage, tree-item, block, document, decoration, problem, pick, terminal-line, dir-entry, graph, function-info};
 
     /// A line in the plugin's log (Output panel).
     log: func(message: string);
@@ -343,6 +374,16 @@ interface host {
     /// Asks to be called again with `resumed(token)`: long work goes on in steps, each
     /// within the time limit of one call, and the editor stays responsive in between.
     continue-later: func(token: string);
+
+    /// Opens Markdown text as a page (rendered, read only) titled `title`.
+    show-markdown: func(title: string, markdown: string);
+    /// Runs an approved program (as `start-job` would) in a terminal tab of its own, where
+    /// its output shows; the folder must be trusted. `python` is the project's interpreter.
+    run-in-terminal: func(title: string, program: string, args: list<string>) -> result<_, string>;
+    /// Needs `workspace-read`: the functions of a file of the open folder, with their length
+    /// and complexity, from the editor's parser (Rust, Python, JavaScript, TypeScript, Java,
+    /// C, C++, C#, Go); empty for other languages.
+    syntax-functions: func(path: string) -> result<list<function-info>, string>;
 }
 
 world plugin {
