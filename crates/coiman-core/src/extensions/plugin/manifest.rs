@@ -16,15 +16,17 @@ pub enum Permission {
     EditorRead,
     EditorWrite,
     LanguageServer,
+    Terminal,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 5] = [
+    pub const ALL: [Permission; 6] = [
         Permission::WorkspaceRead,
         Permission::WorkspaceWrite,
         Permission::EditorRead,
         Permission::EditorWrite,
         Permission::LanguageServer,
+        Permission::Terminal,
     ];
 
     pub fn name(self) -> &'static str {
@@ -34,6 +36,7 @@ impl Permission {
             Permission::EditorRead => "editor-read",
             Permission::EditorWrite => "editor-write",
             Permission::LanguageServer => "language-server",
+            Permission::Terminal => "terminal",
         }
     }
 
@@ -45,6 +48,10 @@ impl Permission {
             Permission::EditorRead => "Read the text of the active editor, including unsaved changes",
             Permission::EditorWrite => "Type text into the active editor",
             Permission::LanguageServer => "Send requests to the language server of the active file",
+            Permission::Terminal => {
+                "See and type the command lines of your terminals, read your shells' history files, and list \
+                 folders outside the open folder"
+            }
         }
     }
 }
@@ -57,6 +64,10 @@ pub enum EventKind {
     Saved,
     ActiveChanged,
     Edited,
+    /// A command sent with Enter in a shell.
+    TerminalCommand,
+    /// Ctrl+Space in a shell.
+    TerminalSuggest,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

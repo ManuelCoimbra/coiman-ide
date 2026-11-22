@@ -7,6 +7,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Extensions that come with Coiman: new features ship as extensions that nothing runs until
+  you install them (Extensions view, **COMES WITH COIMAN**), so Coiman stays as light as you
+  keep it. The first is **Terminal Commands**: commands run in a shell are kept (with the
+  shells' own history files read too); **Ctrl+Space** in a shell suggests, for the line being
+  typed, commands run before, the project's, and paths; **Terminal: Search Command History...**
+  and **Terminal: Run Project Command...** (`package.json` scripts, Makefile targets, `justfile`
+  recipes, Taskfile and Deno tasks, Cargo commands).
+- Plugin API 0.6: pick lists, the `terminal` permission (`terminal-command` and
+  `terminal-suggest` events, `active-terminal-line`, `terminal-type`, `shell-history`),
+  `read-dir`, `workspace-path`, and each plugin's own storage. Plugins built for 0.5 need
+  rebuilding.
 - Git Tools, one window with four tabs. **Search History** finds commits by message, author,
   file, or a change that adds or removes a text (`git log -S`, or `-G` for a regular
   expression), with the matching lines; **Submodules** shows each one's state and fetches,

@@ -157,6 +157,25 @@ pub struct Terminals {
     /// Shown in its own window instead of the bottom panel.
     pub detached: bool,
     search: Option<Search>,
+    /// Commands sent with Enter in a shell, for extensions; caught only while
+    /// `catch_commands` is set (an extension listens).
+    pub entered: Vec<LineAtCursor>,
+    pub catch_commands: bool,
+    /// Ctrl+Space in a shell, for extensions; taken from the shell only while `suggest_key`
+    /// is set.
+    pub suggest: Option<LineAtCursor>,
+    pub suggest_key: bool,
+}
+
+/// The command line being typed in a shell, as the screen shows it.
+pub struct LineAtCursor {
+    pub tab: u64,
+    /// What comes after the prompt, up to the cursor.
+    pub typed: String,
+    /// The folder the prompt names, else the one the shell started in.
+    pub dir: PathBuf,
+    /// Below the cursor, on the screen.
+    pub at: Pos2,
 }
 
 /// Find in the terminal: the bar's state and what it found.
@@ -187,7 +206,17 @@ impl Terminals {
             open_request: None,
             detached: false,
             search: None,
+            entered: Vec::new(),
+            catch_commands: false,
+            suggest: None,
+            suggest_key: false,
         }
+    }
+
+    /// The command line in the active shell, when it shows a prompt.
+    pub fn line_at_cursor(&self) -> Option<LineAtCursor> {
+        let tab = self.tabs.get(self.active).filter(|t| !t.task && t.exited.is_none())?;
+        line_at_cursor(tab, None)
     }
 
     /// Shows the find bar, ready for typing.
@@ -584,6 +613,18 @@ impl Terminals {
             if ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::F)) {
                 self.search.get_or_insert_default().focus = true;
             }
+            if self.suggest_key && ui.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Space)) {
+                self.suggest = line_at_cursor(tab, Some(&grid));
+            }
+            let enter = self.catch_commands && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.is_none());
+            if enter
+                && !tab.task
+                && !tab.session.term().mode().contains(TermMode::ALT_SCREEN)
+                && let Some(line) = line_at_cursor(tab, None)
+                && !line.typed.trim().is_empty()
+            {
+                self.entered.push(line);
+            }
             handle_keys(ui, &tab.session);
         }
         let project = self.cwd.clone();
@@ -718,6 +759,30 @@ fn logical_line(session: &Session, line: i32) -> (i32, String) {
         row += 1;
     }
     (start, text)
+}
+
+/// The text on the cursor's line up to the cursor (a wrapped line taken whole).
+fn before_cursor(session: &Session) -> (String, i32, usize) {
+    let (line, col, columns) = {
+        let term = session.term();
+        let c = term.grid().cursor.point;
+        (c.line.0, c.column.0, term.grid().columns())
+    };
+    let (start, text) = logical_line(session, line);
+    let offset = (line - start) as usize * columns + col;
+    (text.chars().take(offset).collect(), line, col)
+}
+
+/// What is typed after a shell's prompt, if one shows on the cursor's line.
+fn line_at_cursor(tab: &Tab, grid: Option<&Grid>) -> Option<LineAtCursor> {
+    use coiman_core::terminal::history::{prompt_dir, strip_prompt};
+    let (text, line, col) = before_cursor(&tab.session);
+    let (prompt, typed) = strip_prompt(&text)?;
+    let home = std::env::home_dir();
+    let dir = prompt_dir(&prompt, home.as_deref()).filter(|d| d.is_dir()).unwrap_or_else(|| tab.cwd.clone());
+    let at =
+        grid.map_or(Pos2::ZERO, |g| g.rect.min + Vec2::new(col as f32 * g.char_w, (line.max(0) + 1) as f32 * g.row_h));
+    Some(LineAtCursor { tab: tab.id, typed, dir, at })
 }
 
 /// A tab's text as the program printed it, one string per line.

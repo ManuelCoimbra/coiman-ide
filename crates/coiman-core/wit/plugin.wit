@@ -1,4 +1,4 @@
-package coiman:plugin@0.5.0;
+package coiman:plugin@0.6.0;
 
 /// Data shared by the editor and plugins.
 interface types {
@@ -118,6 +118,69 @@ interface types {
         error: option<string>,
     }
 
+    /// A row of a pick list (`show-pick`).
+    record pick-item {
+        /// What is chosen: typed into the terminal, passed back in `picked`.
+        text: string,
+        /// A short word at the right: "history", "path"...
+        kind: string,
+        /// A dimmer note beside it.
+        detail: string,
+        /// Offers an X that sends `picked` with `forget`.
+        can-forget: bool,
+    }
+
+    /// A list the user picks from, drawn by the editor. Typing narrows it: by the
+    /// editor when `filter` is set, else the plugin gets `pick-query-changed` and
+    /// shows the list again.
+    record pick {
+        /// The plugin's own name for it, passed back.
+        id: string,
+        title: string,
+        /// What the box starts with.
+        query: string,
+        items: list<pick-item>,
+        /// Shown below the terminal's cursor instead of at the top of the window.
+        at-terminal-cursor: bool,
+        /// Enter runs the choice (Shift+Enter only puts it), else the other way round.
+        run-first: bool,
+        filter: bool,
+    }
+
+    enum pick-action {
+        /// Put it on the command line.
+        put,
+        /// Run it.
+        run,
+        /// Its X was clicked.
+        forget,
+    }
+
+    record pick-choice {
+        pick: string,
+        text: string,
+        action: pick-action,
+    }
+
+    record pick-query {
+        pick: string,
+        query: string,
+    }
+
+    /// The command line of a shell in a terminal.
+    record terminal-line {
+        terminal: u64,
+        /// What comes after the prompt, up to the cursor.
+        typed: string,
+        /// The folder the prompt names, else the one the shell started in (absolute).
+        dir: string,
+    }
+
+    record dir-entry {
+        name: string,
+        is-dir: bool,
+    }
+
     /// Something that happened in the editor. A plugin receives the kinds
     /// listed under `events` in its `plugin.toml`.
     variant event {
@@ -133,6 +196,14 @@ interface types {
         job-finished(job-result),
         /// A language server answered this plugin. Always delivered.
         server-answered(server-response),
+        /// A command was sent with Enter in a shell (`typed` is the command).
+        terminal-command(terminal-line),
+        /// Ctrl+Space in a shell: suggestions are asked for the line being typed.
+        terminal-suggest(terminal-line),
+        /// A row of this plugin's pick list was chosen. Always delivered.
+        picked(pick-choice),
+        /// The text in this plugin's pick list (without `filter`) changed. Always delivered.
+        pick-query-changed(pick-query),
     }
 }
 
@@ -140,7 +211,7 @@ interface types {
 /// editor need a permission the user granted at install; without it they
 /// return `permission denied: <permission>`.
 interface host {
-    use types.{line-coverage, tree-item, block, document, decoration, problem};
+    use types.{line-coverage, tree-item, block, document, decoration, problem, pick, terminal-line, dir-entry};
 
     /// A line in the plugin's log (Output panel).
     log: func(message: string);
@@ -189,6 +260,27 @@ interface host {
     /// server, standard or custom. `params` is JSON; `textDocument` is added when
     /// missing. The answer comes as a `server-answered` event.
     language-server-request: func(method: string, params: string) -> result<u64, string>;
+
+    /// Shows a pick list; one per plugin, a new one replaces it. A pick with an
+    /// empty title closes it.
+    show-pick: func(pick: pick);
+    /// Needs `workspace-read`: the open folder's path.
+    workspace-path: func() -> result<string, string>;
+    /// Needs `workspace-read` inside the open folder, `terminal` elsewhere: the
+    /// files and folders in a folder (relative to the open folder, or absolute).
+    read-dir: func(path: string) -> result<list<dir-entry>, string>;
+    /// The plugin's own saved text (its settings, its history); "" at first.
+    storage-read: func() -> string;
+    /// Saves the plugin's own text, at most 4 MB. No permission needed.
+    storage-write: func(text: string) -> result<_, string>;
+    /// Needs `terminal`: the command line of the active shell, if it shows a prompt.
+    active-terminal-line: func() -> result<option<terminal-line>, string>;
+    /// Needs `terminal`: types text into a terminal. A carriage return runs the
+    /// line; DEL (0x7f) erases the character before the cursor.
+    terminal-type: func(terminal: u64, text: string) -> result<_, string>;
+    /// Needs `terminal`: the commands in the shells' own history files (PowerShell,
+    /// bash, zsh, fish), newest last.
+    shell-history: func() -> result<list<string>, string>;
 }
 
 world plugin {

@@ -24,3 +24,9 @@ for doc in README.md CHANGELOG.md PRIVACY.md; do
     install -Dm644 "$root/$doc" "$out/share/doc/coiman-ide/$doc"
 done
 install -Dm644 "$root/LICENSE" "$out/share/licenses/coiman-ide/LICENSE"
+# Extensions that come with Coiman, installed only when the user asks (Extensions view).
+for ext in "$root"/plugins/extensions/*/; do
+    name=$(basename "$ext")
+    install -Dm644 "$ext/plugin.toml" "$out/share/coiman-ide/extensions/$name/plugin.toml"
+    install -Dm644 "$ext/plugin.wasm" "$out/share/coiman-ide/extensions/$name/plugin.wasm"
+done

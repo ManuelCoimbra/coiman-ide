@@ -1,0 +1,18 @@
+id = "coiman.terminal-commands"
+name = "Terminal Commands"
+version = "1.0.0"
+description = "Keeps the commands you run in terminals and suggests them again (Ctrl+Space in a shell), with the project's scripts, make targets, recipes and Cargo commands, and paths."
+permissions = ["terminal", "workspace-read"]
+events = ["terminal-command", "terminal-suggest"]
+
+[[commands]]
+id = "suggest"
+title = "Terminal: Suggest Commands"
+
+[[commands]]
+id = "history"
+title = "Terminal: Search Command History..."
+
+[[commands]]
+id = "project"
+title = "Terminal: Run Project Command..."

@@ -1065,6 +1065,7 @@ impl CodeApp {
         self.http_window(&ctx);
         self.openapi_window(&ctx);
         self.git_tools_window(&ctx);
+        self.plugin_pick_window(&ctx);
         self.open_vsx_window(&ctx);
         self.git_graph_window(&ctx);
         self.database_window(&ctx);

@@ -44,6 +44,7 @@ root=$work/rpmroot
     echo "/usr/bin/coiman-ide"
     echo "/usr/share/applications/$id.desktop"
     echo "/usr/share/metainfo/$id.metainfo.xml"
+    echo "/usr/share/coiman-ide"
     echo "/usr/share/icons/hicolor/*/apps/$id.*"
     echo "%doc /usr/share/doc/coiman-ide"
     echo "%license /usr/share/licenses/coiman-ide"

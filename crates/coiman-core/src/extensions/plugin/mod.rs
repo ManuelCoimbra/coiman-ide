@@ -8,5 +8,8 @@ pub mod manifest;
 pub mod registry;
 pub mod store;
 
-pub use host::{Block, Button, Decoration, Document, Event, PluginHost, Problem, Severity, TreeItem, Update};
+pub use host::{
+    Block, Button, Decoration, DirEntry, Document, Event, Pick, PickAction, PickChoice, PickItem, PickQuery,
+    PluginHost, Problem, Severity, TerminalLine, TreeItem, Update,
+};
 pub use manifest::{EventKind, Manifest, Permission};

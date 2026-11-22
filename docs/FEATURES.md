@@ -142,6 +142,8 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   Panel** (the corners button, or **View: Toggle Maximized Panel**) gives the panel all the
   room the editor had, and restores it. The shell is
   `terminal.shell` (default: PowerShell on Windows, `$SHELL` elsewhere)
+- Terminal command history, suggestions and project commands come with the **Terminal
+  Commands** extension (see [Extensions that come with Coiman](#extensions-that-come-with-coiman)).
 - Save / Save As / Save All (`Ctrl+K S`)
 - Encodings: files are detected from their BOM, then UTF-8, falling back to Windows 1252.
   Click the encoding in the status bar to Reopen with Encoding or Save with Encoding
@@ -647,17 +649,26 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   with a `job-finished` event, with stdin, stdout, stderr and the exit code.
 - **Permissions**: `plugin.toml` lists what a plugin needs: `workspace-read`,
   `workspace-write`, `editor-read`, `editor-write`, `language-server` (standard or custom
-  requests to the active file's server). You approve them before it is
+  requests to the active file's server), `terminal` (the command lines of the terminals,
+  typing into them, the shells' history files, and folders outside the open folder). You
+  approve them before it is
   installed and can uncheck any of them, then or later. A call without its permission fails
   with `permission denied`.
 - **Contribution points** are declared in `plugin.toml` and drawn by the editor:
   - status bar items;
   - bottom panel tabs (headings, text, code, lists, buttons, colored text, tables, diffs);
   - tree views in the Explorer;
-  - Command Palette commands.
+  - Command Palette commands;
+  - pick lists (`show-pick`): a box to type in and rows to choose from, below the terminal's
+    cursor or at the top of the window, narrowed by the editor or by the plugin as typing
+    goes on, with Enter, Shift+Enter and a ✕ per row.
 
-  Plugins fill them with data and receive the events they subscribe to: `opened`, `saved`
-  and `active-changed`.
+  Plugins fill them with data and receive the events they subscribe to: `opened`, `saved`,
+  `active-changed`, `edited`, and with the `terminal` permission `terminal-command` (a
+  command sent with Enter in a shell) and `terminal-suggest` (Ctrl+Space in a shell; the key
+  goes to the shell when no plugin listens).
+- **Storage**: each plugin keeps its own text (`storage-read`, `storage-write`, 4 MB) in
+  `<config>\plugins\data`, without a permission.
 - **Registry**: `plugins.registry` is a folder or URL with a `registry.json`. Nothing is
   fetched until you click refresh in the Extensions view (`Ctrl+Shift+X`). Each version is
   signed with the publisher's Ed25519 key. A plugin installs only if its files match their
@@ -686,6 +697,28 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   the prompt back. Cargo's output goes to the Output panel; a build that fails leaves the last
   one running. The Extensions view shows **Dev mode** with **Stop**
   (**Plugins: Stop Dev Mode**); the plugin stays installed as last built.
+
+### Extensions that come with Coiman
+
+Features that not everyone needs come as extensions: they ship with Coiman (in `extensions`
+beside the program, or `share/coiman-ide/extensions` on Linux), but nothing of them runs until
+you install one under **COMES WITH COIMAN** in the Extensions view. Coiman stays as light as
+you keep it; uninstalling one takes it out again.
+
+- **Terminal Commands** (`terminal`, `workspace-read`): keeps each command sent with Enter in
+  a shell (the line after the prompt, 1,000 at most, in its storage) and reads the shells' own
+  history files (PowerShell, bash, zsh, fish).
+  - **Ctrl+Space** in a shell (**Terminal: Suggest Commands**) lists, for the line being
+    typed: paths (once the command has a word after it, or the word has a `/` or `\`), the
+    project's commands, commands run before (those that start with the line first) and the
+    shells' history. Typing narrows the list; arrows move; **Enter** puts the choice on the
+    command line in place of what was typed, **Shift+Enter** runs it; **✕** forgets one.
+  - **Terminal: Search Command History...** opens the same list with only commands run
+    before, this project's first.
+  - **Terminal: Run Project Command...** lists what the project offers, and **Enter** runs it:
+    `package.json` scripts (with npm, pnpm, yarn or bun, by the lock file), Makefile targets
+    (with their `##` comment or first line), `justfile` recipes, Taskfile and Deno tasks, and
+    Cargo's build, run (each program and example), test, check, clippy and fmt.
 
 **Built in**, as plugins you can turn off in the Extensions view:
 

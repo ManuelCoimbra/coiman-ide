@@ -15,7 +15,7 @@ use coiman_core::extensions::plugin::manifest::{Alignment, Manifest, Permission}
 use coiman_core::extensions::plugin::registry::{self, Entry, Package};
 use coiman_core::extensions::plugin::store::{self, Lockfile, UpdateDiff};
 use coiman_core::extensions::plugin::{
-    Block, Decoration, Document, Event, EventKind, PluginHost, Problem, Severity, TreeItem, Update,
+    Block, Decoration, Document, Event, EventKind, PluginHost, Problem, Severity, TerminalLine, TreeItem, Update,
 };
 use coiman_core::language::lsp::types as lt;
 use egui::{Align, RichText, Sense};
@@ -122,6 +122,9 @@ enum Job {
 #[path = "plugin_dev.rs"]
 mod dev;
 
+#[path = "plugin_pick.rs"]
+mod pick;
+
 /// Waiting for the user to approve an install or update.
 struct Consent {
     pkg: Package,
@@ -166,6 +169,56 @@ pub(crate) struct PluginState {
     dev: Option<dev::DevMode>,
     /// Plugins: New Plugin...'s form while it's open.
     new_plugin: Option<dev::NewPlugin>,
+    /// A plugin's pick list on screen.
+    pick: Option<pick::Shown>,
+    /// Below the terminal's cursor when Ctrl+Space was last pressed there.
+    terminal_at: Option<egui::Pos2>,
+    /// Extensions that come with Coiman, not installed until asked: (folder, manifest).
+    shipped: Option<Vec<(PathBuf, Manifest)>>,
+}
+
+/// `Locked::source` prefix of an extension that came with Coiman and was installed on request.
+const SHIPPED_SOURCE: &str = "shipped:";
+
+/// What a terminal's command line looks like to plugins.
+fn terminal_line(l: &crate::ui::terminal::LineAtCursor) -> TerminalLine {
+    TerminalLine { terminal: l.tab, typed: l.typed.clone(), dir: l.dir.to_string_lossy().into_owned() }
+}
+
+/// Folders holding the extensions that come with Coiman: `extensions` beside the program
+/// (or one level up, in a package), and `plugins/extensions` in a source checkout.
+fn shipped_dirs() -> Vec<PathBuf> {
+    let Ok(exe) = std::env::current_exe() else { return Vec::new() };
+    let mut dirs = Vec::new();
+    for dir in exe.ancestors().skip(1).take(5) {
+        for candidate in
+            [dir.join("extensions"), dir.join("share/coiman-ide/extensions"), dir.join("plugins/extensions")]
+        {
+            if candidate.is_dir() && !dirs.contains(&candidate) {
+                dirs.push(candidate);
+            }
+        }
+    }
+    dirs
+}
+
+/// The extensions found there, each once (the first found wins).
+fn shipped_extensions() -> Vec<(PathBuf, Manifest)> {
+    let mut found: Vec<(PathBuf, Manifest)> = Vec::new();
+    for dir in shipped_dirs() {
+        let Ok(read) = std::fs::read_dir(&dir) else { continue };
+        let mut folders: Vec<PathBuf> =
+            read.flatten().map(|e| e.path()).filter(|p| p.join("plugin.wasm").is_file()).collect();
+        folders.sort();
+        for folder in folders {
+            let Ok(text) = std::fs::read_to_string(folder.join("plugin.toml")) else { continue };
+            let Ok(m) = coiman_core::extensions::plugin::manifest::parse(&text) else { continue };
+            if !found.iter().any(|(_, f)| f.id == m.id) {
+                found.push((folder, m));
+            }
+        }
+    }
+    found
 }
 
 /// Command Palette key for a plugin command.
@@ -457,6 +510,7 @@ impl CodeApp {
             self.plugins_init(ctx);
         }
         self.pump_jobs(ctx);
+        self.pump_terminal_events();
         let Some(host) = &self.plugins.host else { return };
         if self.plugins.workspace != self.explorer.root {
             self.plugins.workspace = self.explorer.root.clone();
@@ -609,6 +663,37 @@ impl CodeApp {
                     doc.buffer.insert(&text);
                 }
             }
+            Update::Pick { plugin, pick } => self.show_plugin_pick(plugin, pick),
+            Update::TerminalType { terminal, text, .. } => {
+                self.terminal.type_into(terminal, &text);
+                self.terminal.show_tab(terminal);
+                self.terminal.focus_requested = true;
+            }
+        }
+    }
+
+    /// Whether a running plugin listens for `kind` and may see the terminals.
+    fn plugin_listens(&self, kind: EventKind) -> bool {
+        self.plugins.infos.iter().filter(|i| i.running).any(|i| {
+            i.manifest.as_ref().is_some_and(|m| m.events.contains(&kind))
+                && self.plugins.lock.get(&i.id).is_some_and(|l| l.granted.contains(&Permission::Terminal))
+        })
+    }
+
+    /// The terminal's side of plugins: what was run, Ctrl+Space, and the line for commands.
+    fn pump_terminal_events(&mut self) {
+        self.terminal.catch_commands = self.plugin_listens(EventKind::TerminalCommand);
+        self.terminal.suggest_key = self.plugin_listens(EventKind::TerminalSuggest);
+        let entered = std::mem::take(&mut self.terminal.entered);
+        let suggest = self.terminal.suggest.take();
+        let Some(host) = &self.plugins.host else { return };
+        for line in &entered {
+            host.event(EventKind::TerminalCommand, Event::TerminalCommand(terminal_line(line)));
+        }
+        if let Some(line) = suggest {
+            self.plugins.terminal_at = Some(line.at);
+            host.set_terminal_line(Some(terminal_line(&line)));
+            host.event(EventKind::TerminalSuggest, Event::TerminalSuggest(terminal_line(&line)));
         }
     }
 
@@ -639,6 +724,8 @@ impl CodeApp {
     fn run_plugin(&mut self, plugin: &str, command: &str, argument: &str) {
         match &self.plugins.host {
             Some(host) if self.plugins.infos.iter().any(|i| i.id == plugin && i.running) => {
+                // The command line as it is now, for `active-terminal-line`.
+                host.set_terminal_line(self.terminal.line_at_cursor().as_ref().map(terminal_line));
                 host.run_command(plugin, command, argument);
             }
             _ => self.status = Some(format!("{} isn't running", self.plugin_name(plugin))),
@@ -901,7 +988,9 @@ impl CodeApp {
                 if !m.description.is_empty() {
                     ui.label(RichText::new(&m.description).color(pal.text_dim));
                 }
-                if c.key.is_empty() {
+                if c.source.starts_with(SHIPPED_SOURCE) {
+                    ui.label(RichText::new("Comes with Coiman IDE.").color(pal.text_dim));
+                } else if c.key.is_empty() {
                     ui.label(
                         RichText::new("Unsigned: installed from a folder, its origin isn't verified.").color(WARNING),
                     );
@@ -1006,6 +1095,7 @@ impl CodeApp {
         ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             self.installed_section(ui, &ctx);
+            self.shipped_section(ui);
             if !self.plugins.updates.is_empty() {
                 ui.add_space(8.0);
                 ui.label(RichText::new("UPDATES").small().strong());
@@ -1078,6 +1168,64 @@ impl CodeApp {
         });
     }
 
+    /// Extensions that come with Coiman, to install when wanted: Coiman stays as light as
+    /// the user keeps it.
+    fn shipped_section(&mut self, ui: &mut egui::Ui) {
+        let pal = theme::colors();
+        let shipped = self.plugins.shipped.get_or_insert_with(shipped_extensions).clone();
+        let offered: Vec<_> = shipped
+            .iter()
+            .filter(|(_, m)| {
+                self.plugins.lock.get(&m.id).is_none_or(|l| {
+                    l.source.starts_with(SHIPPED_SOURCE)
+                        && coiman_core::extensions::plugin::manifest::is_newer(&m.version, &l.version)
+                })
+            })
+            .collect();
+        if offered.is_empty() {
+            return;
+        }
+        ui.add_space(8.0);
+        ui.label(RichText::new("COMES WITH COIMAN").small().strong());
+        ui.label(RichText::new("Not installed until you want them.").small().color(pal.text_dim));
+        let mut install = None;
+        for (folder, m) in offered {
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(&m.name).strong());
+                ui.label(RichText::new(&m.version).small().color(pal.text_dim));
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    let verb = if self.plugins.lock.get(&m.id).is_some() { "Update…" } else { "Install…" };
+                    if ui.small_button(verb).clicked() {
+                        install = Some(folder.clone());
+                    }
+                });
+            });
+            if !m.description.is_empty() {
+                ui.label(RichText::new(&m.description).small().color(pal.text_dim));
+            }
+        }
+        if let Some(folder) = install {
+            match registry::read_folder(&folder) {
+                Ok(pkg) => {
+                    let locked = self.plugins.lock.get(&pkg.manifest.id);
+                    let granted = locked.map_or_else(|| pkg.manifest.permissions.clone(), |l| l.granted.clone());
+                    let programs = locked.map(|l| l.granted_programs.clone()).unwrap_or_default();
+                    self.plugins.consent = Some(Consent {
+                        programs,
+                        granted,
+                        source: format!("{SHIPPED_SOURCE}{}", folder.display()),
+                        pkg,
+                        key: String::new(),
+                        trusted: false,
+                        diff: None,
+                    });
+                }
+                Err(e) => self.status = Some(format!("Could not read {}: {e}", folder.display())),
+            }
+        }
+    }
+
     fn installed_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let pal = theme::colors();
         ui.label(RichText::new("INSTALLED").small().strong());
@@ -1118,6 +1266,8 @@ impl CodeApp {
             ui.label(state.small());
             let origin = if locked.source == BUILT_IN_SOURCE {
                 "built in".to_owned()
+            } else if locked.source.starts_with(SHIPPED_SOURCE) {
+                "came with Coiman IDE".to_owned()
             } else if locked.signed() {
                 format!("signed, key {}", registry::fingerprint(&locked.publisher_key))
             } else {

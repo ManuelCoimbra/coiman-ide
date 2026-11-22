@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Extensions that come with Coiman, installed only when wanted; the first, Terminal Commands: history, Ctrl+Space suggestions, project commands.
 - Git Tools: history search (by text and by change), submodules, hooks, `.gitignore` rules.
 - OpenAPI and Swagger specs: endpoints, models, each endpoint as a `.http` request.
 - An HTTP client: `.http` files, environments, named responses, history and comparison, through curl.
@@ -48,22 +49,28 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 - The Welcome page greets by name.
 - The Dock layout's island gaps, even on both sides.
 
+## Extensions, not built in
+
+New features come as extensions that ship with Coiman and run only once installed, so each
+user keeps Coiman as light or as full as they like. The plugin API grows with what each one
+needs (a drawing canvas, forms, windows of their own), and the features already built in move
+out one at a time, the heavy views first (the OOP and dependency graphs, Git Graph, the
+database windows).
+
 ## Next, nothing to download
 
 From the items `docs/SPEC-COVERAGE.md` still has as missing, in order: each one covers
 several of them, and none needs a download (the network goes through `curl` and `git`).
 
-1. Terminal: a searchable history of the commands run, completion of paths, and commands
-   suggested from the project (scripts in `package.json`, `Makefile`, `justfile`, Cargo).
-2. Embedded: a memory map from the ELF and the linker map (what sits where in flash and RAM,
+1. Embedded: a memory map from the ELF and the linker map (what sits where in flash and RAM,
    by section and symbol), and firmware section analysis beside Binary Size.
-3. Databases: compare two schemas (tables, columns, keys, indexes) and write the SQL that
+2. Databases: compare two schemas (tables, columns, keys, indexes) and write the SQL that
    turns one into the other; migrations (sqlx, Diesel, Alembic, Flyway folders) listed with
    which have run.
-4. Security checks in Code Health: SQL built from strings (injection), HTML from user input
+3. Security checks in Code Health: SQL built from strings (injection), HTML from user input
    (XSS), unsafe memory calls in C and C++ (`strcpy`, `gets`, `sprintf`), and `unsafe`
    blocks in Rust, each with where and why.
-5. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
+4. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
 
 ## Later, each needing a download first
 

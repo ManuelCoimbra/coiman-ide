@@ -10,8 +10,8 @@ Status:
   built only where a tool on the computer does the networking).
 - **No AI**: left out by the decision to have no AI features.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 157, partial 121,
-missing 191, network 14, no AI 1. The "already implemented" table at the end of the
+**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 160, partial 121,
+missing 188, network 14, no AI 1. The "already implemented" table at the end of the
 specification is right: every row in it exists.
 
 | Area | Done | Partial | Missing | Network |
@@ -19,9 +19,9 @@ specification is right: every row in it exists.
 | 1 AI (analysis items only) | 4 | 5 | 2 | |
 | 2 Architecture | 14 | 5 | 10 | |
 | 3 Debugging and performance | 14 | 3 | 21 | |
-| 4 Git and collaboration | 9 | 2 | 7 | 9 |
+| 4 Git and collaboration | 13 | 2 | 3 | 9 |
 | 5 Build and dependencies | 13 | 17 | 8 | 1 |
-| 6 Terminal | 9 | 4 | 5 | |
+| 6 Terminal | 12 | 4 | 2 | |
 | 7 Documentation | 4 | 6 | 9 | |
 | 8 Web | 9 | 4 | 11 | |
 | 9 Database | 16 | 4 | 3 | |
@@ -223,10 +223,10 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Terminal session restoration | Done | Shells, the active one and the split |
 | Split terminal panes | Done | Two side by side |
 | Terminal tabs | Done | |
-| Terminal command history | Missing | The shell's own only |
-| Command autocomplete | Missing | The shell's own only |
+| Terminal command history | Done | Terminal Commands extension: the commands run in Coiman's shells, and the shells' own history files |
+| Command autocomplete | Done | Terminal Commands extension, Ctrl+Space in a shell: commands run before, the project's, and paths |
 | Command syntax highlighting | Missing | |
-| Command suggestions from project context | Missing | |
+| Command suggestions from project context | Done | Terminal Commands extension: `package.json` scripts, Makefile targets, `justfile` recipes, Taskfile and Deno tasks, Cargo |
 | Environment variable editor | Done | Settings > Terminal: add, change, take away; yours or the project's |
 | Environment profile management | Partial | `[env]` for the user and per project, with an editor in Settings; no named profiles |
 | SSH terminal integration | Partial | Terminal: New SSH Terminal..., hosts from `~/.ssh/config` |

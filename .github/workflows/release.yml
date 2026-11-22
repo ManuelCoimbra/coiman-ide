@@ -41,6 +41,11 @@ jobs:
           $dir = "dist/coiman-ide-$version-windows-x64"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item target/release/coiman-ide.exe, README.md, LICENSE, CHANGELOG.md, PRIVACY.md $dir
+          # Extensions that come with Coiman, installed only when the user asks.
+          foreach ($ext in Get-ChildItem plugins/extensions -Directory) {
+            $to = New-Item -ItemType Directory -Force "$dir/extensions/$($ext.Name)"
+            Copy-Item "$($ext.FullName)/plugin.toml", "$($ext.FullName)/plugin.wasm" $to
+          }
           Compress-Archive -Path "$dir/*" -DestinationPath "$dir.zip"
           ./scripts/release-notes.ps1 $version | Out-File notes.md -Encoding utf8
       - name: Publish

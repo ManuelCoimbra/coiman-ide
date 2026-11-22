@@ -31,7 +31,8 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, Decoration, Document, JobResult, Problem, ServerResponse, Severity, Span, Table, TreeItem,
+    Block, Button, Decoration, DirEntry, Document, JobResult, Pick, PickAction, PickChoice, PickItem, PickQuery,
+    Problem, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -45,6 +46,10 @@ const MAX_LIST: u32 = 10_000;
 const MAX_JOBS: usize = 8;
 const MAX_JOB_OUTPUT: u64 = 16 << 20;
 const JOB_POLL: Duration = Duration::from_millis(20);
+/// Text a plugin may keep with `storage-write`.
+const MAX_STORAGE: usize = 4 << 20;
+/// Entries `read-dir` returns at most.
+const MAX_DIR: usize = 5000;
 
 /// What plugins ask the editor to show or do.
 #[derive(Clone, Debug)]
@@ -112,6 +117,17 @@ pub enum Update {
         method: String,
         params: String,
     },
+    /// A pick list to show (an empty title closes it).
+    Pick {
+        plugin: String,
+        pick: Pick,
+    },
+    /// Text to type into a terminal.
+    TerminalType {
+        plugin: String,
+        terminal: u64,
+        text: String,
+    },
 }
 
 /// Editor state plugins may read, kept current by the editor.
@@ -119,6 +135,8 @@ pub enum Update {
 pub struct Context {
     pub workspace: Option<PathBuf>,
     pub document: Option<Document>,
+    /// The active shell's command line, when it shows a prompt.
+    pub terminal: Option<TerminalLine>,
 }
 
 enum Msg {
@@ -247,6 +265,22 @@ impl PluginHost {
             c.document = document;
         }
     }
+
+    pub fn set_terminal_line(&self, line: Option<TerminalLine>) {
+        if let Ok(mut c) = self.context.lock() {
+            c.terminal = line;
+        }
+    }
+
+    /// An event for one plugin only: what was picked from its list.
+    pub fn deliver(&self, plugin: &str, event: Event) {
+        let _ = self.tx.send(Msg::Deliver { plugin: plugin.to_owned(), event });
+    }
+}
+
+/// Where a plugin's own text (`storage-write`) is kept.
+pub fn storage_file(plugin: &str) -> Option<PathBuf> {
+    Some(super::store::plugins_dir()?.join("data").join(format!("{plugin}.txt")))
 }
 
 /// The store data of one plugin: what host calls see.
@@ -325,10 +359,13 @@ impl Worker {
                     self.call(&plugin, |b, s| b.call_run_command(s, &id, &argument).map(|r| r.err()));
                 }
                 Msg::Event(kind, event) => {
+                    // What is typed in a terminal goes only to plugins allowed to see it.
+                    let needs_terminal = matches!(kind, EventKind::TerminalCommand | EventKind::TerminalSuggest);
                     let ids: Vec<String> = self
                         .plugins
                         .iter()
                         .filter(|(_, p)| p.store.data().manifest.events.contains(&kind))
+                        .filter(|(_, p)| !needs_terminal || p.store.data().granted.contains(&Permission::Terminal))
                         .map(|(id, _)| id.clone())
                         .collect();
                     for id in ids {
@@ -656,5 +693,73 @@ impl coiman::plugin::host::Host for State {
         self.next_id += 1;
         self.send(Update::ServerRequest { plugin: self.plugin.clone(), id, method, params });
         Ok(id)
+    }
+
+    fn show_pick(&mut self, pick: Pick) {
+        self.send(Update::Pick { plugin: self.plugin.clone(), pick });
+    }
+
+    fn workspace_path(&mut self) -> Result<String, String> {
+        self.need(Permission::WorkspaceRead)?;
+        Ok(self.workspace()?.to_string_lossy().into_owned())
+    }
+
+    fn read_dir(&mut self, path: String) -> Result<Vec<DirEntry>, String> {
+        let asked = Path::new(&path);
+        let full = if asked.is_absolute() {
+            // Inside the open folder that is reading it; anywhere else is the terminal's reach.
+            let inside = self
+                .workspace()
+                .ok()
+                .and_then(|root| Some((root.canonicalize().ok()?, asked.canonicalize().ok()?)))
+                .is_some_and(|(root, dir)| dir.starts_with(root));
+            self.need(if inside { Permission::WorkspaceRead } else { Permission::Terminal })?;
+            asked.to_path_buf()
+        } else if path.is_empty() || path == "." {
+            self.need(Permission::WorkspaceRead)?;
+            self.workspace()?
+        } else {
+            self.need(Permission::WorkspaceRead)?;
+            self.resolve(&path, true)?
+        };
+        let read = std::fs::read_dir(&full).map_err(|e| format!("{path}: {e}"))?;
+        let mut out: Vec<DirEntry> = read
+            .flatten()
+            .take(MAX_DIR)
+            .map(|e| DirEntry { name: e.file_name().to_string_lossy().into_owned(), is_dir: e.path().is_dir() })
+            .collect();
+        out.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(out)
+    }
+
+    fn storage_read(&mut self) -> String {
+        storage_file(&self.plugin).and_then(|f| std::fs::read_to_string(f).ok()).unwrap_or_default()
+    }
+
+    fn storage_write(&mut self, text: String) -> Result<(), String> {
+        if text.len() > MAX_STORAGE {
+            return Err(format!("more than {} MB to keep", MAX_STORAGE >> 20));
+        }
+        let file = storage_file(&self.plugin).ok_or("no config folder")?;
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(file, text).map_err(|e| e.to_string())
+    }
+
+    fn active_terminal_line(&mut self) -> Result<Option<TerminalLine>, String> {
+        self.need(Permission::Terminal)?;
+        Ok(self.context.lock().ok().and_then(|c| c.terminal.clone()))
+    }
+
+    fn terminal_type(&mut self, terminal: u64, text: String) -> Result<(), String> {
+        self.need(Permission::Terminal)?;
+        self.send(Update::TerminalType { plugin: self.plugin.clone(), terminal, text });
+        Ok(())
+    }
+
+    fn shell_history(&mut self) -> Result<Vec<String>, String> {
+        self.need(Permission::Terminal)?;
+        Ok(crate::terminal::history::shell_history(std::env::home_dir().as_deref()))
     }
 }
