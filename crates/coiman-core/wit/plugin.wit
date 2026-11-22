@@ -58,6 +58,10 @@ interface types {
         check,
         /// One of `options`.
         choice,
+        /// A small button showing `label`: pressing it sends the form, its id as the button.
+        button,
+        /// Not a field: what follows starts a new line.
+        line-break,
     }
 
     /// A field of a form.
@@ -90,6 +94,56 @@ interface types {
         values: list<tuple<string, string>>,
     }
 
+    /// A branch or tag on a commit of a `commit-graph`.
+    record graph-ref {
+        name: string,
+        tag: bool,
+        /// The branch checked out.
+        current: bool,
+    }
+
+    /// One commit of a `commit-graph`, with the lines drawn through its row. Lanes count from
+    /// 0 at the left.
+    record commit-row {
+        /// What clicks and menu items send as their argument (the commit's hash).
+        id: string,
+        /// The lane of its node.
+        lane: u32,
+        /// Lines in the row's top half: (lane at the top, lane at the middle).
+        top: list<tuple<u32, u32>>,
+        /// Lines in the bottom half: (lane at the middle, lane at the bottom).
+        bottom: list<tuple<u32, u32>>,
+        /// More than one parent: the node is filled.
+        merge: bool,
+        /// Checked out: the node is larger.
+        head: bool,
+        refs: list<graph-ref>,
+        subject: string,
+        /// Dimmer, at the right (hash, author, when).
+        detail: string,
+        /// What `{target}` in a menu item's label becomes for this row.
+        target: string,
+        /// What `{branch}` becomes; "" leaves out the items that name it.
+        branch: string,
+    }
+
+    /// An item of a commit's right-click menu: runs `command` with the row's id. A label of
+    /// "-" is a separator.
+    record menu-item {
+        label: string,
+        command: string,
+    }
+
+    /// Commits drawn as a graph of branches and merges, newest first, in a scrolling list.
+    record commit-graph {
+        rows: list<commit-row>,
+        /// The id of the row shown as chosen ("" for none).
+        selected: string,
+        /// Run with the row's id when one is clicked ("" for none).
+        click: string,
+        menu: list<menu-item>,
+    }
+
     /// A piece of a panel declared in `plugin.toml`. Panels are declarative:
     /// the editor draws them with its own widgets.
     variant block {
@@ -110,6 +164,8 @@ interface types {
         rows(list<row>),
         /// Fields to fill in, and buttons that send them.
         form(form),
+        /// A commit graph with lanes; it scrolls by itself.
+        commit-graph(commit-graph),
     }
 
     /// Colors part of a line. Colors are 0xRRGGBB.
@@ -435,6 +491,16 @@ interface host {
     /// Needs `workspace-write`: lets a file of the open folder run as a program (does nothing on
     /// Windows, where scripts run by their kind).
     set-executable: func(path: string) -> result<_, string>;
+    /// Needs `workspace-read`: opens how a file differs between two commits or branches (the
+    /// first shown at the left) in the editor's diff view.
+    open-compare-diff: func(base: string, other: string, path: string) -> result<_, string>;
+    /// Puts text on the clipboard.
+    copy-text: func(text: string);
+    /// Opens the editor's Merge Conflicts window for the open folder.
+    show-merge-conflicts: func();
+    /// Needs `workspace-read`: opens a folder (absolute path) as the project, as Open Folder
+    /// would. Running anything there still needs it trusted.
+    open-folder: func(path: string) -> result<_, string>;
 }
 
 world plugin {

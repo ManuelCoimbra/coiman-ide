@@ -140,17 +140,17 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 
 | Item | Status | Note |
 |---|---|---|
-| Interactive rebase interface | Done | Git Graph: reorder, reword, squash, fixup, drop |
-| Cherry-pick interface | Done | Git Graph, with revert |
+| Interactive rebase interface | Done | Git Graph extension: reorder, reword, squash, fixup, drop |
+| Cherry-pick interface | Done | Git Graph extension, with revert |
 | Merge conflict resolution editor | Done | Merge Conflicts window, per conflict |
 | Three-way merge visualisation | Done | Both sides, the base (diff3), and a result to edit |
 | Interactive staging by lines and sections | Done | Line staging |
-| Commit graph visualisation | Done | Git Graph, every branch |
-| Branch comparison | Done | Git Graph: commits each way, files changed |
+| Commit graph visualisation | Done | Git Graph extension, every branch |
+| Branch comparison | Done | Git Graph extension: commits each way, files changed |
 | Visualise repository history | Done | Git Graph, file history, blame |
 | Search through commit history | Done | Git Tools extension: by message, author, file, or a change that adds or removes a text (`-S`, `-G`) |
 | Compare arbitrary commits | Partial | Git Graph: a branch or commit against the current branch (commits on each side, files changed) |
-| Git worktree management | Done | Git Graph: list, add, open, remove, prune |
+| Git worktree management | Done | Git Graph extension: list, add, open, remove, prune |
 | Submodule management | Done | Git Tools extension: state, fetch, newest commit, add, remove |
 | Git hooks management | Done | Git Tools extension: create, edit, turn off and on, run now |
 | Git LFS integration | Missing | |

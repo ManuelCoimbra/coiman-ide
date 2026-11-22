@@ -232,7 +232,7 @@ pub struct CodeApp {
     open_vsx: extensions::open_vsx::OpenVsxUi,
     /// A color theme shown for a moment from the theme picker, by label.
     theme_preview: Option<String>,
-    git_graph: project::git_graph_ui::GitGraphUi,
+    merge_conflicts: project::merge_conflicts_ui::MergeConflictsUi,
     /// The shells to start again, from the last session.
     terminals_to_restore: Option<coiman_core::project::session::SavedTerminals>,
     /// Just restored: the panel goes back to its saved size (egui would keep the big one).
@@ -433,7 +433,7 @@ impl CodeApp {
             panel_maximized: false,
             open_vsx: Default::default(),
             theme_preview: None,
-            git_graph: Default::default(),
+            merge_conflicts: Default::default(),
             terminals_to_restore: None,
             panel_restoring: false,
             pasted: None,
@@ -1065,7 +1065,7 @@ impl CodeApp {
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
         self.open_vsx_window(&ctx);
-        self.git_graph_window(&ctx);
+        self.merge_conflicts_window(&ctx);
         self.database_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);

@@ -193,7 +193,6 @@ pub enum Command {
     RemoveDbgFromWorkspace,
     GitStash,
     GitShowHistory,
-    GitShowGraph,
     GitResolveConflicts,
     MarkdownPreview,
     EmmetExpand,
@@ -384,7 +383,6 @@ impl Command {
             | Command::RulesFixHere
             | Command::AnalyzeStackTrace
             | Command::ShowTreeSearch => ANALYSIS,
-            Command::GitShowGraph => GIT,
             Command::ShowAgents | Command::ShowMcpServers => AGENTS,
             _ => return None,
         })
@@ -537,7 +535,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::RemoveDbgFromWorkspace, "Rust: Remove dbg! from Workspace"),
     (Command::GitStash, "Git: Stash"),
     (Command::GitShowHistory, "Git: Show History"),
-    (Command::GitShowGraph, "Git: Show Graph (Cherry-pick, Revert, Interactive Rebase)"),
     (Command::GitResolveConflicts, "Git: Resolve Merge Conflicts"),
     (Command::MarkdownPreview, "Markdown: Toggle Preview"),
     (Command::ToggleSvgPreview, "SVG: Toggle Preview"),
@@ -858,7 +855,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::RemoveDbgFromWorkspace, "coiman.dbg.removeFromWorkspace"),
     (Command::GitStash, "git.stash"),
     (Command::GitShowHistory, "git.viewHistory"),
-    (Command::GitShowGraph, "git-graph.view"),
     (Command::GitResolveConflicts, "merge-conflict.next"),
     (Command::MarkdownPreview, "markdown.showPreviewToSide"),
     (Command::EmmetExpand, "editor.emmet.action.expandAbbreviation"),

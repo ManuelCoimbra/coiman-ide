@@ -422,7 +422,7 @@ impl CodeApp {
             },
             Msg::Done { result } => {
                 self.git.busy = None;
-                self.git_graph.stale = true;
+                self.merge_conflicts.stale = true;
                 match result {
                     Ok(done) => {
                         if !done.is_empty() {

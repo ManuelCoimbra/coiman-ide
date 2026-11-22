@@ -7,6 +7,13 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Git Graph is now an extension of the Git pack, in a panel: the graph with its lanes, a
+  commit's files, cherry-pick, revert, a branch, interactive rebase, compare, merge, rebase
+  onto, and worktrees. Its built-in window and code left the program; the Merge Conflicts
+  window stays in it, and the extension opens it.
+- Plugin API: `commit-graph` panel blocks (lanes drawn by the editor, a right-click menu),
+  `button` and `line-break` form fields, `open-compare-diff`, `copy-text`,
+  `show-merge-conflicts`, `open-folder`; programs plugins run never open an editor.
 - Git Tools is now an extension of the Git pack (search history, submodules, hooks,
   `.gitignore` rules) with a panel and a tab for each, instead of a window; its built-in code
   left the program.
@@ -63,6 +70,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- An extension installed from the copy that comes with Coiman shows **Update…** when that copy
+  changed (rebuilt for a newer plugin API) even with the same version, instead of stopping
+  with "built for an older plugin API".
 - CI's Android build check again: the clipboard crate the Agents panel uses is left out on
   Android.
 - Linux packages: `build-rpm.sh` runs again (it had lost its executable bit).

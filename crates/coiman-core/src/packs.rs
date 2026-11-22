@@ -105,7 +105,7 @@ pub const PACKS: [Pack; 10] = [
             "Git Graph: rebase, cherry-pick, compare, worktrees",
             "History search, submodules, hooks, .gitignore rules",
         ],
-        extensions: &["coiman.git-tools"],
+        extensions: &["coiman.git-graph", "coiman.git-tools"],
     },
     Pack {
         id: AGENTS,

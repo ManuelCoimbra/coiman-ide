@@ -188,19 +188,23 @@ network, and only when you ask. All git work runs in the background.
   or pull, not on the remote yet (Push publishes it), or no remote yet.
 - Git's errors come with what they mean and what to do: no author set, signing in, an SSH key not
   accepted, a branch with no upstream, a rejected push, a remote not found, no connection.
-- **Git Graph** (**Git: Show Graph**): every branch's commits with lines for branches and merges,
-  branch and tag names, author and age; a click lists a commit's files (a click on one shows
-  its change). Right click a commit to **cherry-pick** it onto the current branch, **revert**
+- **Git Graph**, an extension of the Git pack (`workspace-read`; program `git`), in a panel
+  (**Git: Show Graph**): every branch's commits with lines for branches and merges,
+  branch and tag names, author and age; a click lists a commit's files (**Show change** shows
+  one). Right click a commit to **cherry-pick** it onto the current branch, **revert**
   it, **create a branch** there, or **rebase interactively from here**: the commits after it,
-  oldest first, to move up and down and pick, reword (a new message), squash, fix up or drop,
-  then **Start Rebase**. On a branch (or commit) also: **Compare with the Current Branch**
+  oldest first, to move up and down (↑ ↓) and pick, reword, squash, fix up or drop (changing
+  a message rewords it), then **Start rebase**. On a branch (or commit) also: **Compare with the Current Branch**
   (the commits only on each, and the files it changed since they parted, each opening its
   change), **Merge into the Current Branch** and **Rebase the Current Branch onto** it.
 - **Worktrees** (the button at the top of the Git Graph, or **New Worktree for…** on a branch):
   the repository's working folders, each on its own branch, with **Open** (as the project)
-  and **Remove** (git refuses one with changes; Shift+click forces it). A new one takes a
-  branch (an existing one, or **new branch** from the current commit) and a folder, named
+  and **Remove…** (asks first; **Even with changes** forces it). A new one takes a
+  branch (an existing one, or **New branch** from the current commit) and a folder, named
   `<repository>-<branch>` beside it unless typed. Ones whose folder is gone can be forgotten.
+  While a merge, cherry-pick, revert or rebase waits on conflicts, the graph says so, with
+  **Resolve conflicts…** (the Merge Conflicts window), **Continue** and **Abort**. **Refresh**
+  reads the graph again after work done elsewhere.
 - **GitHub Actions** (**GitHub: Show Actions**): the ACTIONS panel lists the repository's
   latest workflow runs (or **Only failed**), each with its workflow, branch, state and age. A
   run shows its jobs and steps; a failed one has **Log of what failed** (only the errors and
@@ -658,7 +662,7 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture and Code Health come with Code analysis, Git Tools with Git, Terminal Commands
+Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -713,7 +717,12 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   was typed stays until the plugin sends a field a new value. **`open-commit-diff`** shows
   what a commit changed in a file; **`rename-file`** and **`set-executable`**
   (`workspace-write`) rename a file and make a script runnable. Git never waits on a password
-  prompt in a program a plugin runs.
+  prompt or opens an editor in a program a plugin runs. A form's `button` field sends the
+  form with its id, and `line-break` starts a new line.
+- **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
+  by the editor with branch and tag chips, a click and a right-click menu that run plugin
+  commands. **`open-compare-diff`** shows how a file differs between two revisions;
+  **`copy-text`**, **`show-merge-conflicts`** and **`open-folder`** (a folder as the project).
 - **Storage**: each plugin keeps its own text (`storage-read`, `storage-write`, 4 MB) in
   `<config>\plugins\data`, without a permission.
 - **Registry**: `plugins.registry` is a folder or URL with a `registry.json`. Nothing is
@@ -750,7 +759,8 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
 Features that not everyone needs come as extensions: they ship with Coiman (in `extensions`
 beside the program, or `share/coiman-ide/extensions` on Linux), but nothing of them runs until
 you install one under **COMES WITH COIMAN** in the Extensions view. Coiman stays as light as
-you keep it; uninstalling one takes it out again.
+you keep it; uninstalling one takes it out again. When the copy beside Coiman changes (a new
+version, or rebuilt for a newer plugin API), the installed one shows **Update…**.
 
 - **Terminal Commands** (`terminal`, `workspace-read`): keeps each command sent with Enter in
   a shell (the line after the prompt, 1,000 at most, in its storage) and reads the shells' own
@@ -771,6 +781,8 @@ you keep it; uninstalling one takes it out again.
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **Git Graph** (`workspace-read`; program `git`): the commit graph and what's done from a
+  commit; see Git Graph under Git.
 - **Git Tools** (`workspace-read`, `workspace-write`; program `git`): history search,
   submodules, hooks and `.gitignore` rules; see Git Tools under Git.
 - **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,

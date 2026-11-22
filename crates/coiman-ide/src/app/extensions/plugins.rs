@@ -183,6 +183,8 @@ pub(crate) struct PluginState {
     terminal_at: Option<egui::Pos2>,
     /// Extensions that come with Coiman, not installed until asked: (folder, manifest).
     shipped: Option<Vec<(PathBuf, Manifest)>>,
+    /// The shipped files' hashes by folder: (plugin.wasm, plugin.toml).
+    shipped_hashes: HashMap<PathBuf, (String, String)>,
     /// The project's Python interpreter, as the plugins were last told.
     python: Option<PathBuf>,
     /// Plugin forms' fields: (plugin, form, field) to (the value the plugin last sent, what
@@ -688,6 +690,10 @@ impl CodeApp {
                 let short: String = commit.chars().take(7).collect();
                 self.open_commit_file(ctx, commit, short, path);
             }
+            Update::CompareDiff { base, other, path, .. } => self.open_compared_file(ctx, base, other, path),
+            Update::CopyText(text) => ctx.copy_text(text),
+            Update::MergeConflicts => self.show_merge_conflicts(),
+            Update::OpenFolder(path) => self.open_folder(path),
             Update::RunInTerminal { title, program, args, folder, .. } => {
                 let program = program.to_string_lossy().into_owned();
                 let env = self.environment_variables();
@@ -1292,8 +1298,11 @@ impl CodeApp {
             Grant(String, Permission, bool),
             GrantProgram(String, String, bool),
             Uninstall(String),
+            Update(String),
         }
         let mut actions = Vec::new();
+        let ids: Vec<String> = self.plugins.infos.iter().map(|i| i.id.clone()).collect();
+        let changed: Vec<String> = ids.into_iter().filter(|id| self.shipped_differs(id)).collect();
         for info in &mut self.plugins.infos {
             let Some(locked) = self.plugins.lock.get(&info.id) else { continue };
             ui.separator();
@@ -1305,6 +1314,14 @@ impl CodeApp {
                     let removable = locked.source != BUILT_IN_SOURCE || !BUILT_IN_IDS.contains(&info.id.as_str());
                     if removable && icons::button(ui, Icon::Trash, "Uninstall").clicked() {
                         actions.push(Action::Uninstall(info.id.clone()));
+                    }
+                    if changed.contains(&info.id)
+                        && ui
+                            .small_button("Update…")
+                            .on_hover_text("The copy that comes with Coiman has changed since it was installed")
+                            .clicked()
+                    {
+                        actions.push(Action::Update(info.id.clone()));
                     }
                     let mut enabled = locked.enabled;
                     if ui.checkbox(&mut enabled, "").on_hover_text("Enabled").changed() {
@@ -1399,6 +1416,7 @@ impl CodeApp {
                     }
                 }
                 Action::Uninstall(id) => self.uninstall_plugin(&id),
+                Action::Update(id) => self.offer_shipped(&id),
             }
         }
     }
@@ -1510,6 +1528,15 @@ impl CodeApp {
                     Block::Button(b) => {
                         if ui.button(&b.label).clicked() {
                             run = Some((b.command.clone(), b.argument.clone()));
+                        }
+                    }
+                    Block::CommitGraph(graph) => {
+                        // The graph shares the panel with what follows it.
+                        let last = index + 1 == panel.blocks.len();
+                        let room = ui.clip_rect().height().max(200.0);
+                        let height = if last { room - 8.0 } else { (room * 0.6).max(160.0) };
+                        if let Some(r) = commit_graph_ui(ui, index, graph, height) {
+                            run = Some(r);
                         }
                     }
                     Block::Form(form) => {
@@ -1656,10 +1683,21 @@ fn form_ui(
             if entry.0 != field.value {
                 *entry = (field.value.clone(), field.value.clone());
             }
-            if !field.label.is_empty() && field.kind != FieldKind::Check {
+            let labelled = !matches!(field.kind, FieldKind::Check | FieldKind::Button | FieldKind::LineBreak);
+            if !field.label.is_empty() && labelled {
                 ui.label(&field.label);
             }
             match field.kind {
+                FieldKind::LineBreak => {
+                    ui.end_row();
+                    continue;
+                }
+                FieldKind::Button => {
+                    if ui.small_button(&field.label).clicked() {
+                        pressed = Some(field.id.clone());
+                    }
+                    continue;
+                }
                 FieldKind::Text => {
                     let width = if field.hint.len() > 24 { 300.0 } else { 200.0 };
                     let r =
@@ -1702,6 +1740,134 @@ fn form_ui(
         })
         .collect();
     Some(coiman_core::extensions::plugin::FormValues { form: form.id.clone(), button, values })
+}
+
+/// A color for a lane of a commit graph: the accent, a few more, then the bracket colors.
+fn lane_color(lane: usize) -> egui::Color32 {
+    let pal = theme::colors();
+    let more = [
+        pal.accent,
+        egui::Color32::from_rgb(0x57, 0xC0, 0x6A),
+        egui::Color32::from_rgb(0xE0, 0x9A, 0x3E),
+        egui::Color32::from_rgb(0xC7, 0x7D, 0xBB),
+    ];
+    let all: Vec<egui::Color32> = more.into_iter().chain(pal.rainbow).collect();
+    all[lane % all.len()]
+}
+
+/// A plugin's commit graph: each commit's lines and node, its branches and tags, subject and
+/// detail; a click or a menu item gives (command, the row's id).
+fn commit_graph_ui(
+    ui: &mut egui::Ui,
+    index: usize,
+    graph: &coiman_core::extensions::plugin::CommitGraph,
+    height: f32,
+) -> Option<(String, String)> {
+    use egui::{Color32, Pos2, Stroke, Vec2};
+    const ROW_H: f32 = 24.0;
+    const LANE_W: f32 = 14.0;
+    const LANES: u32 = 24;
+    let pal = theme::colors();
+    let mut run = None;
+    let width = ui.available_width();
+    let widest = graph
+        .rows
+        .iter()
+        .flat_map(|r| r.top.iter().chain(&r.bottom).flat_map(|&(a, b)| [a, b]).chain([r.lane]))
+        .max()
+        .map_or(1, |m| m + 1)
+        .min(LANES);
+    let graph_w = widest as f32 * LANE_W + 8.0;
+    egui::ScrollArea::vertical()
+        .id_salt(("plugin_commit_graph", index))
+        .max_height(height)
+        .auto_shrink([false, true])
+        .show_rows(ui, ROW_H, graph.rows.len(), |ui, range| {
+            for row in &graph.rows[range] {
+                let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, ROW_H), Sense::click());
+                if !graph.selected.is_empty() && graph.selected == row.id {
+                    ui.painter().rect_filled(rect, 4.0, pal.accent.gamma_multiply(0.18));
+                } else if resp.hovered() {
+                    ui.painter().rect_filled(rect, 4.0, pal.hover_bg);
+                }
+                let x = |lane: u32| rect.left() + 6.0 + lane as f32 * LANE_W;
+                let (top, mid, bottom) = (rect.top(), rect.center().y, rect.bottom());
+                let painter = ui.painter();
+                let fits = |&&(a, b): &&(u32, u32)| a < LANES && b < LANES;
+                for &(a, b) in row.top.iter().filter(fits) {
+                    let stroke = Stroke::new(1.6, lane_color(a as usize));
+                    painter.line_segment([Pos2::new(x(a), top), Pos2::new(x(b), mid)], stroke);
+                }
+                for &(a, b) in row.bottom.iter().filter(fits) {
+                    let stroke = Stroke::new(1.6, lane_color(b as usize));
+                    painter.line_segment([Pos2::new(x(a), mid), Pos2::new(x(b), bottom)], stroke);
+                }
+                let color = lane_color(row.lane as usize);
+                let node = Pos2::new(x(row.lane.min(LANES - 1)), mid);
+                painter.circle(node, if row.head { 5.0 } else { 4.0 }, pal.editor_bg, Stroke::new(2.0, color));
+                if row.merge {
+                    painter.circle_filled(node, 2.0, color);
+                }
+                // Branches and tags, then the subject, then the detail at the right.
+                let mut text_x = rect.left() + graph_w;
+                for r in &row.refs {
+                    let galley = painter.layout_no_wrap(r.name.clone(), egui::FontId::proportional(11.5), pal.text);
+                    let chip = egui::Rect::from_min_size(
+                        Pos2::new(text_x, mid - galley.size().y / 2.0 - 2.0),
+                        galley.size() + Vec2::new(10.0, 4.0),
+                    );
+                    let c = if r.tag { Color32::from_rgb(0xE0, 0x9A, 0x3E) } else { color };
+                    painter.rect(
+                        chip,
+                        8.0,
+                        c.gamma_multiply(if r.current { 0.45 } else { 0.18 }),
+                        Stroke::new(1.0, c.gamma_multiply(0.8)),
+                        egui::StrokeKind::Inside,
+                    );
+                    painter.galley(chip.min + Vec2::new(5.0, 2.0), galley, pal.text);
+                    text_x = chip.right() + 6.0;
+                }
+                let detail = painter.layout_no_wrap(row.detail.clone(), egui::FontId::proportional(11.5), pal.text_dim);
+                let right_x = rect.right() - detail.size().x - 6.0;
+                let subject = painter.layout(
+                    row.subject.clone(),
+                    egui::FontId::proportional(13.0),
+                    if row.head { pal.text } else { pal.text.gamma_multiply(0.92) },
+                    (right_x - text_x - 12.0).max(40.0),
+                );
+                let subject_y = mid - subject.size().y.min(16.0) / 2.0;
+                painter
+                    .with_clip_rect(egui::Rect::from_min_max(
+                        Pos2::new(text_x, rect.top()),
+                        Pos2::new(right_x - 8.0, rect.bottom()),
+                    ))
+                    .galley(Pos2::new(text_x, subject_y), subject, pal.text);
+                painter.galley(Pos2::new(right_x, mid - detail.size().y / 2.0), detail, pal.text_dim);
+                if resp.clicked() && !graph.click.is_empty() {
+                    run = Some((graph.click.clone(), row.id.clone()));
+                }
+                if graph.menu.is_empty() {
+                    continue;
+                }
+                resp.context_menu(|ui| {
+                    for item in &graph.menu {
+                        if item.label == "-" {
+                            ui.separator();
+                            continue;
+                        }
+                        if item.label.contains("{branch}") && row.branch.is_empty() {
+                            continue;
+                        }
+                        let label = item.label.replace("{target}", &row.target).replace("{branch}", &row.branch);
+                        if ui.button(label).clicked() {
+                            run = Some((item.command.clone(), row.id.clone()));
+                            ui.close();
+                        }
+                    }
+                });
+            }
+        });
+    run
 }
 
 fn diagnostic(p: &Problem, source: &str) -> lt::Diagnostic {

@@ -1,0 +1,14 @@
+id = "coiman.git-graph"
+name = "Git Graph"
+version = "1.0.0"
+description = "Every branch's commits as a graph, a commit's files, and what's done from one: cherry-pick, revert, a branch, an interactive rebase, merge, compare, worktrees."
+permissions = ["workspace-read"]
+programs = ["git"]
+
+[[commands]]
+id = "show"
+title = "Git: Show Graph (Cherry-pick, Revert, Interactive Rebase)"
+
+[[panels]]
+id = "graph"
+title = "Git Graph"

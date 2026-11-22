@@ -31,9 +31,9 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, Decoration, DirEntry, Document, EdgeKind, FieldKind, FileLink, Form, FormField, FormValues,
-    FunctionInfo, Graph, GraphEdge, GraphNode, JobResult, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem,
-    Row, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
+    Block, Button, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind, FileLink, Form,
+    FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobResult, MenuItem, Pick, PickAction,
+    PickChoice, PickItem, PickQuery, Problem, Row, ServerResponse, Severity, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -146,6 +146,19 @@ pub enum Update {
         commit: String,
         path: String,
     },
+    /// How a file differs between two commits or branches, to show in the diff view.
+    CompareDiff {
+        plugin: String,
+        base: String,
+        other: String,
+        path: String,
+    },
+    /// Text for the clipboard.
+    CopyText(String),
+    /// The Merge Conflicts window, asked for.
+    MergeConflicts,
+    /// A folder to open as the project.
+    OpenFolder(PathBuf),
     /// A program (already found and approved) to run in a terminal tab, in the open folder.
     RunInTerminal {
         plugin: String,
@@ -679,7 +692,10 @@ impl coiman::plugin::host::Host for State {
         let exe = self.program(&program)?;
         let mut child = quiet_command(&exe)
             .args(&args)
+            // Nothing a job runs can wait on a prompt or an editor nobody sees.
             .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_EDITOR", "true")
+            .env_remove("GIT_SEQUENCE_EDITOR")
             .current_dir(&root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -846,6 +862,44 @@ impl coiman::plugin::host::Host for State {
             return Err(format!("\"{path}\" isn't a path inside the open folder"));
         }
         self.send(Update::CommitDiff { plugin: self.plugin.clone(), commit, path });
+        Ok(())
+    }
+
+    fn open_compare_diff(&mut self, base: String, other: String, path: String) -> Result<(), String> {
+        self.need(Permission::WorkspaceRead)?;
+        // A revision, never an option to git.
+        for rev in [&base, &other] {
+            let ok = !rev.is_empty()
+                && !rev.starts_with('-')
+                && !rev.chars().any(|c| c.is_whitespace() || c.is_control() || c == ':');
+            if !ok {
+                return Err(format!("\"{rev}\" isn't a commit or branch"));
+            }
+        }
+        if path.is_empty()
+            || !Path::new(&path).components().all(|c| matches!(c, PathPart::Normal(_) | PathPart::CurDir))
+        {
+            return Err(format!("\"{path}\" isn't a path inside the open folder"));
+        }
+        self.send(Update::CompareDiff { plugin: self.plugin.clone(), base, other, path });
+        Ok(())
+    }
+
+    fn copy_text(&mut self, text: String) {
+        self.send(Update::CopyText(text));
+    }
+
+    fn show_merge_conflicts(&mut self) {
+        self.send(Update::MergeConflicts);
+    }
+
+    fn open_folder(&mut self, path: String) -> Result<(), String> {
+        self.need(Permission::WorkspaceRead)?;
+        let dir = PathBuf::from(&path);
+        if !dir.is_absolute() || !dir.is_dir() {
+            return Err(format!("{path} isn't a folder"));
+        }
+        self.send(Update::OpenFolder(dir));
         Ok(())
     }
 

@@ -43,6 +43,27 @@ impl CodeApp {
         shipped.iter().find(|(_, m)| m.id == id).map(|(folder, _)| folder.clone())
     }
 
+    /// Installed from the copy that comes with Coiman, which has changed since: rebuilt for
+    /// a newer plugin API, or a new version (same version number or not).
+    pub(super) fn shipped_differs(&mut self, id: &str) -> bool {
+        let Some(l) = self.plugins.lock.get(id) else { return false };
+        if !l.source.starts_with(SHIPPED_SOURCE) {
+            return false;
+        }
+        let (wasm, toml) = (l.wasm_sha256.clone(), l.manifest_sha256.clone());
+        let Some(folder) = self.shipped_folder(id) else { return false };
+        let (w, t) = self
+            .plugins
+            .shipped_hashes
+            .entry(folder.clone())
+            .or_insert_with(|| {
+                let hash = |name: &str| std::fs::read(folder.join(name)).map(|b| registry::sha256_hex(&b));
+                (hash("plugin.wasm").unwrap_or_default(), hash("plugin.toml").unwrap_or_default())
+            })
+            .clone();
+        !w.is_empty() && (w != wasm || t != toml)
+    }
+
     /// Asks to install an extension that comes with Coiman (the usual consent prompt).
     pub(super) fn offer_shipped(&mut self, id: &str) {
         let Some(folder) = self.shipped_folder(id) else {
@@ -51,9 +72,13 @@ impl CodeApp {
         };
         match registry::read_folder(&folder) {
             Ok(pkg) => {
+                // An update keeps what was granted.
+                let locked = self.plugins.lock.get(&pkg.manifest.id);
+                let granted = locked.map_or_else(|| pkg.manifest.permissions.clone(), |l| l.granted.clone());
+                let programs = locked.map(|l| l.granted_programs.clone()).unwrap_or_default();
                 self.plugins.consent = Some(Consent {
-                    programs: Default::default(),
-                    granted: pkg.manifest.permissions.clone(),
+                    programs,
+                    granted,
                     source: format!("{SHIPPED_SOURCE}{}", folder.display()),
                     pkg,
                     key: String::new(),
