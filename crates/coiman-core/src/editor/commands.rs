@@ -144,10 +144,6 @@ pub enum Command {
     // Terminal.
     NewTerminal,
     NewTerminalWithProfile,
-    /// A terminal running `ssh` to a host named in ~/.ssh/config.
-    NewSshTerminal,
-    /// A folder on another machine, mirrored here; saves go back over ssh.
-    OpenRemoteFolder,
     /// Android devices through adb: logcat, shell, installs.
     ShowAndroid,
     /// The MCP servers the Agents panel's opencode gets.
@@ -162,9 +158,6 @@ pub enum Command {
     ShowMongo,
     /// A board's serial port: what it prints, and sending it text.
     SerialMonitor,
-    DownloadRemoteFolder,
-    RemoteTerminal,
-    RemoteRunCommand,
     SplitTerminal,
     KillTerminal,
     ClearTerminal,
@@ -350,11 +343,7 @@ impl Command {
             | Command::ShowDatabaseDiagram
             | Command::ShowRedis
             | Command::ShowMongo => DATA,
-            Command::DownloadRemoteFolder
-            | Command::RemoteTerminal
-            | Command::RemoteRunCommand
-            | Command::NewSshTerminal
-            | Command::DebugRemote => DEVOPS,
+            Command::DebugRemote => DEVOPS,
             Command::SerialMonitor | Command::AnalyzeBinarySize | Command::ShowMemory | Command::ShowDisassembly => {
                 SYSTEMS
             }
@@ -488,8 +477,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowDatabaseDiagram, "Database: Show Tables Diagram (ER)"),
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
-    (Command::NewSshTerminal, "Terminal: New SSH Terminal..."),
-    (Command::OpenRemoteFolder, "Remote: Open SSH Folder..."),
     (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
@@ -497,9 +484,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowRedis, "Database: Redis..."),
     (Command::ShowMongo, "Database: MongoDB..."),
     (Command::SerialMonitor, "Serial: Open Monitor..."),
-    (Command::DownloadRemoteFolder, "Remote: Download Folder Again"),
-    (Command::RemoteTerminal, "Remote: Open Terminal There"),
-    (Command::RemoteRunCommand, "Remote: Run Command There..."),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),
@@ -803,8 +787,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::RestartLanguageServer, "rust-analyzer.restartServer"),
     (Command::NewTerminal, "workbench.action.terminal.new"),
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
-    (Command::NewSshTerminal, "coiman.terminal.newSsh"),
-    (Command::OpenRemoteFolder, "coiman.remote.openFolder"),
     (Command::ShowAndroid, "coiman.android.show"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::AnalyzeBinarySize, "coiman.build.binarySize"),
@@ -812,9 +794,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowRedis, "coiman.database.redis"),
     (Command::ShowMongo, "coiman.database.mongo"),
     (Command::SerialMonitor, "coiman.serial.monitor"),
-    (Command::DownloadRemoteFolder, "coiman.remote.downloadAgain"),
-    (Command::RemoteTerminal, "coiman.remote.terminal"),
-    (Command::RemoteRunCommand, "coiman.remote.runCommand"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),
     (Command::KillTerminal, "workbench.action.terminal.kill"),
     (Command::ClearTerminal, "workbench.action.terminal.clear"),

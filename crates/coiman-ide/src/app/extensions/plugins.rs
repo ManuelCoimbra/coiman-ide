@@ -713,7 +713,8 @@ impl CodeApp {
                     args: &args,
                     env: &env,
                     cwd: &folder,
-                    scan: None,
+                    // What it prints is read for problems, as a build's is.
+                    scan: Some(None),
                 };
                 let scrollback = self.settings.terminal.scrollback;
 
@@ -765,7 +766,24 @@ impl CodeApp {
             host.event(EventKind::Saved, Event::Saved(rel));
         }
         self.plugin_dev_saved(&path);
-        self.remote_saved(&path);
+    }
+
+    /// Files deleted in the editor, for the plugins that follow them.
+    pub(crate) fn plugins_deleted(&mut self, paths: &[PathBuf]) {
+        let rels: Vec<String> = paths.iter().map(|p| self.relative(p)).collect();
+        if let Some(host) = &self.plugins.host
+            && !rels.is_empty()
+        {
+            host.event(EventKind::Deleted, Event::Deleted(rels));
+        }
+    }
+
+    /// A file renamed in the editor, for the plugins that follow it.
+    pub(crate) fn plugins_renamed(&mut self, old: &Path, new: &Path) {
+        let (a, b) = (self.relative(old), self.relative(new));
+        if let Some(host) = &self.plugins.host {
+            host.event(EventKind::Renamed, Event::Renamed((a, b)));
+        }
     }
 
     pub(crate) fn plugins_opened(&mut self, path: &Path) {

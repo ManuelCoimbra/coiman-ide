@@ -52,8 +52,8 @@ impl Permission {
             Permission::EditorWrite => "Type text into the active editor",
             Permission::LanguageServer => "Send requests to the language server of the active file",
             Permission::Terminal => {
-                "See and type the command lines of your terminals, read your shells' history files, and list \
-                 folders outside the open folder"
+                "See and type the command lines of your terminals, read your shells' history files and ssh \
+                 config, and list folders outside the open folder"
             }
             Permission::Environment => "Read your environment variables, which may hold passwords and keys",
         }
@@ -72,6 +72,10 @@ pub enum EventKind {
     TerminalCommand,
     /// Ctrl+Space in a shell.
     TerminalSuggest,
+    /// Files deleted in the editor.
+    Deleted,
+    /// A file renamed in the editor.
+    Renamed,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]

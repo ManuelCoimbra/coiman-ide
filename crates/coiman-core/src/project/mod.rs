@@ -16,7 +16,6 @@ pub mod remote_folder;
 pub mod search;
 pub mod serial;
 pub mod session;
-pub mod ssh_hosts;
 pub mod trust;
 pub mod watcher;
 pub mod workspace;

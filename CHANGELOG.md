@@ -7,6 +7,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Remote folders over SSH and SSH terminals are now the Remote over SSH extension of the
+  Containers pack, with a Remote panel; mirrors live in the extension's own folder. Their
+  built-in window and code left the program; the editor still maps a remote folder's paths in
+  build output and terminals to the mirror.
+- Plugin API: a plugin's own folder (`data-folder`, `data-write`, `data-remove`, `data-rename`,
+  `start-job-into`, `start-data-job`), `ssh-config`, `deleted` and `renamed` events; with no
+  folder open, plugins' programs run in their own folder; a plugin's terminal output is read
+  for problems.
 - GitHub Actions is now an extension of the Containers pack, in a panel (runs, jobs and steps,
   the log of what failed, a failed step in its workflow file); re-running failed jobs asks
   first. Its built-in panel and code left the program. Plugin API: `open-url`.

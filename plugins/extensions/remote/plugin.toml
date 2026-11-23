@@ -1,0 +1,31 @@
+id = "coiman.remote"
+name = "Remote over SSH"
+version = "1.0.0"
+description = "A folder on another machine, copied here with ssh and tar; each file saved, deleted or renamed goes back. Terminals and commands there, and a terminal on any host of your ssh config."
+permissions = ["workspace-read", "terminal"]
+programs = ["ssh", "tar"]
+events = ["saved", "deleted", "renamed"]
+
+[[commands]]
+id = "open"
+title = "Remote: Open SSH Folder..."
+
+[[commands]]
+id = "download"
+title = "Remote: Download Folder Again"
+
+[[commands]]
+id = "terminal"
+title = "Remote: Open Terminal There"
+
+[[commands]]
+id = "run"
+title = "Remote: Run Command There..."
+
+[[commands]]
+id = "ssh-terminal"
+title = "Terminal: New SSH Terminal..."
+
+[[panels]]
+id = "remote"
+title = "Remote"

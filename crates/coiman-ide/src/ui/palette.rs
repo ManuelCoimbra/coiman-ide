@@ -40,8 +40,6 @@ pub enum InputKind {
     RenamePath,
     NewBranch,
     BreakpointCondition,
-    /// A command to run in the remote folder.
-    RemoteCommand,
     Logpoint,
     /// A repository's URL, to clone.
     CloneUrl,
@@ -62,7 +60,6 @@ pub enum PickerKind {
     Theme,
     IconTheme,
     TerminalProfile,
-    SshHost,
     LineEnding,
     Bookmark,
     Snippet,

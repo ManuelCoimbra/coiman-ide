@@ -133,8 +133,8 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   exists is underlined. **Profiles**: the ▾ beside + (or **Terminal: New Terminal With
   Profile...**) starts any shell found (Windows: PowerShell, PowerShell 7, Command Prompt,
   Git Bash, MSYS2, WSL; elsewhere the shells in `/etc/shells`) or one of your own,
-  `[[terminal.profiles]]` with `name` and `command`. **Terminal: New SSH Terminal...** lists the
-  hosts named in `~/.ssh/config` and opens a terminal running `ssh` to the one picked (ssh asks
+  `[[terminal.profiles]]` with `name` and `command`. **Terminal: New SSH Terminal...** (the
+  Remote over SSH extension) lists the hosts named in `~/.ssh/config` and opens a terminal running `ssh` to the one picked (ssh asks
   for a password or passphrase there); the tab stays open after ssh ends, with its last words. **Split** (the split button or
   `Ctrl+Shift+5`) shows a second terminal beside the active one; a click gives one the
   keyboard. The shells open when Coiman closes start again next time, in their folders,
@@ -665,7 +665,7 @@ appear, and its background work doesn't run.
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
-and OpenAPI with Web and APIs, Docker and GitHub Actions with Containers, Terminal Commands
+and OpenAPI with Web and APIs, Docker, GitHub Actions and Remote over SSH with Containers, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -726,6 +726,12 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   plugin command. **`now`** (the time, and how far local time is from UTC), **`random`**,
   **`environment-variable`** (the `environment` permission: they may hold secrets) and
   **`open-text`** (text in a new tab). **`open-url`** opens a web page in the browser.
+- **Its own folder** (`data-folder`, `data-write`, `data-remove`, `data-rename`), in the
+  config folder, never the project; `start-job-into` puts what a program prints there as it is
+  (an archive), and `start-data-job` runs a program in it. With no folder open, programs run
+  there. **`ssh-config`** (`terminal`) reads `~/.ssh/config`. Events **`deleted`** and
+  **`renamed`** follow the Explorer. What a program run in a terminal prints is read for
+  problems.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -788,6 +794,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **Remote over SSH** (`workspace-read`, `terminal`; programs `ssh`, `tar`): a folder on
+  another machine as a mirror here, terminals and commands there, SSH terminals.
 - **GitHub Actions** (`workspace-read`; program `gh`): workflow runs, jobs, failed logs,
   re-runs; see **GitHub Actions** under Git.
 - **Docker** (`workspace-read`; program `docker`): containers, images, Compose; see **Docker** further down,
@@ -1197,18 +1205,22 @@ as far as they were approved at install, in trusted folders.
   returns to the end and breaks out of their loop; plain statements in a row share one box.
   Rust, Python, JavaScript, TypeScript, Java, C, C++, C# and Go. A `let … else` or a
   `?` stays inside its box.
-- **Remote: Open SSH Folder...** works on a folder on another machine: it asks for the ssh
-  host, the folder there and any ssh options, brings the folder here with `ssh … tar` (build
-  folders such as `target` and `node_modules` left out) into a mirror in the config folder,
-  and opens the mirror as the project. Each file saved there goes back over ssh, its folders
+- **Remote over SSH**, an extension of the Containers pack (`workspace-read`, `terminal` for
+  the ssh config; programs `ssh` and `tar`), in the **Remote** panel. **Remote: Open SSH
+  Folder...** works on a folder on another machine: it asks for the ssh host (the hosts of
+  `~/.ssh/config` are offered), the folder there and any ssh options, brings the folder here
+  with `ssh … tar` (build folders such as `target` and `node_modules` left out) into a mirror
+  in the extension's own folder (`<config>\plugins\data\coiman.remote\mirrors`), and opens
+  the mirror as the project; a failed download leaves the last mirror as it was. Each file saved there goes back over ssh, its folders
   made first; deleting (or moving to the Recycle Bin) and renaming in the Explorer happen there
-  too. **Remote: Download Folder Again** brings the remote folder's current state (changed
-  files must be saved first). **Remote: Open Terminal There** opens a shell in the remote
+  too. **Remote: Download Folder Again** brings the remote folder's current state (save
+  changed files first: what comes down replaces them). **Remote: Open Terminal There** opens a shell in the remote
   folder, and **Remote: Run Command There...** runs a command in it (`cargo build`, `make`),
   the shell staying for more; errors and warnings it prints go to Problems, paths in the
   remote folder (absolute or relative) pointing at the files here, and Ctrl+click opens them
   in the terminal too. Language servers run here, on the copy, with the tools installed on
   this computer. ssh logs in with a key (no password prompt). The mirror's `.coiman-remote.toml` says where it comes from.
+  A file goes back as text: a binary file saved in the mirror isn't sent byte for byte.
 - **Docker** (an extension of the Containers pack; `workspace-read`, program `docker`), in a
   panel: **Docker: Show Containers, Images and Compose** asks the `docker` program (Docker
   Desktop, Docker Engine or anything that answers like it). **Containers**: name, image,

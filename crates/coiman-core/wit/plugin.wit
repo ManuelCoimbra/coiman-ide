@@ -407,6 +407,10 @@ interface types {
         resumed(string),
         /// A button of one of this plugin's forms was pressed. Always delivered.
         form-submitted(form-values),
+        /// Files or folders of the open folder were deleted in the editor (relative paths).
+        deleted(list<string>),
+        /// A file or folder of the open folder was renamed in the editor (old, new; relative).
+        renamed(tuple<string, string>),
     }
 }
 
@@ -532,6 +536,24 @@ interface host {
     open-text: func(text: string);
     /// Opens a web page (an `https://` or `http://` address) in the browser.
     open-url: func(url: string) -> result<_, string>;
+    /// This plugin's own folder on disk (in the editor's config folder, never the project), with
+    /// `sub` (a relative path, "" for none) made inside it: its absolute path. Programs a plugin
+    /// starts with no folder open run here.
+    data-folder: func(sub: string) -> result<string, string>;
+    /// Writes a file in this plugin's own folder (relative path), making its folders.
+    data-write: func(path: string, contents: string) -> result<_, string>;
+    /// Deletes a file or folder (with what's in it) in this plugin's own folder; gone already is fine.
+    data-remove: func(path: string) -> result<_, string>;
+    /// Renames a file or folder in this plugin's own folder, replacing what `to` named.
+    data-rename: func(%from: string, to: string) -> result<_, string>;
+    /// As `start-job`, but what the program prints goes as it is into `file` in this plugin's own
+    /// folder (an archive, say) instead of `job-result.stdout`.
+    start-job-into: func(program: string, args: list<string>, stdin: string, file: string) -> result<u64, string>;
+    /// As `start-job`, but run in this plugin's own folder, so paths in it can be given relative
+    /// (some programs, like GNU tar, read `C:\…` as another machine's).
+    start-data-job: func(program: string, args: list<string>, stdin: string) -> result<u64, string>;
+    /// Needs `terminal`: the text of your ssh config file (`~/.ssh/config`), "" if there's none.
+    ssh-config: func() -> result<string, string>;
 }
 
 world plugin {

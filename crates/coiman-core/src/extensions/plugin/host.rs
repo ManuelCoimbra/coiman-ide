@@ -547,6 +547,119 @@ impl State {
         which(program).ok_or_else(|| format!("{program} isn't on PATH"))
     }
 
+    /// Starts an approved program; what it prints goes to the job's result, or into `into`.
+    fn job(
+        &mut self,
+        program: String,
+        args: Vec<String>,
+        stdin: String,
+        into: Option<PathBuf>,
+        in_data: bool,
+    ) -> Result<u64, String> {
+        if !self.programs.contains(&program) {
+            let line = format!("refused: {program} isn't approved");
+            self.send(Update::Log { plugin: self.plugin.clone(), line });
+            return Err(format!("program not approved: {program}"));
+        }
+        let root = if in_data { self.data_dir()? } else { self.run_folder()? };
+        let jobs = self.jobs.clone();
+        if jobs.lock().map_err(|e| e.to_string())?.len() >= MAX_JOBS {
+            return Err(format!("this plugin already has {MAX_JOBS} programs running"));
+        }
+        let exe = self.program(&program)?;
+        let mut child = quiet_command(&exe)
+            .args(&args)
+            // Nothing a job runs can wait on a prompt or an editor nobody sees.
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_EDITOR", "true")
+            .env_remove("GIT_SEQUENCE_EDITOR")
+            .current_dir(&root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("could not start {program}: {e}"))?;
+        // In the log, so what a plugin ran can always be checked.
+        let line = format!("started: {} {}", exe.display(), args.join(" "));
+        self.send(Update::Log { plugin: self.plugin.clone(), line });
+        let id = self.next_id;
+        self.next_id += 1;
+        let (out, err) = (child.stdout.take(), child.stderr.take());
+        if let Some(mut input) = child.stdin.take() {
+            std::thread::spawn(move || {
+                let _ = input.write_all(stdin.as_bytes());
+            });
+        }
+        let out = match into {
+            Some(path) => {
+                // Copied as it comes, byte for byte; the result's stdout says nothing.
+                out.map(|mut o| {
+                    std::thread::spawn(move || {
+                        match std::fs::File::create(&path) {
+                            Ok(mut f) => {
+                                let _ = std::io::copy(&mut o, &mut f);
+                            }
+                            Err(_) => {
+                                let _ = std::io::copy(&mut o, &mut std::io::sink());
+                            }
+                        }
+                        String::new()
+                    })
+                })
+            }
+            None => out.map(read_output),
+        };
+        let err = err.map(read_output);
+        let child = Arc::new(Mutex::new(child));
+        jobs.lock().map_err(|e| e.to_string())?.insert(id, child.clone());
+        let (messages, plugin) = (self.messages.clone(), self.plugin.clone());
+        std::thread::spawn(move || {
+            let status = loop {
+                let polled = child.lock().map(|mut c| c.try_wait());
+                match polled {
+                    Ok(Ok(Some(status))) => break Some(status),
+                    Ok(Ok(None)) => std::thread::sleep(JOB_POLL),
+                    _ => break None,
+                }
+            };
+            if let Ok(mut jobs) = jobs.lock() {
+                jobs.remove(&id);
+            }
+            let text = |handle: Option<JoinHandle<String>>| handle.and_then(|h| h.join().ok()).unwrap_or_default();
+            let result =
+                JobResult { id, exit_code: status.and_then(|s| s.code()), stdout: text(out), stderr: text(err) };
+            let _ = messages.send(Msg::Deliver { plugin, event: Event::JobFinished(result) });
+        });
+        Ok(id)
+    }
+
+    /// This plugin's own folder: `<config>/plugins/data/<plugin>`.
+    fn data_dir(&self) -> Result<PathBuf, String> {
+        let dir = super::store::plugins_dir().ok_or("no config folder")?.join("data").join(&self.plugin);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        Ok(dir)
+    }
+
+    /// `rel` inside this plugin's own folder: plain names only, no `..` or absolute paths.
+    fn data_path(&self, rel: &str) -> Result<PathBuf, String> {
+        let ok =
+            !rel.is_empty() && Path::new(rel).components().all(|c| matches!(c, PathPart::Normal(_) | PathPart::CurDir));
+        if !ok {
+            return Err(format!("\"{rel}\" isn't a path inside the plugin's folder"));
+        }
+        Ok(self.data_dir()?.join(rel))
+    }
+
+    /// Where programs run: the open folder (it must be trusted), or with none open, this plugin's
+    /// own folder.
+    fn run_folder(&self) -> Result<PathBuf, String> {
+        match self.workspace() {
+            Ok(root) if crate::project::trust::is_trusted(&root) => Ok(root),
+            Ok(_) => Err("this folder isn't trusted, so plugins can't start programs in it".to_owned()),
+            Err(_) => self.data_dir(),
+        }
+    }
+
     fn workspace(&self) -> Result<PathBuf, String> {
         self.context.lock().ok().and_then(|c| c.workspace.clone()).ok_or_else(|| "no folder is open".to_owned())
     }
@@ -687,66 +800,64 @@ impl coiman::plugin::host::Host for State {
     }
 
     fn start_job(&mut self, program: String, args: Vec<String>, stdin: String) -> Result<u64, String> {
-        if !self.programs.contains(&program) {
-            let line = format!("refused: {program} isn't approved");
-            self.send(Update::Log { plugin: self.plugin.clone(), line });
-            return Err(format!("program not approved: {program}"));
+        self.job(program, args, stdin, None, false)
+    }
+
+    fn start_data_job(&mut self, program: String, args: Vec<String>, stdin: String) -> Result<u64, String> {
+        self.job(program, args, stdin, None, true)
+    }
+
+    fn start_job_into(
+        &mut self,
+        program: String,
+        args: Vec<String>,
+        stdin: String,
+        file: String,
+    ) -> Result<u64, String> {
+        let path = self.data_path(&file)?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let root = self.workspace()?;
-        if !crate::project::trust::is_trusted(&root) {
-            return Err("this folder isn't trusted, so plugins can't start programs in it".to_owned());
+        self.job(program, args, stdin, Some(path), false)
+    }
+
+    fn data_folder(&mut self, sub: String) -> Result<String, String> {
+        let dir = if sub.is_empty() { self.data_dir()? } else { self.data_path(&sub)? };
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        Ok(dir.to_string_lossy().into_owned())
+    }
+
+    fn data_write(&mut self, path: String, contents: String) -> Result<(), String> {
+        let full = self.data_path(&path)?;
+        if let Some(parent) = full.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        let jobs = self.jobs.clone();
-        if jobs.lock().map_err(|e| e.to_string())?.len() >= MAX_JOBS {
-            return Err(format!("this plugin already has {MAX_JOBS} programs running"));
+        std::fs::write(&full, contents).map_err(|e| format!("{path}: {e}"))
+    }
+
+    fn data_remove(&mut self, path: String) -> Result<(), String> {
+        let full = self.data_path(&path)?;
+        let result = if full.is_dir() { std::fs::remove_dir_all(&full) } else { std::fs::remove_file(&full) };
+        match result {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(format!("{path}: {e}")),
+            _ => Ok(()),
         }
-        let exe = self.program(&program)?;
-        let mut child = quiet_command(&exe)
-            .args(&args)
-            // Nothing a job runs can wait on a prompt or an editor nobody sees.
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .env("GIT_EDITOR", "true")
-            .env_remove("GIT_SEQUENCE_EDITOR")
-            .current_dir(&root)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("could not start {program}: {e}"))?;
-        // In the log, so what a plugin ran can always be checked.
-        let line = format!("started: {} {}", exe.display(), args.join(" "));
-        self.send(Update::Log { plugin: self.plugin.clone(), line });
-        let id = self.next_id;
-        self.next_id += 1;
-        let (out, err) = (child.stdout.take(), child.stderr.take());
-        if let Some(mut input) = child.stdin.take() {
-            std::thread::spawn(move || {
-                let _ = input.write_all(stdin.as_bytes());
-            });
+    }
+
+    fn data_rename(&mut self, from: String, to: String) -> Result<(), String> {
+        let (a, b) = (self.data_path(&from)?, self.data_path(&to)?);
+        if b.is_dir() {
+            std::fs::remove_dir_all(&b).map_err(|e| format!("{to}: {e}"))?;
+        } else if b.exists() {
+            std::fs::remove_file(&b).map_err(|e| format!("{to}: {e}"))?;
         }
-        let out = out.map(read_output);
-        let err = err.map(read_output);
-        let child = Arc::new(Mutex::new(child));
-        jobs.lock().map_err(|e| e.to_string())?.insert(id, child.clone());
-        let (messages, plugin) = (self.messages.clone(), self.plugin.clone());
-        std::thread::spawn(move || {
-            let status = loop {
-                let polled = child.lock().map(|mut c| c.try_wait());
-                match polled {
-                    Ok(Ok(Some(status))) => break Some(status),
-                    Ok(Ok(None)) => std::thread::sleep(JOB_POLL),
-                    _ => break None,
-                }
-            };
-            if let Ok(mut jobs) = jobs.lock() {
-                jobs.remove(&id);
-            }
-            let text = |handle: Option<JoinHandle<String>>| handle.and_then(|h| h.join().ok()).unwrap_or_default();
-            let result =
-                JobResult { id, exit_code: status.and_then(|s| s.code()), stdout: text(out), stderr: text(err) };
-            let _ = messages.send(Msg::Deliver { plugin, event: Event::JobFinished(result) });
-        });
-        Ok(id)
+        std::fs::rename(&a, &b).map_err(|e| format!("{from}: {e}"))
+    }
+
+    fn ssh_config(&mut self) -> Result<String, String> {
+        self.need(Permission::Terminal)?;
+        let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).ok_or("no home folder")?;
+        Ok(std::fs::read_to_string(PathBuf::from(home).join(".ssh").join("config")).unwrap_or_default())
     }
 
     fn cancel_job(&mut self, id: u64) {
@@ -849,10 +960,7 @@ impl coiman::plugin::host::Host for State {
             self.send(Update::Log { plugin: self.plugin.clone(), line });
             return Err(format!("program not approved: {program}"));
         }
-        let folder = self.workspace()?;
-        if !crate::project::trust::is_trusted(&folder) {
-            return Err("this folder isn't trusted, so plugins can't start programs in it".to_owned());
-        }
+        let folder = self.run_folder()?;
         let exe = self.program(&program)?;
         let line = format!("started in a terminal: {} {}", exe.display(), args.join(" "));
         self.send(Update::Log { plugin: self.plugin.clone(), line });

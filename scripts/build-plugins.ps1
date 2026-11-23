@@ -14,7 +14,7 @@ $dirs = 'plugins\built-in\comment-highlights', 'plugins\built-in\trailing-spaces
     'plugins\built-in\scs-sii', 'plugins\extensions\terminal-commands', 'plugins\extensions\class-diagram',
     'plugins\extensions\architecture', 'plugins\extensions\code-health', 'plugins\extensions\git-tools', 'plugins\extensions\git-graph',
     'plugins\extensions\http-client', 'plugins\extensions\openapi',
-    'plugins\extensions\docker', 'plugins\extensions\github-actions',
+    'plugins\extensions\docker', 'plugins\extensions\github-actions', 'plugins\extensions\remote',
     'plugins\examples\word-count', 'plugins\examples\tool-runner',
     'crates\coiman-core\tests\fixtures\test-plugin'
 foreach ($dir in $dirs) {

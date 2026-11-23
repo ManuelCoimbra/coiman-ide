@@ -144,7 +144,6 @@ pub struct CodeApp {
     /// Active time per project, for the session statistics.
     activity: shell::activity::Tracker,
     /// Remote: Open SSH Folder's form and its downloads and uploads.
-    remote_folders: project::remote_folder_ui::RemoteFolders,
     /// Docker: Show Containers and Images.
     /// Android: Devices and Logcat.
     android: project::android_ui::AndroidView,
@@ -366,7 +365,6 @@ impl CodeApp {
             run_history: Default::default(),
             snapshots: Default::default(),
             activity: Default::default(),
-            remote_folders: Default::default(),
             android: Default::default(),
             notebook: Default::default(),
             mcp: Default::default(),
@@ -544,7 +542,6 @@ impl CodeApp {
         self.pump_preview(&ctx);
         self.check_baseline();
         self.pump_cpp(&ctx);
-        self.pump_remote_folders(&ctx);
         self.pump_repl(&ctx);
         self.pump_run_preview(&ctx);
         self.pump_zoom(&ctx);
@@ -1036,7 +1033,6 @@ impl CodeApp {
         self.snapshots_window(&ctx);
         self.remote_debug_window(&ctx);
         self.new_plugin_window(&ctx);
-        self.remote_folder_window(&ctx);
         self.android_window(&ctx);
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);
@@ -1119,7 +1115,6 @@ impl CodeApp {
                 self.finish_breakpoint_edit(false, &text)
             }
             Some(PaletteResult::Input(InputKind::Logpoint, text)) => self.finish_breakpoint_edit(true, &text),
-            Some(PaletteResult::Input(InputKind::RemoteCommand, text)) => self.remote_terminal(&ctx, Some(&text)),
             Some(PaletteResult::Input(InputKind::MavenGoal, text)) => self.maven_goal_typed(&ctx, &text),
             Some(PaletteResult::Input(InputKind::MavenSearch, text)) => self.maven_search(&ctx, &text),
             Some(PaletteResult::Input(InputKind::MavenGroupId, text)) => self.maven_group_typed(&text),

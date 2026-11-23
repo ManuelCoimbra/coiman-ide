@@ -443,7 +443,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Deployment configuration | Missing | |
 | Cloud resource explorer | Network | |
 | Remote development environments | Missing | |
-| SSH project access | Partial | Remote: Open SSH Folder (a mirror; saves go back) |
+| SSH project access | Partial | Remote over SSH extension: a mirror; saves, deletes and renames go back |
 | Development containers | Missing | |
 | Cloud workspace management | Network | |
 
