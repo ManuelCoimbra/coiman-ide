@@ -110,7 +110,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Visualisation of call stacks | Done | Call stack view |
 | Thread activity visualisation | Partial | Thread list |
 | Better multi-threaded debugging | Partial | Threads, pause and step per thread |
-| Remote debugging | Done | gdb with gdbserver, started over ssh (scp copy optional) or already running |
+| Remote debugging | Done | Remote Debugging extension: gdb with gdbserver, started over ssh (scp copy optional) or already running |
 | Attach to running processes | Done | |
 | Debug multiple processes simultaneously | Missing | |
 | Heap visualisation | Missing | |

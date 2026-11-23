@@ -696,6 +696,8 @@ impl CodeApp {
             Update::CompareDiff { base, other, path, .. } => self.open_compared_file(ctx, base, other, path),
             Update::CopyText(text) => ctx.copy_text(text),
             Update::OpenUrl(url) => ctx.open_url(egui::OpenUrl::new_tab(url)),
+            Update::DebugAttach { plugin, attach } => self.plugin_debug_attach(ctx, plugin, attach),
+            Update::DebugConsole(text) => self.plugin_debug_console(&text),
             Update::CodeLenses { plugin, path, lenses } => self.plugin_code_lenses(&plugin, &path, lenses),
             Update::OpenText(text) => {
                 self.untitled_counter += 1;

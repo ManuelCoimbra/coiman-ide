@@ -1031,7 +1031,6 @@ impl CodeApp {
         self.lsp_room(&ctx);
         self.run_history_window(&ctx);
         self.snapshots_window(&ctx);
-        self.remote_debug_window(&ctx);
         self.new_plugin_window(&ctx);
         self.android_window(&ctx);
         self.notebook_window(&ctx);

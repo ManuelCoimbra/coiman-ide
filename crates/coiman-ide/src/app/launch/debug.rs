@@ -92,7 +92,28 @@ struct Launch {
     /// A running process to attach to, in place of starting `program`.
     attach: Option<u32>,
     /// A program on another machine, under gdbserver, to attach to.
-    remote: Option<coiman_core::launch::remote_debug::RemoteTarget>,
+    remote: Option<RemoteGdb>,
+}
+
+/// gdb attached to a gdbserver, as a plugin asked: what it connects to, and the plugin that
+/// starts gdbserver again on a restart.
+#[derive(Clone, Debug)]
+struct RemoteGdb {
+    target: String,
+    plugin: String,
+}
+
+impl RemoteGdb {
+    /// gdb's `attach` request, with the local program's symbols.
+    fn attach_args(&self, program: &Path) -> Value {
+        serde_json::json!({
+            "type": "gdb",
+            "request": "attach",
+            "name": format!("Remote {}", self.target),
+            "program": program,
+            "target": self.target,
+        })
+    }
 }
 
 enum AdapterState {
@@ -197,12 +218,7 @@ enum Msg {
     DebugpyInstalled(Launch, Result<(), String>),
     /// The processes running here, to attach to.
     Processes(Result<Vec<Process>, String>),
-    /// Remote debugging: the copy, ssh's lines, its end.
-    Remote(remote::RemoteMsg),
 }
-
-#[path = "remote_debug.rs"]
-mod remote;
 
 pub(crate) struct DebugState {
     /// What the Debug picker is choosing from.
@@ -241,11 +257,6 @@ pub(crate) struct DebugState {
     attach_to: Option<Process>,
     /// Breakpoints of every project, as kept in the session (read when first needed).
     kept: Option<BTreeMap<PathBuf, bpx::Saved>>,
-    /// Debug: Remote's form while it's open.
-    remote_form: Option<coiman_core::launch::remote_debug::RemoteTarget>,
-    /// ssh running gdbserver there, and the target while gdbserver isn't ready yet.
-    remote_child: Option<std::process::Child>,
-    remote_waiting: Option<coiman_core::launch::remote_debug::RemoteTarget>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
 }
@@ -278,9 +289,6 @@ impl Default for DebugState {
             processes: Vec::new(),
             attach_to: None,
             kept: None,
-            remote_form: None,
-            remote_child: None,
-            remote_waiting: None,
             tx,
             rx,
         }
@@ -297,6 +305,31 @@ fn key(path: &Path) -> PathBuf {
 }
 
 impl CodeApp {
+    /// A gdb session attached to a gdbserver, as a plugin asked.
+    pub(crate) fn plugin_debug_attach(
+        &mut self,
+        ctx: &egui::Context,
+        plugin: String,
+        attach: coiman_core::extensions::plugin::RemoteAttach,
+    ) {
+        let cwd = self.explorer.root.clone().unwrap_or_else(std::env::temp_dir);
+        let program = PathBuf::from(attach.program.trim());
+        let program = if program.is_absolute() { program } else { cwd.join(program) };
+        self.panel_visible = true;
+        self.panel_tab = PanelTab::DebugConsole;
+        let remote = Some(RemoteGdb { target: attach.target.trim().to_owned(), plugin });
+        let launch =
+            Launch { kind: DebugKind::Gdb, name: attach.name, program, args: Vec::new(), cwd, attach: None, remote };
+        self.start_session(ctx, launch);
+    }
+
+    /// A plugin's line in the Debug Console.
+    pub(crate) fn plugin_debug_console(&mut self, text: &str) {
+        self.panel_visible = true;
+        self.panel_tab = PanelTab::DebugConsole;
+        self.push_console(text);
+    }
+
     fn push_console(&mut self, text: &str) {
         for line in text.trim_end_matches('\n').split('\n') {
             self.debug.console.push(line.trim_end_matches('\r').to_owned());
@@ -370,7 +403,6 @@ impl CodeApp {
                         Err(e) => self.refuse_run(ctx, format!("Could not install debugpy: {e}")),
                     }
                 }
-                Msg::Remote(m) => self.on_remote_msg(ctx, m),
                 Msg::Processes(Err(e)) => self.status = Some(format!("Could not list processes: {e}")),
                 Msg::Processes(Ok(list)) => {
                     self.status = None;
@@ -407,7 +439,7 @@ impl CodeApp {
             let elapsed = s.started.elapsed();
             if elapsed >= REMOTE_QUIET {
                 s.remote_warned = true;
-                let to = t.target();
+                let to = t.target.clone();
                 self.push_console(&format!(
                     "No word from gdbserver at {to} after {} s: check the host and port, and that gdbserver is running there. Stop gives up.",
                     REMOTE_QUIET.as_secs()
@@ -418,8 +450,11 @@ impl CodeApp {
             }
         }
         if self.debug.session.as_ref().is_some_and(|s| s.state == RunState::Ended) {
-            self.debug.session = None;
-            self.stop_remote();
+            let ended = self.debug.session.take().and_then(|s| s.launch.remote).map(|r| r.plugin);
+            // The plugin that started gdbserver ends what it started.
+            if let Some(plugin) = ended {
+                self.run_plugin(&plugin, "debug-ended", "");
+            }
             self.status = Some("Debugging stopped".to_owned());
         }
     }
@@ -526,7 +561,7 @@ impl CodeApp {
                     return;
                 }
                 if let Some(t) = &l.remote {
-                    let args = t.attach_args();
+                    let args = t.attach_args(&l.program);
                     self.request("attach", args, Pending::Launch);
                     return;
                 }
@@ -1205,7 +1240,7 @@ impl CodeApp {
         self.debug.console.clear();
         match launch.attach {
             None if launch.remote.is_some() => {
-                let to = launch.remote.as_ref().map(|t| t.target()).unwrap_or_default();
+                let to = launch.remote.as_ref().map(|t| t.target.clone()).unwrap_or_default();
                 self.push_console(&format!("Attaching gdb to {to}, symbols from {}", launch.program.display()));
             }
             Some(pid) => {
@@ -1581,10 +1616,9 @@ impl CodeApp {
         let launch = self.debug.last_launch.clone();
         self.debug_stop();
         self.debug.session = None;
-        self.stop_remote();
-        // A remote program starts again the way it started: over ssh, or by connecting.
+        // A remote program starts again the way it started: the plugin that started it does it.
         if let Some(t) = launch.as_ref().and_then(|l| l.remote.clone()) {
-            self.start_remote(ctx, t);
+            self.run_plugin(&t.plugin, "restart", "");
             return;
         }
         if let Some(l) = launch {

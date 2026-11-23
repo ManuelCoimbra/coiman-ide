@@ -7,6 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Remote debugging is now the Remote Debugging extension of the Containers pack, with a panel;
+  the debugger still attaches gdb, restarts and ends the session. Its built-in window and code
+  left the program. The Containers pack is all extensions now.
+- Plugin API: `start-job-lines` (`job-line` events), `debug-attach`, `debug-console`;
+  `write-file` makes the folders a file goes in.
 - Remote folders over SSH and SSH terminals are now the Remote over SSH extension of the
   Containers pack, with a Remote panel; mirrors live in the extension's own folder. Their
   built-in window and code left the program; the editor still maps a remote folder's paths in

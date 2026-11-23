@@ -1,0 +1,14 @@
+id = "coiman.remote-debug"
+name = "Remote Debugging"
+version = "1.0.0"
+description = "A program on another machine debugged here with gdb: gdbserver started over ssh (the program copied there first if asked), or one already running."
+permissions = ["workspace-read", "workspace-write"]
+programs = ["ssh", "scp"]
+
+[[commands]]
+id = "show"
+title = "Debug: Remote (gdbserver)..."
+
+[[panels]]
+id = "remote-debug"
+title = "Remote Debugging"

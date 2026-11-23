@@ -12,6 +12,7 @@ pub mod uml;
 pub use host::{
     Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, Event, FieldKind,
     FileLink, Form, FormField, FormValues, Graph, GraphEdge, GraphNode, GraphRef, MenuItem, Pick, PickAction,
-    PickChoice, PickItem, PickQuery, PluginHost, Problem, Row, Severity, Span, TerminalLine, TreeItem, Update,
+    PickChoice, PickItem, PickQuery, PluginHost, Problem, RemoteAttach, Row, Severity, Span, TerminalLine, TreeItem,
+    Update,
 };
 pub use manifest::{EventKind, Manifest, Permission};

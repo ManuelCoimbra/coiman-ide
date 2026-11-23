@@ -57,7 +57,7 @@ pub const PACKS: [Pack; 10] = [
             "Remote folders over SSH, SSH terminals, remote commands",
             "Remote debugging through gdbserver",
         ],
-        extensions: &["coiman.docker", "coiman.github-actions", "coiman.remote"],
+        extensions: &["coiman.docker", "coiman.github-actions", "coiman.remote", "coiman.remote-debug"],
     },
     Pack {
         id: SYSTEMS,

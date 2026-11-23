@@ -1,12 +1,12 @@
 //! Remote debugging with gdb: a program on another machine, run under `gdbserver`, debugged
-//! here. Over ssh, Coiman starts gdbserver itself (`ssh -L` carries its port here); otherwise
-//! gdb connects to a gdbserver already listening. gdb reads symbols from a copy of the program
-//! on this machine. Nothing here opens a connection: `ssh`, `scp` and gdb do.
-
-use std::path::{Path, PathBuf};
+//! here. Over ssh, the extension starts gdbserver itself (`ssh -L` carries its port here);
+//! otherwise gdb connects to a gdbserver already listening. gdb reads symbols from a copy of the
+//! program on this machine. Nothing here opens a connection: `ssh`, `scp` and gdb do.
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+
+/// Where a project keeps its remote target.
+pub const FILE: &str = ".coiman/remote_debug.toml";
 
 /// Where and what to debug, as last filled in for a project.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -74,9 +74,6 @@ impl RemoteTarget {
         if self.local_program.trim().is_empty() {
             return Some("Choose the program on this machine, for its symbols");
         }
-        if self.copy_first && !Path::new(self.local_program.trim()).is_file() {
-            return Some("The local program to copy doesn't exist");
-        }
         None
     }
 
@@ -111,7 +108,7 @@ impl RemoteTarget {
 
     /// The user's own ssh options, split as a shell would.
     fn options(&self) -> Vec<String> {
-        crate::build::compile_db::split_command(self.ssh_options.trim())
+        split_command(self.ssh_options.trim())
     }
 
     /// What gdb connects to (`target remote`).
@@ -128,35 +125,51 @@ impl RemoteTarget {
         }
     }
 
-    /// gdb's `attach` request for the remote program.
-    pub fn attach_args(&self) -> Value {
-        json!({
-            "type": "gdb",
-            "request": "attach",
-            "name": format!("Remote {}", self.target()),
-            "program": self.local_program.trim(),
-            "target": self.target(),
-        })
+    /// A project's remote target, from its file's text, or a new one.
+    pub fn read(text: &str) -> Self {
+        toml::from_str(text).unwrap_or_default()
     }
 
-    /// Where a project keeps its remote target.
-    pub fn file(root: &Path) -> PathBuf {
-        crate::settings::project_dir(root).join("remote_debug.toml")
+    /// The file's text.
+    pub fn text(&self) -> String {
+        toml::to_string(self).unwrap_or_default()
     }
+}
 
-    /// A project's remote target, or a new one.
-    pub fn load(root: &Path) -> Self {
-        std::fs::read_to_string(Self::file(root)).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default()
-    }
-
-    pub fn save(&self, root: &Path) -> Result<(), String> {
-        let path = Self::file(root);
-        if let Some(dir) = path.parent() {
-            std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+/// A command line split into words: quotes group, a backslash escapes a quote or itself.
+pub fn split_command(command: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut word = String::new();
+    let mut in_word = false;
+    let mut quote = None;
+    let mut chars = command.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, quote) {
+            ('\\', q) if matches!(chars.peek(), Some('"' | '\'' | '\\')) && q != Some('\'') => {
+                word.extend(chars.next());
+                in_word = true;
+            }
+            (q @ ('"' | '\''), None) => {
+                quote = Some(q);
+                in_word = true;
+            }
+            (q, Some(open)) if q == open => quote = None,
+            (w, None) if w.is_whitespace() => {
+                if in_word {
+                    out.push(std::mem::take(&mut word));
+                    in_word = false;
+                }
+            }
+            (other, _) => {
+                word.push(other);
+                in_word = true;
+            }
         }
-        let text = toml::to_string(self).map_err(|e| e.to_string())?;
-        std::fs::write(&path, text).map_err(|e| e.to_string())
     }
+    if in_word {
+        out.push(word);
+    }
+    out
 }
 
 /// Whether a line gdbserver printed says it's ready: "Listening on port 2345".
@@ -219,10 +232,6 @@ mod tests {
         );
         assert_eq!(t.scp_args(), ["-o", "BatchMode=yes", "target/app", "pi@board:/home/pi/app"]);
         assert_eq!(t.target(), "localhost:2345");
-        let a = t.attach_args();
-        assert_eq!(a["request"], "attach");
-        assert_eq!(a["target"], "localhost:2345");
-        assert_eq!(a["program"], "target/app");
         assert_eq!(t.problem(), None);
         let own = RemoteTarget { ssh_options: "-F \"my config\" -o Port=2222".into(), ..t };
         assert_eq!(own.ssh_args()[4..8], ["-F", "my config", "-o", "Port=2222"]);
@@ -255,12 +264,7 @@ mod tests {
 
     #[test]
     fn kept_per_project() {
-        let dir = std::env::temp_dir().join(format!("coiman-remote-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(RemoteTarget::load(&dir), RemoteTarget::default());
-        over_ssh().save(&dir).unwrap();
-        assert_eq!(RemoteTarget::load(&dir), over_ssh());
-        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(RemoteTarget::read(""), RemoteTarget::default());
+        assert_eq!(RemoteTarget::read(&over_ssh().text()), over_ssh());
     }
 }

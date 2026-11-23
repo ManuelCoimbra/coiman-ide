@@ -32,9 +32,9 @@ wasmtime::component::bindgen!({
 
 pub use coiman::plugin::types::{
     Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind,
-    FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobResult, MenuItem,
-    Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, Row, ServerResponse, Severity, Span, Table,
-    TerminalLine, TreeItem,
+    FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult,
+    MenuItem, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, RemoteAttach, Row, ServerResponse, Severity,
+    Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -166,6 +166,13 @@ pub enum Update {
     OpenText(String),
     /// A web page to open in the browser.
     OpenUrl(String),
+    /// A gdb session attached to a remote target, asked for by a plugin.
+    DebugAttach {
+        plugin: String,
+        attach: RemoteAttach,
+    },
+    /// A line for the Debug Console.
+    DebugConsole(String),
     /// The Merge Conflicts window, asked for.
     MergeConflicts,
     /// A folder to open as the project.
@@ -633,6 +640,89 @@ impl State {
         Ok(id)
     }
 
+    /// Starts an approved program whose lines come as `job-line` events as they're printed.
+    fn job_lines(&mut self, program: String, args: Vec<String>, stdin: String) -> Result<u64, String> {
+        if !self.programs.contains(&program) {
+            let line = format!("refused: {program} isn't approved");
+            self.send(Update::Log { plugin: self.plugin.clone(), line });
+            return Err(format!("program not approved: {program}"));
+        }
+        let root = self.run_folder()?;
+        let jobs = self.jobs.clone();
+        if jobs.lock().map_err(|e| e.to_string())?.len() >= MAX_JOBS {
+            return Err(format!("this plugin already has {MAX_JOBS} programs running"));
+        }
+        let exe = self.program(&program)?;
+        let mut child = quiet_command(&exe)
+            .args(&args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_EDITOR", "true")
+            .env_remove("GIT_SEQUENCE_EDITOR")
+            .current_dir(&root)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("could not start {program}: {e}"))?;
+        let line = format!("started: {} {}", exe.display(), args.join(" "));
+        self.send(Update::Log { plugin: self.plugin.clone(), line });
+        let id = self.next_id;
+        self.next_id += 1;
+        if let Some(mut input) = child.stdin.take() {
+            std::thread::spawn(move || {
+                let _ = input.write_all(stdin.as_bytes());
+            });
+        }
+        let pipes: Vec<Box<dyn std::io::Read + Send>> = [
+            child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+            child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
+        let readers: Vec<JoinHandle<()>> = pipes
+            .into_iter()
+            .map(|pipe| {
+                let (messages, plugin) = (self.messages.clone(), self.plugin.clone());
+                std::thread::spawn(move || {
+                    use std::io::BufRead;
+                    for line in std::io::BufReader::new(pipe).lines().map_while(Result::ok) {
+                        let event = Event::JobLine(JobLine { id, line });
+                        let _ = messages.send(Msg::Deliver { plugin: plugin.clone(), event });
+                    }
+                })
+            })
+            .collect();
+        let child = Arc::new(Mutex::new(child));
+        jobs.lock().map_err(|e| e.to_string())?.insert(id, child.clone());
+        let (messages, plugin) = (self.messages.clone(), self.plugin.clone());
+        std::thread::spawn(move || {
+            let status = loop {
+                let polled = child.lock().map(|mut c| c.try_wait());
+                match polled {
+                    Ok(Ok(Some(status))) => break Some(status),
+                    Ok(Ok(None)) => std::thread::sleep(JOB_POLL),
+                    _ => break None,
+                }
+            };
+            // Every line is out before the end is said.
+            for r in readers {
+                let _ = r.join();
+            }
+            if let Ok(mut jobs) = jobs.lock() {
+                jobs.remove(&id);
+            }
+            let result = JobResult {
+                id,
+                exit_code: status.and_then(|s| s.code()),
+                stdout: String::new(),
+                stderr: String::new(),
+            };
+            let _ = messages.send(Msg::Deliver { plugin, event: Event::JobFinished(result) });
+        });
+        Ok(id)
+    }
+
     /// This plugin's own folder: `<config>/plugins/data/<plugin>`.
     fn data_dir(&self) -> Result<PathBuf, String> {
         let dir = super::store::plugins_dir().ok_or("no config folder")?.join("data").join(&self.plugin);
@@ -784,6 +874,28 @@ impl coiman::plugin::host::Host for State {
 
     fn write_file(&mut self, path: String, contents: String) -> Result<(), String> {
         self.need(Permission::WorkspaceWrite)?;
+        // Its folders are made first; the nearest one there already must be inside the open
+        // folder (no path leads out of it through a link).
+        let root = self.workspace()?;
+        let rel = Path::new(&path);
+        if let Some(parent) = rel.parent().filter(|p| !p.as_os_str().is_empty())
+            && !root.join(parent).is_dir()
+        {
+            let mut there = parent;
+            while !root.join(there).exists() {
+                match there.parent() {
+                    Some(up) => there = up,
+                    None => break,
+                }
+            }
+            let canon_root = root.canonicalize().map_err(|e| e.to_string())?;
+            let canon = root.join(there).canonicalize().map_err(|e| e.to_string())?;
+            let shape_ok = rel.components().all(|c| matches!(c, PathPart::Normal(_) | PathPart::CurDir));
+            if !shape_ok || !canon.starts_with(&canon_root) {
+                return Err(format!("\"{path}\" isn't a path inside the open folder"));
+            }
+            std::fs::create_dir_all(root.join(parent)).map_err(|e| format!("{path}: {e}"))?;
+        }
         let full = self.resolve(&path, false)?;
         std::fs::write(&full, contents).map_err(|e| format!("{path}: {e}"))
     }
@@ -805,6 +917,23 @@ impl coiman::plugin::host::Host for State {
 
     fn start_data_job(&mut self, program: String, args: Vec<String>, stdin: String) -> Result<u64, String> {
         self.job(program, args, stdin, None, true)
+    }
+
+    fn start_job_lines(&mut self, program: String, args: Vec<String>, stdin: String) -> Result<u64, String> {
+        self.job_lines(program, args, stdin)
+    }
+
+    fn debug_attach(&mut self, attach: RemoteAttach) -> Result<(), String> {
+        self.need(Permission::WorkspaceRead)?;
+        if attach.target.trim().is_empty() || attach.program.trim().is_empty() {
+            return Err("name the program here and the target".to_owned());
+        }
+        self.send(Update::DebugAttach { plugin: self.plugin.clone(), attach });
+        Ok(())
+    }
+
+    fn debug_console(&mut self, text: String) {
+        self.send(Update::DebugConsole(text));
     }
 
     fn start_job_into(

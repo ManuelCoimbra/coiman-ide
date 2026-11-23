@@ -598,7 +598,9 @@ downloaded unless you click **Download**.
   it); **Import Breakpoints...** adds a file's breakpoints to those set. Both are under
   BREAKPOINTS too. Without exporting, each project's line, function and exception breakpoints
   are kept between runs of the app.
-- **Remote debugging**: **Debug: Remote (gdbserver)...** debugs a program on another machine
+- **Remote debugging**, the Remote Debugging extension of the Containers pack (`workspace-read`,
+  `workspace-write`; programs `ssh`, `scp`), in its panel: **Debug: Remote (gdbserver)...**
+  debugs a program on another machine
   with gdb, using a copy of the same build here for its symbols. **Start gdbserver over ssh**
   runs `ssh host gdbserver :PORT program args` with key login only (no password prompt), and
   `-L` carries the port here (to another local port if the same number is taken);
@@ -665,7 +667,8 @@ appear, and its background work doesn't run.
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
-and OpenAPI with Web and APIs, Docker, GitHub Actions and Remote over SSH with Containers, Terminal Commands
+and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
+Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -731,7 +734,10 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   (an archive), and `start-data-job` runs a program in it. With no folder open, programs run
   there. **`ssh-config`** (`terminal`) reads `~/.ssh/config`. Events **`deleted`** and
   **`renamed`** follow the Explorer. What a program run in a terminal prints is read for
-  problems.
+  problems. **`start-job-lines`** sends each line a program prints as it's printed
+  (`job-line`); **`debug-attach`** starts gdb attached to a gdbserver (a restart runs the
+  plugin's `restart` command, the end `debug-ended`); **`debug-console`** writes in the Debug
+  Console. `write-file` makes the folders a file goes in.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -794,6 +800,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **Remote Debugging** (`workspace-read`, `workspace-write`; programs `ssh`, `scp`): gdb on a
+  program under gdbserver on another machine; see Remote debugging under Debugging.
 - **Remote over SSH** (`workspace-read`, `terminal`; programs `ssh`, `tar`): a folder on
   another machine as a mirror here, terminals and commands there, SSH terminals.
 - **GitHub Actions** (`workspace-read`; program `gh`): workflow runs, jobs, failed logs,

@@ -313,8 +313,6 @@ pub enum Command {
     ConditionalBreakpoint,
     AddLogpoint,
     AttachToProcess,
-    /// A program on another machine, under gdbserver (over ssh or already running).
-    DebugRemote,
     ExportBreakpoints,
     ImportBreakpoints,
     ShowDebug,
@@ -343,7 +341,6 @@ impl Command {
             | Command::ShowDatabaseDiagram
             | Command::ShowRedis
             | Command::ShowMongo => DATA,
-            Command::DebugRemote => DEVOPS,
             Command::SerialMonitor | Command::AnalyzeBinarySize | Command::ShowMemory | Command::ShowDisassembly => {
                 SYSTEMS
             }
@@ -634,7 +631,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ConditionalBreakpoint, "Debug: Add Conditional Breakpoint..."),
     (Command::AddLogpoint, "Debug: Add Logpoint..."),
     (Command::AttachToProcess, "Debug: Attach to Process..."),
-    (Command::DebugRemote, "Debug: Remote (gdbserver)..."),
     (Command::ExportBreakpoints, "Debug: Export Breakpoints..."),
     (Command::ImportBreakpoints, "Debug: Import Breakpoints..."),
     (Command::ShowDebug, "View: Show Run and Debug"),
@@ -750,7 +746,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ReviewSnapshots, "coiman.reviewSnapshots"),
     (Command::OpenDatabase, "coiman.openDatabase"),
     (Command::AttachToProcess, "coiman.debug.attachToProcess"),
-    (Command::DebugRemote, "coiman.debug.remote"),
     (Command::ExportBreakpoints, "coiman.debug.exportBreakpoints"),
     (Command::ImportBreakpoints, "coiman.debug.importBreakpoints"),
     (Command::RunSqlInDatabase, "coiman.runSqlInDatabase"),
