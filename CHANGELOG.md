@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- GitHub Actions is now an extension of the Containers pack, in a panel (runs, jobs and steps,
+  the log of what failed, a failed step in its workflow file); re-running failed jobs asks
+  first. Its built-in panel and code left the program. Plugin API: `open-url`.
 - Docker is now an extension of the Containers pack, in a panel (containers, images, Compose,
   their actions, logs and shells in terminals); removing a container or an image asks first.
   Its built-in window and code left the program.
@@ -79,6 +82,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A floating sheet (Extensions, Explorer…) whose content no longer fit, when the bottom panel
+  opened, drew the rest over the panel; it stays inside the sheet.
 - An extension's panel tab keeps its name as written ("HTTP Client", not "Http client").
 - An extension installed from the copy that comes with Coiman shows **Update…** when that copy
   changed (rebuilt for a newer plugin API) even with the same version, instead of stopping

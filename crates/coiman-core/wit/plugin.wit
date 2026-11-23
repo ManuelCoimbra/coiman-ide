@@ -530,6 +530,8 @@ interface host {
     environment-variable: func(name: string) -> result<option<string>, string>;
     /// Opens text in a new, unsaved editor tab.
     open-text: func(text: string);
+    /// Opens a web page (an `https://` or `http://` address) in the browser.
+    open-url: func(url: string) -> result<_, string>;
 }
 
 world plugin {

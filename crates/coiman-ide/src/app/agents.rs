@@ -2284,7 +2284,7 @@ fn parse_event(line: &str) -> Option<AgentMsg> {
 /// A line OpenCode wrote to stderr, without its colors; a permission it turned down (Manual,
 /// with nobody to ask) says so plainly.
 fn stderr_line(line: &str) -> String {
-    let line = coiman_core::project::actions::strip_colors(line);
+    let line = coiman_core::terminal::strip_colors(line);
     let plain = line.trim_start_matches(['!', ' ']);
     match plain.strip_prefix("permission requested: ").and_then(|rest| rest.strip_suffix("; auto-rejecting")) {
         Some(what) => format!("Not allowed in Manual: {what}. Switch to Auto to let the agent do this."),

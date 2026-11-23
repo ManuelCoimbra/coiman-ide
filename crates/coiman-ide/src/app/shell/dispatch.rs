@@ -634,7 +634,6 @@ impl CodeApp {
             Command::ProfileFile => self.profile_current_file(ctx),
             Command::OpenProfile => self.open_profile_file(),
             Command::ConnectDatabase => self.show_database_connect(),
-            Command::ShowActions => self.show_actions(ctx),
             Command::OpenHexView => self.hex_command(),
             Command::ShowMemory => self.show_memory(None),
             Command::ShowDisassembly => self.show_disassembly(),

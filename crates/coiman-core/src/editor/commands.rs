@@ -215,7 +215,6 @@ pub enum Command {
     ProfileFile,
     OpenProfile,
     ConnectDatabase,
-    ShowActions,
     OpenHexView,
     ShowMemory,
     ShowDisassembly,
@@ -351,8 +350,7 @@ impl Command {
             | Command::ShowDatabaseDiagram
             | Command::ShowRedis
             | Command::ShowMongo => DATA,
-            Command::ShowActions
-            | Command::DownloadRemoteFolder
+            Command::DownloadRemoteFolder
             | Command::RemoteTerminal
             | Command::RemoteRunCommand
             | Command::NewSshTerminal
@@ -552,7 +550,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ProfileFile, "Run: Profile Current File"),
     (Command::OpenProfile, "Profile: Open Profile File..."),
     (Command::ConnectDatabase, "Database: Connect to PostgreSQL, MySQL or SQL Server..."),
-    (Command::ShowActions, "GitHub: Show Actions"),
     (Command::OpenHexView, "Hex: Open File"),
     (Command::ShowMemory, "Debug: Show Memory"),
     (Command::ShowDisassembly, "Debug: Show Disassembly"),
@@ -866,7 +863,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ProfileFile, "coiman.profileFile"),
     (Command::OpenProfile, "coiman.openProfile"),
     (Command::ConnectDatabase, "coiman.connectDatabase"),
-    (Command::ShowActions, "coiman.showActions"),
     (Command::OpenHexView, "coiman.openHexView"),
     (Command::ShowMemory, "coiman.showMemory"),
     (Command::ShowDisassembly, "coiman.showDisassembly"),

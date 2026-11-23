@@ -140,7 +140,7 @@ impl CodeApp {
                 Ok(o) => {
                     let all = String::from_utf8_lossy(&o.stdout).into_owned() + &String::from_utf8_lossy(&o.stderr);
                     // Its colors and box lines aren't wanted here.
-                    let plain: String = coiman_core::project::actions::strip_colors(&all);
+                    let plain: String = coiman_core::terminal::strip_colors(&all);
                     plain.lines().filter_map(drop_frame).collect::<Vec<_>>().join("\n")
                 }
                 Err(e) => format!("opencode: {e}"),

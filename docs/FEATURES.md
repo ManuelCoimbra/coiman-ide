@@ -205,10 +205,12 @@ network, and only when you ask. All git work runs in the background.
   While a merge, cherry-pick, revert or rebase waits on conflicts, the graph says so, with
   **Resolve conflicts…** (the Merge Conflicts window), **Continue** and **Abort**. **Refresh**
   reads the graph again after work done elsewhere.
-- **GitHub Actions** (**GitHub: Show Actions**): the ACTIONS panel lists the repository's
+- **GitHub Actions**, an extension of the Containers pack (`workspace-read`; program `gh`)
+  (**GitHub: Show Actions**): its panel lists the repository's
   latest workflow runs (or **Only failed**), each with its workflow, branch, state and age. A
   run shows its jobs and steps; a failed one has **Log of what failed** (only the errors and
-  the lines before each, or the whole log), **Re-run failed jobs**, **Open on GitHub**, and
+  the lines before each, or the whole log, 3,000 lines at most), **Re-run failed jobs…**
+  (asks first: it uses GitHub's minutes), **Open on GitHub**, and
   **Open in workflow** on a failed step, at its line in the workflow file. It all goes
   through the `gh` program and your GitHub login.
 - **Merge Conflicts** (**Git: Resolve Merge Conflicts**, or **Resolve Merge Conflicts…** in
@@ -663,7 +665,7 @@ appear, and its background work doesn't run.
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
-and OpenAPI with Web and APIs, Docker with Containers, Terminal Commands
+and OpenAPI with Web and APIs, Docker and GitHub Actions with Containers, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -723,7 +725,7 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
 - **Code lenses** (`set-code-lenses`, `editor-read`): lines above lines of a file that run a
   plugin command. **`now`** (the time, and how far local time is from UTC), **`random`**,
   **`environment-variable`** (the `environment` permission: they may hold secrets) and
-  **`open-text`** (text in a new tab).
+  **`open-text`** (text in a new tab). **`open-url`** opens a web page in the browser.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -786,6 +788,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **GitHub Actions** (`workspace-read`; program `gh`): workflow runs, jobs, failed logs,
+  re-runs; see **GitHub Actions** under Git.
 - **Docker** (`workspace-read`; program `docker`): containers, images, Compose; see **Docker** further down,
   beside the remote folders.
 - **HTTP Client** (`workspace-read`, `editor-read`, `environment`; program `curl`): `.http`

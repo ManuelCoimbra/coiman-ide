@@ -82,8 +82,6 @@ enum PanelTab {
     StackTrace,
     /// Where a profiled program's time went.
     Profile,
-    /// GitHub Actions: workflow runs.
-    Actions,
     /// A panel contributed by a plugin (index into its panels).
     Plugin(usize),
 }
@@ -240,7 +238,6 @@ pub struct CodeApp {
     tables: tables::Tables,
     traces: traces::Traces,
     profiler: profiler::Profiler,
-    actions: project::actions_ui::ActionsUi,
     cpp: cpp::Cpp,
     auto_save: autosave::AutoSave,
     /// A font being loaded in the background: what it is, or why it can't be.
@@ -435,7 +432,6 @@ impl CodeApp {
             tables: Default::default(),
             traces: Default::default(),
             profiler: Default::default(),
-            actions: Default::default(),
             cpp: Default::default(),
             auto_save: Default::default(),
             font_load: None,

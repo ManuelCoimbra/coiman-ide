@@ -164,6 +164,8 @@ pub enum Update {
     },
     /// Text for a new, unsaved tab.
     OpenText(String),
+    /// A web page to open in the browser.
+    OpenUrl(String),
     /// The Merge Conflicts window, asked for.
     MergeConflicts,
     /// A folder to open as the project.
@@ -919,6 +921,15 @@ impl coiman::plugin::host::Host for State {
 
     fn open_text(&mut self, text: String) {
         self.send(Update::OpenText(text));
+    }
+
+    fn open_url(&mut self, url: String) -> Result<(), String> {
+        let web = url.starts_with("https://") || url.starts_with("http://");
+        if !web || url.chars().any(|c| c.is_whitespace() || c.is_control()) {
+            return Err(format!("{url} isn't a web address"));
+        }
+        self.send(Update::OpenUrl(url));
+        Ok(())
     }
 
     fn copy_text(&mut self, text: String) {

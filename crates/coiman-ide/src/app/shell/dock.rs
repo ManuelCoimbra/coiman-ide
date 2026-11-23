@@ -376,6 +376,8 @@ impl CodeApp {
                     ui.set_height(rect.height() - 16.0);
                     let inner = ui.max_rect().translate(egui::vec2((1.0 - swap) * 16.0, 0.0));
                     let mut content = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+                    // What doesn't fit stays inside the sheet, not over the panel below it.
+                    content.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
                     content.set_opacity(swap);
                     self.sidebar(&mut content);
                 });

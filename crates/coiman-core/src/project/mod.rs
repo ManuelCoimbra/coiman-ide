@@ -1,6 +1,5 @@
 //! The folder being worked on: files, search, watching, sessions, trust, history and Git.
 
-pub mod actions;
 pub mod activity;
 pub mod adb;
 pub mod dialog_dirs;

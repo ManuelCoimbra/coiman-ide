@@ -437,7 +437,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Infrastructure dependency graphs | Missing | |
 | Ansible support | Missing | |
 | CI/CD pipeline editor | Missing | |
-| GitHub Actions integration | Done | ACTIONS panel through `gh`: runs, jobs, failed log, re-run, step in its workflow |
+| GitHub Actions integration | Done | GitHub Actions extension through `gh`: runs, jobs, failed log, re-run, step in its workflow |
 | GitLab CI integration | Missing | |
 | Pipeline execution history | Partial | GitHub Actions runs, jobs and failed logs through `gh` |
 | Deployment configuration | Missing | |

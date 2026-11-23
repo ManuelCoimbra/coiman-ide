@@ -1,0 +1,14 @@
+id = "coiman.github-actions"
+name = "GitHub Actions"
+version = "1.0.0"
+description = "The repository's workflow runs through the gh program and your GitHub login: jobs and steps, the log of what failed, re-runs, and each failed step in its workflow file."
+permissions = ["workspace-read"]
+programs = ["gh"]
+
+[[commands]]
+id = "show"
+title = "GitHub: Show Actions"
+
+[[panels]]
+id = "actions"
+title = "GitHub Actions"
