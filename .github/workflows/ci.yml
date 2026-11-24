@@ -20,13 +20,14 @@ jobs:
           rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal --component clippy,rustfmt
           rustup default stable-x86_64-pc-windows-gnu
           rustc -vV
-      # gcc builds the tree-sitter grammars; windres puts the icon in the program.
+      # gcc builds the tree-sitter grammars; windres puts the icon in the program; sqlite3 is
+      # the real tool the SQL extension test drives.
       - uses: msys2/setup-msys2@v2
         id: msys2
         with:
           msystem: MINGW64
           update: false
-          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils mingw-w64-x86_64-sqlite3
       - name: MinGW on PATH
         shell: pwsh
         run: |
