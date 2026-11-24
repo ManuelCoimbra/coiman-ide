@@ -4,6 +4,9 @@
 # The machine's architecture (x86_64 or aarch64) is the packages'. Needs dpkg-deb for the
 # deb, rpmbuild for the rpm, and APPIMAGETOOL (a path to appimagetool) for the AppImage; a
 # format whose tool is missing is skipped with a note.
+# With GITHUB_RELEASES set to owner/repo, the AppImage says where its updates are (the latest
+# GitHub release of that repository) and a .zsync file is made beside it, for AppImageUpdate;
+# without it, the AppImage has no update information.
 set -eu
 
 bin=$1
@@ -85,8 +88,18 @@ export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 exec "$here/usr/bin/coiman-ide" "$@"
 EOF
     chmod 755 "$app/AppRun"
-    ARCH=$arch "$APPIMAGETOOL" --no-appstream "$app" "$out/Coiman_IDE-$version-$arch.AppImage" >/dev/null
-    echo "made Coiman_IDE-$version-$arch.AppImage"
+    appimage=Coiman_IDE-$version-$arch.AppImage
+    if [ -n "${GITHUB_RELEASES:-}" ]; then
+        owner=${GITHUB_RELEASES%%/*}
+        repo=${GITHUB_RELEASES#*/}
+        update="gh-releases-zsync|$owner|$repo|latest|Coiman_IDE-*-$arch.AppImage.zsync"
+        ARCH=$arch "$APPIMAGETOOL" --no-appstream -u "$update" "$app" "$out/$appimage" >/dev/null
+        if [ ! -f "$out/$appimage.zsync" ]; then echo "AppImage: no $appimage.zsync made" >&2; exit 1; fi
+        echo "made $appimage and $appimage.zsync (updates: $update)"
+    else
+        ARCH=$arch "$APPIMAGETOOL" --no-appstream "$app" "$out/$appimage" >/dev/null
+        echo "made $appimage (no update information)"
+    fi
 else
     echo "no APPIMAGETOOL: skipping the AppImage"
 fi

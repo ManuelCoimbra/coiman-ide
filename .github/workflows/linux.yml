@@ -72,7 +72,7 @@ jobs:
         run: |
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/coiman-ide/Cargo.toml | head -1)
           echo "version $version"
-          APPIMAGETOOL=$PWD/appimagetool sh packaging/linux/build-packages.sh target/release/coiman-ide "$version" dist
+          APPIMAGETOOL=$PWD/appimagetool GITHUB_RELEASES=${{ github.repository }}             sh packaging/linux/build-packages.sh target/release/coiman-ide "$version" dist
           ls -l dist
       - uses: actions/upload-artifact@v4
         with:
@@ -169,6 +169,15 @@ jobs:
         run: |
           chmod +x dist/*.AppImage
           sh packaging/linux/smoke.sh "$(ls dist/*.AppImage)"
+      - name: AppImage says where its updates are, with its .zsync beside it
+        run: |
+          appimage=$(ls dist/*.AppImage)
+          info=$("$appimage" --appimage-updateinformation)
+          echo "update information: $info"
+          test "$info" = "gh-releases-zsync|${GITHUB_REPOSITORY%%/*}|${GITHUB_REPOSITORY#*/}|latest|Coiman_IDE-*-${{ matrix.arch }}.AppImage.zsync"
+          test -s "$appimage.zsync"
+          head -c 400 "$appimage.zsync" | sed -n '1,/^$/p'
+          grep -aq "^URL: $(basename "$appimage")$" "$appimage.zsync"
       - name: tar.gz installs for one user, starts, and uninstalls keeping settings
         run: |
           # The archive has no package manager behind it: the library it needs, as documented.

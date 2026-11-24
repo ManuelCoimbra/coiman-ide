@@ -7,6 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The AppImage can be updated with AppImageUpdate: it carries where its updates are (the
+  latest GitHub release), and each release has its `.zsync` file beside it.
 - Remote debugging is now the Remote Debugging extension of the Containers pack, with a panel;
   the debugger still attaches gdb, restarts and ends the session. Its built-in window and code
   left the program. The Containers pack is all extensions now.

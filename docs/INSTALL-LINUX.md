@@ -51,8 +51,13 @@ chmod +x Coiman_IDE-<version>-<arch>.AppImage
 ```
 
 If it says FUSE is missing, install `libfuse2` (Ubuntu 24.04: `libfuse2t64`), or run it with
-`--appimage-extract-and-run`. To update, download the newer AppImage. To remove, delete the
-file.
+`--appimage-extract-and-run`. To remove, delete the file.
+
+To update, download the newer AppImage, or let
+[AppImageUpdate](https://github.com/AppImageCommunity/AppImageUpdate) do it: the AppImage says
+where its updates are (the latest release on GitHub), and each release has a
+`Coiman_IDE-<version>-<arch>.AppImage.zsync` beside the AppImage, so only the changed parts are
+downloaded. Coiman itself never checks for updates.
 
 Run this way (the AppImage, or `bin/coiman-ide` from the archive), the IDE adds its own
 launcher entry and icons under `~/.local/share` the first time it starts, so that Wayland
