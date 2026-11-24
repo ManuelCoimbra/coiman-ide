@@ -109,6 +109,17 @@ already have. [docs/FEATURES.md](docs/FEATURES.md) has all of it.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
+## Thanks
+
+Thank you to everyone who has helped Coiman IDE along:
+
+- [probonopd](https://github.com/probonopd), creator of AppImage, for adding Coiman IDE to the
+  [AppImageHub](https://appimage.github.io) catalog
+  ([AppImage/appimage.github.io#12471](https://github.com/AppImage/appimage.github.io/pull/12471)).
+  The review that came with it led to the light theme by default and to AppImage updates
+  through AppImageUpdate.
+- Everyone who starred, tried or shared the project.
+
 ## License
 
 [MIT](LICENSE).
