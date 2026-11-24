@@ -118,6 +118,9 @@ Thank you to everyone who has helped Coiman IDE along:
   ([AppImage/appimage.github.io#12471](https://github.com/AppImage/appimage.github.io/pull/12471)).
   The review that came with it led to the light theme by default and to AppImage updates
   through AppImageUpdate.
+- [MostafaXS1](https://github.com/MostafaXS1), for the Android build: the APK port in
+  [artcraft-android](https://github.com/MostafaXS1/artcraft-android) that runs Coiman IDE on
+  Android, and the testing that shaped the porting hooks in [docs/PORTING.md](docs/PORTING.md).
 - Everyone who starred, tried or shared the project.
 
 ## License
