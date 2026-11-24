@@ -93,7 +93,8 @@ EOF
         owner=${GITHUB_RELEASES%%/*}
         repo=${GITHUB_RELEASES#*/}
         update="gh-releases-zsync|$owner|$repo|latest|Coiman_IDE-*-$arch.AppImage.zsync"
-        ARCH=$arch "$APPIMAGETOOL" --no-appstream -u "$update" "$app" "$out/$appimage" >/dev/null
+        # appimagetool writes the .zsync in the folder it runs in, naming the AppImage as given.
+        (cd "$out" && ARCH=$arch "$APPIMAGETOOL" --no-appstream -u "$update" "$app" "$appimage" >/dev/null)
         if [ ! -f "$out/$appimage.zsync" ]; then echo "AppImage: no $appimage.zsync made" >&2; exit 1; fi
         echo "made $appimage and $appimage.zsync (updates: $update)"
     else
