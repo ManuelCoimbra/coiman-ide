@@ -533,7 +533,7 @@ jobs:
     # Flathub's runtime updates fail now and then on the runners; this never holds a release.
     continue-on-error: true
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
     env:
       RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.tag != '' }}
@@ -548,8 +548,8 @@ jobs:
         run: |
           flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak update --system -y --noninteractive
-          flatpak install --system -y --noninteractive flathub org.freedesktop.Sdk//24.08 org.freedesktop.Platform//24.08 \
-            org.freedesktop.Sdk.Extension.rust-stable//24.08 org.flatpak.Builder
+          flatpak install --system -y --noninteractive flathub org.freedesktop.Sdk//26.08 org.freedesktop.Platform//26.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//26.08 org.flatpak.Builder
       - name: Lint the manifest and metadata as Flathub does
         run: |
           flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest packaging/flathub/io.github.manuelcoimbra.CoimanIde.yml || true

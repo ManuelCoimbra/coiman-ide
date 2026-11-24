@@ -9,7 +9,7 @@
 # opens no connections of its own.
 id: io.github.manuelcoimbra.CoimanIde
 runtime: org.freedesktop.Sdk
-runtime-version: '24.08'
+runtime-version: '26.08'
 sdk: org.freedesktop.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
