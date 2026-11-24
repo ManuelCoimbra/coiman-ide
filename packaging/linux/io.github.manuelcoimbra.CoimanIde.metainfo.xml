@@ -16,10 +16,17 @@
       with Git.
     </p>
     <p>
-      It has no AI features and opens no network connections of its own: it runs the tools you
-      already have, such as git, compilers and debuggers.
+      It opens no network connections of its own: it runs the tools you already have, such as
+      git, compilers and debuggers. It has no built-in AI; an optional panel works with the
+      opencode agent if you install it, and asks before the agent changes anything.
     </p>
   </description>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/ManuelCoimbra/coiman-ide/main/assets/screenshots/main.png</image>
+      <caption>A Rust file open, with the project tree and its outline</caption>
+    </screenshot>
+  </screenshots>
   <launchable type="desktop-id">io.github.manuelcoimbra.CoimanIde.desktop</launchable>
   <url type="homepage">https://github.com/ManuelCoimbra/coiman-ide</url>
   <url type="bugtracker">https://github.com/ManuelCoimbra/coiman-ide/issues</url>

@@ -179,5 +179,6 @@ crates it needs. CI builds it on each run, exactly as Flathub would.
 2. Each release: unpack its `flathub-<version>.tar.gz` into that repository over the old
    files, and open a pull request. Flathub builds it; merging publishes it.
 
-Flathub also wants screenshots in the metadata (`packaging/linux/*.metainfo.xml`); its review
-says so if they are missing or out of date.
+Flathub also wants screenshots in the metadata. The metainfo
+(`packaging/linux/*.metainfo.xml`) points at `assets/screenshots/main.png` on `main`; replace
+that file when the window changes a lot, and keep names and home-folder paths out of it.

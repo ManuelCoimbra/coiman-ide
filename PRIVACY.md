@@ -17,9 +17,10 @@ The live session panel connects only when you press Connect, to an address on th
   addressed to that name; it serves the open folder but not hidden files. The build fails if a networking
   crate (HTTP clients, TLS, async network runtimes) enters the dependency tree.
 - **No account.** Nothing requires signing in.
-- **No AI by default.** There are no AI features today. If optional AI is added
-  later, it will be off until you turn it on, use the provider/key you choose,
-  and never run on its own.
+- **No built-in AI.** The optional Agents panel talks to the `opencode` program,
+  if you installed it; Coiman itself sends nothing. opencode uses the provider and
+  key you set up in it. By default the agent asks before it edits a file or runs a
+  command, and `workbench.agents_enabled = false` hides the panel.
 
 Anything that needs the network asks first and says what will be downloaded
 from where:

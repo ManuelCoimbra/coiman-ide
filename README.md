@@ -113,7 +113,8 @@ PASS, FAIL or GAP; a GAP is a known shortfall tracked on the roadmap and doesn't
 
 ## Privacy
 
-No telemetry, no network access, no account, no AI. See [PRIVACY.md](PRIVACY.md) for what
+No telemetry, no network access, no account, no built-in AI. The optional Agents panel uses
+the `opencode` program you install yourself, and asks before the agent edits or runs anything. See [PRIVACY.md](PRIVACY.md) for what
 is read and written on your machine.
 
 ## Features
