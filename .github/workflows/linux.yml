@@ -544,10 +544,10 @@ jobs:
           ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
       - name: Crates for the offline build
         run: sh packaging/flathub/cargo-sources.sh packaging/flathub/cargo-sources.json
-      - name: Runtimes up to date
+      # Installed, not updated: updating inside the container fails ("Invalid cross-device link").
+      - name: Runtimes
         run: |
           flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak update --system -y --noninteractive
           flatpak install --system -y --noninteractive flathub org.freedesktop.Sdk//26.08 org.freedesktop.Platform//26.08 \
             org.freedesktop.Sdk.Extension.rust-stable//26.08 org.flatpak.Builder
       - name: Lint the manifest and metadata as Flathub does
