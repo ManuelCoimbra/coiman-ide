@@ -106,9 +106,11 @@ pub fn run_desktop() -> eframe::Result {
         unsafe { std::env::set_var("PATH", path) };
     }
     let adopted = coiman_core::settings::adopt_old_config();
+    let new_install = coiman_core::settings::user_settings_path().is_some_and(|p| !p.exists());
     app::extensions::plugins::packs::first_run_packs();
+    let theme = coiman_core::settings::settle_color_theme(new_install);
     coiman_core::applog::start();
-    if let Some(what) = adopted {
+    for what in adopted.into_iter().chain(theme) {
         coiman_core::applog::info(&what);
     }
     if let Some(dir) = mingw {

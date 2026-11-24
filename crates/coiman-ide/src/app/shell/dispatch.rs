@@ -533,7 +533,11 @@ impl CodeApp {
                         labels.insert(i, name.to_owned());
                     }
                 }
-                let current = self.settings.workbench.color_theme.clone();
+                labels.insert(0, theme::FOLLOW_SYSTEM.to_owned());
+                let mut current = self.settings.workbench.color_theme.clone();
+                if theme::follows_system(&current) {
+                    current = theme::FOLLOW_SYSTEM.to_owned();
+                }
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
             }
             Command::BrowseOpenVsxThemes => self.show_open_vsx(),

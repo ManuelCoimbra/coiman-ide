@@ -597,6 +597,7 @@ impl CodeApp {
         self.window_resize_edges(&ctx);
         self.place_tools();
         self.pump_theme_schedule(&ctx);
+        self.pump_system_theme(&ctx);
         self.pump_background(&ctx);
         self.log_what_changed(&ctx);
         // What islands stand on.

@@ -9,6 +9,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 - The AppImage can be updated with AppImageUpdate: it carries where its updates are (the
   latest GitHub release), and each release has its `.zsync` file beside it.
+- A new install starts light, in the new Coiman Light theme (the icon's blue on white), and
+  in Coiman Dark only when the computer is set to dark mode; it follows a change of mode
+  while running. **Follow system (light or dark)** in the theme picker goes back to that
+  after choosing a theme. A chosen theme is never changed, and settings from before keep
+  Coiman Dark.
 - Remote debugging is now the Remote Debugging extension of the Containers pack, with a panel;
   the debugger still attaches gdb, restarts and ends the session. Its built-in window and code
   left the program. The Containers pack is all extensions now.
@@ -97,6 +102,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Switching Windows between light and dark mode while Coiman ran brought back egui's own
+  colors, spacing and font sizes in place of the theme's.
 - A floating sheet (Extensions, Explorer…) whose content no longer fit, when the bottom panel
   opened, drew the rest over the panel; it stays inside the sheet.
 - An extension's panel tab keeps its name as written ("HTTP Client", not "Http client").

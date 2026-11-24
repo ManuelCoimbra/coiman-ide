@@ -254,7 +254,7 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "theme_schedule",
                 "Theme schedule",
                 "Themes by time of day, by their names. sunrise and sunset need a location.",
-                Kind::Text("07:00 Light Modern; sunset Dark Modern"),
+                Kind::Text("07:00 Coiman Light; sunset Coiman Dark"),
             ),
             row(
                 "workbench",
@@ -818,7 +818,7 @@ fn control(ui: &mut egui::Ui, state: &mut SettingsUi, row: &Row, value: Option<&
         }
         Kind::Theme => {
             let current = value.and_then(Value::as_str).unwrap_or("");
-            let shown = if current.is_empty() { "Coiman Dark" } else { current };
+            let shown = if theme::follows_system(current) { theme::FOLLOW_SYSTEM } else { current };
             let label = format!("{shown}  ▾");
             if ui.button(label).clicked() {
                 *out = Some(Action::Theme);

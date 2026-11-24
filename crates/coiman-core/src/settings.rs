@@ -283,6 +283,7 @@ pub struct WorkbenchSettings {
     /// Port of the live preview on this computer; 0 picks a free one.
     pub preview_port: u16,
     /// A theme name from the Color Theme picker, or a path to a VS Code theme `.json`.
+    /// Empty: Coiman Dark when the computer is set to dark mode, else Coiman Light.
     pub color_theme: String,
     /// The file icon pack: `material`, `catppuccin`, `vscode-icons`, or one installed from an
     /// extension ("Preferences: File Icon Theme").
@@ -306,7 +307,7 @@ pub struct WorkbenchSettings {
     pub background_interval: u32,
     /// Where this computer is, `38.7, -9.1`, for sunrise and sunset in the schedule.
     pub theme_location: String,
-    /// Themes by time of day: `07:00 Light Modern; sunset Dark Modern`.
+    /// Themes by time of day: `07:00 Coiman Light; sunset Coiman Dark`.
     pub theme_schedule: String,
     /// Panels, tabs and popups change at once instead of moving.
     pub reduced_motion: bool,
@@ -566,7 +567,7 @@ impl Default for WorkbenchSettings {
             ui_font_size: 13.0,
             zoom: DEFAULT_ZOOM,
             preview_port: 0,
-            color_theme: crate::appearance::theme::DEFAULT_THEME.to_owned(),
+            color_theme: String::new(),
             icon_theme: crate::appearance::file_icons::DEFAULT_PACK.to_owned(),
             greeting_name: String::new(),
             background_image: String::new(),
@@ -825,6 +826,42 @@ pub fn remove_value_in_text(text: &str, table: &str, key: &str) -> String {
     out
 }
 
+/// Settles, once at start, whether the color theme follows the computer's light or dark
+/// mode. A new install (no user settings file before this start) follows it, written as an
+/// empty `color_theme`. Settings from before that, with no theme of their own, keep Coiman
+/// Dark, the theme they had, so an update changes nothing. A theme the user chose is left
+/// alone. Returns what changed, for the log.
+pub fn settle_color_theme(new_install: bool) -> Option<String> {
+    let path = user_settings_path()?;
+    settle_color_theme_in(&path, new_install)
+}
+
+fn settle_color_theme_in(path: &Path, new_install: bool) -> Option<String> {
+    if path.exists() {
+        let table = load_file(path, 0).ok()?;
+        if table.get("workbench").and_then(|w| w.get("color_theme")).is_some() {
+            return None;
+        }
+    }
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let (value, what) = if new_install {
+        (
+            r#""" # empty: light or dark, as the computer is set"#.to_owned(),
+            "the color theme follows the system".to_owned(),
+        )
+    } else {
+        let kept = crate::appearance::theme::DEFAULT_THEME;
+        (Value::String(kept.to_owned()).to_string(), format!("settings from before: kept the color theme {kept}"))
+    };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    match std::fs::write(path, set_value_in_text(&text, "workbench", "color_theme", &value)) {
+        Ok(()) => Some(what),
+        Err(e) => Some(format!("couldn't write {}: {e}", path.display())),
+    }
+}
+
 /// Contents for a new user settings file: every setting, commented, with its default.
 pub fn default_file_contents() -> String {
     let defaults = toml::to_string_pretty(&Settings::default()).unwrap_or_default();
@@ -839,7 +876,7 @@ pub fn default_file_contents() -> String {
          # tables apply only on that platform, e.g. [windows.editor] font_size = 15\n\
          #\n\
          # workbench.color_theme: a name from \"Preferences: Color Theme\" or a path to a\n\
-         # VS Code theme .json file.\n\n{commented}"
+         # VS Code theme .json file. Empty: light or dark, as the computer is set.\n\n{commented}"
     )
 }
 
@@ -865,6 +902,72 @@ font_size = 14
         assert!(table["env"].get("RUST_LOG").is_none());
         assert_eq!(table["env"]["MODE"].as_str(), Some("test"));
         assert_eq!(table["editor"]["font_size"].as_integer(), Some(14));
+    }
+
+    #[test]
+    fn color_theme_settled_once_for_new_and_old_settings() {
+        let dir = std::env::temp_dir().join(format!("rc-theme-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let theme_of = |path: &Path| {
+            let text = std::fs::read_to_string(path).unwrap();
+            toml::from_str::<Settings>(&text).unwrap().workbench.color_theme
+        };
+        // A new install follows the system, and stays that way on the next start.
+        let new = dir.join("new/settings.toml");
+        assert!(settle_color_theme_in(&new, true).is_some());
+        assert_eq!(theme_of(&new), "");
+        assert_eq!(settle_color_theme_in(&new, false), None);
+        assert_eq!(theme_of(&new), "");
+        // Settings from before, with no theme: the old default, Coiman Dark, kept.
+        let old = dir.join("old/settings.toml");
+        std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+        std::fs::write(
+            &old,
+            "[packs]
+installed = []
+
+[workbench]
+zoom = 1.5
+",
+        )
+        .unwrap();
+        assert!(settle_color_theme_in(&old, false).is_some());
+        assert_eq!(theme_of(&old), "Coiman Dark");
+        let after: Settings = toml::from_str(&std::fs::read_to_string(&old).unwrap()).unwrap();
+        assert_eq!((after.workbench.zoom, after.packs.installed.len()), (1.5, 0));
+        // A theme chosen by hand is never touched, nor one a platform table chooses.
+        let chosen = dir.join("chosen/settings.toml");
+        std::fs::create_dir_all(chosen.parent().unwrap()).unwrap();
+        std::fs::write(
+            &chosen,
+            "[windows.workbench]
+color_theme = \"Nord\"
+[linux.workbench]
+color_theme = \"Nord\"
+[macos.workbench]
+color_theme = \"Nord\"
+",
+        )
+        .unwrap();
+        let before = std::fs::read_to_string(&chosen).unwrap();
+        assert_eq!(settle_color_theme_in(&chosen, false), None);
+        assert_eq!(std::fs::read_to_string(&chosen).unwrap(), before);
+        // A file that doesn't parse is left for the user to fix.
+        let broken = dir.join("broken/settings.toml");
+        std::fs::create_dir_all(broken.parent().unwrap()).unwrap();
+        std::fs::write(
+            &broken,
+            "[workbench
+",
+        )
+        .unwrap();
+        assert_eq!(settle_color_theme_in(&broken, false), None);
+        assert_eq!(
+            std::fs::read_to_string(&broken).unwrap(),
+            "[workbench
+"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

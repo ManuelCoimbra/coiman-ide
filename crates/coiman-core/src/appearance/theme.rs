@@ -1,6 +1,6 @@
-//! Color themes. The built-in theme is VS Code's "Dark Modern"; any VS Code
-//! color theme (`.json`, comments and trailing commas allowed, `include`
-//! chains followed) can be loaded for workbench colors and token colors.
+//! Color themes. Built in: Coiman Dark and Coiman Light (the icon's colors) and VS Code's
+//! "Dark Modern"; any VS Code color theme (`.json`, comments and trailing commas allowed,
+//! `include` chains followed) can be loaded for workbench colors and token colors.
 //! Installed VS Code themes are discovered for the Color Theme picker.
 
 use std::path::{Path, PathBuf};
@@ -191,17 +191,81 @@ const COIMAN: Palette = Palette {
     hover_bg: rgb(0x1a2a4c),
 };
 
-/// The default theme's name.
+/// Coiman Light: the icon's blue on white, with its navy for text, so a computer in light
+/// mode gets the same family of colors as one in dark mode.
+const COIMAN_LIGHT: Palette = Palette {
+    dark: false,
+    editor_bg: rgb(0xffffff),
+    editor_fg: rgb(0x1b2540),
+    sidebar_bg: rgb(0xf3f6fc),
+    activity_bg: rgb(0xe9eef8),
+    tab_active_bg: rgb(0xffffff),
+    tab_inactive_bg: rgb(0xf3f6fc),
+    tab_active_fg: rgb(0x0f1a33),
+    tab_inactive_fg: rgb(0x5c6b8a),
+    accent: rgb(0x1f6fe0),
+    status_bg: rgb(0x1f6fe0),
+    status_fg: rgb(0xffffff),
+    border: rgb(0xdbe2ee),
+    text: rgb(0x1b2540),
+    text_dim: rgb(0x5c6b8a),
+    line_number: rgb(0x8a97b3),
+    line_number_active: rgb(0x0f1a33),
+    modified: rgb(0x9a6700),
+    selection: rgb(0xcfe2ff),
+    cursor: rgb(0x1f6fe0),
+    indent_guide: rgb(0xdde4f0),
+    indent_guide_active: rgb(0x9fb0d0),
+    current_line: rgb(0xf0f4fb),
+    bracket_match: rgb(0xc3d0e6),
+    rainbow: [rgb(0x0431fa), rgb(0x319331), rgb(0x7b3814)],
+    bracket_unexpected: rgb(0xe51400),
+    widget_bg: rgb(0xffffff),
+    hover_bg: rgb(0xe8effa),
+};
+
+/// The theme for a computer in dark mode, when none is chosen; also what settings from
+/// before the window followed the system keep.
 pub const DEFAULT_THEME: &str = "Coiman Dark";
+/// The theme for a computer in light mode (or one that can't tell), when none is chosen.
+pub const DEFAULT_LIGHT_THEME: &str = "Coiman Light";
+/// The Color Theme picker's entry for following the system: it saves an empty name.
+pub const FOLLOW_SYSTEM: &str = "Follow system (light or dark)";
 
 /// The themes built in, by name: (name, theme).
-pub fn built_in_names() -> [&'static str; 2] {
-    ["Coiman Dark", "Dark Modern"]
+pub fn built_in_names() -> [&'static str; 3] {
+    ["Coiman Dark", "Coiman Light", "Dark Modern"]
+}
+
+/// True when `name`, from the `workbench.color_theme` setting, leaves the theme to the
+/// system's light or dark mode: it's empty, or the picker's entry for that.
+pub fn follows_system(name: &str) -> bool {
+    name.trim().is_empty() || name.trim().eq_ignore_ascii_case(FOLLOW_SYSTEM)
+}
+
+/// The theme `name` means: itself, or when it follows the system, Coiman Dark or Coiman
+/// Light by the system's mode (light when that isn't known).
+pub fn effective_name(name: &str, system_dark: Option<bool>) -> &str {
+    match (follows_system(name), system_dark) {
+        (false, _) => name,
+        (true, Some(true)) => DEFAULT_THEME,
+        (true, _) => DEFAULT_LIGHT_THEME,
+    }
 }
 
 /// Coiman Dark: Dark Modern's code colors on the icon's navy and blue.
 pub fn coiman() -> Theme {
     Theme { name: "Coiman Dark".to_owned(), palette: COIMAN, ..builtin() }
+}
+
+/// Coiman Light: Light Modern's code colors on the icon's blue and white.
+pub fn coiman_light() -> Theme {
+    Theme {
+        name: "Coiman Light".to_owned(),
+        palette: COIMAN_LIGHT,
+        rules: token_rules(LIGHT_RULES),
+        semantic: semantic_rules(LIGHT_SEMANTIC),
+    }
 }
 
 const LIGHT: Palette = Palette {
@@ -366,12 +430,57 @@ const BUILTIN_SEMANTIC: &[(&str, Option<u32>, bool)] = &[
     ("*.deprecated", None, true),
 ];
 
-pub fn builtin() -> Theme {
-    let rules = BUILTIN_RULES
+/// Light+ token colors (the syntax colors behind "Light Modern").
+const LIGHT_RULES: &[(&str, u32, bool)] = &[
+    ("comment", 0x008000, false),
+    ("string", 0xa31515, false),
+    ("constant.numeric", 0x098658, false),
+    ("constant.language", 0x0000ff, false),
+    ("constant.character.escape", 0xee0000, false),
+    ("keyword", 0x0000ff, false),
+    ("keyword.control", 0xaf00db, false),
+    ("keyword.operator", 0x000000, false),
+    ("storage", 0x0000ff, false),
+    ("storage.type", 0x0000ff, false),
+    ("entity.name.function", 0x795e26, false),
+    ("support.function", 0x795e26, false),
+    ("entity.name.type", 0x267f99, false),
+    ("support.type", 0x267f99, false),
+    ("entity.name.tag", 0x800000, false),
+    ("entity.other.attribute-name", 0xe50000, false),
+    ("variable", 0x001080, false),
+    ("variable.language", 0x0000ff, false),
+    ("variable.other.constant", 0x0070c1, false),
+    ("support.type.property-name", 0x0451a5, false),
+    ("markup.heading", 0x800000, false),
+    ("markup.inline.raw", 0x800000, false),
+    ("markup.underline.link", 0x0070c1, false),
+    ("punctuation.definition.tag", 0x800000, false),
+];
+
+/// The semantic colors of Coiman Light: kinds of type told apart as in Coiman Dark,
+/// in shades that read on white.
+const LIGHT_SEMANTIC: &[(&str, Option<u32>, bool)] = &[
+    ("class", Some(0x267f99), false),
+    ("struct", Some(0x2b7a3d), false),
+    ("interface", Some(0x3f7f5f), false),
+    ("enum", Some(0x3f7f5f), false),
+    ("typeParameter", Some(0x3f7f5f), false),
+    ("enumMember", Some(0x0070c1), false),
+    ("variable.readonly", Some(0x0070c1), false),
+    ("property.readonly", Some(0x0070c1), false),
+    ("*.deprecated", None, true),
+];
+
+fn token_rules(table: &[(&str, u32, bool)]) -> Vec<TokenRule> {
+    table
         .iter()
         .map(|&(scope, c, italic)| TokenRule { scope: scope.to_owned(), color: Some(rgb(c)), italic, bold: false })
-        .collect();
-    let semantic = BUILTIN_SEMANTIC
+        .collect()
+}
+
+fn semantic_rules(table: &[(&str, Option<u32>, bool)]) -> Vec<SemanticRule> {
+    table
         .iter()
         .filter_map(|&(selector, color, strike)| {
             let value = match color {
@@ -380,8 +489,16 @@ pub fn builtin() -> Theme {
             };
             SemanticRule::parse(selector, &value)
         })
-        .collect();
-    Theme { name: "Dark Modern".to_owned(), palette: DARK, rules, semantic }
+        .collect()
+}
+
+pub fn builtin() -> Theme {
+    Theme {
+        name: "Dark Modern".to_owned(),
+        palette: DARK,
+        rules: token_rules(BUILTIN_RULES),
+        semantic: semantic_rules(BUILTIN_SEMANTIC),
+    }
 }
 
 // ----- current theme -----------------------------------------------------------------
@@ -864,6 +981,9 @@ pub fn resolve(name: &str, available: &[ThemeEntry]) -> (Theme, Option<String>) 
     if name.eq_ignore_ascii_case("Coiman Dark") {
         return (coiman(), None);
     }
+    if name.eq_ignore_ascii_case("Coiman Light") {
+        return (coiman_light(), None);
+    }
     let error = (!name.eq_ignore_ascii_case("Dark Modern")).then(|| format!("Color theme `{name}` not found"));
     (builtin(), error)
 }
@@ -922,11 +1042,31 @@ mod tests {
     }
 
     #[test]
+    fn no_theme_chosen_follows_the_system() {
+        for name in ["", "  ", FOLLOW_SYSTEM, "follow system (light or dark)"] {
+            assert!(follows_system(name), "{name:?}");
+            assert_eq!(effective_name(name, Some(true)), "Coiman Dark");
+            assert_eq!(effective_name(name, Some(false)), "Coiman Light");
+            assert_eq!(effective_name(name, None), "Coiman Light", "light when the system can't tell");
+        }
+        assert_eq!(effective_name("Nord", Some(false)), "Nord");
+        assert_eq!(effective_name("Coiman Dark", Some(false)), "Coiman Dark");
+        let (light, error) = resolve("coiman light", &[]);
+        assert_eq!((light.name.as_str(), error), ("Coiman Light", None));
+        assert!(!light.palette.dark && resolve(DEFAULT_THEME, &[]).0.palette.dark);
+        assert!(stands_out(light.palette.accent, light.palette.editor_bg));
+        assert!(!light.rules.is_empty() && !light.semantic.is_empty());
+        let builtin_names = built_in_names();
+        assert!(builtin_names.contains(&DEFAULT_THEME) && builtin_names.contains(&DEFAULT_LIGHT_THEME));
+    }
+
+    #[test]
     fn islands_stand_on_a_darker_canvas_in_any_theme() {
         let all = [
             resolve("Dark Modern", &[]).0.palette,
             resolve("Light Modern", &[]).0.palette,
             resolve("Coiman Dark", &[]).0.palette,
+            resolve("Coiman Light", &[]).0.palette,
         ];
         let sum = |c: Color| u32::from(c.r) + u32::from(c.g) + u32::from(c.b);
         for palette in all {

@@ -74,7 +74,7 @@ naga = { version = "30.0.1", default-features = false, features = ["wgsl-in", "g
 
 # Serial ports: the system's own calls (versions already in the build).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Devices_Communication", "Win32_System_Pipes", "Win32_System_IO", "Win32_Security"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Devices_Communication", "Win32_System_Pipes", "Win32_System_IO", "Win32_Security", "Win32_System_Registry"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -4,13 +4,19 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
-use coiman_core::{appearance::theme_schedule, applog};
+use coiman_core::{
+    appearance::{system_look, theme_schedule},
+    applog,
+};
 
 use crate::app::CodeApp;
 use crate::ui::theme;
 
 /// Seconds between looks at the clock.
 const CLOCK_SECONDS: f64 = 20.0;
+/// Seconds between asking the computer for its light or dark mode (the registry on Windows;
+/// small programs on Linux desktops where the window system can't say).
+const SYSTEM_SECONDS: f64 = if cfg!(windows) { 2.0 } else { 5.0 };
 const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp"];
 /// Larger pictures are scaled down: it's a faint backdrop.
 const LARGEST_SIDE: u32 = 2560;
@@ -41,6 +47,9 @@ pub(crate) struct Look {
     schedule: String,
     scheduled: Option<String>,
     next_check: f64,
+    /// The computer's own answer to light or dark mode (true: dark), and when to ask again.
+    os_dark: Option<bool>,
+    next_os_check: f64,
     /// The main picture, then the editor's, the side bars' and the panel's own.
     backdrops: [Backdrop; 4],
 }
@@ -164,6 +173,55 @@ impl Backdrop {
 }
 
 impl CodeApp {
+    /// Whether the computer is in dark mode: the window system's answer, else the
+    /// computer's own settings, asked now and then. `None` when nothing can tell.
+    /// On Windows the registry comes first: winit often hears of a change of mode only at
+    /// the next settings message, as Windows updates its answer after sending the first.
+    fn system_dark(&mut self, ctx: &egui::Context) -> Option<bool> {
+        if let Some(forced) = system_look::forced() {
+            return Some(forced);
+        }
+        let window_system = ctx.system_theme().map(|mode| mode == egui::Theme::Dark);
+        if !cfg!(windows) && window_system.is_some() {
+            return window_system;
+        }
+        let now = ctx.input(|i| i.time);
+        if now >= self.look.next_os_check {
+            self.look.os_dark = system_look::os_prefers_dark();
+            self.look.next_os_check = now + SYSTEM_SECONDS;
+        }
+        ctx.request_repaint_after(Duration::from_secs_f64(SYSTEM_SECONDS));
+        self.look.os_dark.or(window_system)
+    }
+
+    /// The theme the `color_theme` setting means now: the one it names, or for none, Coiman
+    /// Dark or Coiman Light by the system's mode.
+    pub(crate) fn theme_setting(&mut self, ctx: &egui::Context) -> String {
+        let name = self.settings.workbench.color_theme.clone();
+        self.theme_meant(ctx, &name)
+    }
+
+    /// The theme `name` means now: itself, or the one for the system's mode.
+    pub(crate) fn theme_meant(&mut self, ctx: &egui::Context, name: &str) -> String {
+        let dark = if theme::follows_system(name) { self.system_dark(ctx) } else { None };
+        theme::effective_name(name, dark).to_owned()
+    }
+
+    /// With no theme chosen, follows the system from light to dark mode and back. A theme
+    /// schedule, or a theme being tried in the picker, comes first.
+    pub(crate) fn pump_system_theme(&mut self, ctx: &egui::Context) {
+        let follows = theme::follows_system(&self.settings.workbench.color_theme);
+        if !follows || self.look.scheduled.is_some() || self.theme_preview.is_some() {
+            return;
+        }
+        let wanted = self.theme_setting(ctx);
+        if theme::current().name != wanted {
+            let (chosen, _) = theme::resolve(&wanted, &[]);
+            theme::set(ctx, chosen);
+            applog::info(&format!("the system's mode changed: theme {wanted}"));
+        }
+    }
+
     /// Follows the schedule: a theme chosen by hand stays until the next time on it.
     pub(crate) fn pump_theme_schedule(&mut self, ctx: &egui::Context) {
         let text = &self.settings.workbench.theme_schedule;
@@ -173,7 +231,8 @@ impl CodeApp {
             self.look.next_check = 0.0;
             if text.trim().is_empty() && self.look.scheduled.take().is_some() {
                 // Back to the theme the settings name.
-                let (back, _) = theme::resolve(&self.settings.workbench.color_theme, &self.themes);
+                let name = self.theme_setting(ctx);
+                let (back, _) = theme::resolve(&name, &self.themes);
                 theme::set(ctx, back);
             }
             self.look.schedule = settings_text;

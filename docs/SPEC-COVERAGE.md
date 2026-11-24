@@ -506,6 +506,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Accessibility audit of all components | Missing | |
 | High contrast themes | Done | Coiman High Contrast (dark and light), GitHub's |
 | Custom colour palettes | Done | Themes, VS Code themes |
+| Light or dark theme as the system is set | Done | Coiman Light or Coiman Dark until a theme is chosen; follows a change while running |
 | Per-language editor layouts | Missing | |
 | Per-project interface profiles | Partial | Folder settings |
 | Custom panel layouts | Done | Panel bottom, right or in a window; side bar left or right |

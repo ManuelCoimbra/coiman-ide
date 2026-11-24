@@ -80,7 +80,7 @@ pub fn set(ctx: &egui::Context, theme: Theme) {
 /// How long panels, tabs and popups take to change: not at all with reduced motion.
 pub fn set_motion(ctx: &egui::Context, reduced: bool) {
     let seconds = if reduced { 0.0 } else { MOTION_SECONDS };
-    ctx.global_style_mut(|style| style.animation_time = seconds);
+    ctx.all_styles_mut(|style| style.animation_time = seconds);
 }
 
 /// A value that glides to `target`, a little slower than a fade so the eye can follow it.
@@ -177,14 +177,16 @@ fn apply_visuals(ctx: &egui::Context, p: &Palette) {
             widget.corner_radius = CornerRadius::same(5);
         }
     }
-    ctx.set_visuals(visuals);
+    // egui keeps a style for light mode and one for dark, and picks by the system's mode:
+    // both get the same look, or a change there would bring back egui's own colors.
+    ctx.all_styles_mut(|style| style.visuals = visuals.clone());
 }
 
 /// Spacing and the workbench (non-editor) font size.
 pub fn apply_style(ctx: &egui::Context, ui_font_size: f32) {
     use egui::{FontId, TextStyle};
     let size = ui_font_size.clamp(8.0, 32.0);
-    ctx.global_style_mut(|style| {
+    ctx.all_styles_mut(|style| {
         // The calm layout breathes a little more.
         let roomy = islands();
         style.spacing.item_spacing = if roomy { egui::vec2(8.0, 4.0) } else { egui::vec2(6.0, 3.0) };

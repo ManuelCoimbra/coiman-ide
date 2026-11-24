@@ -239,12 +239,13 @@ impl CodeApp {
             theme::set_islands(ctx, new.workbench.ui != "classic");
         }
         if first || new.workbench.color_theme != old.workbench.color_theme {
+            let name = self.theme_setting(ctx);
             // The built-in theme needs no scan of installed VS Code themes.
-            let built_in = theme::built_in_names().iter().any(|n| new.workbench.color_theme.eq_ignore_ascii_case(n));
+            let built_in = theme::built_in_names().iter().any(|n| name.eq_ignore_ascii_case(n));
             if self.themes.is_empty() && !built_in {
                 self.themes = theme::discover();
             }
-            let (t, err) = theme::resolve(&new.workbench.color_theme, &self.themes);
+            let (t, err) = theme::resolve(&name, &self.themes);
             theme::set(ctx, t);
             problems.extend(err);
         }
@@ -366,19 +367,23 @@ impl CodeApp {
                 if self.themes.is_empty() {
                     self.themes = theme::discover();
                 }
-                let (t, _) = theme::resolve(&label, &self.themes);
+                let name = self.theme_meant(ctx, &label);
+                let (t, _) = theme::resolve(&name, &self.themes);
                 theme::set(ctx, t);
                 self.theme_preview = Some(label);
             }
         } else if self.theme_preview.is_some() && !self.palette.open {
             self.theme_preview = None;
-            let (t, _) = theme::resolve(&self.settings.workbench.color_theme, &self.themes);
+            let name = self.theme_setting(ctx);
+            let (t, _) = theme::resolve(&name, &self.themes);
             theme::set(ctx, t);
         }
     }
 
     pub(crate) fn set_color_theme(&mut self, ctx: &egui::Context, label: &str) {
         self.theme_preview = None;
+        // Following the system is saved as no theme.
+        let label = if theme::follows_system(label) { "" } else { label };
         let value = toml::Value::String(label.to_owned()).to_string();
         match self.write_user_setting(ctx, "workbench", "color_theme", &value) {
             Ok(()) if self.settings.workbench.color_theme != label => {
