@@ -99,6 +99,17 @@ Downloads are asked for first, with the file, where it comes from and its size.
 
 - Nothing left here for now.
 
+## Publishing, for a later release
+
+The release workflow already has each of these; they wait for the one-time setup in
+`docs/PUBLISHING.md`, and skip quietly until then.
+
+- winget: the first version by hand, then `WINGET_TOKEN`.
+- Signed APT and RPM repository: a signing key (`REPO_GPG_KEY`) and GitHub Pages.
+- Snap Store: register the name, ask for classic confinement, `SNAPCRAFT_STORE_CREDENTIALS`.
+- AUR: an account and an SSH key (`AUR_SSH_KEY`).
+- Flathub: a screenshot in the metainfo, then the submission.
+
 ## Releases
 
 Releases gather several of these at a time; what's done since the last one is under

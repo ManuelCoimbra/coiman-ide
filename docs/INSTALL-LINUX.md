@@ -17,13 +17,16 @@ compilers, debuggers, language servers) are the ones you install yourself.
 
 | Format | How it updates |
 |---|---|
-| APT or RPM repository | With the system: `apt upgrade`, `dnf upgrade`, `zypper update` |
 | AppImage | AppImageUpdate, or download the newer file |
-| Flathub, Snap Store | With the system: `flatpak update`, snapd on its own |
-| AUR | AUR helpers such as `yay` or `paru` |
 | deb, rpm, Flatpak and Snap files, PKGBUILDs, tar.gz | Install the newer release's file the same way |
+| APT or RPM repository (later) | With the system: `apt upgrade`, `dnf upgrade`, `zypper update` |
+| Flathub, Snap Store (later) | With the system: `flatpak update`, snapd on its own |
+| AUR (later) | AUR helpers such as `yay` or `paru` |
 
-## Debian, Ubuntu, Linux Mint: the APT repository
+The repositories, Flathub, the Snap Store and the AUR are ready in the release workflow but
+not online yet; they come with a later release. Their sections below say how they will work.
+
+## Debian, Ubuntu, Linux Mint: the APT repository (later)
 
 Add the repository once; after that, Coiman updates with the rest of the system.
 
@@ -38,7 +41,7 @@ The first line gets the key that signs the repository; apt refuses anything it h
 To stop getting updates from it, delete those two files. Remove Coiman with
 `sudo apt remove coiman-ide`.
 
-## Fedora, RHEL, openSUSE: the RPM repository
+## Fedora, RHEL, openSUSE: the RPM repository (later)
 
 Add the repository once; after that, Coiman updates with the rest of the system.
 

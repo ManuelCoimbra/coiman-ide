@@ -1482,15 +1482,13 @@ installing it has its own updater outside the program, used when you ask for it
 - **Windows setup program**: installs for one user or for everyone, with a Start menu entry
   and an Apps list entry. Running a newer version's setup replaces the older one in place and
   removes extensions it no longer ships; a running Coiman is asked to close first.
-- **winget** (`ManuelCoimbra.CoimanIDE`): `winget upgrade` installs the newer setup.
 - **Scoop**: installed from the release's `coiman-ide.json` address, which always gives the
   newest version, so `scoop update coiman-ide` finds it.
-- **Linux APT and RPM repository** on GitHub Pages, signed: `apt upgrade`, `dnf upgrade` and
-  `zypper update` bring new versions.
 - **AppImage**: AppImageUpdate downloads only the changed parts, using the `.zsync` file beside
   each release's AppImage.
-- **Flathub, Snap Store and the AUR**: `flatpak update`, snapd and AUR helpers update Coiman
-  once it is published there.
+- **Later**: winget, a signed APT and RPM repository on GitHub Pages, Flathub, the Snap Store
+  and the AUR. The release workflow has them; each starts once its account and secret are set
+  up (`docs/PUBLISHING.md`).
 - **Zip, tar.gz and the package files**: install the newer file the same way.
 
 Settings stay in `%APPDATA%\coiman-ide` or `~/.config/coiman-ide` through every update and

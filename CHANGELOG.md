@@ -22,11 +22,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
   latest GitHub release), and each release has its `.zsync` file beside it.
 - Windows setup program beside the zip: installs for you alone or for everyone, and the setup
   of a newer version replaces the older one in place.
-- Updates for every way of installing, none of them through Coiman itself: winget
-  (`ManuelCoimbra.CoimanIDE`) and Scoop (each release's `coiman-ide.json`) on Windows; a signed
-  APT and RPM repository on GitHub Pages for apt, dnf and zypper; the Snap Store, the AUR and a
-  Flathub manifest built from source. See README.md, `docs/INSTALL-LINUX.md` and
-  `docs/PUBLISHING.md`.
+- Scoop: install from each release's `coiman-ide.json`; `scoop update coiman-ide` finds newer
+  versions. Coiman itself still never checks for updates.
+- The release workflow is ready for winget, a signed APT and RPM repository, the Snap Store,
+  the AUR and Flathub; each starts in a later release, once set up (`docs/PUBLISHING.md`).
 - A new install starts light, in the new Coiman Light theme (the icon's blue on white), and
   in Coiman Dark only when the computer is set to dark mode; it follows a change of mode
   while running. **Follow system (light or dark)** in the theme picker goes back to that
