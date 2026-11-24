@@ -22,7 +22,7 @@ use project::{git, git_setup};
 use shell::{
     dock, file_buttons, frames, keys_ui, layout, look, recent_ui, settings_ui, tool_rails, tour, window, workbench,
 };
-use views::{bytes_view, constant, database, image_view, logs, md_preview, preview, svg_preview, tables};
+use views::{bytes_view, constant, image_view, logs, md_preview, preview, svg_preview, tables};
 
 use std::path::PathBuf;
 
@@ -155,16 +155,11 @@ pub struct CodeApp {
     binary_size: launch::binary_size_ui::BinarySizeView,
     /// GLSL problems from the driver, and Preview: Shader.
     shader: views::shader_ui::ShaderUi,
-    /// Database: Redis.
-    redis: views::nosql_ui::RedisView,
-    /// Database: MongoDB.
-    mongo: views::nosql_ui::MongoView,
     /// Serial: Open Monitor.
     serial: project::serial_ui::SerialView,
     /// HTTP Client: `.http` requests and their responses.
     /// OpenAPI: a spec's endpoints and models.
     /// Git Tools: history search, submodules, hooks, ignore rules.
-    database: database::DatabaseUi,
     double_shift: crate::ui::palette::DoubleShift,
     look: look::Look,
     /// What the log last said about what's on screen, and last status.
@@ -370,10 +365,7 @@ impl CodeApp {
             mcp: Default::default(),
             binary_size: Default::default(),
             shader: Default::default(),
-            redis: Default::default(),
-            mongo: Default::default(),
             serial: Default::default(),
-            database: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
             logged_ui: String::new(),
@@ -1038,14 +1030,11 @@ impl CodeApp {
         self.mcp_window(&ctx);
         self.binary_size_window(&ctx);
         self.shader_preview_window(&ctx);
-        self.redis_window(&ctx);
-        self.mongo_window(&ctx);
         self.serial_window(&ctx);
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
         self.open_vsx_window(&ctx);
         self.merge_conflicts_window(&ctx);
-        self.database_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);
         self.keys_window(&ctx);

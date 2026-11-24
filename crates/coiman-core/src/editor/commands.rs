@@ -107,10 +107,6 @@ pub enum Command {
     ShowRunHistory,
     /// Insta's pending snapshots, to accept or reject; Jest and Vitest's `-u`.
     ReviewSnapshots,
-    OpenDatabase,
-    RunSqlInDatabase,
-    ExplainSqlInDatabase,
-    ShowDatabaseDiagram,
     NextHiddenCharacter,
     SplitEditor,
     CloseSplit,
@@ -152,10 +148,6 @@ pub enum Command {
     AnalyzeBinarySize,
     /// The active fragment shader, drawn live.
     PreviewShader,
-    /// Keys and values of a Redis server, and a console.
-    ShowRedis,
-    /// Databases, collections and documents of a MongoDB server.
-    ShowMongo,
     /// A board's serial port: what it prints, and sending it text.
     SerialMonitor,
     SplitTerminal,
@@ -207,7 +199,6 @@ pub enum Command {
     LoadCoverage,
     ProfileFile,
     OpenProfile,
-    ConnectDatabase,
     OpenHexView,
     ShowMemory,
     ShowDisassembly,
@@ -335,12 +326,6 @@ impl Command {
     pub fn pack(self) -> Option<&'static str> {
         use crate::packs::*;
         Some(match self {
-            Command::ConnectDatabase
-            | Command::RunSqlInDatabase
-            | Command::ExplainSqlInDatabase
-            | Command::ShowDatabaseDiagram
-            | Command::ShowRedis
-            | Command::ShowMongo => DATA,
             Command::SerialMonitor | Command::AnalyzeBinarySize | Command::ShowMemory | Command::ShowDisassembly => {
                 SYSTEMS
             }
@@ -468,18 +453,12 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ShowFunctionFlow, "Architecture: Show Flow of Function at Cursor"),
     (Command::ShowRunHistory, "Testing: Show Run History (Tests, Flaky Tests, Builds)"),
     (Command::ReviewSnapshots, "Testing: Review Snapshots"),
-    (Command::OpenDatabase, "Database: Open SQLite File..."),
-    (Command::RunSqlInDatabase, "Database: Run SQL (Selection or File)"),
-    (Command::ExplainSqlInDatabase, "Database: Explain Query Plan (Selection or File)"),
-    (Command::ShowDatabaseDiagram, "Database: Show Tables Diagram (ER)"),
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
     (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
     (Command::PreviewShader, "Preview: Shader"),
-    (Command::ShowRedis, "Database: Redis..."),
-    (Command::ShowMongo, "Database: MongoDB..."),
     (Command::SerialMonitor, "Serial: Open Monitor..."),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
@@ -530,7 +509,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::LoadCoverage, "Coverage: Load Report"),
     (Command::ProfileFile, "Run: Profile Current File"),
     (Command::OpenProfile, "Profile: Open Profile File..."),
-    (Command::ConnectDatabase, "Database: Connect to PostgreSQL, MySQL or SQL Server..."),
     (Command::OpenHexView, "Hex: Open File"),
     (Command::ShowMemory, "Debug: Show Memory"),
     (Command::ShowDisassembly, "Debug: Show Disassembly"),
@@ -744,13 +722,9 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowFunctionFlow, "coiman.showFunctionFlow"),
     (Command::ShowRunHistory, "coiman.showRunHistory"),
     (Command::ReviewSnapshots, "coiman.reviewSnapshots"),
-    (Command::OpenDatabase, "coiman.openDatabase"),
     (Command::AttachToProcess, "coiman.debug.attachToProcess"),
     (Command::ExportBreakpoints, "coiman.debug.exportBreakpoints"),
     (Command::ImportBreakpoints, "coiman.debug.importBreakpoints"),
-    (Command::RunSqlInDatabase, "coiman.runSqlInDatabase"),
-    (Command::ExplainSqlInDatabase, "coiman.explainSqlInDatabase"),
-    (Command::ShowDatabaseDiagram, "coiman.showDatabaseDiagram"),
     (Command::NextHiddenCharacter, "coiman.nextHiddenCharacter"),
     (Command::SplitEditor, "workbench.action.splitEditor"),
     (Command::CloseSplit, "workbench.action.editorLayoutSingle"),
@@ -786,8 +760,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::AnalyzeBinarySize, "coiman.build.binarySize"),
     (Command::PreviewShader, "coiman.preview.shader"),
-    (Command::ShowRedis, "coiman.database.redis"),
-    (Command::ShowMongo, "coiman.database.mongo"),
     (Command::SerialMonitor, "coiman.serial.monitor"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),
     (Command::KillTerminal, "workbench.action.terminal.kill"),
@@ -836,7 +808,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::LoadCoverage, "coiman.loadCoverage"),
     (Command::ProfileFile, "coiman.profileFile"),
     (Command::OpenProfile, "coiman.openProfile"),
-    (Command::ConnectDatabase, "coiman.connectDatabase"),
     (Command::OpenHexView, "coiman.openHexView"),
     (Command::ShowMemory, "coiman.showMemory"),
     (Command::ShowDisassembly, "coiman.showDisassembly"),

@@ -7,6 +7,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- SQL databases (SQLite, PostgreSQL, MySQL/MariaDB, SQL Server) are now the SQL Databases
+  extension of the Databases pack, in a panel; a SQLite file opens in it from the Explorer.
+  The diagram is drawn in the graph window. Its built-in window and code left the program.
+  Connections used before aren't carried over from the old window (they held no passwords).
+- Redis and MongoDB are now the Redis and MongoDB extensions of the Databases pack, each in
+  a panel, still through `redis-cli` and `mongosh`. Their built-in windows and code left the
+  program. Recent connections aren't carried over from the old windows.
+- Plugin API: `password` and `multiline` form fields, `start-job-with` (environment variables
+  for one run, the plugin's own folder), openers in `plugin.toml`, the document's
+  `selection`; programs are also found where database clients' installers put them; a
+  `table` block draws only the rows in view.
 - The AppImage can be updated with AppImageUpdate: it carries where its updates are (the
   latest GitHub release), and each release has its `.zsync` file beside it.
 - A new install starts light, in the new Coiman Light theme (the icon's blue on white), and

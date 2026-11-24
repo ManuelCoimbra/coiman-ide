@@ -33,8 +33,8 @@ wasmtime::component::bindgen!({
 pub use coiman::plugin::types::{
     Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind,
     FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult,
-    MenuItem, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, RemoteAttach, Row, ServerResponse, Severity,
-    Span, Table, TerminalLine, TreeItem,
+    JobSpec, MenuItem, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, RemoteAttach, Row, ServerResponse,
+    Severity, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -350,6 +350,8 @@ pub fn storage_file(plugin: &str) -> Option<PathBuf> {
 
 /// The store data of one plugin: what host calls see.
 struct State {
+    /// Environment variables for the job being started (`start-job-with`), then none again.
+    env: Vec<(String, String)>,
     plugin: String,
     manifest: Manifest,
     granted: BTreeSet<Permission>,
@@ -461,6 +463,7 @@ impl Worker {
                 messages: self.messages.clone(),
                 jobs: Arc::default(),
                 next_id: 1,
+                env: Vec::new(),
                 context: self.context.clone(),
                 updates: self.updates.clone(),
                 wake: self.wake.clone(),
@@ -551,7 +554,8 @@ impl State {
         {
             return Ok(py);
         }
-        which(program).ok_or_else(|| format!("{program} isn't on PATH"))
+        // Database clients installers leave off PATH are found where they put them.
+        which(program).or_else(|| crate::data::clients::find(program)).ok_or_else(|| format!("{program} isn't on PATH"))
     }
 
     /// Starts an approved program; what it prints goes to the job's result, or into `into`.
@@ -580,13 +584,15 @@ impl State {
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_EDITOR", "true")
             .env_remove("GIT_SEQUENCE_EDITOR")
+            .envs(self.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .current_dir(&root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| format!("could not start {program}: {e}"))?;
-        // In the log, so what a plugin ran can always be checked.
+        // In the log, so what a plugin ran can always be checked (the names of what was set,
+        // never their values).
         let line = format!("started: {} {}", exe.display(), args.join(" "));
         self.send(Update::Log { plugin: self.plugin.clone(), line });
         let id = self.next_id;
@@ -930,6 +936,23 @@ impl coiman::plugin::host::Host for State {
         }
         self.send(Update::DebugAttach { plugin: self.plugin.clone(), attach });
         Ok(())
+    }
+
+    fn start_job_with(&mut self, spec: JobSpec) -> Result<u64, String> {
+        for (name, _) in &spec.env {
+            let upper = name.to_ascii_uppercase();
+            let risky = ["PATH", "PATHEXT", "COMSPEC", "SHELL", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR"]
+                .contains(&upper.as_str())
+                || upper.starts_with("LD_")
+                || upper.starts_with("DYLD_");
+            if name.is_empty() || name.contains('=') || risky {
+                return Err(format!("{name} can't be set for a program"));
+            }
+        }
+        self.env = spec.env;
+        let result = self.job(spec.program, spec.args, spec.stdin, None, spec.in_own_folder);
+        self.env = Vec::new();
+        result
     }
 
     fn debug_console(&mut self, text: String) {

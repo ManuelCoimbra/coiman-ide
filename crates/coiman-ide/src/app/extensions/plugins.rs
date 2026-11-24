@@ -563,19 +563,7 @@ impl CodeApp {
                 self.plugins.edit_pending = None;
                 self.plugins.last_doc = key;
                 self.sync_plugin_languages();
-                let doc = self.docs.get(self.active).map(|d| {
-                    let (line, column) = d.cursor();
-                    // Very large files stay out of plugins.
-                    let text = if d.large { String::new() } else { d.text() };
-                    Document {
-                        path: d.path.as_deref().map(|p| self.relative(p)).unwrap_or_default(),
-                        language: d.language_name().to_owned(),
-                        text,
-                        line: line as u32,
-                        column: column as u32,
-                        dirty: d.is_dirty(),
-                    }
-                });
+                let doc = self.plugin_document();
                 if let Some(host) = &self.plugins.host {
                     host.set_document(doc);
                 }
@@ -770,6 +758,29 @@ impl CodeApp {
         self.plugin_dev_saved(&path);
     }
 
+    /// A file a running plugin opens in place of the editor (its `[[openers]]`): sends it the
+    /// file's absolute path and says so.
+    pub(crate) fn plugin_opens(&mut self, path: &Path) -> bool {
+        let ext = path.extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let head = |n: usize| {
+            use std::io::Read;
+            let mut buf = vec![0u8; n];
+            std::fs::File::open(path).and_then(|mut f| f.read_exact(&mut buf)).map(|()| buf).ok()
+        };
+        let found = self.plugins.infos.iter().filter(|i| i.running).find_map(|i| {
+            let m = i.manifest.as_ref()?;
+            m.openers.iter().find_map(|o| {
+                let by_name = o.extensions.iter().any(|e| e.trim_start_matches('.').eq_ignore_ascii_case(&ext));
+                let start = o.starts_with.as_bytes();
+                let by_head = start.is_empty() || head(start.len()).is_some_and(|h| h == start);
+                (by_name && by_head).then(|| (i.id.clone(), o.command.clone()))
+            })
+        });
+        let Some((plugin, command)) = found else { return false };
+        self.run_plugin(&plugin, &command, &path.to_string_lossy());
+        true
+    }
+
     /// Files deleted in the editor, for the plugins that follow them.
     pub(crate) fn plugins_deleted(&mut self, paths: &[PathBuf]) {
         let rels: Vec<String> = paths.iter().map(|p| self.relative(p)).collect();
@@ -805,12 +816,40 @@ impl CodeApp {
     pub(crate) fn run_plugin(&mut self, plugin: &str, command: &str, argument: &str) {
         match &self.plugins.host {
             Some(host) if self.plugins.infos.iter().any(|i| i.id == plugin && i.running) => {
-                // The command line as it is now, for `active-terminal-line`.
+                // The command line and the editor as they are now: a command acts on the
+                // selection made just before it.
                 host.set_terminal_line(self.terminal.line_at_cursor().as_ref().map(terminal_line));
+                host.set_document(self.plugin_document());
                 host.run_command(plugin, command, argument);
             }
             _ => self.status = Some(format!("{} isn't running", self.plugin_name(plugin))),
         }
+    }
+
+    /// The active editor as plugins see it.
+    fn plugin_document(&self) -> Option<Document> {
+        self.docs.get(self.active).map(|d| {
+            let (line, column) = d.cursor();
+            // Very large files stay out of plugins.
+            let text = if d.large { String::new() } else { d.text() };
+            let selection = if d.large {
+                String::new()
+            } else {
+                d.buffer.selected_texts().join(
+                    "
+",
+                )
+            };
+            Document {
+                path: d.path.as_deref().map(|p| self.relative(p)).unwrap_or_default(),
+                language: d.language_name().to_owned(),
+                text,
+                line: line as u32,
+                column: column as u32,
+                dirty: d.is_dirty(),
+                selection,
+            }
+        })
     }
 
     /// Palette entries for running plugins' commands: (title, key).
@@ -1562,20 +1601,7 @@ impl CodeApp {
                             }
                         });
                     }
-                    Block::Table(table) => {
-                        egui::Grid::new(("plugin_table", index)).striped(true).spacing([12.0, 3.0]).show(ui, |ui| {
-                            for header in &table.headers {
-                                ui.label(RichText::new(header).strong());
-                            }
-                            ui.end_row();
-                            for row in &table.rows {
-                                for cell in row {
-                                    ui.label(cell);
-                                }
-                                ui.end_row();
-                            }
-                        });
-                    }
+                    Block::Table(table) => table_ui(ui, index, table),
                     Block::Diff(text) => {
                         egui::Frame::new().fill(pal.editor_bg).inner_margin(4.0).show(ui, |ui| {
                             for line in text.lines() {
@@ -1771,6 +1797,32 @@ fn form_ui(
                         pressed = form.buttons.first().cloned();
                     }
                 }
+                FieldKind::Password => {
+                    let r = ui.add(
+                        egui::TextEdit::singleline(&mut entry.1)
+                            .password(true)
+                            .hint_text(&field.hint)
+                            .desired_width(160.0),
+                    );
+                    if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        pressed = form.buttons.first().cloned();
+                    }
+                }
+                FieldKind::Multiline => {
+                    // A line of its own, as wide as the panel; Ctrl+Enter sends.
+                    ui.end_row();
+                    let r = ui.add(
+                        egui::TextEdit::multiline(&mut entry.1)
+                            .code_editor()
+                            .hint_text(&field.hint)
+                            .desired_rows(6)
+                            .desired_width(f32::INFINITY),
+                    );
+                    if r.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.command) {
+                        pressed = form.buttons.first().cloned();
+                    }
+                    ui.end_row();
+                }
                 FieldKind::Check => {
                     let mut on = entry.1 == "true";
                     if ui.checkbox(&mut on, &field.label).changed() {
@@ -1805,6 +1857,61 @@ fn form_ui(
         })
         .collect();
     Some(coiman_core::extensions::plugin::FormValues { form: form.id.clone(), button, values })
+}
+
+/// A plugin's table: a header, then only the rows in sight (a query's 10,000 rows draw as fast
+/// as ten), each column as wide as its widest text in the first rows, scrolling both ways.
+fn table_ui(ui: &mut egui::Ui, index: usize, table: &coiman_core::extensions::plugin::host::Table) {
+    let pal = theme::colors();
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    let char_w = ui.fonts_mut(|f| f.glyph_width(&font, '0')).max(6.0);
+    let columns = table.headers.len().max(table.rows.iter().map(Vec::len).max().unwrap_or(0));
+    let widths: Vec<f32> = (0..columns)
+        .map(|c| {
+            let longest = table
+                .headers
+                .get(c)
+                .into_iter()
+                .chain(table.rows.iter().take(200).filter_map(|r| r.get(c)))
+                .map(|t| t.lines().next().unwrap_or("").chars().count())
+                .max()
+                .unwrap_or(4);
+            (longest as f32 * char_w + 16.0).clamp(40.0, 420.0)
+        })
+        .collect();
+    let row_h = ui.text_style_height(&egui::TextStyle::Body) + 6.0;
+    let cell = |ui: &mut egui::Ui, w: f32, text: RichText| {
+        ui.add_sized([w, row_h], egui::Label::new(text).truncate());
+    };
+    egui::ScrollArea::horizontal().id_salt(("plugin_table_x", index)).show(ui, |ui| {
+        ui.vertical(|ui| {
+            ui.horizontal(|ui| {
+                for (c, w) in widths.iter().enumerate() {
+                    let header = table.headers.get(c).map(String::as_str).unwrap_or("");
+                    cell(ui, *w, RichText::new(header).strong());
+                }
+            });
+            egui::ScrollArea::vertical().id_salt(("plugin_table_y", index)).max_height(420.0).show_rows(
+                ui,
+                row_h,
+                table.rows.len(),
+                |ui, range| {
+                    for i in range {
+                        let row = &table.rows[i];
+                        let r = ui.horizontal(|ui| {
+                            for (c, w) in widths.iter().enumerate() {
+                                let text = row.get(c).map(|t| t.replace('\n', " ")).unwrap_or_default();
+                                cell(ui, *w, RichText::new(text));
+                            }
+                        });
+                        if i % 2 == 1 {
+                            ui.painter().rect_filled(r.response.rect, 0.0, pal.hover_bg.gamma_multiply(0.35));
+                        }
+                    }
+                },
+            );
+        });
+    });
 }
 
 /// A color for a lane of a commit graph: the accent, a few more, then the bracket colors.

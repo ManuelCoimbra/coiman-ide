@@ -86,6 +86,7 @@ fn host_api_permissions_sandbox_and_limits() {
         line: 1,
         column: 1,
         dirty: false,
+        selection: String::new(),
     }));
     assert_eq!(message(&host, "doc"), "ok: src/a.txt:5");
     host.run_command(ID, "run", "insert hi");

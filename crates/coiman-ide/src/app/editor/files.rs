@@ -239,9 +239,8 @@ impl CodeApp {
         if path.extension().is_some_and(|e| e == "code-workspace") && self.open_code_workspace(path) {
             return;
         }
-        // A SQLite database opens in the Database window, not as bytes.
-        if self.settings.pack_on(coiman_core::packs::DATA) && coiman_core::data::database::is_sqlite_file(path) {
-            self.open_database(path);
+        // A file an extension opens (a SQLite database, say) goes to it, not into a tab.
+        if self.plugin_opens(path) {
             return;
         }
         if self.open_image_file(path) {

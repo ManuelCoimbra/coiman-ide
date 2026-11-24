@@ -131,6 +131,7 @@ fn architecture_extension() {
         line: 1,
         column: 1,
         dirty: false,
+        selection: String::new(),
     }));
     host.run_command(ID, "impact", "");
     let (g, panel) = graph_and_panel(&host);

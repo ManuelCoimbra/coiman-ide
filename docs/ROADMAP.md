@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- SQL databases moved out of the program into an extension (Databases pack).
 - Remote debugging moved out of the program into an extension; the Containers pack is all extensions.
 - Remote folders and SSH terminals moved out of the program into an extension (Containers pack).
 - GitHub Actions moved out of the program into an extension (Containers pack).
@@ -73,7 +74,8 @@ program itself gets smaller too:
 2. Git, more of it: done (Git Graph and Git Tools).
 3. Web and APIs: done (HTTP Client and OpenAPI).
 4. Containers: done (Docker, GitHub Actions, remote over SSH, remote debugging).
-   Then Databases, Embedded, Mobile.
+   Databases: done (SQL Databases, Redis, MongoDB; notebooks stay built in). Then Embedded,
+   Mobile.
 5. Graphics and Agents last: shader previews and the agents panel need the most from the host.
 
 ## Next, nothing to download

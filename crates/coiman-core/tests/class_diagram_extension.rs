@@ -98,6 +98,7 @@ fn class_diagram_extension() {
         line: 1,
         column: 1,
         dirty: false,
+        selection: String::new(),
     }));
     host.run_command(ID, "file", "");
     let g = graph(&host, &mut messages);

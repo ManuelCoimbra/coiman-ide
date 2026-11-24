@@ -42,10 +42,10 @@ pub const PACKS: [Pack; 10] = [
         description: "Query and browse databases from the editor.",
         features: &[
             "SQLite, PostgreSQL, MySQL and SQL Server: tables, queries, plans, ER diagrams",
-            "Redis and MongoDB windows",
+            "Redis keys and values, and a console; MongoDB collections and documents",
             "Jupyter notebooks",
         ],
-        extensions: &[],
+        extensions: &["coiman.sql", "coiman.redis", "coiman.mongodb"],
     },
     Pack {
         id: DEVOPS,

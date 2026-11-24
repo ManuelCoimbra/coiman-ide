@@ -1,19 +1,16 @@
 //! MongoDB through its own shell, `mongosh`: databases, collections, documents found by a
-//! filter, and a script box. The app opens no connection itself; `mongosh` does, and prints its
-//! answers as Extended JSON. A password is never saved.
+//! filter, and a script box. The editor opens no connection itself; `mongosh` does (run by the
+//! extension as an approved program), and prints its answers as Extended JSON. A password is
+//! never saved. Each operation is a call and a reading of what came back.
 //!
 //! The filter, sort and projection are the shell's own syntax (`{ price: { $gt: 2 } }`,
 //! `ObjectId("…")`, `ISODate("…")`), so they go into the script as code; names go in as JSON
 //! strings.
 
-use std::path::PathBuf;
-use std::process::Stdio;
-
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::language::lsp::discovery::quiet_command;
-use crate::language::lsp::servers::which;
+use crate::{Call, Out};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Server {
@@ -44,15 +41,6 @@ impl Default for Server {
 
 /// How many documents a find shows.
 pub const LIMIT: usize = 200;
-
-pub fn client() -> Option<PathBuf> {
-    if let Some(found) = which("mongosh") {
-        return Some(found);
-    }
-    let exe = if cfg!(windows) { "mongosh.exe" } else { "mongosh" };
-    let bundled = crate::settings::config_dir()?.join("tools").join("mongosh").join("bin").join(exe);
-    bundled.is_file().then_some(bundled)
-}
 
 pub const MISSING: &str = "The mongosh program isn't on this computer. Install the MongoDB Shell (mongosh), or \
                            unpack it into the config folder's tools/mongosh, and try again.";
@@ -95,45 +83,31 @@ impl Server {
         }
     }
 
-    /// Runs a script in `mongosh` and gives back what its last expression is, as JSON.
-    pub fn eval(&self, script: &str) -> Result<Value, String> {
-        let program = client().ok_or(MISSING)?;
-        let mut cmd = quiet_command(&program);
-        cmd.arg(self.address()).args(["--quiet", "--norc", "--json=relaxed"]);
+    /// `mongosh` running a script; what its last expression is comes back as JSON.
+    pub fn call(&self, script: &str) -> Call {
+        let mut args = vec![self.address(), "--quiet".into(), "--norc".into(), "--json=relaxed".into()];
         if !self.user.is_empty() {
-            cmd.args(["-u", &self.user]);
+            args.extend(["-u".into(), self.user.clone()]);
             if let Some(pw) = &self.password {
-                cmd.args(["-p", pw]);
+                args.extend(["-p".into(), pw.clone()]);
             }
             if !self.auth_db.is_empty() {
-                cmd.args(["--authenticationDatabase", &self.auth_db]);
+                args.extend(["--authenticationDatabase".into(), self.auth_db.clone()]);
             }
         }
-        let out = cmd
-            .args(["--eval", script])
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| format!("Couldn't start {}: {e}", program.display()))?;
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        let value: Option<Value> = serde_json::from_str(stdout.trim()).ok();
-        if out.status.success() {
-            return value.ok_or_else(|| format!("mongosh answered something that isn't JSON: {}", stdout.trim()));
-        }
-        // An error comes as JSON too, with its message.
-        let message = value
-            .as_ref()
-            .and_then(|v| v.get("message").or_else(|| v.get("errmsg")).and_then(Value::as_str).map(str::to_owned))
-            .or_else(|| {
-                stderr.lines().chain(stdout.lines()).find(|l| !l.trim().is_empty()).map(|l| l.trim().to_owned())
-            })
-            .unwrap_or_else(|| format!("mongosh stopped ({})", out.status));
-        Err(message)
+        args.extend(["--eval".into(), script.to_owned()]);
+        Call::new("mongosh", args, String::new(), Vec::new())
     }
 
     /// The databases and their sizes on disk, in bytes.
-    pub fn databases(&self) -> Result<Vec<(String, u64)>, String> {
-        let v = self.eval("db.adminCommand({ listDatabases: 1 }).databases.map(d => [d.name, d.sizeOnDisk])")?;
+    pub fn databases_call(&self) -> Call {
+        self.call("db.adminCommand({ listDatabases: 1 }).databases.map(d => [d.name, d.sizeOnDisk])")
+    }
+}
+
+/// The databases and their sizes on disk, in bytes.
+pub fn databases_read(out: &Out) -> Result<Vec<(String, u64)>, String> {
+        let v = read(out)?;
         Ok(v.as_array()
             .map(|a| {
                 a.iter()
@@ -143,17 +117,24 @@ impl Server {
                     .collect()
             })
             .unwrap_or_default())
-    }
+}
 
+impl Server {
     /// A database's collections (and views), with about how many documents each holds.
-    pub fn collections(&self, db: &str) -> Result<Vec<(String, u64, bool)>, String> {
+    pub fn collections_call(&self, db: &str) -> Call {
         let script = format!(
             "const d = db.getSiblingDB({}); d.getCollectionInfos({{}}, {{ nameOnly: false }})\
              .filter(c => !c.name.startsWith('system.'))\
              .map(c => [c.name, c.type === 'view' ? 0 : d.getCollection(c.name).estimatedDocumentCount(), c.type === 'view'])",
             js(db)
         );
-        let v = self.eval(&script)?;
+        self.call(&script)
+    }
+}
+
+/// A database's collections (and views), with about how many documents each holds.
+pub fn collections_read(out: &Out) -> Result<Vec<(String, u64, bool)>, String> {
+        let v = read(out)?;
         let mut out: Vec<(String, u64, bool)> = v
             .as_array()
             .map(|a| {
@@ -170,11 +151,13 @@ impl Server {
             .unwrap_or_default();
         out.sort_by_key(|a| a.0.to_lowercase());
         Ok(out)
-    }
+}
+
+impl Server {
 
     /// Documents of a collection matching `filter`, sorted and projected as given (each the
     /// shell's syntax; empty: none), skipping `skip`: up to [`LIMIT`], and how many match.
-    pub fn find(
+    pub fn find_call(
         &self,
         db: &str,
         collection: &str,
@@ -182,7 +165,7 @@ impl Server {
         sort: &str,
         projection: &str,
         skip: usize,
-    ) -> Result<(Vec<Value>, u64), String> {
+    ) -> Call {
         let or_empty = |s: &str| if s.trim().is_empty() { "{}".to_owned() } else { s.trim().to_owned() };
         let script = format!(
             "const c = db.getSiblingDB({db}).getCollection({coll}); const f = ({filter}); \
@@ -193,49 +176,76 @@ impl Server {
             projection = or_empty(projection),
             sort = or_empty(sort),
         );
-        let v = self.eval(&script)?;
-        let docs = v.get(0).and_then(Value::as_array).cloned().unwrap_or_default();
-        let count = v.get(1).and_then(Value::as_f64).unwrap_or(docs.len() as f64) as u64;
-        Ok((docs, count))
+        self.call(&script)
     }
 
     /// A shell script run in database `db`; what its last expression is.
-    pub fn run(&self, db: &str, script: &str) -> Result<Value, String> {
+    pub fn run_call(&self, db: &str, script: &str) -> Call {
         // `db` is the chosen database inside the script.
-        self.eval(&format!("db = db.getSiblingDB({});\n{script}", js(db)))
+        self.call(&format!("db = db.getSiblingDB({});\n{script}", js(db)))
     }
 
     /// Replaces the document with this `_id` by `doc` (both Extended JSON, as shown).
-    pub fn replace(&self, db: &str, collection: &str, doc: &str) -> Result<u64, String> {
+    pub fn replace_call(&self, db: &str, collection: &str, doc: &str) -> Call {
         let script = format!(
             "const d = EJSON.parse({doc}); db.getSiblingDB({db}).getCollection({coll}).replaceOne({{ _id: d._id }}, d).modifiedCount",
             doc = js(doc),
             db = js(db),
             coll = js(collection)
         );
-        Ok(self.eval(&script)?.as_f64().unwrap_or(0.0) as u64)
+        self.call(&script)
     }
 
-    pub fn insert(&self, db: &str, collection: &str, doc: &str) -> Result<(), String> {
+    pub fn insert_call(&self, db: &str, collection: &str, doc: &str) -> Call {
         let script = format!(
             "db.getSiblingDB({db}).getCollection({coll}).insertOne(EJSON.parse({doc})).acknowledged",
             doc = js(doc),
             db = js(db),
             coll = js(collection)
         );
-        self.eval(&script).map(|_| ())
+        self.call(&script)
     }
 
     /// Deletes the document with this `_id` (Extended JSON).
-    pub fn delete(&self, db: &str, collection: &str, id: &Value) -> Result<u64, String> {
+    pub fn delete_call(&self, db: &str, collection: &str, id: &Value) -> Call {
         let script = format!(
             "db.getSiblingDB({db}).getCollection({coll}).deleteOne({{ _id: EJSON.parse({id}) }}).deletedCount",
             id = js(&id.to_string()),
             db = js(db),
             coll = js(collection)
         );
-        Ok(self.eval(&script)?.as_f64().unwrap_or(0.0) as u64)
+        self.call(&script)
     }
+}
+
+/// What `mongosh` answered, as JSON; or its error's message.
+pub fn read(out: &Out) -> Result<Value, String> {
+    let value: Option<Value> = serde_json::from_str(out.stdout.trim()).ok();
+    if out.ok() {
+        return value.ok_or_else(|| format!("mongosh answered something that isn't JSON: {}", out.stdout.trim()));
+    }
+    // An error comes as JSON too, with its message.
+    let message = value
+        .as_ref()
+        .and_then(|v| v.get("message").or_else(|| v.get("errmsg")).and_then(Value::as_str).map(str::to_owned))
+        .or_else(|| {
+            out.stderr.lines().chain(out.stdout.lines()).find(|l| !l.trim().is_empty()).map(|l| l.trim().to_owned())
+        })
+        .unwrap_or_else(|| out.stopped("mongosh"));
+    Err(message)
+}
+
+/// A find's documents and how many match.
+pub fn find_read(out: &Out) -> Result<(Vec<Value>, u64), String> {
+    let v = read(out)?;
+    let docs = v.get(0).and_then(Value::as_array).cloned().unwrap_or_default();
+    let count = v.get(1).and_then(Value::as_f64).unwrap_or(docs.len() as f64) as u64;
+    Ok((docs, count))
+}
+
+/// The number a replace or a delete answered: how many it changed.
+pub fn count_read(out: &Out) -> Result<u64, String> {
+    Ok(read(out)?.as_f64().unwrap_or(0.0) as u64)
 }
 
 /// The columns for documents shown as a table: `_id` first, then each top-level field in the
@@ -286,19 +296,18 @@ pub fn pretty(v: &Value) -> String {
     serde_json::to_string_pretty(v).unwrap_or_default()
 }
 
-pub fn load_saved() -> Vec<Server> {
+/// Connections used before, newest first, without passwords, from the extension's storage.
+pub fn saved(text: &str) -> Vec<Server> {
     #[derive(Deserialize)]
     struct File {
         #[serde(default)]
         server: Vec<Server>,
     }
-    let Some(path) = crate::settings::config_dir().map(|d| d.join("mongo_connections.toml")) else {
-        return Vec::new();
-    };
-    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str::<File>(&t).ok()).map_or_else(Vec::new, |f| f.server)
+    toml::from_str::<File>(text).map_or_else(|_| Vec::new(), |f| f.server)
 }
 
-pub fn remember(saved: &mut Vec<Server>, server: &Server) -> Result<(), String> {
+/// The storage's text with `server` first (and only once), without its password.
+pub fn remember(saved: &mut Vec<Server>, server: &Server) -> String {
     #[derive(Serialize)]
     struct File<'a> {
         server: &'a [Server],
@@ -308,10 +317,7 @@ pub fn remember(saved: &mut Vec<Server>, server: &Server) -> Result<(), String> 
     saved.retain(|s| s.label() != kept.label());
     saved.insert(0, kept);
     saved.truncate(12);
-    let dir = crate::settings::config_dir().ok_or("no config folder")?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let text = toml::to_string(&File { server: saved }).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("mongo_connections.toml"), text).map_err(|e| e.to_string())
+    toml::to_string(&File { server: saved }).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -335,37 +341,36 @@ mod tests {
         assert_eq!(js("a\"b"), "\"a\\\"b\"");
     }
 
-    /// Against a real server when `COIMAN_TEST_MONGO` is its address (a database
-    /// `coiman_test` is made and dropped).
     #[test]
-    fn real_server() {
-        let Ok(uri) = std::env::var("COIMAN_TEST_MONGO") else { return };
-        let s = Server { uri, ..Server::default() };
-        s.run("coiman_test", "db.dropDatabase()").unwrap();
-        s.insert("coiman_test", "items", r#"{"name": "pen", "price": 1.5}"#).unwrap();
-        s.insert("coiman_test", "items", r#"{"name": "book", "price": 12, "made": {"$date": "2026-01-02T00:00:00Z"}}"#)
-            .unwrap();
-        s.insert("coiman_test", "items", r#"{"name": "cup", "price": 4}"#).unwrap();
-        assert!(s.databases().unwrap().iter().any(|(n, _)| n == "coiman_test"));
-        assert_eq!(s.collections("coiman_test").unwrap(), [("items".to_owned(), 3, false)]);
-        let (docs, count) = s.find("coiman_test", "items", "{ price: { $gt: 2 } }", "{ price: -1 }", "", 0).unwrap();
-        assert_eq!(count, 2);
-        assert_eq!(docs[0]["name"], "book");
-        assert_eq!(cell(docs[0].get("made")).as_deref(), Some("2026-01-02T00:00:00Z"));
-        // Edit one, then delete it.
-        let mut book = docs[0].clone();
-        book["price"] = json!(13);
-        assert_eq!(s.replace("coiman_test", "items", &book.to_string()).unwrap(), 1);
-        let (docs, _) = s.find("coiman_test", "items", r#"{ name: "book" }"#, "", "{ price: 1, _id: 1 }", 0).unwrap();
-        assert_eq!(docs[0]["price"], 13);
-        assert!(docs[0].get("name").is_none());
-        assert_eq!(s.delete("coiman_test", "items", &docs[0]["_id"]).unwrap(), 1);
-        // Errors say what's wrong.
-        let e = s.find("coiman_test", "items", "{ $bad: 1 }", "", "", 0).unwrap_err();
-        assert!(e.contains("$bad"), "{e}");
-        assert!(s.run("coiman_test", "this is not javascript").is_err());
-        let down = Server { uri: "mongodb://127.0.0.1:1".into(), ..Server::default() };
-        assert!(down.databases().is_err());
-        s.run("coiman_test", "db.dropDatabase()").unwrap();
+    fn calls_and_replies() {
+        let s = Server { uri: "mongodb://h:1".into(), user: "ann".into(), password: Some("pw".into()), ..Server::default() };
+        let call = s.find_call("shop", "items", "{ price: { $gt: 2 } }", "", "", 200);
+        assert_eq!(call.program, "mongosh");
+        assert_eq!(
+            call.args[..6],
+            ["mongodb://h:1/?serverSelectionTimeoutMS=5000", "--quiet", "--norc", "--json=relaxed", "-u", "ann"]
+        );
+        assert!(call.args.contains(&"pw".to_owned()));
+        let script = call.args.last().unwrap();
+        assert!(script.contains(r#"getSiblingDB("shop").getCollection("items")"#), "{script}");
+        assert!(script.contains(".skip(200)"), "{script}");
+        let ok = |stdout: &str| Out { code: Some(0), stdout: stdout.into(), stderr: String::new() };
+        let (docs, count) = find_read(&ok(r#"[[{"_id": 1, "name": "pen"}], 7]"#)).unwrap();
+        assert_eq!((docs.len(), count), (1, 7));
+        assert_eq!(databases_read(&ok(r#"[["admin", 40960], ["shop", 8192]]"#)).unwrap()[1], ("shop".into(), 8192));
+        assert_eq!(collections_read(&ok(r#"[["b", 2, false], ["a", 0, true]]"#)).unwrap()[0], ("a".into(), 0, true));
+        assert_eq!(count_read(&ok("1")).unwrap(), 1);
+        let failed =
+            Out { code: Some(1), stdout: r#"{"message": "unknown operator: $bad"}"#.into(), stderr: String::new() };
+        assert_eq!(read(&failed).unwrap_err(), "unknown operator: $bad");
+        let silent = Out {
+            code: Some(1),
+            stdout: String::new(),
+            stderr: "MongoServerSelectionError: connect ECONNREFUSED".into(),
+        };
+        assert!(read(&silent).unwrap_err().starts_with("MongoServerSelectionError"));
+        let saved_text = remember(&mut Vec::new(), &s);
+        assert!(!saved_text.contains("pw"));
+        assert_eq!(saved(&saved_text)[0].user, "ann");
     }
 }

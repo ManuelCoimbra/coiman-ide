@@ -299,7 +299,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Query result viewer | Done | |
 | Table data editor | Partial | Through SQL statements |
 | Database schema visualisation | Done | Tables, views, columns, keys |
-| ER diagrams | Done | Diagram tab; Mermaid `erDiagram` export |
+| ER diagrams | Done | SQL Databases extension: the tables in the graph window; SVG, Mermaid and PlantUML export |
 | Foreign key visualisation | Done | Lines from each key to its table |
 | Index inspection | Done | Each table's indexes, unique and partial marked |
 | Query execution plans | Done | Explain: `EXPLAIN QUERY PLAN` as a tree |
@@ -309,12 +309,12 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Database backup and restore | Missing | |
 | Multiple database connections | Partial | Named connections kept (SQLite files, PostgreSQL, MySQL); one open per window |
 | Connection profiles | Done | Recent connections with names of their own (no passwords) |
-| SQLite | Done | Through `sqlite3` |
+| SQLite | Done | SQL Databases extension, through `sqlite3` |
 | PostgreSQL | Done | Through `psql` |
 | MySQL and MariaDB | Done | Through the `mariadb` or `mysql` client |
 | Microsoft SQL Server | Done | Through sqlcmd; LocalDB by name |
-| MongoDB | Done | Through mongosh: collections, documents, scripts |
-| Redis browser | Done | Through redis-cli: keys, values, TTL, console |
+| MongoDB | Done | MongoDB extension, through mongosh: collections, documents, scripts |
+| Redis browser | Done | Redis extension, through redis-cli: keys, values, TTL, console |
 
 ## 10. Data science and machine learning
 

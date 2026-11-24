@@ -1,0 +1,13 @@
+id = "coiman.mongodb"
+name = "MongoDB"
+version = "1.0.0"
+description = "A MongoDB server through mongosh: its databases and collections, documents found by a filter, sort and fields, each document edited, added or deleted as Extended JSON, and a script box."
+programs = ["mongosh"]
+
+[[commands]]
+id = "show"
+title = "Database: MongoDB..."
+
+[[panels]]
+id = "mongodb"
+title = "MongoDB"

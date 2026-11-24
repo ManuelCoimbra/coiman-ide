@@ -137,6 +137,19 @@ pub struct Manifest {
     pub tree_views: Vec<ViewDecl>,
     #[serde(default)]
     pub languages: Vec<LanguageDecl>,
+    /// Files this plugin opens in place of the editor: by extension, and by how they start.
+    #[serde(default)]
+    pub openers: Vec<OpenerDecl>,
+}
+
+/// Files a plugin opens: a file with one of `extensions` (without the dot, any case) that starts
+/// with `starts_with` (if given) runs the plugin's `command` with its absolute path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenerDecl {
+    pub extensions: Vec<String>,
+    #[serde(default)]
+    pub starts_with: String,
+    pub command: String,
 }
 
 /// A language for file extensions the editor doesn't know.

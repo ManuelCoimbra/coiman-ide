@@ -95,7 +95,15 @@ fn load(host: &PluginHost, name: &str, granted: &[Permission], programs: &[&str]
 }
 
 fn document(path: &str, text: &str, line: u32) -> Document {
-    Document { path: path.into(), language: String::new(), text: text.into(), line, column: 1, dirty: false }
+    Document {
+        path: path.into(),
+        language: String::new(),
+        text: text.into(),
+        line,
+        column: 1,
+        dirty: false,
+        selection: String::new(),
+    }
 }
 
 /// A server for `n` requests: each answered by what it asked, as JSON; what came is sent back

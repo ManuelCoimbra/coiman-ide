@@ -1,0 +1,13 @@
+id = "coiman.redis"
+name = "Redis"
+version = "1.0.0"
+description = "A Redis, Valkey or Memurai server through redis-cli: its keys with their types and times to live, each key's value, changes to strings and times to live, and a console."
+programs = ["redis-cli", "valkey-cli", "memurai-cli"]
+
+[[commands]]
+id = "show"
+title = "Database: Redis..."
+
+[[panels]]
+id = "redis"
+title = "Redis"

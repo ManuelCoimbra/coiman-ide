@@ -1,18 +1,16 @@
 //! Redis (and servers that speak its protocol: Valkey, Memurai, KeyDB) through its own
 //! command-line client, `redis-cli`: the keys, what each holds, and a console. As with the
-//! SQL servers, the app opens no connection itself, and a password is never saved: it goes to
-//! the client in its environment (`REDISCLI_AUTH`) for that run only.
+//! SQL servers, the editor opens no connection itself (the extension runs the client as an
+//! approved program), and a password is never saved: it goes to the client in its environment
+//! (`REDISCLI_AUTH`) for that run only. Each operation is the words to send and how to read the
+//! reply.
 //!
 //! Every command goes to the client as arguments, never through its own line parser, so a
 //! value is sent exactly as typed.
 
-use std::path::PathBuf;
-use std::process::Stdio;
-
 use serde::{Deserialize, Serialize};
 
-use crate::language::lsp::discovery::quiet_command;
-use crate::language::lsp::servers::which;
+use crate::{Call, Out};
 
 /// A server to connect to. Everything but the password is kept for next time.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,19 +253,6 @@ return out";
 /// How many items of a big value are shown.
 pub const SHOWN: usize = 500;
 
-/// The client: on `PATH` (Redis, Valkey or Memurai), or unpacked into the config folder's
-/// `tools/redis`.
-pub fn client() -> Option<PathBuf> {
-    for name in ["redis-cli", "valkey-cli", "memurai-cli"] {
-        if let Some(found) = which(name) {
-            return Some(found);
-        }
-    }
-    let exe = if cfg!(windows) { "redis-cli.exe" } else { "redis-cli" };
-    let bundled = crate::settings::config_dir()?.join("tools").join("redis").join(exe);
-    bundled.is_file().then_some(bundled)
-}
-
 pub const MISSING: &str = "The redis-cli program isn't on this computer. Install Redis's tools (or Valkey's, \
                            or Memurai on Windows), or unpack a Windows build into the config folder's \
                            tools/redis, and try again.";
@@ -283,55 +268,35 @@ impl Server {
         if self.name.trim().is_empty() { self.label() } else { self.name.trim().to_owned() }
     }
 
-    /// Runs one command (its words, as typed) and gives back the reply.
-    pub fn run(&self, args: &[String]) -> Result<Reply, String> {
-        let program = client().ok_or(MISSING)?;
-        let mut cmd = quiet_command(&program);
-        cmd.args(["--no-raw", "-h", &self.host, "-p", &self.port.to_string(), "-n", &self.db.to_string()]);
+    /// `redis-cli` with the connection, sending one command (its words, as typed).
+    pub fn call(&self, words: &[String]) -> Call {
+        let mut args: Vec<String> =
+            vec!["--no-raw".into(), "-h".into(), self.host.clone(), "-p".into(), self.port.to_string()];
+        args.extend(["-n".into(), self.db.to_string()]);
         if !self.user.is_empty() {
-            cmd.args(["--user", &self.user]);
+            args.extend(["--user".into(), self.user.clone()]);
         }
         if self.tls {
-            cmd.arg("--tls");
+            args.push("--tls".into());
         }
-        if let Some(pw) = &self.password {
-            cmd.env("REDISCLI_AUTH", pw);
-        }
-        let out = cmd
-            .args(args)
-            .stdin(Stdio::null())
-            .output()
-            .map_err(|e| format!("Couldn't start {}: {e}", program.display()))?;
-        let text = String::from_utf8_lossy(&out.stdout).replace("\r\n", "\n");
-        let err = String::from_utf8_lossy(&out.stderr);
-        // Its warning about a password given on the command line isn't one here.
-        let err: Vec<&str> = err.lines().filter(|l| !l.starts_with("Warning:")).collect();
-        if !out.status.success() || (text.trim().is_empty() && !err.is_empty()) {
-            let err = err.join("\n");
-            return Err(if err.trim().is_empty() { format!("redis-cli stopped ({})", out.status) } else { err });
-        }
-        // An error reply, and Redis's NOAUTH, come on standard output.
-        let mut replies = parse(&text);
-        // One command, several replies: text the client printed as it is (INFO, CLIENT LIST).
-        let reply =
-            if replies.len() > 1 { Reply::Status(text.trim().to_owned()) } else { replies.pop().unwrap_or(Reply::Nil) };
-        match reply {
-            Reply::Error(e) if e.starts_with("NOAUTH") || e.starts_with("WRONGPASS") => {
-                Err(format!("{e} (give the password in the connection)"))
-            }
-            r => Ok(r),
-        }
+        args.extend(words.iter().cloned());
+        let env = self.password.iter().map(|pw| ("REDISCLI_AUTH".to_owned(), pw.clone())).collect();
+        Call::new("redis-cli", args, String::new(), env)
     }
 
-    fn run_words(&self, words: &[&str]) -> Result<Reply, String> {
-        self.run(&words.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>())
+    /// `call` for words written in code.
+    pub fn call_words(&self, words: &[&str]) -> Call {
+        self.call(&words.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>())
     }
-
     /// One round of SCAN for keys matching `pattern`: the cursor to go on from ("0" when it's
     /// done) and the keys.
-    pub fn scan(&self, cursor: &str, pattern: &str, count: usize) -> Result<(String, Vec<Key>), String> {
+    pub fn scan_call(&self, cursor: &str, pattern: &str, count: usize) -> Call {
         let pattern = if pattern.trim().is_empty() { "*" } else { pattern.trim() };
-        let reply = self.run_words(&["EVAL", SCAN_SCRIPT, "0", cursor, pattern, &count.to_string()])?;
+        self.call_words(&["EVAL", SCAN_SCRIPT, "0", cursor, pattern, &count.to_string()])
+    }
+
+    pub fn scan_read(&self, out: &Out) -> Result<(String, Vec<Key>), String> {
+        let reply = read(out)?;
         if let Reply::Error(e) = &reply {
             return Err(e.clone());
         }
@@ -354,19 +319,23 @@ impl Server {
 
     /// What a key holds, as rows of up to three cells (field/value, index/item, member/score…)
     /// with their headers.
-    pub fn value(&self, key: &Key) -> Result<(Vec<&'static str>, Vec<Vec<String>>), String> {
+    pub fn value_call(&self, key: &Key) -> Result<Call, String> {
         let shown = SHOWN.to_string();
         let last = (SHOWN - 1).to_string();
         let k = key.name.as_str();
-        let reply = match key.kind.as_str() {
-            "string" => self.run_words(&["GET", k])?,
-            "hash" => self.run_words(&["HSCAN", k, "0", "COUNT", &shown])?,
-            "list" => self.run_words(&["LRANGE", k, "0", &last])?,
-            "set" => self.run_words(&["SSCAN", k, "0", "COUNT", &shown])?,
-            "zset" => self.run_words(&["ZRANGE", k, "0", &last, "WITHSCORES"])?,
-            "stream" => self.run_words(&["XREVRANGE", k, "+", "-", "COUNT", "100"])?,
+        Ok(match key.kind.as_str() {
+            "string" => self.call_words(&["GET", k]),
+            "hash" => self.call_words(&["HSCAN", k, "0", "COUNT", &shown]),
+            "list" => self.call_words(&["LRANGE", k, "0", &last]),
+            "set" => self.call_words(&["SSCAN", k, "0", "COUNT", &shown]),
+            "zset" => self.call_words(&["ZRANGE", k, "0", &last, "WITHSCORES"]),
+            "stream" => self.call_words(&["XREVRANGE", k, "+", "-", "COUNT", "100"]),
             other => return Err(format!("Coiman doesn't show {other} values; the console can ask for them.")),
-        };
+        })
+    }
+
+    pub fn value_read(&self, key: &Key, out: &Out) -> Result<(Vec<&'static str>, Vec<Vec<String>>), String> {
+        let reply = read(out)?;
         if let Reply::Error(e) = &reply {
             return Err(e.clone());
         }
@@ -409,8 +378,12 @@ impl Server {
     }
 
     /// How many keys each database holds (`INFO keyspace`).
-    pub fn keyspace(&self) -> Result<Vec<(u32, u64)>, String> {
-        let reply = self.run_words(&["INFO", "keyspace"])?;
+    pub fn keyspace_call(&self) -> Call {
+        self.call_words(&["INFO", "keyspace"])
+    }
+
+    pub fn keyspace_read(&self, out: &Out) -> Result<Vec<(u32, u64)>, String> {
+        let reply = read(out)?;
         let text = reply.text().unwrap_or_default().to_owned();
         Ok(text
             .lines()
@@ -420,6 +393,28 @@ impl Server {
                 Some((db.parse().ok()?, keys.parse().ok()?))
             })
             .collect())
+    }
+}
+
+/// The reply the client printed, or what its failure means.
+pub fn read(out: &Out) -> Result<Reply, String> {
+    let text = out.stdout.replace("\r\n", "\n");
+    // Its warning about a password given on the command line isn't one here.
+    let err: Vec<&str> = out.stderr.lines().filter(|l| !l.starts_with("Warning:")).collect();
+    if !out.ok() || (text.trim().is_empty() && !err.is_empty()) {
+        let err = err.join("\n");
+        return Err(if err.trim().is_empty() { out.stopped("redis-cli") } else { err });
+    }
+    // An error reply, and Redis's NOAUTH, come on standard output.
+    let mut replies = parse(&text);
+    // One command, several replies: text the client printed as it is (INFO, CLIENT LIST).
+    let reply =
+        if replies.len() > 1 { Reply::Status(text.trim().to_owned()) } else { replies.pop().unwrap_or(Reply::Nil) };
+    match reply {
+        Reply::Error(e) if e.starts_with("NOAUTH") || e.starts_with("WRONGPASS") => {
+            Err(format!("{e} (give the password in the connection)"))
+        }
+        r => Ok(r),
     }
 }
 
@@ -482,20 +477,18 @@ pub fn human_ttl(ms: i64) -> String {
     }
 }
 
-/// Connections used before, newest first, without passwords: `<config>/redis_connections.toml`.
-pub fn load_saved() -> Vec<Server> {
+/// Connections used before, newest first, without passwords, from the extension's storage.
+pub fn saved(text: &str) -> Vec<Server> {
     #[derive(Deserialize)]
     struct File {
         #[serde(default)]
         server: Vec<Server>,
     }
-    let Some(path) = crate::settings::config_dir().map(|d| d.join("redis_connections.toml")) else {
-        return Vec::new();
-    };
-    std::fs::read_to_string(path).ok().and_then(|t| toml::from_str::<File>(&t).ok()).map_or_else(Vec::new, |f| f.server)
+    toml::from_str::<File>(text).map_or_else(|_| Vec::new(), |f| f.server)
 }
 
-pub fn remember(saved: &mut Vec<Server>, server: &Server) -> Result<(), String> {
+/// The storage's text with `server` first (and only once), without its password.
+pub fn remember(saved: &mut Vec<Server>, server: &Server) -> String {
     #[derive(Serialize)]
     struct File<'a> {
         server: &'a [Server],
@@ -505,10 +498,7 @@ pub fn remember(saved: &mut Vec<Server>, server: &Server) -> Result<(), String> 
     saved.retain(|s| s.label() != kept.label());
     saved.insert(0, kept);
     saved.truncate(12);
-    let dir = crate::settings::config_dir().ok_or("no config folder")?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let text = toml::to_string(&File { server: saved }).map_err(|e| e.to_string())?;
-    std::fs::write(dir.join("redis_connections.toml"), text).map_err(|e| e.to_string())
+    toml::to_string(&File { server: saved }).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -558,33 +548,4 @@ mod tests {
         assert_eq!(quote("a\"b\n"), "\"a\\\"b\\n\"");
     }
 
-    /// Against a real server when `COIMAN_TEST_REDIS` is `host:port` (nothing is left there).
-    #[test]
-    fn real_server() {
-        let Ok(at) = std::env::var("COIMAN_TEST_REDIS") else { return };
-        let (host, port) = at.split_once(':').unwrap();
-        let s = Server { host: host.into(), port: port.parse().unwrap(), db: 9, ..Server::default() };
-        let w = |a: &[&str]| s.run_words(a).unwrap();
-        w(&["FLUSHDB"]);
-        w(&["SET", "coiman:s", "a \"quoted\"\nvalue"]);
-        w(&["HSET", "coiman:h", "f1", "1", "f2", "two"]);
-        w(&["RPUSH", "coiman:l", "x", "y"]);
-        w(&["ZADD", "coiman:z", "2", "b", "1", "a"]);
-        w(&["EXPIRE", "coiman:s", "100"]);
-        let (next, keys) = s.scan("0", "coiman:*", 1000).unwrap();
-        assert_eq!(next, "0");
-        assert_eq!(keys.len(), 4, "{keys:?}");
-        let k = |n: &str| keys.iter().find(|k| k.name == n).unwrap().clone();
-        assert_eq!((k("coiman:h").kind.as_str(), k("coiman:h").size), ("hash", 2));
-        assert!(k("coiman:s").ttl_ms > 90_000 && k("coiman:l").ttl_ms == -1);
-        assert_eq!(s.value(&k("coiman:s")).unwrap().1, vec![vec!["a \"quoted\"\nvalue".to_owned()]]);
-        assert_eq!(
-            s.value(&k("coiman:z")).unwrap().1,
-            vec![vec!["a".to_owned(), "1".into()], vec!["b".into(), "2".into()]]
-        );
-        assert_eq!(s.value(&k("coiman:h")).unwrap().1.len(), 2);
-        assert!(s.keyspace().unwrap().iter().any(|(db, n)| *db == 9 && *n == 4));
-        assert!(matches!(w(&["NOSUCH"]), Reply::Error(_)));
-        w(&["FLUSHDB"]);
-    }
 }

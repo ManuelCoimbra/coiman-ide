@@ -1,0 +1,40 @@
+id = "coiman.sql"
+name = "SQL Databases"
+version = "1.0.0"
+description = "SQLite files and PostgreSQL, MySQL/MariaDB and SQL Server databases through their own clients: tables, columns and keys, SQL run with each result as a table, plans, and a diagram of the tables."
+permissions = ["workspace-read", "editor-read"]
+programs = ["sqlite3", "psql", "mariadb", "mysql", "sqlcmd", "SqlLocalDB"]
+
+[[commands]]
+id = "show"
+title = "Database: Show"
+
+[[commands]]
+id = "open-sqlite"
+title = "Database: Open SQLite File..."
+
+[[commands]]
+id = "connect"
+title = "Database: Connect to PostgreSQL, MySQL or SQL Server..."
+
+[[commands]]
+id = "run"
+title = "Database: Run SQL (Selection or File)"
+
+[[commands]]
+id = "explain"
+title = "Database: Explain Query Plan (Selection or File)"
+
+[[commands]]
+id = "diagram"
+title = "Database: Show Tables Diagram (ER)"
+
+[[panels]]
+id = "sql"
+title = "SQL Databases"
+
+# A SQLite database opens here, not as bytes in a tab.
+[[openers]]
+extensions = ["db", "sqlite", "sqlite3", "db3", "s3db", "sl3"]
+starts_with = "SQLite format 3\u0000"
+command = "open-sqlite"

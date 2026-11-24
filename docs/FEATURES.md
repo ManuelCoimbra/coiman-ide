@@ -668,7 +668,7 @@ appear, and its background work doesn't run.
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
-Terminal Commands
+SQL Databases, Redis and MongoDB with Databases, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -738,6 +738,13 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   (`job-line`); **`debug-attach`** starts gdb attached to a gdbserver (a restart runs the
   plugin's `restart` command, the end `debug-ended`); **`debug-console`** writes in the Debug
   Console. `write-file` makes the folders a file goes in.
+- **More for forms and jobs**: `password` fields (dots, never kept after the editor closes)
+  and `multiline` ones (Ctrl+Enter sends); **`start-job-with`** gives a program environment
+  variables for one run (a password, never in its arguments; `PATH` and the like can't be
+  set) and can run it in the plugin's own folder. A program named by a plugin is also looked
+  for where database clients' installers put it. **Openers** in `plugin.toml` (extensions,
+  and how the file starts) hand a file to the plugin instead of a tab. The `document` has
+  its `selection`, current when a command runs. A `table` block draws only the rows in view.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -800,6 +807,12 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
   overview; see [Code health](#code-health).
+- **SQL Databases** (`workspace-read`, `editor-read`; programs `sqlite3`, `psql`, `mariadb`,
+  `mysql`, `sqlcmd`, `SqlLocalDB`): SQLite files and SQL servers; see Databases.
+- **Redis** (programs `redis-cli`, `valkey-cli`, `memurai-cli`): a Redis server's keys,
+  values and a console; see Databases.
+- **MongoDB** (program `mongosh`): a MongoDB server's collections, documents and scripts;
+  see Databases.
 - **Remote Debugging** (`workspace-read`, `workspace-write`; programs `ssh`, `scp`): gdb on a
   program under gdbserver on another machine; see Remote debugging under Debugging.
 - **Remote over SSH** (`workspace-read`, `terminal`; programs `ssh`, `tar`): a folder on
@@ -1283,52 +1296,58 @@ to be trusted. Lockfiles are read either way.
 
 ## Databases (SQLite, PostgreSQL, MySQL, SQL Server, Redis, MongoDB)
 
-A SQLite file opens in the **Database** window from the Explorer or Quick Open (it is
-recognised by its contents, whatever its name), or with **Database: Open SQLite File...**.
+SQL databases are the **SQL Databases** extension of the Databases pack (`workspace-read`,
+`editor-read`; programs `sqlite3`, `psql`, `mariadb`, `mysql`, `sqlcmd`, `SqlLocalDB`), in its
+panel. A SQLite file opens there from the Explorer or Quick Open (it is recognised by its
+contents, whatever its name), or with **Database: Open SQLite File...** (a list of the open
+folder's `.db`, `.sqlite` and `.sqlite3` files).
 
-- **Tables and views** on the left. A click shows the columns, with the primary key marked,
-  types, `not null`, where a foreign key points (`→ customer.id`), and the table's indexes
-  (unique, partial, or made by a constraint). A double click shows the first 500 rows.
+- **Tables and views**, each with **Rows** (the first 200) and **Columns**: the columns, with
+  the primary key marked, types, `not null`, where a foreign key points (`→ customer.id`),
+  and the table's indexes (unique, partial, or made by a constraint).
 - **SQL** in the box, one statement or several; **Run** or Ctrl+Enter. Each statement that
-  returns rows gets its own result, in a grid that only draws what's in view, with NULL
-  greyed. Statements that change rows say how many. The list of tables refreshes after a
-  change, and **History** keeps the last 30 runs.
-- **Explain** (Ctrl+Shift+Enter) shows the **Query plan**: how SQLite would carry out each
-  statement (`EXPLAIN QUERY PLAN`), as a tree. Steps that read a whole table or sort in a
-  temporary table are marked, since an index could spare them. Nothing runs: the database
-  is opened read-only for it.
-- **Diagram**: the tables as boxes with their columns (primary and foreign keys marked) and
-  a line from each foreign key to the table it points to. Tables pointed to sit to the
-  left; hovering a table lights its links, and a double click shows its rows. **Copy as
-  Mermaid** and **Preview as Mermaid** give the same tables as an `erDiagram`.
+  returns rows gets its own result, in a table that only draws the rows in view, with NULL
+  said. Statements that change rows say how many, and the tables are read again after a
+  change. The last runs are kept (**Again** runs one more time).
+- **Explain** shows how the database would carry out each statement (`EXPLAIN QUERY PLAN`),
+  as an indented tree. Steps that read a whole table or sort in a temporary table are marked,
+  since an index could spare them. Nothing runs: SQLite opens the database read-only for it.
+- **Diagram**: the tables as boxes with their columns (`#` for the primary key) and a line
+  from each foreign key to the table it points to, in the graph window (zoom, filter, export
+  to SVG, Mermaid or PlantUML).
 - **Database: Run SQL (Selection or File)** runs the selection, or the whole `.sql` file in
   front, against the open database. **Database: Explain Query Plan (Selection or File)**
   explains it instead, and **Database: Show Tables Diagram (ER)** opens the diagram.
 
-- **PostgreSQL, MySQL (or MariaDB) and SQL Server**: **Connect...** in the window, or
+- **PostgreSQL, MySQL (or MariaDB) and SQL Server**: **Connect…** in the panel, or
   **Database: Connect to PostgreSQL, MySQL or SQL Server...**, asks for the host, port, user,
-  database and password.
+  database and password (shown as dots).
   The same tables, columns, keys, indexes, results, diagram and query plans follow (the plan
-  is the server's `EXPLAIN`; nothing runs). Errors say which statement they're in. **Recent**
-  keeps the connections used, without passwords: the password is held only while the app
-  runs, and given to the client for each run (`PGPASSWORD`, `MYSQL_PWD`, `SQLCMDPASSWORD`). A
-  connection can have a **Name** of its own ("Shop, staging"), shown in Recent and the window's
-  title.
+  is the server's `EXPLAIN`; nothing runs). Errors say which statement they're in. **Used
+  before** keeps the connections, without passwords: the password is held only while the
+  extension runs, and given to the client for each run in its environment (`PGPASSWORD`,
+  `MYSQL_PWD`, `SQLCMDPASSWORD`), never in its arguments. A connection can have a **Name**
+  of its own ("Shop, staging"). The clients are found on `PATH` or where their installers put
+  them under Program Files.
 - **SQL Server** goes through `sqlcmd` (Microsoft's Go version, or the one with SQL Server's
   tools). An empty user signs in with Windows. The host can be `(localdb)\MSSQLLocalDB`:
-  Coiman starts that LocalDB instance and finds its pipe. Each statement runs in a batch of its
-  own, so `CREATE VIEW` and `CREATE PROCEDURE` work beside others; the plan is
+  the extension starts that LocalDB instance and finds its pipe. Each statement runs in a
+  batch of its own, so `CREATE VIEW` and `CREATE PROCEDURE` work beside others; the plan is
   `SHOWPLAN_TEXT`. Line breaks and tabs inside values show as spaces.
-- **Database: Redis...** (Redis, Valkey, Memurai, through `redis-cli`): the keys, found with
-  `SCAN` and a pattern (`user:*`), each with its type, size and time to live; a click shows
+- **Database: Redis...** (the **Redis** extension, in its panel; Redis, Valkey, Memurai,
+  through `redis-cli`): the keys, found with
+  `SCAN` and a pattern (`user:*`), each with its type, size and time to live; **Open** shows
   what it holds (a string to edit and save, a hash's fields, a list's items, a set's members,
   a sorted set's scores, a stream's entries). **Expires in** sets or removes a key's time to
   live, and **Delete…** asks first. The **console** runs any command and shows the reply as
   `redis-cli` does. The database number is chosen at the top, with how many keys each holds.
-- **Database: MongoDB...** (through `mongosh`): databases and their collections (with about
+  The password goes to `redis-cli` in its environment (`REDISCLI_AUTH`) for each run and is
+  never saved.
+- **Database: MongoDB...** (the **MongoDB** extension, in its panel, through `mongosh`):
+  databases and their collections (with about
   how many documents), and a collection's documents as a table, found with a **Filter**,
   **Sort** and **Fields** in the shell's own syntax (`{ price: { $gt: 2 } }`,
-  `ObjectId("…")`), 200 at a time. A click on a document opens it as Extended JSON to edit
+  `ObjectId("…")`), 200 at a time. **Open** on a document shows it as Extended JSON to edit
   and **Save**, or **Delete…**; **Add a document** adds one. **Script** runs any shell script
   in the chosen database and shows its result.
 
