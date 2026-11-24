@@ -1472,3 +1472,26 @@ Delete Duplicate Lines, Reverse Lines, Transform to Uppercase/Lowercase/Title Ca
   themes): search open-vsx.org for color and icon themes and install them; **Use** applies
   one at once. `curl` does the fetching, so the app opens no connections; only the
   extension's themes are kept, never its code, snippets or languages (see PRIVACY.md).
+
+## Installing and updating
+
+Coiman never updates itself and opens no connection to look for updates. Each way of
+installing it has its own updater outside the program, used when you ask for it
+(`docs/PUBLISHING.md` for how a release reaches each one):
+
+- **Windows setup program**: installs for one user or for everyone, with a Start menu entry
+  and an Apps list entry. Running a newer version's setup replaces the older one in place and
+  removes extensions it no longer ships; a running Coiman is asked to close first.
+- **winget** (`ManuelCoimbra.CoimanIDE`): `winget upgrade` installs the newer setup.
+- **Scoop**: installed from the release's `coiman-ide.json` address, which always gives the
+  newest version, so `scoop update coiman-ide` finds it.
+- **Linux APT and RPM repository** on GitHub Pages, signed: `apt upgrade`, `dnf upgrade` and
+  `zypper update` bring new versions.
+- **AppImage**: AppImageUpdate downloads only the changed parts, using the `.zsync` file beside
+  each release's AppImage.
+- **Flathub, Snap Store and the AUR**: `flatpak update`, snapd and AUR helpers update Coiman
+  once it is published there.
+- **Zip, tar.gz and the package files**: install the newer file the same way.
+
+Settings stay in `%APPDATA%\coiman-ide` or `~/.config/coiman-ide` through every update and
+uninstall.

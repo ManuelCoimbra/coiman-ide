@@ -1,0 +1,50 @@
+# Flatpak of Coiman IDE built from its source, for Flathub. Flathub builds without a network,
+# so every crate is listed beforehand in cargo-sources.json (cargo-sources.sh makes it from
+# Cargo.lock). Here the source is this repository's folder; for-flathub.sh turns it into the
+# release's tag and commit for the Flathub repository. Flathub then builds each new version
+# and installed copies update with `flatpak update`.
+#
+# The SDK is the runtime so git, gcc, make and python are there for the IDE to run; tools of
+# the computer outside are reached with flatpak-spawn --host. No network permission: the IDE
+# opens no connections of its own.
+id: io.github.manuelcoimbra.CoimanIde
+runtime: org.freedesktop.Sdk
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: coiman-ide
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # An IDE edits projects wherever they are.
+  - --filesystem=host
+  # For flatpak-spawn --host: compilers, debuggers and language servers of the computer.
+  - --talk-name=org.freedesktop.Flatpak
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+modules:
+  - name: coiman-ide
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/coiman-ide/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      - cargo --offline build --release --locked -p coiman-ide
+      - sh packaging/linux/stage.sh target/release/coiman-ide / /app
+    sources:
+      # for-flathub.sh replaces this with the release's git tag and commit.
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - target
+          - .claude
+          - graphify-out
+          - .flatpak-builder
+          - flatpak_app
+          - repo
+      - cargo-sources.json

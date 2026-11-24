@@ -325,10 +325,101 @@ jobs:
           name: snap-${{ matrix.arch }}
           path: coiman-ide-${{ matrix.arch }}.snap
 
+  # The signed APT and RPM repositories (packaging/linux/make-repo.sh). A release signs them with
+  # the REPO_GPG_KEY secret and they go to GitHub Pages; otherwise a throwaway key signs them,
+  # so every run checks that apt, dnf and zypper accept them.
+  repository:
+    name: APT and RPM repository
+    needs: build
+    runs-on: ubuntu-24.04
+    outputs:
+      signed: ${{ steps.key.outputs.signed }}
+    env:
+      REPO_GPG_KEY: ${{ secrets.REPO_GPG_KEY }}
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.tag != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: linux-*
+          path: dist
+          merge-multiple: true
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends apt-utils createrepo-c rpm gnupg
+      - name: Signing key
+        id: key
+        run: |
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          mkdir -m 700 "$GNUPGHOME"
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          if [ "$RELEASE" = true ] && [ -n "$REPO_GPG_KEY" ]; then
+            printf '%s\n' "$REPO_GPG_KEY" | gpg --batch --import
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Signing with a throwaway key: this run publishes nothing."
+            gpg --batch --passphrase '' --quick-gen-key "Coiman IDE test key" rsa3072 sign never
+          fi
+          echo "REPO_KEY=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')" >> "$GITHUB_ENV"
+      - name: Repositories
+        run: sh packaging/linux/make-repo.sh dist site "https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}"
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repository
+          path: site
+      - if: steps.key.outputs.signed == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  repository-test:
+    name: Install from the repository on ${{ matrix.image }}
+    needs: repository
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12", "ubuntu:24.04", "fedora:41", "opensuse/tumbleweed"]
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    steps:
+      - name: Tools the actions need
+        run: |
+          if command -v dnf; then dnf install -y tar gzip findutils
+          elif command -v zypper; then zypper --non-interactive install tar gzip findutils
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: repository
+          path: /srv/repo
+      # Read from the folder instead of the web address, with every signature still checked.
+      - name: Add the repository and install, as docs/INSTALL-LINUX.md says
+        run: |
+          chmod -R a+rX /srv/repo
+          if command -v apt-get; then
+            cp /srv/repo/coiman-ide.asc /usr/share/keyrings/coiman-ide.asc
+            sed 's|^URIs: .*|URIs: file:/srv/repo/deb|' /srv/repo/coiman-ide.sources > /etc/apt/sources.list.d/coiman-ide.sources
+            apt-get update 2>&1 | tee update.log
+            if grep -q -i -E "not signed|NO_PUBKEY|BADSIG|is not valid" update.log; then exit 1; fi
+            DEBIAN_FRONTEND=noninteractive apt-get install -y coiman-ide
+            apt-cache policy coiman-ide | grep -q "file:/srv/repo/deb stable"
+          elif command -v dnf; then
+            sed -e 's|^baseurl=.*|baseurl=file:///srv/repo/rpm|' -e 's|^gpgkey=.*|gpgkey=file:///srv/repo/coiman-ide.asc|' \
+              /srv/repo/coiman-ide.repo > /etc/yum.repos.d/coiman-ide.repo
+            dnf install -y coiman-ide
+            rpm -q --qf '%{SIGPGP:pgpsig}%{RSAHEADER:pgpsig}\n' coiman-ide | grep -q -i "key id"
+          else
+            sed -e 's|^baseurl=.*|baseurl=file:///srv/repo/rpm|' -e 's|^gpgkey=.*|gpgkey=file:///srv/repo/coiman-ide.asc|' \
+              /srv/repo/coiman-ide.repo > /tmp/coiman-ide.repo
+            zypper --non-interactive addrepo /tmp/coiman-ide.repo
+            zypper --non-interactive --gpg-auto-import-keys refresh coiman-ide
+            zypper --non-interactive install coiman-ide
+          fi
+          test -x /usr/bin/coiman-ide
+
   publish:
     name: Attach to the release
     if: startsWith(github.ref, 'refs/tags/v') || inputs.tag != ''
-    needs: [deb, rpm, appimage-and-tar, arch, flatpak, snap]
+    needs: [deb, rpm, appimage-and-tar, arch, flatpak, snap, repository-test, flathub]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -337,10 +428,17 @@ jobs:
       TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
+      # Only the packages: the repository's site is not a release file.
       - uses: actions/download-artifact@v4
         with:
+          pattern: "{linux,flatpak,snap}-*"
           path: artifacts
           merge-multiple: true
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: flathub
+          path: artifacts
       - name: PKGBUILDs with this version and its checksums
         run: |
           version=${TAG#v}
@@ -353,6 +451,10 @@ jobs:
           src=$(sha256sum source.tar.gz | cut -d' ' -f1)
           sed -e "s/^pkgver=.*/pkgver=$version/" -e "s/^sha256sums=.*/sha256sums=('$src')/" \
               packaging/arch/coiman-ide/PKGBUILD > arch/PKGBUILD-coiman-ide
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pkgbuilds
+          path: arch
       - name: Upload (once the Windows job has made the release)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -362,3 +464,117 @@ jobs:
             sleep 30
           done
           gh release upload "$TAG" artifacts/* arch/* --clobber
+
+  # GitHub Pages serves the signed repositories. Settings > Pages > Source must be "GitHub
+  # Actions" (docs/PUBLISHING.md).
+  pages:
+    name: Repository to GitHub Pages
+    needs: [repository, publish]
+    if: needs.repository.outputs.signed == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  # With the SNAPCRAFT_STORE_CREDENTIALS secret, the snaps go to the Snap Store's stable
+  # channel, from which snapd updates installed copies by itself.
+  snap-store:
+    name: Snap Store
+    needs: publish
+    runs-on: ubuntu-24.04
+    env:
+      SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: snap-*
+          path: snaps
+          merge-multiple: true
+      - name: Upload to the stable channel
+        run: |
+          if [ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]; then echo "No SNAPCRAFT_STORE_CREDENTIALS secret: Snap Store not updated."; exit 0; fi
+          sudo snap install snapcraft --classic
+          for snap in snaps/*.snap; do snapcraft upload --release=stable "$snap"; done
+
+  # With the AUR_SSH_KEY secret, both PKGBUILDs go to the AUR, from which AUR helpers (yay,
+  # paru) update installed copies. A package that isn't on the AUR yet is made by the push.
+  aur:
+    name: AUR
+    needs: publish
+    runs-on: ubuntu-24.04
+    container: archlinux:latest
+    env:
+      AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+      TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: pkgbuilds
+          path: pkgbuilds
+      - name: Push the PKGBUILDs
+        run: |
+          if [ -z "$AUR_SSH_KEY" ]; then echo "No AUR_SSH_KEY secret: AUR not updated."; exit 0; fi
+          pacman -Syu --noconfirm --needed base-devel git openssh
+          sh packaging/arch/push-aur.sh pkgbuilds "${TAG#v}"
+
+  # The Flathub manifest builds from the source, with every crate given beforehand
+  # (cargo-sources.json), as Flathub builds without a network. A release attaches both, for
+  # the update pull request to the Flathub repository (docs/PUBLISHING.md).
+  flathub:
+    name: Flathub manifest (x86_64)
+    runs-on: ubuntu-24.04
+    # Flathub's runtime updates fail now and then on the runners; this never holds a release.
+    continue-on-error: true
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    env:
+      RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.tag != '' }}
+      TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag != '' && inputs.tag || github.ref }}
+      - name: Crates for the offline build
+        run: sh packaging/flathub/cargo-sources.sh packaging/flathub/cargo-sources.json
+      - name: Runtimes up to date
+        run: |
+          flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak update --system -y --noninteractive
+          flatpak install --system -y --noninteractive flathub org.freedesktop.Sdk//24.08 org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk.Extension.rust-stable//24.08 org.flatpak.Builder
+      - name: Lint the manifest and metadata as Flathub does
+        run: |
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest packaging/flathub/io.github.manuelcoimbra.CoimanIde.yml || true
+          flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream packaging/linux/io.github.manuelcoimbra.CoimanIde.metainfo.xml || true
+      - uses: flathub-infra/flatpak-github-actions/flatpak-builder@master
+        with:
+          bundle: coiman-ide-flathub-test.flatpak
+          manifest-path: packaging/flathub/io.github.manuelcoimbra.CoimanIde.yml
+          arch: x86_64
+          cache-key: flathub-${{ github.sha }}
+          upload-artifact: false
+      - name: Installs, with the program and its extensions
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive coiman-ide-flathub-test.flatpak
+          flatpak run --user --command=sh io.github.manuelcoimbra.CoimanIde -c 'test -x /app/bin/coiman-ide && ls /app/share/coiman-ide/extensions'
+          flatpak uninstall --user -y --noninteractive io.github.manuelcoimbra.CoimanIde
+      - name: Files for the Flathub repository
+        if: env.RELEASE == 'true'
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sh packaging/flathub/for-flathub.sh "$TAG" "$(git rev-parse HEAD)" flathub-out
+          tar -C flathub-out -czf "flathub-${TAG#v}.tar.gz" .
+      - if: env.RELEASE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: flathub
+          path: flathub-*.tar.gz

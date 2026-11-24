@@ -17,9 +17,27 @@ is needed; **Edit as File** still opens the TOML behind them.
 
 ## Install
 
-Windows: the zip on the [releases page](https://github.com/ManuelCoimbra/coiman-ide/releases).
-Linux: deb, rpm, AppImage, Flatpak, Snap, Arch PKGBUILDs and a tar.gz, for x86_64 and ARM64;
-see [docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) for installing, updating and removing each.
+Coiman never updates itself and opens no connection to look for updates. Updates come the way
+Coiman came, when you ask for them.
+
+Windows, from the [releases page](https://github.com/ManuelCoimbra/coiman-ide/releases):
+
+- **Setup program** (`coiman-ide-<version>-windows-x64-setup.exe`): installs for you alone
+  (no administrator rights) or for everyone, with a Start menu entry. To update, run the
+  newer version's setup: it replaces the older one in place. Uninstall from Settings > Apps.
+- **winget**: `winget install ManuelCoimbra.CoimanIDE`, then `winget upgrade` for updates
+  (once the package is in winget's catalogue).
+- **Scoop**: `scoop install https://github.com/ManuelCoimbra/coiman-ide/releases/latest/download/coiman-ide.json`,
+  then `scoop update coiman-ide`. Scoop reads that address again to find the newest version.
+- **Zip** (`coiman-ide-<version>-windows-x64.zip`): unpack anywhere and run `coiman-ide.exe`.
+  To update, unpack the newer zip in its place.
+
+None of these touch your settings (`%APPDATA%\coiman-ide`), and uninstalling keeps them.
+
+Linux: a signed APT and RPM repository (so `apt upgrade`, `dnf upgrade` and `zypper update`
+bring new versions), deb, rpm, AppImage (updated by AppImageUpdate), Flatpak, Snap, Arch
+PKGBUILDs and a tar.gz, for x86_64 and ARM64; see
+[docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md) for installing, updating and removing each.
 
 ## Build, run and test
 

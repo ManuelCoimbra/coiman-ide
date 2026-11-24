@@ -15,7 +15,50 @@ The program needs OpenGL and X11 or Wayland, which every desktop has. Packages n
 libraries, so the package manager brings any that are missing. The tools the IDE runs (git,
 compilers, debuggers, language servers) are the ones you install yourself.
 
-## Debian, Ubuntu, Linux Mint (.deb)
+| Format | How it updates |
+|---|---|
+| APT or RPM repository | With the system: `apt upgrade`, `dnf upgrade`, `zypper update` |
+| AppImage | AppImageUpdate, or download the newer file |
+| Flathub, Snap Store | With the system: `flatpak update`, snapd on its own |
+| AUR | AUR helpers such as `yay` or `paru` |
+| deb, rpm, Flatpak and Snap files, PKGBUILDs, tar.gz | Install the newer release's file the same way |
+
+## Debian, Ubuntu, Linux Mint: the APT repository
+
+Add the repository once; after that, Coiman updates with the rest of the system.
+
+```
+sudo curl -fsSLo /usr/share/keyrings/coiman-ide.asc https://manuelcoimbra.github.io/coiman-ide/coiman-ide.asc
+sudo curl -fsSLo /etc/apt/sources.list.d/coiman-ide.sources https://manuelcoimbra.github.io/coiman-ide/coiman-ide.sources
+sudo apt update
+sudo apt install coiman-ide
+```
+
+The first line gets the key that signs the repository; apt refuses anything it hasn't signed.
+To stop getting updates from it, delete those two files. Remove Coiman with
+`sudo apt remove coiman-ide`.
+
+## Fedora, RHEL, openSUSE: the RPM repository
+
+Add the repository once; after that, Coiman updates with the rest of the system.
+
+```
+sudo curl -fsSLo /etc/yum.repos.d/coiman-ide.repo https://manuelcoimbra.github.io/coiman-ide/coiman-ide.repo
+sudo dnf install coiman-ide
+```
+
+On openSUSE:
+
+```
+sudo zypper addrepo https://manuelcoimbra.github.io/coiman-ide/coiman-ide.repo
+sudo zypper install coiman-ide
+```
+
+dnf and zypper ask you to accept the repository's key the first time. The repository and each
+package in it are signed. To stop getting updates from it, run
+`sudo rm /etc/yum.repos.d/coiman-ide.repo` or `sudo zypper removerepo coiman-ide`.
+
+## Debian, Ubuntu, Linux Mint (.deb file)
 
 Install, or update to a newer release:
 
@@ -29,7 +72,7 @@ Remove:
 sudo apt remove coiman-ide
 ```
 
-## Fedora, RHEL, openSUSE (.rpm)
+## Fedora, RHEL, openSUSE (.rpm file)
 
 Install, or update to a newer release:
 
@@ -68,6 +111,15 @@ and `~/.local/share/icons/hicolor/*/apps/io.github.manuelcoimbra.CoimanIde.*`.
 
 ## Flatpak
 
+Once Coiman is on Flathub, install it from there; `flatpak update` (or your software centre)
+then brings each new version:
+
+```
+flatpak install flathub io.github.manuelcoimbra.CoimanIde
+```
+
+Or install the bundle from the release, which doesn't update on its own:
+
 ```
 flatpak install --user ./coiman-ide-<arch>.flatpak
 flatpak run io.github.manuelcoimbra.CoimanIde
@@ -86,6 +138,14 @@ terminal.
 
 ## Snap
 
+Once Coiman is in the Snap Store, install it from there; snapd then updates it by itself:
+
+```
+sudo snap install --classic coiman-ide
+```
+
+Or install the snap from the release, which doesn't update on its own:
+
 ```
 sudo snap install --dangerous --classic ./coiman-ide-<arch>.snap
 ```
@@ -96,7 +156,15 @@ the newer snap the same way. Remove with `sudo snap remove coiman-ide`.
 
 ## Arch Linux
 
-Each release attaches two PKGBUILDs with the version and checksums filled in:
+Once Coiman is on the AUR, an AUR helper installs it and updates it with the system:
+
+```
+yay -S coiman-ide-bin
+```
+
+`coiman-ide-bin` is the prebuilt program; `coiman-ide` builds it from source.
+
+Each release also attaches two PKGBUILDs with the version and checksums filled in:
 `PKGBUILD-coiman-ide` builds from source, `PKGBUILD-coiman-ide-bin` uses the prebuilt
 archive. Put one in an empty folder as `PKGBUILD`, then:
 
@@ -120,7 +188,8 @@ Ubuntu: `libxkbcommon-x11-0`), which desktops normally have already.
 
 This installs for you alone, under `~/.local`, with a launcher in your applications menu.
 Run `sudo ./install.sh --system` instead to install for everyone under `/usr/local`. To
-update, do the same with the newer archive. To remove, run `./uninstall.sh` (or
+update, do the same with the newer archive: no package manager stands behind the archive, so
+nothing tells you a newer one exists. Use the repositories above to get updates. To remove, run `./uninstall.sh` (or
 `sudo ./uninstall.sh --system`) from the unpacked folder.
 
 You can also run `bin/coiman-ide` from the unpacked folder without installing anything; it
@@ -138,7 +207,13 @@ installs each package and opens the IDE on a virtual screen:
 - the AppImage and the archive on Ubuntu 24.04;
 - both PKGBUILDs on Arch Linux;
 - the Flatpak in the Freedesktop runtime;
-- the Snap on Ubuntu 24.04.
+- the Snap on Ubuntu 24.04;
+- the APT and RPM repositories on Debian 12, Ubuntu 24.04, Fedora 41 and openSUSE Tumbleweed,
+  added as described above and signed with a throwaway key, so apt, dnf and zypper check
+  every signature;
+- the Flathub manifest, built from source without a network as Flathub builds it.
 
-Each of these runs on x86_64 and ARM64, except Arch Linux, which is x86_64 only. CI also
-checks that uninstalling leaves the settings in place.
+Each of these runs on x86_64 and ARM64, except Arch Linux, the repositories and the Flathub
+manifest, which are x86_64 only. CI also checks that uninstalling leaves the settings in place.
+
+`docs/PUBLISHING.md` explains how a release reaches the repositories and the stores.

@@ -1,7 +1,9 @@
 name: Release
 
 # A tag such as v0.2.0 builds the Windows program and publishes a release with it, its notes
-# taken from that version's section of CHANGELOG.md.
+# taken from that version's section of CHANGELOG.md: the zip, the setup program, and the Scoop
+# manifest (coiman-ide.json). With the WINGET_TOKEN secret set, it also asks winget-pkgs to
+# take the new version. See docs/PUBLISHING.md.
 on:
   push:
     tags: ["v*"]
@@ -48,10 +50,47 @@ jobs:
           }
           Compress-Archive -Path "$dir/*" -DestinationPath "$dir.zip"
           ./scripts/release-notes.ps1 $version | Out-File notes.md -Encoding utf8
+      # Running a newer setup replaces the older version; winget installs and updates with it.
+      - name: Setup program
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $find = { Get-ChildItem "${env:ProgramFiles(x86)}", $env:ProgramFiles, "$env:LOCALAPPDATA/Programs" -Filter ISCC.exe -Recurse -Depth 2 -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName }
+          $iscc = & $find
+          if (-not $iscc) { choco install innosetup -y --no-progress; $iscc = & $find }
+          if (-not $iscc) { throw 'no Inno Setup' }
+          & $iscc /Q "/DAppVersion=$version" "/DPayload=$PWD/dist/coiman-ide-$version-windows-x64" "/O$PWD/dist" packaging/windows/coiman-ide.iss
+          if ($LASTEXITCODE) { throw "ISCC failed: $LASTEXITCODE" }
+          ./packaging/windows/test-setup.ps1 -Setup "dist/coiman-ide-$version-windows-x64-setup.exe" -Version $version
+      # Scoop users install from releases/latest/download/coiman-ide.json and update from it.
+      - name: Scoop manifest
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          ./packaging/windows/scoop-manifest.ps1 -Version $version -Zip "dist/coiman-ide-$version-windows-x64.zip" -Out dist/coiman-ide.json
       - name: Publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = "${{ github.ref_name }}".TrimStart('v')
-          gh release create "${{ github.ref_name }}" "dist/coiman-ide-$version-windows-x64.zip" --title "Coiman IDE $version" --notes-file notes.md
+          gh release create "${{ github.ref_name }}" "dist/coiman-ide-$version-windows-x64.zip" `
+            "dist/coiman-ide-$version-windows-x64-setup.exe" dist/coiman-ide.json `
+            --title "Coiman IDE $version" --notes-file notes.md
+      # Once the package is in winget-pkgs (the first version goes in by hand, see
+      # docs/PUBLISHING.md), wingetcreate opens the pull request for each new version.
+      - name: winget
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          if (-not $env:WINGET_TOKEN) { Write-Host 'No WINGET_TOKEN secret: winget not updated.'; exit 0 }
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          $id = 'ManuelCoimbra.CoimanIDE'
+          gh api repos/microsoft/winget-pkgs/contents/manifests/m/ManuelCoimbra/CoimanIDE --silent
+          if ($LASTEXITCODE) { Write-Host "$id is not in winget-pkgs yet: submit the first version by hand."; exit 0 }
+          Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+          $url = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/coiman-ide-$version-windows-x64-setup.exe"
+          ./wingetcreate.exe update $id --version $version --urls "$url|x64|user" "$url|x64|machine" --submit --token $env:WINGET_TOKEN
+          if ($LASTEXITCODE) { throw "wingetcreate failed: $LASTEXITCODE" }
