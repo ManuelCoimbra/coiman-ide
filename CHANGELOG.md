@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-24
+
 ### Added
 
 - SQL databases (SQLite, PostgreSQL, MySQL/MariaDB, SQL Server) are now the SQL Databases
