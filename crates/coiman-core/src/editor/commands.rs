@@ -144,8 +144,6 @@ pub enum Command {
     /// The MCP servers the Agents panel's opencode gets.
     ShowMcpServers,
     /// What takes room in a program: groups, symbols, sections.
-    /// The active fragment shader, drawn live.
-    PreviewShader,
     /// A board's serial port: what it prints, and sending it text.
     SplitTerminal,
     KillTerminal,
@@ -324,7 +322,6 @@ impl Command {
         use crate::packs::*;
         Some(match self {
             Command::ShowMemory | Command::ShowDisassembly => SYSTEMS,
-            Command::PreviewShader => GRAPHICS,
             Command::ShowFunctionFlow
             | Command::SessionStatistics
             | Command::ShowRunHistory
@@ -450,7 +447,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
-    (Command::PreviewShader, "Preview: Shader"),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),
@@ -748,7 +744,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NewTerminal, "workbench.action.terminal.new"),
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
-    (Command::PreviewShader, "coiman.preview.shader"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),
     (Command::KillTerminal, "workbench.action.terminal.kill"),
     (Command::ClearTerminal, "workbench.action.terminal.clear"),

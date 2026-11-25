@@ -542,9 +542,7 @@ impl CodeApp {
         self.pump_constant(&ctx);
         self.pump_likely(&ctx);
         self.pump_markup(&ctx);
-        if self.settings.pack_on(coiman_core::packs::GRAPHICS) {
-            self.pump_shaders(&ctx);
-        }
+        self.pump_shaders(&ctx);
         self.pump_bulb(&ctx);
         self.pump_tree_tools(&ctx);
         self.pump_at_cursor(&ctx);
@@ -1021,7 +1019,6 @@ impl CodeApp {
         self.new_plugin_window(&ctx);
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);
-        self.shader_preview_window(&ctx);
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
         self.open_vsx_window(&ctx);

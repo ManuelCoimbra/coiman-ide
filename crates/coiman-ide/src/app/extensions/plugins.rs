@@ -700,6 +700,7 @@ impl CodeApp {
             }
             Update::MergeConflicts => self.show_merge_conflicts(),
             Update::OpenFolder(path) => self.open_folder(path),
+            Update::CompileShader { plugin, id, stage, source } => self.shader_compile(plugin, id, stage, source),
             Update::RunInTerminal { plugin, title, program, args, folder } => {
                 // The terminal is what the command wanted shown, not the plugin's panel.
                 if self.plugins.reveal.as_deref() == Some(plugin.as_str()) {
@@ -1556,9 +1557,17 @@ impl CodeApp {
         self.set_local_lenses(uid, lenses);
     }
 
+    /// An event for one running plugin.
+    pub(crate) fn deliver_to_plugin(&self, plugin: &str, event: Event) {
+        if let Some(host) = &self.plugins.host {
+            host.deliver(plugin, event);
+        }
+    }
+
     /// A plugin panel tab: its blocks drawn with the editor's widgets.
     pub(crate) fn plugin_panel(&mut self, ui: &mut egui::Ui, index: usize) {
         let pal = theme::colors();
+        let gl = self.shader.gl.clone();
         let Some(panel) = self.plugins.panels.get(index) else { return };
         let mut run = None;
         let mut open_at: Option<(String, u32)> = None;
@@ -1648,6 +1657,16 @@ impl CodeApp {
                         if let Some(place) = log_ui(ui, index, log, height) {
                             open_at = Some(place);
                         }
+                    }
+                    Block::Shader(view) => {
+                        let room = ui.clip_rect().height().max(200.0);
+                        crate::app::views::shader_ui::shader_block_ui(
+                            ui,
+                            &gl,
+                            &panel.plugin,
+                            view,
+                            (room * 0.7).max(160.0),
+                        );
                     }
                     Block::Plot(series) => {
                         let room = ui.clip_rect().height().max(200.0);

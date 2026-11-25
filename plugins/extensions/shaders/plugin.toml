@@ -1,0 +1,14 @@
+id = "coiman.shaders"
+name = "Shaders"
+version = "1.0.0"
+description = "GLSL and WGSL problems while typing (GLSL checked by the graphics driver itself, WGSL by naga), and a live preview of a fragment shader with Shadertoy's and The Book of Shaders' uniforms."
+permissions = ["workspace-read", "editor-read"]
+events = ["opened", "saved", "edited", "active-changed"]
+
+[[commands]]
+id = "preview"
+title = "Preview: Shader"
+
+[[panels]]
+id = "shader"
+title = "Shader Preview"

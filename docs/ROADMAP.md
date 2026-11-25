@@ -76,8 +76,8 @@ program itself gets smaller too:
 4. Containers: done (Docker, GitHub Actions, remote over SSH, remote debugging).
    Databases: done (SQL Databases, Redis, MongoDB; notebooks stay built in). Embedded: done
    (Serial Monitor, Binary Size; the debugger's Memory and Disassembly views stay built in).
-   Mobile: done (Android).
-5. Graphics and Agents last: shader previews and the agents panel need the most from the host.
+   Mobile: done (Android). Graphics: done (Shaders; the editor keeps an OpenGL service for it).
+5. Agents last: the agents panel needs the most from the host.
 
 ## Next, nothing to download
 

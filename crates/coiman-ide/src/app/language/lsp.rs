@@ -887,7 +887,6 @@ impl CodeApp {
         all.extend(self.constant_problems(&k));
         all.extend(self.likely_problems(&k));
         all.extend(self.markup_problems(&k));
-        all.extend(self.shader_problems(&k));
         all.extend(self.preview_problems(&k));
         all.extend(self.baseline_problems(&k));
         all.extend(self.tree_rule_problems(&k));
@@ -915,7 +914,6 @@ impl CodeApp {
         plugin_paths.extend(self.constant_problem_paths());
         plugin_paths.extend(self.likely_problem_paths());
         plugin_paths.extend(self.markup_problem_paths());
-        plugin_paths.extend(self.shader_problem_paths());
         plugin_paths.extend(self.preview_problem_paths());
         plugin_paths.extend(self.baseline_problem_paths());
         plugin_paths.extend(self.tree_rule_paths());

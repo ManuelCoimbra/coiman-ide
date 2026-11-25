@@ -50,19 +50,12 @@ pub struct Problem {
 }
 
 pub fn checks(extension: &str) -> bool {
-    HTML_EXTENSIONS.contains(&extension)
-        || XML_EXTENSIONS.contains(&extension)
-        || matches!(extension, "vue" | "svelte")
-        // WGSL, read by naga (GLSL is checked by the graphics driver, in the app).
-        || extension == "wgsl"
+    HTML_EXTENSIONS.contains(&extension) || XML_EXTENSIONS.contains(&extension) || matches!(extension, "vue" | "svelte")
 }
 
 pub fn check(extension: &str, source: &str) -> Vec<Problem> {
     if source.len() > MAX_SIZE {
         return Vec::new();
-    }
-    if extension == "wgsl" {
-        return crate::language::shader::check_wgsl(source);
     }
     let mut found = if HTML_EXTENSIONS.contains(&extension) {
         check_html(source, Dialect::Html)

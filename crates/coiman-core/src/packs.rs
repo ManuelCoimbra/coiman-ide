@@ -82,7 +82,7 @@ pub const PACKS: [Pack; 10] = [
         name: "Graphics",
         description: "Shaders, checked and previewed.",
         features: &["GLSL and WGSL problems while typing", "Live shader preview"],
-        extensions: &[],
+        extensions: &["coiman.shaders"],
     },
     Pack {
         id: ANALYSIS,

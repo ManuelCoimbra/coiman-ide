@@ -19,11 +19,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
   Its built-in window and code left the program. **Install APK…** offers the APKs built in
   the project (`build/outputs/apk`) or a path in the open folder; logcat runs until **Stop
   logcat**, and shows the newest 10,000 matching lines.
+- Shader problems while typing and Preview: Shader are now the Shaders extension of the
+  Graphics pack; the preview is a panel. The editor keeps only what needs its OpenGL:
+  compiling a GLSL shader for the extension, and drawing its `shader` block. naga (WGSL) left
+  the program.
 - Plugin API 0.7: the `serial` permission (`serial-ports`, `serial-open`, `serial-write`,
   `serial-set-lines`, `serial-close`, and the `serial-data` and `serial-closed` events);
   `read-bytes` and `file-size` for files that aren't text; `read-dir` gives each entry's
   size and when it changed; `log` blocks (many lines, only those in view drawn, each with
-  its color and a file it links to) and `plot` blocks; `memory = <MB>` in `plugin.toml` for
+  its color and a file it links to), `plot` blocks and `shader` blocks (a GLSL program drawn
+  live, with time and mouse); `compile-shader` has the graphics driver compile a GLSL shader
+  (`shader-compiled` brings its log); `memory = <MB>` in `plugin.toml` for
   a plugin that needs more than 64 MB. Plugins built for 0.6 need rebuilding.
 
 ### Fixed
@@ -31,6 +37,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - An extension's panel comes to the front when one of its commands runs, not each time it
   changes: a log that keeps coming (logcat, a serial port) no longer takes the bottom panel
   back from the Terminal or another tab.
+- Tests that load a large extension no longer take minutes in a debug build: Wasmtime's
+  compiler is built optimized there too.
 
 ## [0.7.0] - 2026-11-24
 

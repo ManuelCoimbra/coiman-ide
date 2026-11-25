@@ -35,7 +35,7 @@ pub use coiman::plugin::types::{
     FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult,
     JobSpec, LogLine, LogView, MenuItem, Parity, Pick, PickAction, PickChoice, PickItem, PickQuery, PlotSeries,
     Problem, RemoteAttach, Row, SerialClosed, SerialData, SerialOpened, SerialPort, SerialSettings, ServerResponse,
-    Severity, Span, Table, TerminalLine, TreeItem,
+    Severity, ShaderCompiled, ShaderStage, ShaderView, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -182,6 +182,14 @@ pub enum Update {
     MergeConflicts,
     /// A folder to open as the project.
     OpenFolder(PathBuf),
+    /// A GLSL shader for the graphics driver to compile; the answer goes back to the plugin
+    /// as `shader-compiled` with `id`.
+    CompileShader {
+        plugin: String,
+        id: u64,
+        stage: ShaderStage,
+        source: String,
+    },
     /// A program (already found and approved) to run in a terminal tab, in the open folder.
     RunInTerminal {
         plugin: String,
@@ -1207,6 +1215,13 @@ impl coiman::plugin::host::Host for State {
         if self.serials.remove(&id).is_some() {
             self.send(Update::Log { plugin: self.plugin.clone(), line: "closed a serial port".to_owned() });
         }
+    }
+
+    fn compile_shader(&mut self, stage: ShaderStage, source: String) -> u64 {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.send(Update::CompileShader { plugin: self.plugin.clone(), id, stage, source });
+        id
     }
 
     fn storage_read(&mut self) -> String {

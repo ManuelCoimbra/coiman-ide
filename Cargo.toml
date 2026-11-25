@@ -72,5 +72,27 @@ opt-level = 2
 [profile.dev.package.kurbo]
 opt-level = 2
 
+# Wasmtime's compiler: unoptimized, a large extension (Shaders, with naga) takes minutes to load.
+[profile.dev.package.cranelift-codegen]
+opt-level = 2
+
+[profile.dev.package.cranelift-frontend]
+opt-level = 2
+
+[profile.dev.package.cranelift-bforest]
+opt-level = 2
+
+[profile.dev.package.cranelift-entity]
+opt-level = 2
+
+[profile.dev.package.cranelift-assembler-x64]
+opt-level = 2
+
+[profile.dev.package.regalloc2]
+opt-level = 2
+
+[profile.dev.package.wasmtime-internal-cranelift]
+opt-level = 2
+
 [profile.test]
 debug = "line-tables-only"

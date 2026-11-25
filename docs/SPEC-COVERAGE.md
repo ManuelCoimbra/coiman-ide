@@ -382,8 +382,8 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Texture viewer | Partial | Image viewer |
 | Animation preview | Partial | Animated GIF and WebP |
 | Audio asset preview | Missing | |
-| Shader editor | Done | GLSL, HLSL and WGSL colored; Preview: Shader draws fragment shaders live |
-| Shader compilation and diagnostics | Partial | GLSL by the graphics driver and WGSL by naga while typing; HLSL needs dxc |
+| Shader editor | Done | GLSL, HLSL and WGSL colored; Shaders extension: Preview: Shader draws fragment shaders live |
+| Shader compilation and diagnostics | Partial | Shaders extension: GLSL by the graphics driver and WGSL by naga while typing; HLSL needs dxc |
 | GPU debugging integration | Missing | |
 | Scene file inspection | Missing | |
 | Game resource dependency analysis | Missing | |

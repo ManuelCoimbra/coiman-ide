@@ -669,7 +669,7 @@ Installing a pack also offers its extensions, one after the other (Class Diagram
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
-and systems, Android with Mobile, Terminal Commands
+and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -756,7 +756,10 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   isn't text (8 MB at a time) and **`file-size`** gives its size; `read-dir` gives each
   entry's size and when it changed. **`log`** blocks hold many fixed-width lines (only those
   in view are drawn, and they can follow the newest), each with its color and a file of the
-  open folder it links to; **`plot`** blocks draw numbers over time.
+  open folder it links to; **`plot`** blocks draw numbers over time. **`shader`** blocks
+  have the editor's OpenGL draw a GLSL program live (time, size and mouse as Shadertoy and
+  The Book of Shaders name them; a new `id` links it again), and **`compile-shader`** has the
+  graphics driver compile a shader, its log coming back as `shader-compiled`.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -830,6 +833,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
   see Binary size.
 - **Android** (`workspace-read`; program `adb`): devices, logcat, a shell and APK installs;
   see Android below.
+- **Shaders** (`workspace-read`, `editor-read`): GLSL and WGSL problems while typing and
+  Preview: Shader; see Shaders.
 - **Remote Debugging** (`workspace-read`, `workspace-write`; programs `ssh`, `scp`): gdb on a
   program under gdbserver on another machine; see Remote debugging under Debugging.
 - **Remote over SSH** (`workspace-read`, `terminal`; programs `ssh`, `tar`): a folder on
@@ -1052,14 +1057,15 @@ project's own headers.
 ## Shaders
 
 GLSL (`.glsl`, `.vert`, `.frag`, `.geom`, `.comp`, `.tesc`, `.tese`), HLSL (`.hlsl`, `.fx`)
-and WGSL (`.wgsl`) files are colored. Nothing needs installing.
+and WGSL (`.wgsl`) files are colored. The rest is the **Shaders** extension of the Graphics
+pack; nothing more needs installing.
 
 - **Problems while typing.** WGSL is read and checked by naga (the checker wgpu uses), as
   you type. GLSL is compiled by your graphics driver itself after each pause in typing,
   through the OpenGL that draws Coiman, and its messages land on the file's own lines
   (NVIDIA, AMD, Intel and Mesa write them differently; all are read). HLSL is colored only:
   checking it needs Microsoft's `dxc`.
-- **Preview: Shader** draws the active fragment shader live in a window beside the code. It
+- **Preview: Shader** draws the active fragment shader live in a panel. It
   follows the file as you type; when the file doesn't compile, the last picture that did
   stays and the errors show under it. **Pause**, **Play** and **Restart** control the time.
   - Shadertoy style: a `mainImage(out vec4, in vec2)` with `iTime`, `iTimeDelta`, `iFrame`,

@@ -164,7 +164,6 @@ impl CodeApp {
                 self.palette.show_picker(PickerKind::TerminalProfile, names, "", "Select a terminal profile");
             }
             Command::ShowMcpServers => self.show_mcp(),
-            Command::PreviewShader => self.show_shader_preview(ctx),
             Command::KillTerminal => self.terminal.kill_active(),
             Command::ClearTerminal => self.terminal.clear_active(),
             Command::DetachTerminal => {
