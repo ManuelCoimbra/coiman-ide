@@ -190,6 +190,9 @@ pub(crate) struct PluginState {
     /// Plugin forms' fields: (plugin, form, field) to (the value the plugin last sent, what
     /// the field holds now).
     forms: HashMap<(String, String, String), (String, String)>,
+    /// A plugin whose command just ran: its next panel comes to the front. Other panel updates
+    /// (a log that streams) leave the tab shown alone.
+    reveal: Option<String>,
 }
 
 /// The lens command of a plugin's code lens: its arguments are (plugin, command, argument).
@@ -646,8 +649,11 @@ impl CodeApp {
             Update::Panel { plugin, panel, blocks } => {
                 if let Some(i) = self.plugins.panels.iter().position(|p| p.plugin == plugin && p.id == panel) {
                     self.plugins.panels[i].blocks = blocks;
-                    self.panel_visible = true;
-                    self.panel_tab = PanelTab::Plugin(i);
+                    if self.plugins.reveal.as_deref() == Some(plugin.as_str()) {
+                        self.plugins.reveal = None;
+                        self.panel_visible = true;
+                        self.panel_tab = PanelTab::Plugin(i);
+                    }
                 }
             }
             Update::Log { plugin, line } => {
@@ -694,7 +700,11 @@ impl CodeApp {
             }
             Update::MergeConflicts => self.show_merge_conflicts(),
             Update::OpenFolder(path) => self.open_folder(path),
-            Update::RunInTerminal { title, program, args, folder, .. } => {
+            Update::RunInTerminal { plugin, title, program, args, folder } => {
+                // The terminal is what the command wanted shown, not the plugin's panel.
+                if self.plugins.reveal.as_deref() == Some(plugin.as_str()) {
+                    self.plugins.reveal = None;
+                }
                 let program = program.to_string_lossy().into_owned();
                 let env = self.environment_variables();
                 let task = crate::ui::terminal::Task {
@@ -820,6 +830,7 @@ impl CodeApp {
                 // selection made just before it.
                 host.set_terminal_line(self.terminal.line_at_cursor().as_ref().map(terminal_line));
                 host.set_document(self.plugin_document());
+                self.plugins.reveal = Some(plugin.to_owned());
                 host.run_command(plugin, command, argument);
             }
             _ => self.status = Some(format!("{} isn't running", self.plugin_name(plugin))),
@@ -1634,7 +1645,9 @@ impl CodeApp {
                         let last = index + 1 == panel.blocks.len();
                         let room = ui.clip_rect().height().max(200.0);
                         let height = if last { room - 8.0 } else { (room * 0.6).max(160.0) };
-                        log_ui(ui, index, log, height);
+                        if let Some(place) = log_ui(ui, index, log, height) {
+                            open_at = Some(place);
+                        }
                     }
                     Block::Plot(series) => {
                         let room = ui.clip_rect().height().max(200.0);
@@ -1869,10 +1882,15 @@ fn form_ui(
     Some(coiman_core::extensions::plugin::FormValues { form: form.id.clone(), button, values })
 }
 
-/// A plugin's table: a header, then only the rows in sight (a query's 10,000 rows draw as fast
-/// as ten), each column as wide as its widest text in the first rows, scrolling both ways.
-/// A `log` block: fixed-width lines, only those in view drawn.
-fn log_ui(ui: &mut egui::Ui, index: usize, log: &coiman_core::extensions::plugin::host::LogView, height: f32) {
+/// A `log` block: fixed-width lines, only those in view drawn. Returns the place of a line
+/// clicked.
+fn log_ui(
+    ui: &mut egui::Ui,
+    index: usize,
+    log: &coiman_core::extensions::plugin::host::LogView,
+    height: f32,
+) -> Option<(String, u32)> {
+    let mut open = None;
     let pal = theme::colors();
     let row_h = ui.text_style_height(&egui::TextStyle::Monospace);
     egui::Frame::new().fill(pal.editor_bg).inner_margin(4.0).show(ui, |ui| {
@@ -1884,10 +1902,23 @@ fn log_ui(ui: &mut egui::Ui, index: usize, log: &coiman_core::extensions::plugin
             .stick_to_bottom(log.follow)
             .show_rows(ui, row_h, log.lines.len(), |ui, range| {
                 for line in &log.lines[range] {
-                    ui.label(RichText::new(line).monospace());
+                    let mut text = RichText::new(&line.text).monospace();
+                    if let Some(c) = line.color {
+                        text = text.color(egui::Color32::from_rgb((c >> 16) as u8, (c >> 8) as u8, c as u8));
+                    }
+                    if line.path.is_empty() {
+                        ui.add(egui::Label::new(text).extend());
+                    } else if ui
+                        .add(egui::Label::new(text.underline()).sense(Sense::click()).extend())
+                        .on_hover_text(format!("{}:{}", line.path, line.line))
+                        .clicked()
+                    {
+                        open = Some((line.path.clone(), line.line));
+                    }
                 }
             });
     });
+    open
 }
 
 /// A `plot` block: each series a colored line over time, all scaled to fit together.
@@ -1947,6 +1978,8 @@ fn plot_ui(ui: &mut egui::Ui, series: &[coiman_core::extensions::plugin::host::P
     painter.text(inner.left_bottom(), egui::Align2::LEFT_BOTTOM, number(lo), font, pal.text_dim);
 }
 
+/// A plugin's table: a header, then only the rows in sight (a query's 10,000 rows draw as fast
+/// as ten), each column as wide as its widest text in the first rows, scrolling both ways.
 fn table_ui(ui: &mut egui::Ui, index: usize, table: &coiman_core::extensions::plugin::host::Table) {
     let pal = theme::colors();
     let font = egui::TextStyle::Body.resolve(ui.style());

@@ -405,11 +405,11 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Android project support | Partial | Android folders in the project tree |
 | Android SDK management | Missing | |
 | Android emulator integration | Missing | |
-| Android device manager | Partial | Devices listed with their state; no emulators started |
+| Android device manager | Partial | Android extension: devices listed with their state; no emulators started |
 | ADB terminal integration | Done | adb shell per device, in a terminal |
 | APK inspection | Missing | |
 | APK build and signing | Missing | |
-| Android logcat viewer | Done | Live, by level, text and app; project frames as links |
+| Android logcat viewer | Done | Android extension: live, by level, text and app; project frames as links |
 | Gradle Android integration | Missing | |
 | Flutter development support | Done | Run, stack traces |
 | Dart language tools | Done | |

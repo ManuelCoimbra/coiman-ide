@@ -1,0 +1,14 @@
+id = "coiman.android"
+name = "Android"
+version = "1.0.0"
+description = "Android devices through adb: the devices attached, each one's logcat (by level, text and app, with this project's stack frames as links), a shell, and installing an APK."
+permissions = ["workspace-read"]
+programs = ["adb"]
+
+[[commands]]
+id = "show"
+title = "Android: Devices and Logcat"
+
+[[panels]]
+id = "android"
+title = "Android"

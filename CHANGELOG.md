@@ -15,12 +15,22 @@ and versions follow [Semantic Versioning](https://semver.org/).
   - Binary Size: a program of hundreds of megabytes is read in steps, a page at a time, and
     only its headers, sections and symbol names are read. **Choose…** became a path in the
     open folder.
+- Android is now the Android extension of the Mobile pack, in a panel, still through `adb`.
+  Its built-in window and code left the program. **Install APK…** offers the APKs built in
+  the project (`build/outputs/apk`) or a path in the open folder; logcat runs until **Stop
+  logcat**, and shows the newest 10,000 matching lines.
 - Plugin API 0.7: the `serial` permission (`serial-ports`, `serial-open`, `serial-write`,
   `serial-set-lines`, `serial-close`, and the `serial-data` and `serial-closed` events);
   `read-bytes` and `file-size` for files that aren't text; `read-dir` gives each entry's
-  size and when it changed; `log` blocks (many lines, only those in view drawn) and `plot`
-  blocks; `memory = <MB>` in `plugin.toml` for a plugin that needs more than 64 MB. Plugins
-  built for 0.6 need rebuilding.
+  size and when it changed; `log` blocks (many lines, only those in view drawn, each with
+  its color and a file it links to) and `plot` blocks; `memory = <MB>` in `plugin.toml` for
+  a plugin that needs more than 64 MB. Plugins built for 0.6 need rebuilding.
+
+### Fixed
+
+- An extension's panel comes to the front when one of its commands runs, not each time it
+  changes: a log that keeps coming (logcat, a serial port) no longer takes the bottom panel
+  back from the Terminal or another tab.
 
 ## [0.7.0] - 2026-11-24
 

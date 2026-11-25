@@ -77,7 +77,7 @@ fn text(blocks: &[Block]) -> String {
             }
             Block::Log(log) => {
                 for line in &log.lines {
-                    out.push_str(&format!("log {line}\n"));
+                    out.push_str(&format!("log {}\n", line.text));
                 }
             }
             Block::Plot(series) => {

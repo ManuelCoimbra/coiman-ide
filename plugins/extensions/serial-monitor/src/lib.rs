@@ -17,7 +17,7 @@ use std::sync::Mutex;
 
 use coiman::plugin::host;
 use coiman::plugin::types::{
-    Block, Button, FieldKind, Form, FormField, FormValues, LogView, Parity, PlotSeries, Row, SerialSettings, Span,
+    Block, Button, FieldKind, Form, FormField, FormValues, LogLine, LogView, Parity, PlotSeries, Row, SerialSettings, Span,
 };
 use monitor::{Ending, Plot, Received};
 
@@ -189,6 +189,11 @@ fn field(id: &str, label: &str, kind: FieldKind, value: &str, options: Vec<Strin
     FormField { id: id.into(), label: label.into(), kind, value: value.into(), options, hint: hint.into() }
 }
 
+/// Lines of a `log` block in the usual color, linking nowhere.
+fn plain(lines: Vec<String>) -> Vec<LogLine> {
+    lines.into_iter().map(|text| LogLine { text, color: None, path: String::new(), line: 0 }).collect()
+}
+
 fn line_break() -> FormField {
     field("", "", FieldKind::LineBreak, "", Vec::new(), "")
 }
@@ -213,12 +218,12 @@ fn render() {
                     };
                     b.push(Block::Spans(vec![span(text, Some(DIM))]));
                 }
-                b.push(Block::Log(LogView { lines, follow: s.follow }));
+                b.push(Block::Log(LogView { lines: plain(lines), follow: s.follow }));
             }
             View::Hex => {
                 let bytes: Vec<u8> = s.received.bytes.iter().copied().collect();
                 let offset = s.received.total - bytes.len() as u64;
-                b.push(Block::Log(LogView { lines: monitor::hex_rows(&bytes, offset), follow: s.follow }));
+                b.push(Block::Log(LogView { lines: plain(monitor::hex_rows(&bytes, offset)), follow: s.follow }));
             }
             View::Plot => {
                 if s.plot.series.is_empty() {

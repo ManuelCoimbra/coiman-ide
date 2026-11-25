@@ -141,7 +141,6 @@ pub enum Command {
     NewTerminal,
     NewTerminalWithProfile,
     /// Android devices through adb: logcat, shell, installs.
-    ShowAndroid,
     /// The MCP servers the Agents panel's opencode gets.
     ShowMcpServers,
     /// What takes room in a program: groups, symbols, sections.
@@ -325,7 +324,6 @@ impl Command {
         use crate::packs::*;
         Some(match self {
             Command::ShowMemory | Command::ShowDisassembly => SYSTEMS,
-            Command::ShowAndroid => MOBILE,
             Command::PreviewShader => GRAPHICS,
             Command::ShowFunctionFlow
             | Command::SessionStatistics
@@ -451,7 +449,6 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::ReviewSnapshots, "Testing: Review Snapshots"),
     (Command::NewTerminal, "Terminal: Create New Terminal"),
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
-    (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
     (Command::PreviewShader, "Preview: Shader"),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
@@ -750,7 +747,6 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::RestartLanguageServer, "rust-analyzer.restartServer"),
     (Command::NewTerminal, "workbench.action.terminal.new"),
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
-    (Command::ShowAndroid, "coiman.android.show"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
     (Command::PreviewShader, "coiman.preview.shader"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),

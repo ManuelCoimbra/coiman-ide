@@ -74,8 +74,8 @@ pub const PACKS: [Pack; 10] = [
         id: MOBILE,
         name: "Mobile",
         description: "Android devices over adb.",
-        features: &["Android: devices, apps, logcat, screenshots, a shell"],
-        extensions: &[],
+        features: &["Android: devices, logcat, a shell, installing an APK"],
+        extensions: &["coiman.android"],
     },
     Pack {
         id: GRAPHICS,

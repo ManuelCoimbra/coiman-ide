@@ -33,9 +33,9 @@ wasmtime::component::bindgen!({
 pub use coiman::plugin::types::{
     Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind,
     FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult,
-    JobSpec, LogView, MenuItem, Parity, Pick, PickAction, PickChoice, PickItem, PickQuery, PlotSeries, Problem,
-    RemoteAttach, Row, SerialClosed, SerialData, SerialOpened, SerialPort, SerialSettings, ServerResponse, Severity,
-    Span, Table, TerminalLine, TreeItem,
+    JobSpec, LogLine, LogView, MenuItem, Parity, Pick, PickAction, PickChoice, PickItem, PickQuery, PlotSeries,
+    Problem, RemoteAttach, Row, SerialClosed, SerialData, SerialOpened, SerialPort, SerialSettings, ServerResponse,
+    Severity, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.

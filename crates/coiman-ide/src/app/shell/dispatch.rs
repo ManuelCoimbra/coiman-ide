@@ -163,7 +163,6 @@ impl CodeApp {
                 let names = self.terminal.profiles.iter().map(|p| p.name.clone()).collect();
                 self.palette.show_picker(PickerKind::TerminalProfile, names, "", "Select a terminal profile");
             }
-            Command::ShowAndroid => self.show_android(ctx),
             Command::ShowMcpServers => self.show_mcp(),
             Command::PreviewShader => self.show_shader_preview(ctx),
             Command::KillTerminal => self.terminal.kill_active(),

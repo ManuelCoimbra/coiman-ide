@@ -669,7 +669,7 @@ Installing a pack also offers its extensions, one after the other (Class Diagram
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
-and systems, Terminal Commands
+and systems, Android with Mobile, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -755,8 +755,8 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   `serial-closed` says when a board went away. **`read-bytes`** reads part of a file that
   isn't text (8 MB at a time) and **`file-size`** gives its size; `read-dir` gives each
   entry's size and when it changed. **`log`** blocks hold many fixed-width lines (only those
-  in view are drawn, and they can follow the newest); **`plot`** blocks draw numbers over
-  time.
+  in view are drawn, and they can follow the newest), each with its color and a file of the
+  open folder it links to; **`plot`** blocks draw numbers over time.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -828,6 +828,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Serial Monitor** (`serial`): a board's serial port; see Serial monitor.
 - **Binary Size** (`workspace-read`; up to 512 MB of memory): what takes room in a program;
   see Binary size.
+- **Android** (`workspace-read`; program `adb`): devices, logcat, a shell and APK installs;
+  see Android below.
 - **Remote Debugging** (`workspace-read`, `workspace-write`; programs `ssh`, `scp`): gdb on a
   program under gdbserver on another machine; see Remote debugging under Debugging.
 - **Remote over SSH** (`workspace-read`, `terminal`; programs `ssh`, `tar`): a folder on
@@ -1271,13 +1273,15 @@ as far as they were approved at install, in trusted folders.
   `docker-compose.yml`: its services with status and ports, **up** (with `--build`) and
   **build** and **logs** in terminals, **down**. Without Docker, or with its engine stopped,
   the panel says which.
-- **Android: Devices and Logcat** asks `adb` (on PATH, in the Android SDK, or unpacked into
-  the config folder's `tools/platform-tools`). It lists the devices, saying what to do with one
-  that is unauthorized or offline. **Logcat** follows a device's log live, colored by level,
-  filtered by level, by text in the tag or message, and by app (`com.example.app`: its running
-  processes); **Pause** and **Clear**. A Java or Kotlin stack frame naming a file of the open
-  project is a link to its line. **Shell** opens `adb shell` in a terminal, and **Install APK…**
-  runs `adb install -r` there. Closing the window or Coiman stops logcat.
+- **Android: Devices and Logcat** (the **Android** extension, in its panel) asks `adb` (on
+  PATH, in the Android SDK, or unpacked into the config folder's `tools/platform-tools`). It
+  lists the devices, saying what to do with one that is unauthorized or offline. **Logcat**
+  follows a device's log live, colored by level, filtered by level, by text in the tag or
+  message, and by app (`com.example.app`: its running processes); **Pause** and **Clear**; the
+  newest 10,000 matching lines are shown. A Java or Kotlin stack frame naming a file of the
+  open project is a link to its line. **Shell** opens `adb shell` in a terminal, and **Install
+  APK** runs `adb install -r` there, with an APK built in the project (`build/outputs/apk`) or
+  one typed. **Stop logcat**, or Coiman closing, stops it.
 - **Jupyter notebooks**: an `.ipynb` file opens as its cells. Markdown cells are drawn as
   the Markdown preview draws them (double-click to edit); code cells are edited in place and
   run in a Python kernel (`jupyter_client` and `ipykernel` in that Python): ▶ or Shift+Enter, or

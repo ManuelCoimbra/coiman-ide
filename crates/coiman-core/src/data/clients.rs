@@ -1,12 +1,17 @@
-//! Where database clients are when they aren't on `PATH`: under Program Files (PostgreSQL,
-//! MariaDB, MySQL, SQL Server's tools) or unpacked into the config folder's `tools`. Extensions
-//! name a client by its program name; the plugin host finds it here after `PATH`.
+//! Where client programs are when they aren't on `PATH`: database clients under Program Files
+//! (PostgreSQL, MariaDB, MySQL, SQL Server's tools), `adb` in the Android SDK, or any of them
+//! unpacked into the config folder's `tools`. Extensions name a client by its program name;
+//! the plugin host finds it here after `PATH`.
 
 use std::path::PathBuf;
 
 /// A client program by name, off `PATH`: `psql`, `mariadb`, `mysql`, `sqlcmd`, `SqlLocalDB`,
-/// `redis-cli`, `mongosh`.
+/// `redis-cli`, `mongosh`, `adb`.
 pub fn find(name: &str) -> Option<PathBuf> {
+    if name == "adb" {
+        let exe = if cfg!(windows) { "adb.exe" } else { "adb" };
+        return android_sdk_places().into_iter().map(|d| d.join(exe)).find(|p| p.is_file());
+    }
     let exe = |n: &str| if cfg!(windows) { format!("{n}.exe") } else { n.to_owned() };
     let tools = || crate::settings::config_dir().map(|d| d.join("tools"));
     let file = |p: PathBuf| p.is_file().then_some(p);
@@ -85,6 +90,29 @@ fn sql_server_tool(name: &str) -> Option<PathBuf> {
     }
     found.sort();
     found.pop()
+}
+
+/// Where `adb` may be: the Android SDK's `platform-tools` (from `ANDROID_HOME`,
+/// `ANDROID_SDK_ROOT`, or where Android Studio puts it), or the config folder's
+/// `tools/platform-tools`.
+fn android_sdk_places() -> Vec<PathBuf> {
+    let mut places = Vec::new();
+    for var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
+        if let Some(sdk) = std::env::var_os(var) {
+            places.push(PathBuf::from(sdk).join("platform-tools"));
+        }
+    }
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        places.push(PathBuf::from(local).join("Android").join("Sdk").join("platform-tools"));
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        places.push(PathBuf::from(&home).join("Android").join("Sdk").join("platform-tools"));
+        places.push(PathBuf::from(home).join("Library").join("Android").join("sdk").join("platform-tools"));
+    }
+    if let Some(config) = crate::settings::config_dir() {
+        places.push(config.join("tools").join("platform-tools"));
+    }
+    places
 }
 
 #[cfg(test)]

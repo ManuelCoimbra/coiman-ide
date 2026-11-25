@@ -16,7 +16,7 @@ $dirs = 'plugins\built-in\comment-highlights', 'plugins\built-in\trailing-spaces
     'plugins\extensions\http-client', 'plugins\extensions\openapi',
     'plugins\extensions\docker', 'plugins\extensions\github-actions', 'plugins\extensions\remote',
     'plugins\extensions\remote-debug', 'plugins\extensions\sql', 'plugins\extensions\redis',
-    'plugins\extensions\mongodb', 'plugins\extensions\serial-monitor', 'plugins\extensions\binary-size',
+    'plugins\extensions\mongodb', 'plugins\extensions\serial-monitor', 'plugins\extensions\binary-size', 'plugins\extensions\android',
     'plugins\examples\word-count', 'plugins\examples\tool-runner',
     'crates\coiman-core\tests\fixtures\test-plugin'
 foreach ($dir in $dirs) {

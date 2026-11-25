@@ -146,7 +146,6 @@ pub struct CodeApp {
     /// Remote: Open SSH Folder's form and its downloads and uploads.
     /// Docker: Show Containers and Images.
     /// Android: Devices and Logcat.
-    android: project::android_ui::AndroidView,
     /// A Jupyter notebook open as its cells.
     notebook: views::notebook_ui::NotebookView,
     /// Agents: MCP Servers.
@@ -358,7 +357,6 @@ impl CodeApp {
             run_history: Default::default(),
             snapshots: Default::default(),
             activity: Default::default(),
-            android: Default::default(),
             notebook: Default::default(),
             mcp: Default::default(),
             shader: Default::default(),
@@ -1021,7 +1019,6 @@ impl CodeApp {
         self.run_history_window(&ctx);
         self.snapshots_window(&ctx);
         self.new_plugin_window(&ctx);
-        self.android_window(&ctx);
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);
         self.shader_preview_window(&ctx);

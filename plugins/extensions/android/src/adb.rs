@@ -1,8 +1,5 @@
-//! Android devices through `adb`: the devices attached, and logcat's lines read into their
-//! parts. Coiman talks to no device itself; `adb` does. adb is looked for on PATH, in the
-//! Android SDK, and in the config folder's `tools/platform-tools`.
-
-use std::path::PathBuf;
+//! What `adb` says, read: the devices attached, logcat's lines in their parts, process ids, and
+//! the Java and Kotlin stack frames in log lines with the project file each one means.
 
 /// A device `adb devices -l` lists.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -69,6 +66,16 @@ pub struct LogLine {
     pub level: char,
     pub tag: String,
     pub message: String,
+    /// The project file and line a stack frame in it means, when it's one.
+    pub place: Option<(String, u32)>,
+}
+
+impl LogLine {
+    /// As the panel shows it: the time without the date.
+    pub fn shown(&self) -> String {
+        let time = self.time.get(6..).unwrap_or(&self.time);
+        format!("{time} {:>5} {} {}: {}", self.pid, self.level, self.tag, self.message)
+    }
 }
 
 /// How severe a level is: V 0, D 1, I 2, W 3, E 4, F/A 5.
@@ -82,6 +89,10 @@ pub fn severity(level: char) -> u8 {
         _ => 5,
     }
 }
+
+/// The levels offered, by name.
+pub const LEVELS: [(char, &str); 5] =
+    [('V', "Verbose"), ('D', "Debug"), ('I', "Info"), ('W', "Warning"), ('E', "Error")];
 
 /// One `-v threadtime` line: `MM-DD HH:MM:SS.mmm  PID  TID L TAG: message`. Lines that
 /// aren't (`--------- beginning of main`) give None.
@@ -105,6 +116,7 @@ pub fn parse_line(line: &str) -> Option<LogLine> {
         level,
         tag: tag.trim().to_owned(),
         message: message.to_owned(),
+        place: None,
     })
 }
 
@@ -135,33 +147,54 @@ pub fn parse_pids(out: &str) -> Vec<u32> {
     out.split_whitespace().filter_map(|p| p.parse().ok()).collect()
 }
 
-/// Where adb may be, besides PATH.
-fn sdk_places() -> Vec<PathBuf> {
-    let mut places = Vec::new();
-    for var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
-        if let Some(sdk) = std::env::var_os(var) {
-            places.push(PathBuf::from(sdk).join("platform-tools"));
+/// A Java or Kotlin frame: `at com.example.app.Main.onCreate(Main.kt:42)`. Its file as a path
+/// under the package's folders (`com/example/app/Main.kt`), and the line.
+pub fn parse_frame(message: &str) -> Option<(String, u32)> {
+    let rest = message.trim_start().strip_prefix("at ")?;
+    let (symbol, place) = rest.split_once('(')?;
+    let (file, line) = place.split_once(')')?.0.rsplit_once(':')?;
+    let line: u32 = line.parse().ok()?;
+    if !(file.ends_with(".java") || file.ends_with(".kt")) || file.contains('/') {
+        return None;
+    }
+    // The class's package: the symbol up to its class (the part starting with a capital).
+    let mut folders: Vec<&str> = Vec::new();
+    for part in symbol.trim().split('.') {
+        if part.chars().next().is_some_and(char::is_uppercase) {
+            break;
         }
+        folders.push(part);
     }
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        places.push(PathBuf::from(local).join("Android").join("Sdk").join("platform-tools"));
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        places.push(PathBuf::from(&home).join("Android").join("Sdk").join("platform-tools"));
-        places.push(PathBuf::from(home).join("Library").join("Android").join("sdk").join("platform-tools"));
-    }
-    if let Some(config) = crate::settings::config_dir() {
-        places.push(config.join("tools").join("platform-tools"));
-    }
-    places
+    folders.push(file);
+    Some((folders.join("/"), line))
 }
 
-/// The adb program, if there is one.
-pub fn find_adb() -> Option<PathBuf> {
-    crate::language::lsp::servers::which("adb").or_else(|| {
-        let name = if cfg!(windows) { "adb.exe" } else { "adb" };
-        sdk_places().into_iter().map(|d| d.join(name)).find(|p| p.is_file())
-    })
+/// Which of the project's files (relative paths) a frame's path means: the one sharing the
+/// most folders from the end, at least the package's last folder.
+pub fn locate(wanted: &str, files: &[String]) -> Option<String> {
+    let wanted: Vec<&str> = wanted.split('/').collect();
+    let name = *wanted.last()?;
+    let mut best: Option<(usize, &String)> = None;
+    let mut same_name = 0;
+    for file in files {
+        let have: Vec<&str> = file.split(['/', '\\']).collect();
+        if have.last() != Some(&name) {
+            continue;
+        }
+        same_name += 1;
+        let shared = have.iter().rev().zip(wanted.iter().rev()).take_while(|(a, b)| a == b).count();
+        if best.is_none_or(|(most, _)| shared > most) {
+            best = Some((shared, file));
+        }
+    }
+    let (shared, file) = best?;
+    // A folder in common, or the frame named no folders to disagree with.
+    (shared >= 2 || wanted.len() == 1 && same_name == 1).then(|| file.clone())
+}
+
+/// Built APKs under a module's `build/outputs/apk` (paths relative to the open folder).
+pub fn is_apk(name: &str) -> bool {
+    name.to_ascii_lowercase().ends_with(".apk")
 }
 
 #[cfg(test)]
@@ -189,6 +222,7 @@ mod tests {
         let l = parse_line("11-20 16:30:01.123  1234  1250 E AndroidRuntime: FATAL EXCEPTION: main").unwrap();
         assert_eq!((l.pid, l.level, l.tag.as_str()), (1234, 'E', "AndroidRuntime"));
         assert_eq!(l.message, "FATAL EXCEPTION: main");
+        assert_eq!(l.shown(), "16:30:01.123  1234 E AndroidRuntime: FATAL EXCEPTION: main");
         let spaced = parse_line("11-20 16:30:01.200   900   900 I chatty  : uid=1000 expire 3 lines").unwrap();
         assert_eq!((spaced.tag.as_str(), spaced.message.as_str()), ("chatty", "uid=1000 expire 3 lines"));
         assert!(parse_line("--------- beginning of main").is_none());
@@ -199,5 +233,24 @@ mod tests {
         f.pids = vec![99];
         assert!(!f.keeps(&l));
         assert_eq!(parse_pids("1234 5678\n"), [1234, 5678]);
+    }
+
+    #[test]
+    fn frames_found_in_the_project() {
+        let frame = parse_frame("\tat com.example.app.MainActivity.onCreate(MainActivity.kt:42)").unwrap();
+        assert_eq!(frame, ("com/example/app/MainActivity.kt".to_owned(), 42));
+        let inner = parse_frame("at com.example.app.Main$Inner.run(Main.java:7)").unwrap();
+        assert_eq!(inner.0, "com/example/app/Main.java");
+        assert!(parse_frame("at android.os.Handler.dispatchMessage(Handler.java:106)").is_some());
+        assert!(parse_frame("at java.lang.Thread.run(Native Method)").is_none());
+        assert!(parse_frame("FATAL EXCEPTION: main").is_none());
+        let files = vec![
+            "app/src/main/java/com/example/app/MainActivity.kt".to_owned(),
+            "lib/src/main/java/com/other/MainActivity.kt".to_owned(),
+            "app/src/main/java/com/example/app/Main.java".to_owned(),
+        ];
+        assert_eq!(locate(&frame.0, &files).as_deref(), Some("app/src/main/java/com/example/app/MainActivity.kt"));
+        assert_eq!(locate(&inner.0, &files).as_deref(), Some("app/src/main/java/com/example/app/Main.java"));
+        assert_eq!(locate("android/os/Handler.java", &files), None);
     }
 }

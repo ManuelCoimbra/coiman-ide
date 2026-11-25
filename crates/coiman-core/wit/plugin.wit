@@ -148,9 +148,21 @@ interface types {
         menu: list<menu-item>,
     }
 
+    /// A line of a `log` block.
+    record log-line {
+        text: string,
+        /// 0xRRGGBB; none for the usual text color.
+        color: option<u32>,
+        /// A file of the open folder (relative) the line is about: a click opens it at `line`.
+        /// "" for none.
+        path: string,
+        /// 1-based.
+        line: u32,
+    }
+
     /// The lines of a `log` block.
     record log-view {
-        lines: list<string>,
+        lines: list<log-line>,
         /// Stays at the bottom as lines are added (until scrolled up).
         follow: bool,
     }
