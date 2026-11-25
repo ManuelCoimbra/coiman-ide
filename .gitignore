@@ -5,3 +5,5 @@
 /plugins/examples/*/plugin.wasm
 /docs/redesign
 /.bb
+*.rpm
+*.zip

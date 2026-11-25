@@ -222,10 +222,10 @@ fn local_path(dir: Option<&Path>, root: Option<&Path>, url: &str) -> Option<Path
         return None;
     }
     let path = PathBuf::from(&text);
-    let path = if path.is_absolute() {
-        path
-    } else if let Some(inside) = text.strip_prefix(['/', '\\']) {
+    let path = if let Some(inside) = text.strip_prefix(['/', '\\']) {
         root.or(dir)?.join(inside)
+    } else if PathBuf::from(&text).is_absolute() {
+        PathBuf::from(&text)
     } else {
         dir?.join(path)
     };

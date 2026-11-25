@@ -2,10 +2,11 @@
 //!
 //! Coiman doesn't implement an AI model of its own. This view runs the `opencode`
 //! command line in the open folder, asks it for its models, and shows its replies,
-//! thinking and tool calls in a transcript. The window opens on the left and can be
-//! collapsed like the Explorer.
+//! thinking and tool calls in a transcript. In a wide panel it becomes the
+//! reference Agents workspace: a 260px sessions rail beside the conversation.
+//! A narrow panel keeps the focused Chat view.
 
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
@@ -13,6 +14,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use coiman_core::language::highlight;
 use coiman_core::language::markdown::Inline;
+use coiman_core::project::trust;
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align, Align2, Color32, FontId, Rect, RichText, ScrollArea, Sense, TextEdit};
 use serde_json::Value;
@@ -61,7 +63,23 @@ struct SessionInfo {
 const NEW_SESSION: &str = "ses_coiman_";
 
 /// Manual for an older OpenCode: edits, commands and fetches need asking.
-const MANUAL_PERMISSIONS: &str = r#"{"permission":{"edit":"ask","bash":"ask","webfetch":"ask"}}"#;
+///
+/// `opencode run` has no interactive approval surface, so an older client turns these
+/// requests down rather than silently granting them. Newer clients handle this policy
+/// themselves; the UI explains that limitation before the user sends a task.
+const LEGACY_MANUAL_PERMISSIONS: &str = r#"{"permission":{"edit":"ask","bash":"ask","webfetch":"ask"}}"#;
+
+/// At this width the panel becomes the reference Agents workspace: a persistent
+/// sessions rail beside the conversation. Below it, the panel keeps the focused
+/// Chat view instead of squeezing two unusable columns in.
+///
+/// The reference mock-up's fixed chrome heights. Keeping these as constants
+/// makes the panel line up with the HTML at normal DPI instead of drifting by
+/// a few pixels every time a label changes.
+const CHAT_CONTEXT_HEIGHT: f32 = 31.0;
+const SESSIONS_TOP_HEIGHT: f32 = CHAT_CONTEXT_HEIGHT;
+const SESSIONS_HEADER_HEIGHT: f32 = 29.0;
+const COMPOSER_MIN_HEIGHT: f32 = 109.0;
 
 enum AgentMsg {
     Text(String),
@@ -76,13 +94,16 @@ enum AgentMsg {
 
 #[derive(Default)]
 pub(crate) struct AgentsUi {
-    open: bool,
+    pub(crate) open: bool,
     messages: Vec<Message>,
     input: String,
     session: String,
     /// The title of the current session, shown in the conversation bar.
     session_title: Option<String>,
     running: Option<Receiver<AgentMsg>>,
+    /// True between deciding to send and registering the child process. This
+    /// closes the same-frame double-send race.
+    sending: bool,
     child_pid: Option<u32>,
     running_models: Option<Receiver<AgentMsg>>,
     running_history: Option<Receiver<Vec<SessionInfo>>>,
@@ -106,9 +127,15 @@ pub(crate) struct AgentsUi {
     models: Vec<String>,
     models_loading: bool,
     models_loaded: bool,
+    /// The model list filtered for the currently open picker. Recomputed only
+    /// when the query changes, so opening the popup does not scan every model
+    /// on every frame.
+    model_results: Vec<String>,
+    model_results_query: String,
     history: Vec<SessionInfo>,
     history_open: bool,
     history_loading: bool,
+    history_loaded: bool,
     session_search_open: bool,
     session_search: String,
     model: Option<String>,
@@ -130,11 +157,15 @@ pub(crate) struct AgentsUi {
     last_changed_files: Vec<String>,
     /// Tool calls in the last turn, for the "ran" status line.
     last_turn_tools: usize,
-    working_set_open: bool,
     /// Ask the app to open this file in the editor.
     pub(crate) open_request: Option<PathBuf>,
     /// Ask the app to show this file's diff.
     pub(crate) diff_request: Option<PathBuf>,
+    /// How long the last turn took, for the mock-up's completion line.
+    last_turn_seconds: Option<u64>,
+    turn_started: Option<std::time::Instant>,
+    /// The last prompt sent, to swallow accidental double-submits.
+    last_sent: Option<(String, std::time::Instant)>,
     /// Ask the app to open Settings.
     pub(crate) requests_settings: bool,
     /// The MCP servers button was clicked.
@@ -245,7 +276,11 @@ impl AgentsUi {
         }
         self.prefs_loaded = true;
         self.mode = "build".to_owned();
-        self.permissions = "manual".to_owned();
+        // This surface drives `opencode run`, rather than OpenCode's interactive
+        // terminal. Tool requests cannot be answered here yet, so a new session
+        // should be useful out of the box instead of rejecting every edit or shell
+        // command that needs a decision.
+        self.permissions = "auto".to_owned();
         let Some(path) = Self::config_file() else { return };
         let Ok(text) = std::fs::read_to_string(path) else { return };
         let Ok(value) = serde_json::from_str::<Value>(&text) else { return };
@@ -344,6 +379,7 @@ impl AgentsUi {
         match rx.try_recv() {
             Ok(sessions) => {
                 self.history_loading = false;
+                self.history_loaded = true;
                 if self.continue_requested {
                     self.continue_requested = false;
                     if let Some(latest) = sessions.first().cloned() {
@@ -359,14 +395,21 @@ impl AgentsUi {
                 self.history = sessions;
             }
             Err(mpsc::TryRecvError::Empty) => self.running_history = Some(rx),
-            Err(mpsc::TryRecvError::Disconnected) => self.history_loading = false,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.history_loading = false;
+                self.history_loaded = true;
+            }
         }
     }
 
     /// Deletes a session with OpenCode, then refreshes the list.
     fn delete_session(&mut self, session: SessionInfo) {
-        let Some(program) = self.opencode() else { return };
         self.delete_pending = None;
+        if self.running.is_some() || self.session_loading {
+            self.status = Some("Stop the active task before deleting a session".to_owned());
+            return;
+        }
+        let Some(program) = self.opencode() else { return };
         self.deleting = true;
         self.deleting_id = Some(session.id.clone());
         let root = self.root.clone();
@@ -404,7 +447,8 @@ impl AgentsUi {
 
     /// Opens a past session: its transcript comes from `opencode session export`.
     fn open_session(&mut self, session: SessionInfo) {
-        if self.running_session.is_some() {
+        if self.running.is_some() || self.running_session.is_some() || self.session_loading {
+            self.status = Some("Stop the active task before switching sessions".to_owned());
             return;
         }
         let Some(program) = self.opencode() else { return };
@@ -416,9 +460,7 @@ impl AgentsUi {
         self.messages.clear();
         self.last_changed_files.clear();
         self.last_turn_tools = 0;
-        self.working_set_open = false;
-        // The column is a picker: it closes once a chat is open, so the
-        // conversation gets the panel's full width.
+        self.last_sent = None;
         self.history_open = false;
         self.status = Some(format!("Opening \"{}\"…", session.title));
         self.focus_input = true;
@@ -477,6 +519,8 @@ impl AgentsUi {
                     self.models = models;
                     self.models_loading = false;
                     self.models_loaded = true;
+                    self.model_results.clear();
+                    self.model_results_query.clear();
                 }
                 Ok(_) => {}
                 Err(mpsc::TryRecvError::Empty) => self.running_models = Some(rx),
@@ -532,13 +576,24 @@ impl AgentsUi {
                         self.messages.push(Message { role: Role::Agent, parts: vec![Part::Thinking(text)] });
                     }
                 }
-                Ok(AgentMsg::Tool(tool)) => {
+                Ok(AgentMsg::Tool(mut tool)) => {
                     if let Some(Message { role: Role::Agent, parts }) =
                         self.messages.last_mut().filter(|m| m.role == Role::Agent)
                     {
                         if let Some(Part::Tool(existing)) =
                             parts.iter_mut().find(|p| matches!(p, Part::Tool(t) if t.id == tool.id))
                         {
+                            // Completion events may omit the tool name and input that
+                            // the start event already supplied.
+                            if tool.name.is_empty() || tool.name == "tool" {
+                                tool.name = existing.name.clone();
+                            }
+                            if tool.title.is_empty() || tool.title == "tool" {
+                                tool.title = existing.title.clone();
+                            }
+                            if tool.input.is_empty() {
+                                tool.input = existing.input.clone();
+                            }
                             *existing = tool;
                         } else {
                             parts.push(Part::Tool(tool));
@@ -572,6 +627,7 @@ impl AgentsUi {
         if let Some(code) = ended {
             self.running = None;
             self.child_pid = None;
+            self.last_turn_seconds = self.turn_started.take().map(|started| started.elapsed().as_secs());
             self.last_changed_files = files_touched(&self.messages);
             self.last_turn_tools = tools_in_last_turn(&self.messages);
             // Keep the session list fresh: this run may have created a session.
@@ -595,84 +651,140 @@ impl AgentsUi {
         }
     }
 
+    /// The `opencode run` command for one prompt, and whether it reads that
+    /// prompt from stdin. Kept apart from sending so it can be checked without
+    /// starting a process or depending on workspace trust.
+    fn run_command(
+        &self,
+        program: &Path,
+        run_root: &Path,
+        session: &str,
+        text: &str,
+        attachments: &[String],
+    ) -> (Command, bool) {
+        let mut command = Self::opencode_command(program);
+        command.args(Self::with_standalone(program, &["run", "--thinking", "--format", "json"]));
+        // An older OpenCode won't take a session id it didn't make: a new chat starts without
+        // one, and the id arrives with the first event.
+        if Self::standalone(program) || !session.starts_with(NEW_SESSION) {
+            command.args(["--session", session]);
+        }
+        // OpenCode quotes a prompt given as one argument after `--`, and newer
+        // versions then store it twice. Its stdin is the plain prompt channel:
+        // the text arrives exactly as typed, including newlines.
+        let via_stdin = Self::standalone(program);
+        command
+            .stdin(if via_stdin { Stdio::piped() } else { Stdio::null() })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        // The permission level: Auto approves the agent's tool use. Older Manual clients
+        // have no interactive approval surface in this embedded view, so they reject asks.
+        if self.permissions != "manual" {
+            command.arg("--auto");
+        } else if !via_stdin && std::env::var_os("OPENCODE_CONFIG_CONTENT").is_none() {
+            // An older OpenCode edits and runs commands without asking unless its config
+            // says "ask"; with no one to ask in `run`, it then turns them down.
+            command.env("OPENCODE_CONFIG_CONTENT", LEGACY_MANUAL_PERMISSIONS);
+        }
+        // OpenCode keeps a session's first agent unless it is told otherwise.
+        // Send the current choice every time, so switching back to Agent really
+        // leaves Plan mode instead of staying there for the rest of the session.
+        let agent = if self.mode == "plan" { "plan" } else { "build" };
+        command.args(["--agent", agent]);
+        if let Some(model) = &self.model {
+            command.args(["--model", model]);
+        }
+        for attachment in attachments {
+            command.args(["--file", attachment]);
+        }
+        // The standalone server runs in this directory; the background service would
+        // keep whatever directory it was started in.
+        command.current_dir(run_root);
+        command.env("PWD", run_root);
+        if !via_stdin {
+            // Older OpenCode has no stdin prompt: its words are joined as-is.
+            command.args(text.split_whitespace());
+        }
+        (command, via_stdin)
+    }
+
     fn send(&mut self, ctx: &egui::Context, root: Option<&Path>) {
-        let mut text = self.input.trim().to_owned();
+        let text = self.input.trim().to_owned();
         if text.is_empty() || self.running.is_some() || self.session_loading {
+            return;
+        }
+        if let Some((last, at)) = &self.last_sent
+            && text == *last
+            && at.elapsed() < std::time::Duration::from_secs(2)
+        {
+            self.input.clear();
+            self.status = Some("Duplicate prompt ignored".to_owned());
             return;
         }
         if let Some(command) = text.strip_prefix('/') {
             self.slash(command);
             return;
         }
+        let Some(root) = root.filter(|root| trust::is_trusted(root)) else {
+            self.status = Some("The working folder is restricted. Trust it before starting an agent.".to_owned());
+            return;
+        };
+        // An existing OpenCode session belongs to the folder it was created in.
+        // Keep using that folder instead of clearing the session whenever the
+        // current workspace differs.
+        let run_root = if self.session.is_empty() { root } else { self.session_root.as_deref().unwrap_or(root) };
+        let run_root = run_root.to_path_buf();
+        if !trust::is_trusted(&run_root) {
+            self.status = Some("The session folder is restricted. Trust it before continuing.".to_owned());
+            return;
+        }
         let Some(program) = self.opencode() else {
             self.status = Some("OpenCode isn't installed: npm install -g opencode-ai".to_owned());
             return;
         };
-        if !self.attached.is_empty() {
-            // Attached context goes first, as @references the agent can look up.
-            text = self.with_attachments(&text);
-            self.attached.clear();
+        let rendered = self.with_attachments(&text);
+        let duplicate_last =
+            self.messages.last().is_some_and(|message| message.role == Role::User && message_text(message) == rendered);
+        if duplicate_last || self.sending {
+            self.input.clear();
+            self.status = Some("Duplicate prompt ignored".to_owned());
+            return;
         }
-        if self.session_root.as_deref() != root {
-            // A session belongs to the folder it was started in; continuing it from another
-            // folder would run the agent there.
-            self.session.clear();
-            self.messages.clear();
-            self.session_root = root.map(Path::to_path_buf);
-        }
+        self.sending = true;
+        let attachments = std::mem::take(&mut self.attached);
         if self.session.is_empty() {
+            self.session_root = Some(run_root.to_path_buf());
             self.session = Self::new_session();
             // OpenCode names the session itself; the title arrives with the
             // history refresh after the run.
             self.session_title = None;
         }
-        self.messages.push(Message { role: Role::User, parts: vec![Part::Text(text.clone())] });
+        self.messages.push(Message { role: Role::User, parts: vec![Part::Text(rendered)] });
+        self.last_sent = Some((text.clone(), std::time::Instant::now()));
         self.prompt_history.push(text.clone());
         self.history_index = None;
         self.input.clear();
-        self.status = Some(match root {
-            Some(root) => format!("Working in {}", root.display()),
-            None => "Working…".to_owned(),
-        });
+        self.status = Some(format!("Working in {}", run_root.display()));
+        self.turn_started = Some(std::time::Instant::now());
+        self.last_turn_seconds = None;
         self.load_models();
 
-        let mut command = Self::opencode_command(&program);
-        command.args(Self::with_standalone(&program, &["run", "--thinking", "--format", "json"]));
-        // An older OpenCode won't take a session id it didn't make: a new chat starts without
-        // one, and the id arrives with the first event.
-        if Self::standalone(&program) || !self.session.starts_with(NEW_SESSION) {
-            command.args(["--session", &self.session]);
-        }
-        command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        // The permission level: Auto approves the agent's tool use, Manual doesn't.
-        if self.permissions != "manual" {
-            command.arg("--auto");
-        } else if !Self::standalone(&program) && std::env::var_os("OPENCODE_CONFIG_CONTENT").is_none() {
-            // An older OpenCode edits and runs commands without asking unless its config
-            // says "ask"; with no one to ask in `run`, it then turns them down.
-            command.env("OPENCODE_CONFIG_CONTENT", MANUAL_PERMISSIONS);
-        }
-        if self.mode == "plan" {
-            // The plan agent discusses; it doesn't edit files.
-            command.args(["--agent", "plan"]);
-        }
-        if let Some(model) = &self.model {
-            command.args(["--model", model]);
-        }
-        if let Some(root) = root {
-            // The standalone server runs in this directory; the background service would
-            // keep whatever directory it was started in.
-            command.current_dir(root);
-            command.env("PWD", root);
-        }
-        command.arg("--").arg(&text);
+        let (mut command, via_stdin) = self.run_command(&program, &run_root, &self.session, &text, &attachments);
         let mut child = match command.spawn() {
             Ok(child) => child,
             Err(e) => {
+                self.sending = false;
+                self.messages.pop();
+                self.attached = attachments;
+                self.last_sent = None;
+                self.input = text;
                 self.status = Some(format!("Couldn't start OpenCode: {e}"));
                 return;
             }
         };
+        if via_stdin && let Some(mut stdin) = child.stdin.take() {
+            let _ = stdin.write_all(text.as_bytes());
+        }
         self.child_pid = Some(child.id());
         let (tx, rx) = mpsc::channel();
         let wake = ctx.clone();
@@ -708,6 +820,17 @@ impl AgentsUi {
             wake.request_repaint();
         });
         self.running = Some(rx);
+        self.sending = false;
+    }
+
+    /// Stops the current turn and sends the composed message immediately. This is the
+    /// embedded equivalent of VS Code's "Stop and Send" action.
+    fn send_now(&mut self, ctx: &egui::Context, root: Option<&Path>) {
+        if self.running.is_some() {
+            self.stop();
+        }
+        self.last_sent = None;
+        self.send(ctx, root);
     }
 
     fn stop(&mut self) {
@@ -718,6 +841,7 @@ impl AgentsUi {
             let _ = Command::new("kill").arg(pid.to_string()).status();
         }
         self.running = None;
+        self.last_turn_seconds = self.turn_started.take().map(|started| started.elapsed().as_secs());
         // A stopped run drops its queue: those messages must not fire after
         // some later run.
         self.queue.clear();
@@ -731,21 +855,36 @@ impl AgentsUi {
         self.last_turn_tools = tools_in_last_turn(&self.messages);
     }
 
+    /// Starts a fresh chat without letting an in-flight OpenCode process write into it.
+    fn new_chat(&mut self) -> bool {
+        if self.running.is_some() || self.session_loading {
+            self.status = Some("Stop the active task before starting a new session".to_owned());
+            return false;
+        }
+        self.messages.clear();
+        self.session.clear();
+        self.session_title = None;
+        self.session_root = None;
+        self.queue.clear();
+        self.attached.clear();
+        self.last_changed_files.clear();
+        self.last_turn_tools = 0;
+        self.input.clear();
+        self.history_index = None;
+        self.status = Some("New session".to_owned());
+        self.history_open = false;
+        self.turn_started = None;
+        self.last_turn_seconds = None;
+        self.last_sent = None;
+        self.sending = false;
+        self.focus_input = true;
+        true
+    }
+
     fn slash(&mut self, command: &str) {
         match command.trim() {
             "clear" | "new" => {
-                self.messages.clear();
-                self.session.clear();
-                self.session_title = None;
-                self.session_root = None;
-                self.queue.clear();
-                self.attached.clear();
-                self.last_changed_files.clear();
-                self.last_turn_tools = 0;
-                self.working_set_open = false;
-                self.input.clear();
-                self.history_index = None;
-                self.status = Some("New session".to_owned());
+                self.new_chat();
             }
             "model" => {
                 self.input.clear();
@@ -778,18 +917,19 @@ impl AgentsUi {
         let running = self.running.is_some();
         let jump = std::mem::take(&mut self.jump_to_bottom);
 
-        // The chat column, or the sessions list filling the window like Copilot Chat.
+        // Sessions are a full-screen picker. Selecting one returns to Chat;
+        // this keeps the transcript from being squeezed into a narrow column.
         let total = ui.available_width().max(320.0);
         let height = ui.available_height();
-        // Read once: the Lines button flips `history_open` while the chat column
-        // draws, so a live read here would disagree with the widths below.
-        let sessions_open = self.history_open;
-        // The sessions list fills the window; the chat returns when one is open.
+        if !self.history_loaded && !self.history_loading {
+            self.load_history();
+        }
+
         ui.allocate_ui_with_layout(egui::vec2(total, height), egui::Layout::top_down(Align::Min), |ui| {
-            if sessions_open {
-                self.sessions_column(ui, pal);
+            if self.history_open {
+                self.sessions_column(ui, pal, total);
             } else {
-                self.chat_column(ui, pal, running, jump);
+                self.chat_column(ui, pal, running, jump, false);
             }
         });
         self.jump_pill(ui, pal);
@@ -803,101 +943,95 @@ impl AgentsUi {
         }
     }
 
-    /// The CHAT title bar, the conversation subbar, the transcript and the composer.
-    fn chat_column(&mut self, ui: &mut egui::Ui, pal: theme::Palette, running: bool, jump: bool) {
+    /// The compact 31px context bar, transcript, and composer. The reference's
+    /// Chat/Antigravity/Markdown Preview tabs are intentionally omitted.
+    fn chat_column(
+        &mut self,
+        ui: &mut egui::Ui,
+        pal: theme::Palette,
+        running: bool,
+        jump: bool,
+        sessions_visible: bool,
+    ) {
         let width = ui.available_width();
-        // Title bar: CHAT with a small underline, and the icon toolbar on the right.
         let left = ui.cursor().left();
-        ui.allocate_ui_with_layout(egui::vec2(width, 36.0), egui::Layout::left_to_right(Align::Center), |ui| {
-            // The label gives way to the toolbar when the column is narrow.
-            if width >= 230.0 {
-                ui.label(RichText::new("Chat").size(12.0).strong().color(pal.text));
-            }
-            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Close, "Close the Agents window").clicked() {
-                    self.open = false;
-                }
-                let more = crate::ui::icons::button(ui, crate::ui::icons::Icon::Menu, "More actions");
-                egui::Popup::menu(&more).show(|ui| {
-                    if ui.button("Copy conversation").clicked() {
-                        ui.ctx().copy_text(transcript_markdown(&self.messages));
-                        self.status = Some("Conversation copied".to_owned());
-                        ui.close();
-                    }
-                    if ui.button("Continue last session").clicked() {
-                        self.continue_session();
-                        ui.close();
-                    }
-                    if ui.button("New chat").clicked() {
-                        self.slash("clear");
-                        ui.close();
-                    }
-                });
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Extensions, "MCP servers: the agent's tools")
-                    .clicked()
-                {
-                    self.requests_mcp = true;
-                }
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Gear, "Chat settings").clicked() {
-                    self.requests_settings = true;
-                }
-                let sessions = crate::ui::icons::button(
-                    ui,
-                    crate::ui::icons::Icon::Lines,
-                    if self.history_open { "Hide sessions" } else { "Show sessions" },
-                );
-                if sessions.clicked() {
-                    self.history_open = !self.history_open;
-                    if self.history_open {
-                        self.load_history();
-                    }
-                }
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Plus, "New chat").clicked() {
-                    self.slash("clear");
-                }
-                let (icon, tip) = if self.maximized {
-                    (crate::ui::icons::Icon::Restore, "Restore the Agents window")
-                } else {
-                    (crate::ui::icons::Icon::Maximize, "Fill the window with the Agents panel")
-                };
-                if crate::ui::icons::button(ui, icon, tip).clicked() {
-                    self.maximized = !self.maximized;
-                }
-            });
-        });
-        let bottom = ui.cursor().top();
-        ui.painter().line_segment(
-            [egui::pos2(left, bottom - 1.0), egui::pos2(left + width, bottom - 1.0)],
-            egui::Stroke::new(1.0, pal.border),
-        );
-        // The small underline under CHAT, like the mockup's ::after.
-        ui.painter().rect_filled(
-            egui::Rect::from_min_size(egui::pos2(left + 17.0, bottom - 1.0), egui::vec2(28.0, 1.0)),
-            0.0,
-            pal.text,
-        );
+        let canvas = ui.max_rect();
+        ui.painter().rect_filled(canvas, 0.0, pal.sidebar_bg);
 
-        // Subbar: back to the sessions, the conversation title, copy.
-        let left = ui.cursor().left();
-        ui.allocate_ui_with_layout(egui::vec2(width, 36.0), egui::Layout::left_to_right(Align::Center), |ui| {
-            if crate::ui::icons::button(ui, crate::ui::icons::Icon::ArrowLeft, "Back to sessions").clicked() {
-                self.history_open = !self.history_open;
-                if self.history_open {
+        let context_top = ui.cursor().top();
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(egui::pos2(left, context_top), egui::vec2(width, CHAT_CONTEXT_HEIGHT)),
+            0.0,
+            pal.sidebar_bg,
+        );
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, CHAT_CONTEXT_HEIGHT),
+            egui::Layout::left_to_right(Align::Center),
+            |ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                if bar_icon_button(ui, crate::ui::icons::Icon::ArrowLeft, "Back to sessions", pal).clicked()
+                    && !sessions_visible
+                {
+                    self.history_open = true;
                     self.load_history();
                 }
-            }
-            let title = self.session_title.clone().unwrap_or_else(|| "New conversation".to_owned());
-            ui.add(
-                egui::Label::new(RichText::new(title.to_uppercase()).size(11.0).color(pal.text_dim))
-                    .wrap_mode(egui::TextWrapMode::Truncate),
-            );
-            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Copy, "Copy conversation").clicked() {
-                    ui.ctx().copy_text(transcript_markdown(&self.messages));
-                    self.status = Some("Conversation copied".to_owned());
-                }
-            });
-        });
+                let title = self.session_title.clone().unwrap_or_else(|| "New Session".to_owned());
+                let prefix = "OpenCode · ";
+                ui.add(
+                    egui::Label::new(RichText::new(prefix).size(11.0).color(pal.text_dim))
+                        .wrap_mode(egui::TextWrapMode::Truncate),
+                );
+                ui.add(
+                    egui::Label::new(RichText::new(title).size(11.0).strong().color(pal.text))
+                        .wrap_mode(egui::TextWrapMode::Truncate),
+                );
+
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    if bar_icon_button(ui, crate::ui::icons::Icon::Close, "Close panel", pal).clicked() {
+                        self.open = false;
+                    }
+                    let (icon, tip) = if self.maximized {
+                        (crate::ui::icons::Icon::Restore, "Restore size")
+                    } else {
+                        (crate::ui::icons::Icon::Maximize, "Maximize panel")
+                    };
+                    if bar_icon_button(ui, icon, tip, pal).clicked() {
+                        self.maximized = !self.maximized;
+                    }
+                    let more = bar_icon_button(ui, crate::ui::icons::Icon::Menu, "More actions", pal);
+                    egui::Popup::menu(&more).show(|ui| {
+                        if ui.button("New session").clicked() {
+                            self.new_chat();
+                            ui.close();
+                        }
+                        if ui.button("Continue last session").clicked() {
+                            self.continue_session();
+                            ui.close();
+                        }
+                        if ui.button("Copy conversation").clicked() {
+                            ui.ctx().copy_text(transcript_markdown(&self.messages));
+                            self.status = Some("Conversation copied".to_owned());
+                            ui.close();
+                        }
+                        if ui.button("MCP servers").clicked() {
+                            self.requests_mcp = true;
+                            ui.close();
+                        }
+                        if ui.button("Chat settings").clicked() {
+                            self.requests_settings = true;
+                            ui.close();
+                        }
+                    });
+                    if bar_icon_button(ui, crate::ui::icons::Icon::Plus, "New session", pal).clicked() {
+                        self.new_chat();
+                    }
+                    if bar_icon_button(ui, crate::ui::icons::Icon::Copy, "Copy conversation", pal).clicked() {
+                        ui.ctx().copy_text(transcript_markdown(&self.messages));
+                        self.status = Some("Conversation copied".to_owned());
+                    }
+                });
+            },
+        );
         let bottom = ui.cursor().top();
         ui.painter().line_segment(
             [egui::pos2(left, bottom - 1.0), egui::pos2(left + width, bottom - 1.0)],
@@ -931,8 +1065,9 @@ impl AgentsUi {
         // invisible, and it keeps the two from fighting over the remaining space.
         let width = ui.available_width();
         let avail = ui.available_height();
-        let composer_h = self.composer_height.clamp(60.0, (avail - 80.0).max(60.0));
-        let rest = (avail - composer_h).max(60.0);
+        let spacing = ui.spacing().item_spacing.y;
+        let composer_h = self.composer_height.clamp(COMPOSER_MIN_HEIGHT, (avail - 100.0).max(COMPOSER_MIN_HEIGHT));
+        let rest = (avail - composer_h - spacing).max(60.0);
         ui.allocate_ui_with_layout(egui::vec2(width, rest), egui::Layout::top_down(Align::Min), |ui| {
             self.transcript(ui, pal, running, jump);
         });
@@ -947,340 +1082,332 @@ impl AgentsUi {
             .auto_shrink([false, false])
             .stick_to_bottom(true)
             .show(ui, |ui| {
-                // The chat's padding matches the ask box's, so both line up.
-                egui::Frame::new().inner_margin(egui::Margin::symmetric(6, 6)).show(ui, |ui| {
-                    // Pin the content 1px inside the available: the labels'
-                    // galleys are sub-pixel wider than the wrap width, and a
-                    // content min above the row would creep the panel wider.
-                    ui.set_width((ui.available_width() - 1.0).max(40.0));
-                    // The mockup pads the transcript 14/16/12.
-                    ui.add_space(2.0);
-                    if self.session_loading {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            ui.spinner();
-                            ui.label(RichText::new("Opening session…").small().color(pal.text_dim));
-                        });
-                        return;
-                    }
-                    if self.messages.is_empty() {
-                        ui.add_space(40.0);
-                        ui.vertical_centered(|ui| {
-                            let (rect, _) = ui.allocate_exact_size(egui::vec2(44.0, 44.0), Sense::hover());
-                            ui.painter().circle_filled(rect.center(), 22.0, pal.accent.gamma_multiply(0.15));
-                            crate::ui::icons::paint(
-                                ui.painter(),
-                                rect.shrink(10.0),
-                                crate::ui::icons::Icon::Agent,
-                                pal.accent,
-                            );
-                            ui.add_space(10.0);
-                            ui.label(RichText::new("What can I help you build?").strong());
-                            ui.label(
-                                RichText::new("Ask a question or describe a task for your project.")
-                                    .small()
-                                    .color(pal.text_dim),
-                            );
-                        });
-                        return;
-                    }
-                    let messages = self.messages.clone();
-                    for (index, message) in messages.iter().enumerate() {
-                        match message.role {
-                            Role::User => {
-                                // Every prompt is a bubble on the right, the first one too.
-                                // Hovering it offers copy, retry and edit.
-                                let root = self.root.clone();
-                                if let Some(action) = user_bubble(ui, message, pal, index) {
+                // The reference pads the transcript 10px / 13px / 12px.
+                egui::Frame::new().inner_margin(egui::Margin { left: 13, right: 13, top: 10, bottom: 12 }).show(
+                    ui,
+                    |ui| {
+                        ui.set_width((ui.available_width() - 1.0).max(40.0));
+                        if self.session_loading {
+                            ui.add_space(40.0);
+                            ui.vertical_centered(|ui| {
+                                ui.spinner();
+                                ui.label(RichText::new("Opening session…").small().color(pal.text_dim));
+                            });
+                            return;
+                        }
+                        if self.messages.is_empty() {
+                            ui.add_space(48.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(RichText::new("✧").size(23.0).color(pal.text_dim));
+                                ui.add_space(7.0);
+                                ui.label(
+                                    RichText::new("What can I help you with?").size(13.0).strong().color(pal.text),
+                                );
+                                ui.add_space(3.0);
+                                ui.label(
+                                    RichText::new("Ask a question or describe a task for your project.")
+                                        .size(11.0)
+                                        .color(pal.text_dim),
+                                );
+                            });
+                            return;
+                        }
+
+                        let messages = self.messages.clone();
+                        let mut last_user_text: Option<String> = None;
+                        for (index, message) in messages.iter().enumerate() {
+                            match message.role {
+                                Role::User => {
                                     let text = message_text(message);
-                                    match action {
-                                        UserAction::Retry => {
-                                            self.input = text;
-                                            self.send(ui.ctx(), root.as_deref());
-                                        }
-                                        UserAction::Edit => {
-                                            self.input = text;
-                                            self.focus_input = true;
+                                    if last_user_text.as_deref() == Some(text.as_str()) {
+                                        continue;
+                                    }
+                                    last_user_text = Some(text.clone());
+                                    let root = self.root.clone();
+                                    if let Some(action) = user_bubble(ui, message, pal, index) {
+                                        let text = message_text(message);
+                                        match action {
+                                            UserAction::Retry => {
+                                                self.input = text;
+                                                self.send(ui.ctx(), root.as_deref());
+                                            }
+                                            UserAction::Edit => {
+                                                self.input = text;
+                                                self.focus_input = true;
+                                            }
                                         }
                                     }
+                                    if Some(index) == last_user {
+                                        self.status_line(ui, pal, running);
+                                    }
                                 }
-                                if Some(index) == last_user {
-                                    self.status_line(ui, pal, running);
+                                Role::Agent => {
+                                    last_user_text = None;
+                                    agent_message(ui, message, pal, running, index)
                                 }
                             }
-                            Role::Agent => agent_message(ui, message, pal, running, index),
                         }
-                    }
-                    self.working_set_card(ui, pal);
-                    if jump {
-                        ui.scroll_to_rect(ui.min_rect(), Some(Align::BOTTOM));
-                    }
-                });
+                        if jump {
+                            ui.scroll_to_rect(ui.min_rect(), Some(Align::BOTTOM));
+                        }
+                    },
+                );
             });
         self.at_bottom = output.state.clamped_offset().y + output.inner_rect.height() >= output.content_size.y - 2.0;
     }
 
-    /// The mockup's status line: what the last turn did, under its prompt.
+    /// The reference's completion line: "Completed N steps in 1m 47s" plus
+    /// compact +added / -removed statistics.
     fn status_line(&mut self, ui: &mut egui::Ui, pal: theme::Palette, running: bool) {
-        ui.add_space(4.0);
+        ui.add_space(2.0);
         if running {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new("Working…").small().color(pal.text_dim));
+                ui.label(RichText::new("Working…").size(10.5).color(pal.text_dim));
             });
-            ui.add_space(10.0);
+            ui.add_space(8.0);
             return;
         }
+
         let tools = self.last_turn_tools;
         let changed = self.last_changed_files.len();
         let status = self.status.clone().filter(|text| !text.is_empty());
         if tools == 0 && changed == 0 && status.is_none() {
-            ui.add_space(6.0);
+            ui.add_space(4.0);
             return;
         }
-        ui.horizontal(|ui| {
-            if tools > 0 || changed > 0 {
-                ui.label(RichText::new("✓").small().color(Color32::from_rgb(0x89, 0xd1, 0x85)));
-                if tools > 0 {
-                    ui.label(RichText::new(format!("Ran {tools} tools")).small().color(pal.text_dim));
-                }
-                if changed > 0 {
-                    ui.label(
-                        RichText::new(format!("+{changed} files changed")).small().monospace().color(pal.text_dim),
-                    );
-                }
-            }
-            if let Some(status) = status {
-                ui.label(RichText::new(status).small().color(pal.text_dim));
-            }
-        });
-        ui.add_space(10.0);
-    }
 
-    /// The mockup's working-set card: the files the last turn edited.
-    fn working_set_card(&mut self, ui: &mut egui::Ui, pal: theme::Palette) {
-        if !self.working_set_open || self.last_changed_files.is_empty() {
-            return;
-        }
-        ui.add_space(6.0);
-        let files = self.last_changed_files.clone();
         egui::Frame::new()
-            .fill(pal.editor_bg)
+            .fill(pal.hover_bg)
             .stroke(egui::Stroke::new(1.0, pal.border))
-            .corner_radius(5.0)
-            .inner_margin(egui::Margin::ZERO)
+            .corner_radius(4.0)
+            .inner_margin(egui::Margin::symmetric(7, 4))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                // Head: chevron, "Files changed", count.
-                let (head, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 36.0), Sense::click());
-                let y = head.center().y;
-                let chevron = egui::Rect::from_min_size(egui::pos2(head.left() + 9.0, y - 5.0), egui::vec2(10.0, 10.0));
-                crate::ui::icons::paint(ui.painter(), chevron, crate::ui::icons::Icon::ChevronDown, pal.text_dim);
-                ui.painter().text(
-                    egui::pos2(head.left() + 26.0, y),
-                    Align2::LEFT_CENTER,
-                    "Files changed",
-                    FontId::proportional(11.0),
-                    pal.text,
-                );
-                ui.painter().text(
-                    egui::pos2(head.right() - 9.0, y),
-                    Align2::RIGHT_CENTER,
-                    format!("{} files", files.len()),
-                    FontId::proportional(11.0),
-                    pal.text_dim,
-                );
-                if resp.clicked() {
-                    self.working_set_open = false;
-                }
-                // Rows: open the file in the editor.
-                for path in &files {
-                    let (row, row_resp) =
-                        ui.allocate_exact_size(egui::vec2(ui.available_width(), 27.0), Sense::click());
-                    if ui.rect_contains_pointer(row) {
-                        ui.painter().rect_filled(row, 0.0, pal.hover_bg);
-                    }
-                    ui.painter().line_segment(
-                        [egui::pos2(row.left() + 10.0, row.top()), egui::pos2(row.right() - 10.0, row.top())],
-                        egui::Stroke::new(1.0, pal.border),
-                    );
-                    let name =
-                        Path::new(path).file_name().map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
-                    let icon = egui::Rect::from_min_size(
-                        egui::pos2(row.left() + 12.0, row.center().y - 6.5),
-                        egui::vec2(13.0, 13.0),
-                    );
-                    crate::ui::icons::paint_file(ui.painter(), icon, path);
-                    ui.painter().text(
-                        egui::pos2(row.left() + 32.0, row.center().y),
-                        Align2::LEFT_CENTER,
-                        fit_text(ui, &name, FontId::proportional(11.0), pal.text, row.width() - 44.0),
-                        FontId::proportional(11.0),
-                        pal.text,
-                    );
-                    if row_resp.clicked() {
-                        // Ctrl-click shows the file's diff; a plain click opens it.
-                        if row_resp.ctx.input(|i| i.modifiers.ctrl) {
-                            self.diff_request = Some(PathBuf::from(path));
-                        } else {
-                            self.open_request = Some(PathBuf::from(path));
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    if tools > 0 {
+                        crate::ui::icons::paint(
+                            ui.painter(),
+                            egui::Rect::from_min_size(
+                                egui::pos2(ui.cursor().left(), ui.cursor().top() + 5.0),
+                                egui::vec2(10.0, 10.0),
+                            ),
+                            crate::ui::icons::Icon::Check,
+                            pal.accent,
+                        );
+                        ui.add_space(13.0);
+                        let mut label = format!("Completed {tools} steps");
+                        if let Some(seconds) = self.last_turn_seconds {
+                            if seconds >= 60 {
+                                label.push_str(&format!(" in {}m {}s", seconds / 60, seconds % 60));
+                            } else {
+                                label.push_str(&format!(" in {seconds}s"));
+                            }
                         }
+                        ui.label(RichText::new(label).size(10.5).color(pal.text_dim));
                     }
-                    row_resp.on_hover_text(path.clone());
-                }
+                    if changed > 0 {
+                        ui.label(RichText::new(format!("+{changed}")).size(10.0).monospace().color(pal.modified));
+                    }
+                    if let Some(status) = status
+                        && tools == 0
+                        && changed == 0
+                    {
+                        ui.label(RichText::new(status).size(10.5).color(pal.text_dim));
+                    }
+                });
             });
+        ui.add_space(9.0);
     }
 
-    /// The floating "Jump to bottom" pill, shown while the transcript is scrolled up.
+    /// The reference's 23px circular scroll-to-latest button.
     fn jump_pill(&mut self, ui: &mut egui::Ui, pal: theme::Palette) {
         if !self.at_bottom
             && let Some(composer) = self.composer_rect
         {
-            let size = egui::vec2(122.0, 24.0);
+            let size = egui::vec2(23.0, 23.0);
             let pill = egui::Rect::from_min_size(
-                egui::pos2(composer.right() - size.x - 8.0, composer.top() - size.y - 4.0),
+                egui::pos2(composer.right() - size.x - 10.0, composer.top() - size.y - 8.0),
                 size,
             );
-            let resp = ui.interact(pill, egui::Id::unique("agents_jump_pill"), Sense::click());
-            ui.painter().rect_filled(pill, 12.0, if resp.hovered() { pal.hover_bg } else { pal.widget_bg });
-            ui.painter().rect_stroke(pill, 12.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
-            let icon =
-                egui::Rect::from_min_size(egui::pos2(pill.left() + 8.0, pill.center().y - 5.0), egui::vec2(10.0, 10.0));
-            crate::ui::icons::paint(ui.painter(), icon, crate::ui::icons::Icon::ArrowDown, pal.text_dim);
-            ui.painter().text(
-                egui::pos2(pill.left() + 24.0, pill.center().y),
-                Align2::LEFT_CENTER,
-                "Jump to bottom",
-                FontId::proportional(11.0),
-                pal.text,
+            let response = ui.interact(pill, egui::Id::unique("agents_jump_pill"), Sense::click());
+            ui.painter().circle_filled(
+                pill.center(),
+                size.x / 2.0,
+                if response.hovered() { pal.hover_bg } else { pal.widget_bg },
             );
-            if resp.clicked() {
+            ui.painter().circle_stroke(pill.center(), size.x / 2.0, egui::Stroke::new(1.0, pal.border));
+            crate::ui::icons::paint(
+                ui.painter(),
+                egui::Rect::from_min_size(egui::pos2(pill.left() + 6.5, pill.center().y - 5.0), egui::vec2(10.0, 10.0)),
+                crate::ui::icons::Icon::ArrowDown,
+                pal.text_dim,
+            );
+            if response.clicked() {
                 self.jump_to_bottom = true;
             }
         }
     }
 
-    /// The side-by-side ALL SESSIONS column.
-    fn sessions_column(&mut self, ui: &mut egui::Ui, pal: theme::Palette) {
-        let width = ui.available_width();
+    /// The 260px Sessions rail from the reference. It is a persistent part of the
+    /// wide Agents workspace, not a full-screen picker.
+    fn sessions_column(&mut self, ui: &mut egui::Ui, pal: theme::Palette, width: f32) {
+        let width = width.min(ui.available_width());
         let left = ui.cursor().left();
-        ui.allocate_ui_with_layout(egui::vec2(width, 36.0), egui::Layout::left_to_right(Align::Center), |ui| {
-            ui.add_space(13.0);
-            ui.label(RichText::new("All sessions").size(11.0).color(pal.text));
-            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Close, "Hide sessions").clicked() {
-                    self.history_open = false;
+        ui.painter().rect_filled(ui.max_rect(), 0.0, pal.sidebar_bg);
+        ui.allocate_ui_with_layout(
+            egui::vec2(width, ui.available_height()),
+            egui::Layout::top_down(Align::Min),
+            |ui| {
+                // Aligns with the context bar above the conversation.
+                ui.allocate_ui_with_layout(
+                    egui::vec2(width, SESSIONS_TOP_HEIGHT),
+                    egui::Layout::left_to_right(Align::Center),
+                    |_ui| {},
+                );
+                ui.painter().line_segment(
+                    [egui::pos2(left, ui.cursor().top() - 1.0), egui::pos2(left + width, ui.cursor().top() - 1.0)],
+                    egui::Stroke::new(1.0, pal.border),
+                );
+
+                ui.allocate_ui_with_layout(
+                    egui::vec2(width, SESSIONS_HEADER_HEIGHT),
+                    egui::Layout::left_to_right(Align::Center),
+                    |ui| {
+                        ui.add_space(12.0);
+                        if width > 180.0 {
+                            ui.label(RichText::new("Sessions").size(11.0).strong().color(pal.text));
+                        }
+                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                            if bar_icon_button(ui, crate::ui::icons::Icon::Lines, "Toggle Sessions pane", pal).clicked()
+                            {
+                                self.history_open = false;
+                            }
+                            if bar_icon_button(ui, crate::ui::icons::Icon::Search, "Search sessions", pal).clicked() {
+                                self.session_search_open = !self.session_search_open;
+                                if self.session_search_open {
+                                    self.focus_session_search = true;
+                                } else {
+                                    self.session_search.clear();
+                                }
+                            }
+                            if bar_icon_button(ui, crate::ui::icons::Icon::Refresh, "Refresh sessions", pal).clicked() {
+                                self.load_history();
+                            }
+                        });
+                    },
+                );
+
+                let new_session = ui.add_sized(
+                    [width - 14.0, 23.0],
+                    egui::Button::new(RichText::new("New Session").size(10.5).color(pal.text)),
+                );
+                if new_session.clicked() {
+                    self.new_chat();
                 }
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Search, "Search sessions").clicked() {
-                    self.session_search_open = !self.session_search_open;
-                    if !self.session_search_open {
-                        self.session_search.clear();
-                    } else {
-                        self.focus_session_search = true;
+                ui.add_space(9.0);
+
+                ui.horizontal(|ui| {
+                    ui.add_space(13.0);
+                    ui.label(RichText::new("Older").size(10.5).color(pal.text_dim));
+                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                        ui.label(
+                            RichText::new(self.matching_sessions().len().to_string()).size(10.5).color(pal.text_dim),
+                        );
+                    });
+                });
+                ui.add_space(3.0);
+
+                if self.session_search_open {
+                    let search = ui.add_sized(
+                        [width - 16.0, 0.0],
+                        TextEdit::singleline(&mut self.session_search)
+                            .id(egui::Id::unique("agents_sidebar_session_search"))
+                            .hint_text("Search sessions"),
+                    );
+                    if std::mem::take(&mut self.focus_session_search) {
+                        search.request_focus();
                     }
+                    ui.add_space(3.0);
                 }
-                if crate::ui::icons::button(ui, crate::ui::icons::Icon::Refresh, "Refresh sessions").clicked() {
-                    self.load_history();
-                }
-            });
-        });
-        let bottom = ui.cursor().top();
+
+                let sessions = self.matching_sessions();
+                let current = self.session.clone();
+                ScrollArea::vertical().id_salt("agents_sessions_rail").auto_shrink([false, false]).show(ui, |ui| {
+                    ui.set_width(ui.available_width());
+                    if self.history_loading {
+                        ui.horizontal(|ui| {
+                            ui.add_space(13.0);
+                            ui.spinner();
+                            ui.label(RichText::new("Loading sessions…").small().color(pal.text_dim));
+                        });
+                    } else if sessions.is_empty() {
+                        ui.add_space(12.0);
+                        ui.label(RichText::new("No sessions yet").small().color(pal.text_dim));
+                    }
+                    for session in &sessions {
+                        self.session_row(ui, session, pal, session.id == current);
+                    }
+                });
+            },
+        );
+        let top = ui.cursor().top();
         ui.painter().line_segment(
-            [egui::pos2(left, bottom - 1.0), egui::pos2(left + width, bottom - 1.0)],
+            [egui::pos2(left + width - 1.0, top), egui::pos2(left + width - 1.0, top + ui.available_height())],
             egui::Stroke::new(1.0, pal.border),
         );
-        if self.session_search_open {
-            let search = ui.add_sized(
-                [width - 16.0, 0.0],
-                TextEdit::singleline(&mut self.session_search)
-                    .id(egui::Id::unique("agents_session_search"))
-                    .hint_text("Search sessions"),
-            );
-            if std::mem::take(&mut self.focus_session_search) {
-                search.request_focus();
-            }
-        }
-        let sessions = self.matching_sessions();
-        let current = self.session.clone();
-        ScrollArea::vertical().id_salt("agents_sessions").auto_shrink([false, false]).show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            if self.history_loading {
-                ui.horizontal(|ui| {
-                    ui.spinner();
-                    ui.label(RichText::new("Loading sessions…").small().color(pal.text_dim));
-                });
-            } else if sessions.is_empty() {
-                ui.add_space(14.0);
-                ui.label(RichText::new("No sessions yet").small().color(pal.text_dim));
-            }
-            for session in &sessions {
-                self.session_row(ui, session, pal, session.id == current);
-            }
-        });
-        ui.add_space(12.0);
     }
 
-    /// One session row: name, relative time, delete on hover.
+    /// One session row from the reference: dot, title, relative time, and a
+    /// delete action that appears on hover.
     fn session_row(&mut self, ui: &mut egui::Ui, session: &SessionInfo, pal: theme::Palette, selected: bool) {
-        let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 59.0), Sense::click());
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 46.0), Sense::click());
         let hovered = ui.rect_contains_pointer(rect);
         let fill = if selected {
-            pal.accent.gamma_multiply(0.35)
+            pal.selection
         } else if hovered {
             pal.hover_bg
         } else {
             Color32::TRANSPARENT
         };
-        ui.painter().rect_filled(rect, 0.0, fill);
-        if selected {
-            ui.painter().rect_stroke(rect, 0.0, egui::Stroke::new(1.0, pal.accent), egui::StrokeKind::Inside);
-        }
-        // Name, with the mockup's bullet before it when selected.
-        let left = rect.left() + 13.0;
-        let name_x = left + f32::from(selected) * 12.0;
+        ui.painter().rect_filled(rect, 3.0, fill);
+
+        let dot = egui::pos2(rect.left() + 8.0, rect.top() + 14.0);
+        ui.painter().circle_filled(dot, 2.0, if selected { pal.accent } else { pal.text_dim });
+        let name_x = rect.left() + 17.0;
         ui.painter().text(
-            egui::pos2(name_x, rect.top() + 13.0),
+            egui::pos2(name_x, rect.top() + 8.0),
             Align2::LEFT_TOP,
-            fit_text(
-                ui,
-                &truncate(&session.title, 64),
-                FontId::proportional(12.0),
-                pal.text,
-                rect.width() - (name_x - rect.left()) - 12.0,
-            ),
-            FontId::proportional(12.0),
+            fit_text(ui, &truncate(&session.title, 64), FontId::proportional(11.0), pal.text, rect.width() - 40.0),
+            FontId::proportional(11.0),
             pal.text,
         );
-        if selected {
-            ui.painter().circle_filled(egui::pos2(left + 2.5, rect.top() + 16.0), 2.5, pal.text);
-        }
-        // Meta: relative time.
         ui.painter().text(
-            egui::pos2(name_x, rect.bottom() - 15.0),
+            egui::pos2(name_x, rect.bottom() - 12.0),
             Align2::LEFT_CENTER,
-            relative_time(session.updated),
-            FontId::proportional(10.0),
+            session_time_label(session.updated),
+            FontId::proportional(9.5),
             pal.text_dim,
         );
-        // Delete on hover.
-        let del_rect =
-            egui::Rect::from_min_size(egui::pos2(rect.right() - 26.0, rect.top() + 11.0), egui::vec2(20.0, 20.0));
+
+        let delete_rect =
+            egui::Rect::from_min_size(egui::pos2(rect.right() - 25.0, rect.top() + 9.0), egui::vec2(19.0, 19.0));
         if hovered {
-            crate::ui::icons::paint(ui.painter(), del_rect.shrink(3.0), crate::ui::icons::Icon::Close, pal.text_dim);
+            crate::ui::icons::paint(ui.painter(), delete_rect.shrink(3.0), crate::ui::icons::Icon::Close, pal.text_dim);
         }
         let deleting = self.deleting && self.deleting_id.as_deref() == Some(session.id.as_str());
         if deleting {
-            // The delete is running: a spinner where the × was.
-            ui.painter().circle_stroke(del_rect.center(), 5.0, egui::Stroke::new(1.5, pal.text_dim));
+            ui.painter().circle_stroke(delete_rect.center(), 4.5, egui::Stroke::new(1.2, pal.text_dim));
         }
-        let del = ui.interact(del_rect, egui::Id::unique("agents_delete_row").with(&session.id), Sense::click());
-        if del.clicked() && !deleting {
+        let delete = ui.interact(delete_rect, egui::Id::unique("agents_delete_row").with(&session.id), Sense::click());
+        if delete.clicked() && !deleting {
             self.delete_pending = Some(session.clone());
         }
-        if resp.clicked() && !del.hovered() {
+        if response.clicked() && !delete.hovered() {
             self.open_session(session.clone());
         }
-        resp.on_hover_text(format!("{}\n{}\n{}", session.title, session.id, time_label(session.updated)));
+        response.on_hover_text(format!("{}\n{}\n{}", session.title, session.id, time_label(session.updated)));
     }
 
     /// Confirmation before a session is deleted.
@@ -1338,37 +1465,12 @@ impl AgentsUi {
 
     fn composer(&mut self, ui: &mut egui::Ui, pal: theme::Palette, running: bool) -> Rect {
         let root = self.root.clone();
-        let mut composer_rect = Rect::ZERO;
         let outer =
-            egui::Frame::new().inner_margin(egui::Margin { left: 6, right: 6, top: 0, bottom: 6 }).show(ui, |ui| {
-                // The working-set toggle sits above the box, like the mockup.
-                if !self.last_changed_files.is_empty() {
-                    let (row, resp) =
-                        ui.allocate_exact_size(egui::vec2(ui.available_width() - 12.0, 18.0), Sense::click());
-                    let y = row.center().y;
-                    ui.painter().circle_filled(egui::pos2(row.left() + 3.0, y), 3.0, pal.accent);
-                    ui.painter().text(
-                        egui::pos2(row.left() + 14.0, y),
-                        Align2::LEFT_CENTER,
-                        "Editor working set",
-                        FontId::proportional(11.0),
-                        pal.text_dim,
-                    );
-                    ui.painter().text(
-                        egui::pos2(row.right(), y),
-                        Align2::RIGHT_CENTER,
-                        format!("{} files", self.last_changed_files.len()),
-                        FontId::proportional(11.0),
-                        pal.border,
-                    );
-                    if resp.clicked() {
-                        self.working_set_open = !self.working_set_open;
-                    }
-                    ui.add_space(2.0);
-                }
+            egui::Frame::new().inner_margin(egui::Margin { left: 10, right: 10, top: 0, bottom: 7 }).show(ui, |ui| {
                 // Messages typed while the agent runs, removable until they send.
                 if !self.queue.is_empty() {
-                    for text in self.queue.clone() {
+                    let queued = self.queue.clone();
+                    for (index, text) in queued.into_iter().enumerate() {
                         egui::Frame::new()
                             .fill(pal.hover_bg)
                             .corner_radius(4.0)
@@ -1377,25 +1479,26 @@ impl AgentsUi {
                                 ui.horizontal(|ui| {
                                     ui.label(
                                         RichText::new(format!("Queued · {}", truncate(&text, 28)))
-                                            .small()
+                                            .size(10.5)
                                             .color(pal.text_dim),
                                     );
-                                    if crate::ui::icons::button(ui, crate::ui::icons::Icon::Close, "Remove from queue")
+                                    if bar_icon_button(ui, crate::ui::icons::Icon::Close, "Remove from queue", pal)
                                         .clicked()
                                     {
-                                        self.queue.retain(|kept| *kept != text);
+                                        self.queue.remove(index);
                                     }
                                 });
                             });
                     }
                     ui.add_space(2.0);
                 }
-                // Attached context, each removable until it sends.
+
+                // Attached context sits above the ask box, as in the reference.
                 if !self.attached.is_empty() {
                     ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing = egui::vec2(5.0, 4.0);
+                        ui.spacing_mut().item_spacing = egui::vec2(5.0, 3.0);
                         for path in self.attached.clone() {
-                            let name = std::path::Path::new(&path)
+                            let name = Path::new(&path)
                                 .file_name()
                                 .map_or_else(|| path.clone(), |n| n.to_string_lossy().into_owned());
                             egui::Frame::new()
@@ -1404,11 +1507,21 @@ impl AgentsUi {
                                 .inner_margin(egui::Margin::symmetric(6, 2))
                                 .show(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new(format!("@{name}")).size(10.5).color(pal.text_dim));
-                                        if crate::ui::icons::button(
+                                        crate::ui::icons::paint_file(
+                                            ui.painter(),
+                                            egui::Rect::from_min_size(
+                                                egui::pos2(ui.cursor().left(), ui.cursor().top() + 2.0),
+                                                egui::vec2(10.0, 10.0),
+                                            ),
+                                            &path,
+                                        );
+                                        ui.add_space(13.0);
+                                        ui.label(RichText::new(truncate(&name, 28)).size(10.0).color(pal.text_dim));
+                                        if bar_icon_button(
                                             ui,
                                             crate::ui::icons::Icon::Close,
                                             "Remove attached context",
+                                            pal,
                                         )
                                         .clicked()
                                         {
@@ -1420,297 +1533,341 @@ impl AgentsUi {
                     });
                     ui.add_space(2.0);
                 }
-                // The ask box: a border that brightens while it has focus.
+
+                // The composer: the text area and the control row inside one
+                // 7px rounded box, padded evenly on all four sides.
                 let border = if self.input_focused { mix(pal.border, pal.text, 0.35) } else { pal.border };
-                let box_frame = egui::Frame::new()
+                egui::Frame::new()
                     .fill(pal.widget_bg)
                     .stroke(egui::Stroke::new(1.0, border))
-                    .corner_radius(6.0)
-                    .inner_margin(egui::Margin { left: 9, right: 9, top: 8, bottom: 7 });
-                let response = box_frame.show(ui, |ui| {
-                    // The box grows upward as you type, up to eight lines; past that the text
-                    // scrolls inside it, and the caret is followed so it stays visible.
-                    let row_h = ui.fonts_mut(|f| f.row_height(&egui::TextStyle::Body.resolve(ui.style())));
-                    ScrollArea::vertical()
-                        .id_salt("agents_input")
-                        .auto_shrink([false, true])
-                        .max_height(row_h * 8.0 + 10.0)
-                        .show(ui, |ui| {
-                            let avail = ui.available_width();
-                            // A stable id: the queue and working-set rows above come
-                            // and go, and their widget count must not shift this
-                            // field's identity — that would drop focus mid-typing.
-                            let output = TextEdit::multiline(&mut self.input)
-                                .id(egui::Id::unique("agents_prompt"))
-                                .desired_rows(1)
-                                .frame(egui::Frame::NONE)
-                                .hint_text("Ask opencode to run a task…")
-                                .desired_width(avail)
-                                .show(ui);
-                            let focus_requested = std::mem::take(&mut self.focus_input);
-                            let focused = output.response.response.has_focus();
-                            // Only when focus is actually requested: calling it every
-                            // frame would reset egui's focus-lock filter, and arrow
-                            // keys would then move focus away from the box.
-                            if focus_requested {
-                                output.response.response.request_focus();
-                            }
-                            self.input_focused = focused || focus_requested;
-                            if focused && let Some(cursor) = &output.cursor_range {
-                                let caret = output
-                                    .galley
-                                    .pos_from_cursor(cursor.primary)
-                                    .translate(output.galley_pos.to_vec2());
-                                ui.scroll_to_rect(caret, None);
-                            }
-                        });
-                    // The @ file reference: a popup over the box with the folder's entries.
-                    if let Some((start, token)) = at_token(&self.input).map(|(at, token)| (at, token.to_owned())) {
-                        let entries = at_entries(root.as_deref(), &token);
-                        if !entries.is_empty() {
-                            let anchor = egui::Rect::from_min_size(
-                                ui.cursor().left_top() + egui::vec2(0.0, 4.0),
-                                egui::vec2(1.0, 1.0),
-                            );
-                            let popup = egui::Popup::new(
-                                egui::Id::unique("agents_at_popup"),
-                                ui.ctx().clone(),
-                                anchor,
-                                egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("agents_at_popup")),
-                            );
-                            popup.show(|ui| {
-                                ui.set_width(220.0);
-                                for name in entries {
-                                    if ui.selectable_label(false, &name).clicked() {
-                                        let dir = token
-                                            .rsplit_once('/')
-                                            .map(|(dir, _)| format!("{dir}/"))
-                                            .unwrap_or_default();
-                                        self.input = format!("{}{}@{}{} ", &self.input[..start], "", dir, name);
-                                        ui.close();
-                                    }
-                                }
-                            });
+                    .corner_radius(7.0)
+                    .inner_margin(egui::Margin { left: 6, right: 6, top: 6, bottom: 6 })
+                    .show(ui, |ui| {
+                        ui.set_width(ui.available_width());
+                        ui.spacing_mut().item_spacing.y = 0.0;
+
+                        let output = egui::Frame::new()
+                            .inner_margin(egui::Margin::symmetric(6, 6))
+                            .show(ui, |ui| {
+                                ui.set_min_height(29.0);
+                                let avail = ui.available_width();
+                                TextEdit::multiline(&mut self.input)
+                                    .id(egui::Id::unique("agents_prompt"))
+                                    .desired_rows(1)
+                                    .frame(egui::Frame::NONE)
+                                    .hint_text("Chat with OpenCode")
+                                    .desired_width(avail)
+                                    .show(ui)
+                            })
+                            .inner;
+                        let focus_requested = std::mem::take(&mut self.focus_input);
+                        let focused = output.response.response.has_focus();
+                        if focus_requested {
+                            output.response.response.request_focus();
                         }
-                    }
-                    // An image pasted from the clipboard attaches as a file (arboard has no
-                    // Android clipboard).
-                    #[cfg(not(target_os = "android"))]
-                    if ui.input(|i| i.key_pressed(egui::Key::V) && i.modifiers.ctrl)
-                        && let Ok(mut clipboard) = arboard::Clipboard::new()
-                        && let Ok(image) = clipboard.get_image()
-                    {
-                        let nanos = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map_or(0, |d| d.as_nanos());
-                        let path =
-                            std::env::temp_dir().join(format!("coiman_paste_{}_{nanos}.png", std::process::id()));
-                        let png = image::RgbaImage::from_raw(
-                            image.width as u32,
-                            image.height as u32,
-                            image.bytes.into_owned(),
-                        );
-                        if let Some(png) = png
-                            && png.save(&path).is_ok()
-                        {
-                            self.attach(&path);
+                        self.input_focused = focused || focus_requested;
+                        if focused && let Some(cursor) = &output.cursor_range {
+                            let caret =
+                                output.galley.pos_from_cursor(cursor.primary).translate(output.galley_pos.to_vec2());
+                            ui.scroll_to_rect(caret, None);
                         }
-                    }
-                    // Enter sends, or queues while the agent runs. Only with the
-                    // box focused and no modifiers — Shift and Ctrl Enter are
-                    // newlines, and Enter elsewhere belongs to that widget.
-                    if self.input_focused && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.is_none()) {
-                        let text = self.input.trim().to_owned();
-                        self.input.clear();
-                        if !text.is_empty() {
-                            if running {
-                                self.queue.push(text);
-                                self.status = Some("Queued — it sends when the agent finishes".to_owned());
-                            } else {
-                                self.input = text;
-                                self.send(ui.ctx(), root.as_deref());
-                            }
-                        }
-                    }
-                    // The up arrow in an empty box cycles sent prompts.
-                    let up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp) && i.modifiers.is_none());
-                    let down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown) && i.modifiers.is_none());
-                    if self.input.is_empty() && self.input_focused {
-                        if up {
-                            self.cycle_history(-1);
-                        } else if down {
-                            self.cycle_history(1);
-                        }
-                    }
-                    // The flat chips row: opencode, agent mode, model, permissions, path, send.
-                    // It wraps on narrow panels so the composer's min width stays small.
-                    ui.add_space(4.0);
-                    ui.horizontal_wrapped(|ui| {
-                        ui.spacing_mut().item_spacing.x = 5.0;
-                        let open = chip(ui, pal, "opencode", true, Some(crate::ui::icons::Icon::Agent));
-                        egui::Popup::menu(&open).show(|ui| {
-                            if let Some(file) = self.active_file.clone() {
-                                let name = file
-                                    .file_name()
-                                    .map_or_else(|| file.display().to_string(), |n| n.to_string_lossy().into_owned());
-                                if ui.button(format!("Add context: {name}")).clicked() {
-                                    self.attach(&file);
-                                    ui.close();
-                                }
-                            }
-                            if let Some(root) = self.root.clone() {
-                                let folder = root
-                                    .file_name()
-                                    .map_or_else(|| root.display().to_string(), |n| n.to_string_lossy().into_owned());
-                                if ui.button(format!("Add context: {folder}")).clicked() {
-                                    self.attach(&root);
-                                    ui.close();
-                                }
-                            }
-                        });
-                        open.on_hover_text("Runs OpenCode on this computer; the menu adds context");
-                        chip_divider(ui, pal);
-                        let mode = if self.mode == "plan" { "Plan" } else { "Agent" };
-                        let mode_resp = chip(ui, pal, mode, true, Some(crate::ui::icons::Icon::Agent));
-                        egui::Popup::menu(&mode_resp).show(|ui| {
-                            if ui.selectable_label(self.mode != "plan", "Agent — edits files").clicked() {
-                                self.mode = "build".to_owned();
-                                self.save_prefs();
-                                ui.close();
-                            }
-                            if ui.selectable_label(self.mode == "plan", "Plan — discuss only").clicked() {
-                                self.mode = "plan".to_owned();
-                                self.save_prefs();
-                                ui.close();
-                            }
-                        });
-                        chip_divider(ui, pal);
-                        let model =
-                            self.model.as_deref().map(|name| truncate(name, 12)).unwrap_or_else(|| "Auto".to_owned());
-                        let model_resp = chip(ui, pal, &model, true, None);
-                        if model_resp.clicked() {
-                            self.focus_model_search = true;
-                            self.model_search.clear();
-                        }
-                        egui::Popup::menu(&model_resp).show(|ui| {
-                            let search = ui.add(
-                                TextEdit::singleline(&mut self.model_search)
-                                    .id(egui::Id::unique("agents_model_search"))
-                                    .hint_text("Search models"),
-                            );
-                            if std::mem::take(&mut self.focus_model_search) {
-                                search.request_focus();
-                            }
-                            if ui.selectable_label(self.model.is_none(), "Auto — let OpenCode choose").clicked() {
-                                self.model = None;
-                                self.save_prefs();
-                                ui.close();
-                            }
-                            if self.models_loading {
-                                ui.label(RichText::new("Loading models…").small().color(pal.text_dim));
-                            }
-                            // At most 8 rows; the rest is scrolled through.
-                            egui::ScrollArea::vertical()
-                                .id_salt("agents_model_list")
-                                .auto_shrink([false, false])
-                                .max_height(8.0 * 22.0)
-                                .show(ui, |ui| {
-                                    for name in self.matching_models() {
-                                        if ui
-                                            .selectable_label(
-                                                self.model.as_deref() == Some(name.as_str()),
-                                                name.clone(),
-                                            )
-                                            .clicked()
-                                        {
-                                            self.model = Some(name);
-                                            self.save_prefs();
+
+                        // The @ file reference popup.
+                        if let Some((start, token)) = at_token(&self.input).map(|(at, token)| (at, token.to_owned())) {
+                            let entries = at_entries(root.as_deref(), &token);
+                            if !entries.is_empty() {
+                                let anchor = egui::Rect::from_min_size(
+                                    ui.cursor().left_top() + egui::vec2(0.0, 4.0),
+                                    egui::vec2(1.0, 1.0),
+                                );
+                                let popup = egui::Popup::new(
+                                    egui::Id::unique("agents_at_popup"),
+                                    ui.ctx().clone(),
+                                    anchor,
+                                    egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("agents_at_popup")),
+                                );
+                                popup.show(|ui| {
+                                    ui.set_width(220.0);
+                                    for name in entries {
+                                        if ui.selectable_label(false, &name).clicked() {
+                                            let dir = token
+                                                .rsplit_once('/')
+                                                .map(|(dir, _)| format!("{dir}/"))
+                                                .unwrap_or_default();
+                                            self.input = format!("{}{}@{}{} ", &self.input[..start], "", dir, name);
                                             ui.close();
                                         }
                                     }
                                 });
+                            }
+                        }
+
+                        // Paste an image from the clipboard as a file.
+                        #[cfg(not(target_os = "android"))]
+                        if ui.input(|i| i.key_pressed(egui::Key::V) && i.modifiers.ctrl)
+                            && let Ok(mut clipboard) = arboard::Clipboard::new()
+                            && let Ok(image) = clipboard.get_image()
+                        {
+                            let nanos = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map_or(0, |d| d.as_nanos());
+                            let path =
+                                std::env::temp_dir().join(format!("coiman_paste_{}_{nanos}.png", std::process::id()));
+                            let png = image::RgbaImage::from_raw(
+                                image.width as u32,
+                                image.height as u32,
+                                image.bytes.into_owned(),
+                            );
+                            if let Some(png) = png
+                                && png.save(&path).is_ok()
+                            {
+                                self.attach(&path);
+                            }
+                        }
+
+                        // Enter sends, or queues while the agent runs.
+                        if self.input_focused && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.is_none())
+                        {
+                            let text = self.input.trim().to_owned();
+                            self.input.clear();
+                            if !text.is_empty() {
+                                if running {
+                                    self.queue.push(text);
+                                    self.status = Some("Queued — it sends when this turn finishes".to_owned());
+                                } else {
+                                    self.input = text;
+                                    self.send(ui.ctx(), root.as_deref());
+                                }
+                            }
+                        }
+                        let up = ui.input(|i| i.key_pressed(egui::Key::ArrowUp) && i.modifiers.is_none());
+                        let down = ui.input(|i| i.key_pressed(egui::Key::ArrowDown) && i.modifiers.is_none());
+                        if self.input.is_empty() && self.input_focused {
+                            if up {
+                                self.cycle_history(-1);
+                            } else if down {
+                                self.cycle_history(1);
+                            }
+                        }
+
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 2.0;
+                            let add_context = bar_icon_button(ui, crate::ui::icons::Icon::Plus, "Add context", pal);
+                            egui::Popup::menu(&add_context).show(|ui| {
+                                if let Some(file) = self.active_file.clone() {
+                                    let name = file.file_name().map_or_else(
+                                        || file.display().to_string(),
+                                        |n| n.to_string_lossy().into_owned(),
+                                    );
+                                    if ui.button(format!("Add context: {name}")).clicked() {
+                                        self.attach(&file);
+                                        ui.close();
+                                    }
+                                }
+                                if let Some(root) = self.root.clone() {
+                                    let folder = root.file_name().map_or_else(
+                                        || root.display().to_string(),
+                                        |n| n.to_string_lossy().into_owned(),
+                                    );
+                                    if ui.button(format!("Add context: {folder}")).clicked() {
+                                        self.attach(&root);
+                                        ui.close();
+                                    }
+                                }
+                            });
+
+                            let mode = if self.mode == "plan" { "Plan" } else { "Agent" };
+                            let mode_resp = chip(ui, pal, mode, true, Some(crate::ui::icons::Icon::Agent));
+                            egui::Popup::menu(&mode_resp).show(|ui| {
+                                if ui.selectable_label(self.mode != "plan", "Agent — edits files").clicked() {
+                                    self.mode = "build".to_owned();
+                                    self.save_prefs();
+                                    ui.close();
+                                }
+                                if ui.selectable_label(self.mode == "plan", "Plan — discuss only").clicked() {
+                                    self.mode = "plan".to_owned();
+                                    self.save_prefs();
+                                    ui.close();
+                                }
+                            });
+                            ui.add_space(4.0);
+
+                            let model = self
+                                .model
+                                .as_deref()
+                                .map(|name| truncate(&model_label(name), 50))
+                                .unwrap_or_else(|| "Auto".to_owned());
+                            let model_resp = chip(ui, pal, &model, true, None);
+                            if model_resp.clicked() {
+                                self.focus_model_search = true;
+                                self.model_search.clear();
+                            }
+                            egui::Popup::menu(&model_resp).show(|ui| {
+                                let search = ui.add(
+                                    TextEdit::singleline(&mut self.model_search)
+                                        .id(egui::Id::unique("agents_model_search"))
+                                        .hint_text("Search models"),
+                                );
+                                if std::mem::take(&mut self.focus_model_search) {
+                                    search.request_focus();
+                                }
+                                if ui.selectable_label(self.model.is_none(), "Auto — let OpenCode choose").clicked() {
+                                    self.model = None;
+                                    self.save_prefs();
+                                    ui.close();
+                                }
+                                if self.models_loading {
+                                    ui.label(RichText::new("Loading models…").small().color(pal.text_dim));
+                                }
+                                let query = self.model_search.clone();
+                                if self.model_results_query != query {
+                                    self.model_results = self
+                                        .models
+                                        .iter()
+                                        .filter(|name| loose_model_match(name, &query))
+                                        .take(80)
+                                        .cloned()
+                                        .collect();
+                                    self.model_results_query = query;
+                                }
+                                egui::ScrollArea::vertical()
+                                    .id_salt("agents_model_list")
+                                    .auto_shrink([false, false])
+                                    .max_height(8.0 * 22.0)
+                                    .show(ui, |ui| {
+                                        for name in &self.model_results {
+                                            if ui
+                                                .selectable_label(
+                                                    self.model.as_deref() == Some(name.as_str()),
+                                                    model_label(name),
+                                                )
+                                                .clicked()
+                                            {
+                                                self.model = Some(name.clone());
+                                                self.save_prefs();
+                                                ui.close();
+                                            }
+                                        }
+                                        if self.model_results.len() >= 80 {
+                                            ui.label(
+                                                RichText::new("Showing 80 matches — keep typing to narrow")
+                                                    .size(9.5)
+                                                    .color(pal.text_dim),
+                                            );
+                                        }
+                                    });
+                            });
+
+                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                let can_send = !self.input.trim().is_empty() && !self.session_loading;
+                                if running && can_send {
+                                    let (send_rect, send_resp) =
+                                        ui.allocate_exact_size(egui::vec2(24.0, 23.0), Sense::click());
+                                    if send_resp.hovered() {
+                                        ui.painter().rect_filled(send_rect, 4.0, pal.hover_bg);
+                                    }
+                                    crate::ui::icons::paint(
+                                        ui.painter(),
+                                        send_rect.shrink(5.0),
+                                        crate::ui::icons::Icon::Send,
+                                        pal.text,
+                                    );
+                                    if send_resp.clicked() {
+                                        self.send_now(ui.ctx(), root.as_deref());
+                                    }
+                                    send_resp.on_hover_text("Stop and send now (Enter queues)");
+                                }
+                                let (rect, resp) = ui.allocate_exact_size(egui::vec2(24.0, 23.0), Sense::click());
+                                if resp.hovered() {
+                                    ui.painter().rect_filled(rect, 4.0, pal.hover_bg);
+                                }
+                                if running {
+                                    crate::ui::icons::paint(
+                                        ui.painter(),
+                                        rect.shrink(7.0),
+                                        crate::ui::icons::Icon::Stop,
+                                        pal.text,
+                                    );
+                                    if resp.clicked() {
+                                        self.stop();
+                                    }
+                                    resp.on_hover_text("Stop");
+                                } else {
+                                    crate::ui::icons::paint(
+                                        ui.painter(),
+                                        rect.shrink(5.0),
+                                        crate::ui::icons::Icon::Send,
+                                        if can_send { pal.text } else { pal.text_dim },
+                                    );
+                                    if resp.clicked() && can_send {
+                                        self.send(ui.ctx(), root.as_deref());
+                                    }
+                                    resp.on_hover_text("Send (Enter)");
+                                }
+                            });
                         });
-                        chip_divider(ui, pal);
-                        let permissions = if self.permissions == "manual" { "Manual" } else { "Auto" };
-                        let permissions_resp = chip(ui, pal, permissions, true, None);
-                        egui::Popup::menu(&permissions_resp).show(|ui| {
-                            if ui.selectable_label(self.permissions != "manual", "Auto — approve tool use").clicked()
+                    });
+                // The 20px footer from the reference.
+                ui.allocate_ui_with_layout(
+                    egui::vec2(ui.available_width(), 20.0),
+                    egui::Layout::left_to_right(Align::Center),
+                    |ui| {
+                        ui.add_space(2.0);
+                        ui.label(
+                            RichText::new(if self.mode == "plan" { "Plan" } else { "Interactive" })
+                                .size(10.0)
+                                .color(pal.text_dim),
+                        );
+                        ui.label(RichText::new("•").size(10.0).color(pal.text_dim));
+                        let permissions = ui.add(
+                            egui::Label::new(
+                                RichText::new(if self.permissions == "manual" {
+                                    "Manual permissions"
+                                } else {
+                                    "Auto permissions"
+                                })
+                                .size(10.0)
+                                .color(pal.text_dim),
+                            )
+                            .sense(Sense::click()),
+                        );
+                        egui::Popup::menu(&permissions).show(|ui| {
+                            if ui.selectable_label(self.permissions != "manual", "Auto — approve tool calls").clicked()
                             {
                                 self.permissions = "auto".to_owned();
                                 self.save_prefs();
                                 ui.close();
                             }
-                            if ui.selectable_label(self.permissions == "manual", "Manual — ask first").clicked() {
+                            if ui
+                                .selectable_label(
+                                    self.permissions == "manual",
+                                    "Manual — approval-requiring calls are rejected by opencode run",
+                                )
+                                .clicked()
+                            {
                                 self.permissions = "manual".to_owned();
                                 self.save_prefs();
+                                self.status = Some(
+                                    "Manual mode: tool calls needing approval are rejected by opencode run".to_owned(),
+                                );
                                 ui.close();
                             }
                         });
-                        // The workspace path fills the middle, faint and truncated.
-                        // `available_width` reports the row's full width here, so the
-                        // remaining space comes from the cursor instead.
-                        let path = root
-                            .as_ref()
-                            .map(|root| root.display().to_string())
-                            .unwrap_or_else(|| "no folder open".to_owned());
-                        let row_right = ui.max_rect().right();
-                        // The path fills the middle but stays bounded: if it took
-                        // every remaining pixel, the composer's min width would
-                        // equal the panel's width, and opening the sessions column
-                        // would ratchet the panel wider and wider.
-                        let path_width = (row_right - ui.cursor().left() - 32.0).clamp(30.0, 120.0);
-                        let (path_rect, _) = ui.allocate_exact_size(egui::vec2(path_width, 20.0), Sense::hover());
-                        ui.put(
-                            path_rect,
-                            egui::Label::new(RichText::new(path).size(10.0).color(pal.text_dim))
-                                .wrap_mode(egui::TextWrapMode::Truncate),
-                        );
-                        // The flat send (or stop) button.
-                        let (rect, resp) = ui.allocate_exact_size(egui::vec2(26.0, 25.0), Sense::click());
-                        if resp.hovered() {
-                            ui.painter().rect_filled(rect, 4.0, pal.accent.gamma_multiply(0.35));
-                        }
-                        if running {
-                            ui.painter().rect_filled(
-                                rect.shrink(9.0),
-                                1.5,
-                                if resp.hovered() { pal.text } else { pal.text_dim },
+                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                            let path = root
+                                .as_ref()
+                                .map(|root| root.display().to_string())
+                                .unwrap_or_else(|| "no folder".to_owned());
+                            ui.add(
+                                egui::Label::new(RichText::new(truncate(&path, 42)).size(10.0).color(pal.text_dim))
+                                    .wrap_mode(egui::TextWrapMode::Truncate),
                             );
-                            if resp.clicked() {
-                                self.stop();
-                            }
-                            resp.on_hover_text("Stop");
-                        } else {
-                            let can_send = !self.input.trim().is_empty() && !self.session_loading;
-                            crate::ui::icons::paint(
-                                ui.painter(),
-                                rect.shrink(5.0),
-                                crate::ui::icons::Icon::Send,
-                                if can_send { pal.text } else { pal.text_dim },
-                            );
-                            if resp.clicked() && can_send {
-                                self.send(ui.ctx(), root.as_deref());
-                            }
-                            resp.on_hover_text("Send (Enter)");
-                        }
-                    });
-                });
-                composer_rect = response.response.rect;
-                // Slash commands, offered as quick buttons.
-                if self.input.starts_with('/') {
-                    let typed = self.input.clone();
-                    ui.add_space(2.0);
-                    ui.horizontal(|ui| {
-                        for (command, label) in [("/clear", "Clear chat"), ("/model", "Model"), ("/help", "Help")] {
-                            if command.starts_with(&typed) && ui.small_button(label).clicked() {
-                                self.slash(command);
-                            }
-                        }
-                    });
-                }
+                        });
+                    },
+                );
             });
         self.composer_height = outer.response.rect.height();
-        composer_rect
+        outer.response.rect
     }
 
     /// Adds a path to the attached context, once.
@@ -1729,12 +1886,12 @@ impl AgentsUi {
     }
 
     /// The models that match the popup's search text.
+    #[cfg(test)]
     fn matching_models(&self) -> Vec<String> {
-        let query = self.model_search.to_lowercase();
-        if query.is_empty() {
+        if self.model_search.trim().is_empty() {
             return self.models.clone();
         }
-        self.models.iter().filter(|name| name.to_lowercase().contains(&query)).cloned().collect()
+        self.models.iter().filter(|name| loose_model_match(name, &self.model_search)).take(80).cloned().collect()
     }
 
     /// The prompt with its attached context, as @references the agent can look up.
@@ -1761,55 +1918,154 @@ pub(crate) enum UserAction {
     Edit,
 }
 
-fn user_bubble(ui: &mut egui::Ui, message: &Message, pal: theme::Palette, index: usize) -> Option<UserAction> {
-    ui.add_space(14.0);
-    // The bubble sits on the right, rounded, no avatar, no border.
-    let action = ui
-        .with_layout(egui::Layout::right_to_left(Align::TOP), |ui| -> Option<UserAction> {
-            ui.add_space(22.0);
-            let bubble = egui::Frame::new()
-                .fill(pal.widget_bg)
-                .corner_radius(5.0)
-                .inner_margin(egui::Margin::symmetric(11, 9))
-                .show(ui, |ui| {
-                    ui.set_max_width((ui.available_width() * 0.82).max(120.0));
-                    for part in &message.parts {
-                        if let Part::Text(text) = part {
-                            markdown(ui, text, pal);
-                        }
-                    }
-                });
-            // Hover actions: copy, retry, edit.
-            if ui.rect_contains_pointer(bubble.response.rect) {
-                let rect = bubble.response.rect;
-                let size = 16.0;
-                let y = rect.top() + 2.0;
-                let mut x = rect.right() - size - 2.0;
-                let copy = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size, size));
-                let resp = ui.interact(copy, egui::Id::unique("agents_user_copy").with(index), Sense::click());
-                ui.painter().rect_filled(copy, 3.0, pal.editor_bg);
-                crate::ui::icons::paint(ui.painter(), copy.shrink(2.5), crate::ui::icons::Icon::Copy, pal.text_dim);
-                if resp.clicked() {
-                    ui.ctx().copy_text(message_text(message));
-                }
-                x -= size + 4.0;
-                let retry = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size, size));
-                let resp = ui.interact(retry, egui::Id::unique("agents_user_retry").with(index), Sense::click());
-                ui.painter().rect_filled(retry, 3.0, pal.editor_bg);
-                crate::ui::icons::paint(ui.painter(), retry.shrink(2.5), crate::ui::icons::Icon::Refresh, pal.text_dim);
-                if resp.clicked() {
-                    return Some(UserAction::Retry);
-                }
-                x -= size + 4.0;
-                let edit = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size, size));
-                let resp = ui.interact(edit, egui::Id::unique("agents_user_edit").with(index), Sense::click());
-                ui.painter().rect_filled(edit, 3.0, pal.editor_bg);
-                crate::ui::icons::paint(ui.painter(), edit.shrink(2.5), crate::ui::icons::Icon::Discard, pal.text_dim);
-                if resp.clicked() {
-                    return Some(UserAction::Edit);
-                }
+/// A model name without its provider, variant suffix, or punctuation.
+fn model_label(name: &str) -> String {
+    let base = name.split('#').next().unwrap_or(name);
+    let base = base.rsplit('/').next().unwrap_or(base);
+    let cleaned = base.replace(['-', '_'], " ");
+    cleaned
+        .split_whitespace()
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
             }
-            None
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn loose_model_match(name: &str, query: &str) -> bool {
+    let normalize = |text: &str| {
+        text.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { ' ' })
+            .collect::<String>()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let name = normalize(name);
+    let query = normalize(query);
+    if query.is_empty() {
+        return true;
+    }
+    let compact = |text: &str| text.chars().filter(|c| c.is_ascii_alphanumeric()).collect::<String>();
+    if compact(&name).contains(&compact(&query)) {
+        return true;
+    }
+    query.split_whitespace().all(|term| name.split_whitespace().any(|word| word == term))
+}
+
+fn split_refs(text: &str) -> (Vec<String>, String) {
+    let mut refs = Vec::new();
+    let mut body = String::new();
+    for line in text.lines() {
+        if body.is_empty() && line.trim_start().starts_with('@') {
+            for token in line.split_whitespace().filter(|token| token.starts_with('@')) {
+                refs.push(token.trim_start_matches('@').to_owned());
+            }
+        } else {
+            body.push_str(line);
+            body.push('\n');
+        }
+    }
+    (refs, body.trim().to_owned())
+}
+
+fn ref_tag(ui: &mut egui::Ui, name: &str, pal: theme::Palette) {
+    let label = Path::new(name).file_name().map_or_else(|| name.to_owned(), |file| file.to_string_lossy().into_owned());
+    egui::Frame::new()
+        .fill(pal.widget_bg)
+        .stroke(egui::Stroke::new(1.0, pal.border))
+        .corner_radius(4.0)
+        .inner_margin(egui::Margin::symmetric(7, 3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                crate::ui::icons::paint_file(
+                    ui.painter(),
+                    egui::Rect::from_min_size(
+                        egui::pos2(ui.cursor().left(), ui.cursor().top() + 2.0),
+                        egui::vec2(10.0, 10.0),
+                    ),
+                    name,
+                );
+                ui.add_space(13.0);
+                ui.label(RichText::new(label).size(10.0).color(pal.text_dim));
+            });
+        });
+}
+
+fn user_bubble(ui: &mut egui::Ui, message: &Message, pal: theme::Palette, index: usize) -> Option<UserAction> {
+    ui.add_space(if index == 0 { 2.0 } else { 18.0 });
+    let (refs, body) = split_refs(&message_text(message));
+
+    let action = ui
+        .vertical(|ui| {
+            ui.set_width(ui.available_width());
+            for name in &refs {
+                ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                    ref_tag(ui, name, pal);
+                });
+                ui.add_space(4.0);
+            }
+            if body.is_empty() {
+                return None;
+            }
+            ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| -> Option<UserAction> {
+                ui.set_max_width((ui.available_width() * 0.95).max(120.0));
+                let bubble = egui::Frame::new()
+                    .fill(pal.selection)
+                    .stroke(egui::Stroke::new(1.0, pal.border))
+                    .corner_radius(5.0)
+                    .inner_margin(egui::Margin::symmetric(10, 9))
+                    .show(ui, |ui| {
+                        ui.add(egui::Label::new(RichText::new(body).size(11.7).color(pal.text)).wrap());
+                    });
+
+                if ui.rect_contains_pointer(bubble.response.rect) {
+                    let rect = bubble.response.rect;
+                    let size = 16.0;
+                    let y = rect.top() + 2.0;
+                    let mut x = rect.right() - size - 2.0;
+                    let copy = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size, size));
+                    let resp = ui.interact(copy, egui::Id::unique("agents_user_copy").with(index), Sense::click());
+                    ui.painter().rect_filled(copy, 3.0, pal.editor_bg);
+                    crate::ui::icons::paint(ui.painter(), copy.shrink(2.5), crate::ui::icons::Icon::Copy, pal.text_dim);
+                    if resp.clicked() {
+                        ui.ctx().copy_text(message_text(message));
+                    }
+                    x -= size + 4.0;
+                    let retry = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size, size));
+                    let resp = ui.interact(retry, egui::Id::unique("agents_user_retry").with(index), Sense::click());
+                    ui.painter().rect_filled(retry, 3.0, pal.editor_bg);
+                    crate::ui::icons::paint(
+                        ui.painter(),
+                        retry.shrink(2.5),
+                        crate::ui::icons::Icon::Refresh,
+                        pal.text_dim,
+                    );
+                    if resp.clicked() {
+                        return Some(UserAction::Retry);
+                    }
+                    x -= size + 4.0;
+                    let edit = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(size, size));
+                    let resp = ui.interact(edit, egui::Id::unique("agents_user_edit").with(index), Sense::click());
+                    ui.painter().rect_filled(edit, 3.0, pal.editor_bg);
+                    crate::ui::icons::paint(
+                        ui.painter(),
+                        edit.shrink(2.5),
+                        crate::ui::icons::Icon::Discard,
+                        pal.text_dim,
+                    );
+                    if resp.clicked() {
+                        return Some(UserAction::Edit);
+                    }
+                }
+                None
+            })
+            .inner
         })
         .inner;
     ui.add_space(8.0);
@@ -1818,30 +2074,38 @@ fn user_bubble(ui: &mut egui::Ui, message: &Message, pal: theme::Palette, index:
 
 fn agent_message(ui: &mut egui::Ui, message: &Message, pal: theme::Palette, live: bool, index: usize) {
     ui.add_space(6.0);
-    // Replies are plain: no avatar, no name label.
     let top = ui.cursor().left_top();
     for (part_index, part) in message.parts.iter().enumerate() {
         match part {
             Part::Text(text) => {
                 if text.starts_with("Error:") {
-                    // A compact red line, like VS Code's error text: no bubble,
-                    // so a history chat with failed runs is not a wall of red.
                     ui.add_space(3.0);
-                    ui.label(RichText::new(truncate(text, 120)).small().color(Color32::from_rgb(0xF1, 0x4C, 0x4C)));
+                    ui.label(RichText::new(truncate(text, 160)).size(10.5).color(pal.modified));
                     ui.add_space(6.0);
                 } else {
                     markdown(ui, text, pal);
                 }
             }
             Part::Thinking(text) => {
-                // A unique salt: egui derives a CollapsingHeader's id from its
-                // text, and every thinking block is called "Thinking".
-                egui::CollapsingHeader::new(RichText::new("Thinking").small().strong().color(pal.text_dim))
-                    .id_salt(format!("agents_thinking_{index}_{part_index}"))
-                    .default_open(live)
+                ui.add_space(4.0);
+                egui::Frame::new()
+                    .fill(pal.hover_bg)
+                    .stroke(egui::Stroke::new(1.0, pal.border))
+                    .corner_radius(4.0)
+                    .inner_margin(egui::Margin::symmetric(8, 5))
                     .show(ui, |ui| {
-                        ui.add(egui::Label::new(RichText::new(text).italics().color(pal.text_dim).size(12.5)).wrap());
+                        ui.set_width(ui.available_width());
+                        egui::CollapsingHeader::new(RichText::new("Thinking").small().strong().color(pal.text_dim))
+                            .id_salt(format!("agents_thinking_{index}_{part_index}"))
+                            .default_open(live)
+                            .show(ui, |ui| {
+                                ui.add(
+                                    egui::Label::new(RichText::new(text).italics().color(pal.text_dim).size(10.5))
+                                        .wrap(),
+                                );
+                            });
                     });
+                ui.add_space(6.0);
             }
             Part::Tool(tool) => tool_card(ui, tool, pal),
         }
@@ -1851,78 +2115,321 @@ fn agent_message(ui: &mut egui::Ui, message: &Message, pal: theme::Palette, live
     ui.add_space(10.0);
 }
 
-/// A bordered tool card: chevron, "name · title", and a status mark on the right.
+fn tool_icon(name: &str) -> crate::ui::icons::Icon {
+    match name {
+        "read" | "write" | "edit" | "patch" | "apply_patch" => crate::ui::icons::Icon::Files,
+        "grep" | "glob" | "search" => crate::ui::icons::Icon::Search,
+        "shell" | "bash" => crate::ui::icons::Icon::Terminal,
+        "task" => crate::ui::icons::Icon::Agent,
+        _ => crate::ui::icons::Icon::Files,
+    }
+}
+
+/// One compact activity row from the reference: chevron, tool glyph, label,
+/// and a trailing status mark. Clicking expands the tool input/output.
 fn tool_card(ui: &mut egui::Ui, tool: &ToolPart, pal: theme::Palette) {
-    ui.add_space(6.0);
+    ui.add_space(2.0);
     let id = egui::Id::unique("agents_tool_card").with(&tool.id);
-    let open = ui.memory_mut(|memory| memory.data.get_temp::<bool>(id).unwrap_or(false));
+    let open = ui.memory_mut(|memory| memory.data.get_temp::<bool>(id).unwrap_or_else(|| is_edit_tool(&tool.name)));
+    let (head, response) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 32.0), Sense::click());
+    if response.clicked() {
+        ui.memory_mut(|memory| memory.data.insert_temp(id, !open));
+    }
+    if response.hovered() {
+        ui.painter().rect_filled(head, 3.0, pal.hover_bg);
+    }
+
+    // The vertical activity line from the mock-up.
+    ui.painter().line_segment(
+        [egui::pos2(head.left() + 6.0, head.top()), egui::pos2(head.left() + 6.0, head.bottom())],
+        egui::Stroke::new(1.0, pal.border),
+    );
+    crate::ui::icons::paint(
+        ui.painter(),
+        egui::Rect::from_min_size(egui::pos2(head.left() + 11.0, head.center().y - 5.0), egui::vec2(10.0, 10.0)),
+        if open { crate::ui::icons::Icon::ChevronDown } else { crate::ui::icons::Icon::ChevronRight },
+        pal.text_dim,
+    );
+
+    let icon_rect =
+        egui::Rect::from_min_size(egui::pos2(head.left() + 27.0, head.center().y - 6.0), egui::vec2(12.0, 12.0));
+    crate::ui::icons::paint(ui.painter(), icon_rect, tool_icon(&tool.name), pal.text_dim);
+
+    let label = if tool.title.is_empty() || tool.title == tool.name {
+        tool.name.clone()
+    } else {
+        format!("{} · {}", tool.name, tool.title)
+    };
+    ui.painter().text(
+        egui::pos2(head.left() + 45.0, head.center().y),
+        Align2::LEFT_CENTER,
+        fit_text(ui, &label, FontId::proportional(10.5), pal.text, head.width() - 70.0),
+        FontId::proportional(10.5),
+        pal.text,
+    );
+
+    let (color, mark) = match tool.status.as_str() {
+        "completed" => (pal.text_dim, "✓"),
+        "error" => (pal.modified, "×"),
+        _ => (pal.accent, "…"),
+    };
+    ui.painter().text(
+        egui::pos2(head.right() - 8.0, head.center().y),
+        Align2::RIGHT_CENTER,
+        mark,
+        FontId::proportional(11.0),
+        color,
+    );
+
+    if open {
+        tool_details(ui, tool, pal);
+    }
+}
+
+/// The command a shell tool ran, plus any other fields it carried. A plain
+/// string is a command too, as older OpenCode versions sent it that way.
+fn shell_input(input: &str) -> (String, Vec<(String, String)>) {
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(input) else {
+        return (input.to_owned(), Vec::new());
+    };
+    let command = match map.get("command") {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Array(words)) => words.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(" "),
+        _ => input.to_owned(),
+    };
+    let rest = map
+        .iter()
+        .filter(|(key, _)| key.as_str() != "command")
+        .map(|(key, value)| (key.clone(), json_text(value)))
+        .collect();
+    (command, rest)
+}
+
+/// A shell call reads as a command block and an output block, not as a JSON
+/// bag with escape codes in it.
+fn shell_details(ui: &mut egui::Ui, tool: &ToolPart, pal: theme::Palette) -> bool {
+    if !matches!(tool.name.as_str(), "shell" | "bash") {
+        return false;
+    }
+    let (command, rest) = shell_input(&tool.input);
+    if !command.is_empty() {
+        ui.label(RichText::new("Command").size(9.5).strong().color(pal.text_dim));
+        code_block(ui, &command, pal, "bash");
+    }
+    for (key, value) in rest {
+        ui.label(RichText::new(format!("{key}: {value}")).size(9.5).color(pal.text_dim));
+    }
+    if !tool.output.is_empty() {
+        ui.label(RichText::new("Output").size(9.5).strong().color(pal.text_dim));
+        let plain = coiman_core::terminal::strip_colors(&tool.output).replace("\r\n", "\n").replace('\r', "\n");
+        code_block(ui, plain.trim_end_matches(['\n', ' ']), pal, "text");
+    }
+    true
+}
+
+/// A readable tool payload: JSON keys become labels, strings become code blocks,
+/// and edit tools show their old/new text without JSON escaping.
+fn tool_details(ui: &mut egui::Ui, tool: &ToolPart, pal: theme::Palette) {
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.add_space(38.0);
+        ui.vertical(|ui| {
+            if shell_details(ui, tool, pal) {
+                return;
+            }
+            if is_edit_tool(&tool.name) && edit_diff(ui, tool, pal) {
+                if !tool.output.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(truncate(&tool.output, 240)).size(9.5).color(pal.text_dim));
+                }
+                return;
+            }
+            if !tool.input.is_empty() {
+                ui.label(RichText::new("Input").size(9.5).strong().color(pal.text_dim));
+                tool_payload(ui, &tool.input, pal);
+                ui.add_space(3.0);
+            }
+            if !tool.output.is_empty() {
+                ui.label(RichText::new("Output").size(9.5).strong().color(pal.text_dim));
+                tool_payload(ui, &tool.output, pal);
+            }
+        });
+    });
+    ui.add_space(5.0);
+}
+
+/// Render an edit tool's old/new strings as a compact red/green line diff.
+/// Returns false when the payload is not an edit with both sides.
+fn edit_diff(ui: &mut egui::Ui, tool: &ToolPart, pal: theme::Palette) -> bool {
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(&tool.input) else {
+        return false;
+    };
+    let path = map
+        .get("path")
+        .or_else(|| map.get("file_path"))
+        .or_else(|| map.get("filePath"))
+        .and_then(Value::as_str)
+        .unwrap_or(&tool.title);
+    let old = map.get("oldString").or_else(|| map.get("old_string")).and_then(Value::as_str);
+    let new = map.get("newString").or_else(|| map.get("new_string")).and_then(Value::as_str);
+    let (Some(old), Some(new)) = (old, new) else {
+        return false;
+    };
+
+    let old_lines = coiman_core::project::git::lines(old);
+    let new_lines = coiman_core::project::git::lines(new);
+    let hunks = coiman_core::project::git::diff_lines(&old_lines, &new_lines, false);
+
+    let mut rows: Vec<(Option<usize>, Option<usize>, char, String)> = Vec::new();
+    let (mut oi, mut ni, mut on, mut nn) = (0usize, 0usize, 1usize, 1usize);
+    for hunk in &hunks {
+        while oi < hunk.old.start && ni < hunk.new.start {
+            if let Some(line) = old_lines.get(oi) {
+                rows.push((Some(on), Some(nn), ' ', (*line).to_owned()));
+                on += 1;
+                nn += 1;
+            }
+            oi += 1;
+            ni += 1;
+        }
+        for _ in 0..hunk.old.len().max(hunk.new.len()) {
+            if oi < hunk.old.end {
+                if let Some(line) = old_lines.get(oi) {
+                    rows.push((Some(on), None, '-', (*line).to_owned()));
+                    on += 1;
+                }
+                oi += 1;
+            }
+            if ni < hunk.new.end {
+                if let Some(line) = new_lines.get(ni) {
+                    rows.push((None, Some(nn), '+', (*line).to_owned()));
+                    nn += 1;
+                }
+                ni += 1;
+            }
+        }
+    }
+    while oi < old_lines.len() || ni < new_lines.len() {
+        if oi < old_lines.len() {
+            rows.push((Some(on), Some(nn), ' ', old_lines[oi].to_owned()));
+            on += 1;
+            oi += 1;
+        }
+        if ni < new_lines.len() {
+            rows.push((Some(on.saturating_sub(1)), Some(nn), ' ', new_lines[ni].to_owned()));
+            nn += 1;
+            ni += 1;
+        }
+    }
+
+    let path_label =
+        Path::new(path).file_name().map_or_else(|| path.to_owned(), |name| name.to_string_lossy().into_owned());
     egui::Frame::new()
         .fill(pal.editor_bg)
         .stroke(egui::Stroke::new(1.0, pal.border))
-        .corner_radius(5.0)
-        .inner_margin(egui::Margin::ZERO)
+        .corner_radius(4.0)
+        .inner_margin(egui::Margin::symmetric(7, 5))
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
-            let (head, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 35.0), Sense::click());
-            if resp.clicked() {
-                ui.memory_mut(|memory| memory.data.insert_temp(id, !open));
-            }
-            let y = head.center().y;
-            let chevron = egui::Rect::from_min_size(egui::pos2(head.left() + 10.0, y - 5.0), egui::vec2(10.0, 10.0));
-            crate::ui::icons::paint(
-                ui.painter(),
-                chevron,
-                if open { crate::ui::icons::Icon::ChevronDown } else { crate::ui::icons::Icon::ChevronRight },
-                pal.text_dim,
-            );
-            ui.painter().text(
-                egui::pos2(head.left() + 28.0, y),
-                Align2::LEFT_CENTER,
-                fit_text(
-                    ui,
-                    &format!("{} · {}", tool.name, tool.title),
-                    FontId::proportional(12.0),
-                    pal.text,
-                    head.width() - 64.0,
-                ),
-                FontId::proportional(12.0),
-                pal.text,
-            );
-            let (color, mark) = match tool.status.as_str() {
-                "completed" => (Color32::from_rgb(0x89, 0xd1, 0x85), "✓"),
-                "error" => (Color32::from_rgb(0xF1, 0x4C, 0x4C), "×"),
-                _ => (pal.text_dim, "…"),
-            };
-            ui.painter().text(
-                egui::pos2(head.right() - 10.0, y),
-                Align2::RIGHT_CENTER,
-                mark,
-                FontId::proportional(12.0),
-                color,
-            );
-            if open {
-                ui.painter().line_segment(
-                    [egui::pos2(head.left(), head.bottom()), egui::pos2(head.right(), head.bottom())],
-                    egui::Stroke::new(1.0, pal.border),
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 5.0;
+                crate::ui::icons::paint_file(
+                    ui.painter(),
+                    egui::Rect::from_min_size(
+                        egui::pos2(ui.cursor().left(), ui.cursor().top() + 2.0),
+                        egui::vec2(11.0, 11.0),
+                    ),
+                    path,
                 );
-                // Detail: the tool's input and output, dim and indented like the mockup.
-                ui.horizontal(|ui| {
-                    ui.add_space(33.0);
-                    ui.vertical(|ui| {
-                        if !tool.input.is_empty() {
-                            ui.label(RichText::new("Input").size(10.0).strong().color(pal.text_dim));
-                            mono_text(ui, &tool.input, pal.text_dim, 10.5);
-                            ui.add_space(4.0);
-                        }
-                        if !tool.output.is_empty() {
-                            ui.label(RichText::new("Output").size(10.0).strong().color(pal.text_dim));
-                            mono_text(ui, &truncate(&tool.output, 6_000), pal.text, 11.0);
-                        }
-                    });
+                ui.add_space(14.0);
+                ui.label(RichText::new(path_label).size(10.0).strong().color(pal.text));
+                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    ui.label(RichText::new(format!("{} lines", rows.len())).size(9.5).color(pal.text_dim));
                 });
-                ui.add_space(8.0);
+            });
+            ui.add_space(3.0);
+            for (index, (old_no, new_no, sign, text)) in rows.iter().take(400).enumerate() {
+                let (row, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 15.0), Sense::hover());
+                let (bg, fg) = match sign {
+                    '-' => (pal.removed.gamma_multiply(0.14), pal.removed),
+                    '+' => (pal.added.gamma_multiply(0.14), pal.added),
+                    _ => (Color32::TRANSPARENT, pal.text_dim),
+                };
+                if *sign != ' ' {
+                    ui.painter().rect_filled(row, 0.0, bg);
+                }
+                let old_label = old_no.map_or(String::new(), |n| n.to_string());
+                let new_label = new_no.map_or(String::new(), |n| n.to_string());
+                ui.painter().text(
+                    egui::pos2(row.left() + 18.0, row.center().y),
+                    Align2::RIGHT_CENTER,
+                    old_label,
+                    FontId::monospace(9.0),
+                    pal.text_dim,
+                );
+                ui.painter().text(
+                    egui::pos2(row.left() + 38.0, row.center().y),
+                    Align2::RIGHT_CENTER,
+                    new_label,
+                    FontId::monospace(9.0),
+                    pal.text_dim,
+                );
+                ui.painter().text(
+                    egui::pos2(row.left() + 46.0, row.center().y),
+                    Align2::LEFT_CENTER,
+                    sign.to_string(),
+                    FontId::monospace(10.0),
+                    fg,
+                );
+                ui.painter().text(
+                    egui::pos2(row.left() + 58.0, row.center().y),
+                    Align2::LEFT_CENTER,
+                    fit_text(ui, &text.replace('\t', "  "), FontId::monospace(10.0), fg, row.width() - 64.0),
+                    FontId::monospace(10.0),
+                    fg,
+                );
+                if index + 1 == 400 && rows.len() > 400 {
+                    ui.label(RichText::new("…").size(9.0).color(pal.text_dim));
+                }
             }
         });
+    true
+}
+
+fn tool_payload(ui: &mut egui::Ui, text: &str, pal: theme::Palette) {
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(text) else {
+        mono_text(ui, &truncate(text, 6_000), pal.text, 10.0);
+        return;
+    };
+
+    let mut entries: Vec<_> = map.iter().collect();
+    entries.sort_by_key(|(key, _)| match key.as_str() {
+        "path" | "file_path" | "filePath" => 0,
+        "oldString" | "old_string" => 1,
+        "newString" | "new_string" => 2,
+        _ => 3,
+    });
+
+    for (key, value) in entries {
+        ui.horizontal(|ui| {
+            ui.add_sized(
+                [78.0, 0.0],
+                egui::Label::new(RichText::new(key).size(9.5).monospace().color(pal.text_dim))
+                    .wrap_mode(egui::TextWrapMode::Truncate),
+            );
+            ui.vertical(|ui| match value {
+                Value::String(text) => mono_text(ui, &truncate(text, 6_000), pal.text, 10.0),
+                Value::Null => mono_text(ui, "null", pal.text_dim, 10.0),
+                other => mono_text(
+                    ui,
+                    &truncate(&serde_json::to_string_pretty(other).unwrap_or_else(|_| other.to_string()), 6_000),
+                    pal.text,
+                    10.0,
+                ),
+            });
+        });
+        ui.add_space(2.0);
+    }
 }
 
 /// Highlighted lines of a code block, shared across frames.
@@ -2009,6 +2516,26 @@ fn copy_overlay(ui: &mut egui::Ui, rect: Rect, id: egui::Id, text: String, pal: 
     }
 }
 
+/// A 22x24 icon button sized for the mock-up's 30px title/context strips.
+fn bar_icon_button(
+    ui: &mut egui::Ui,
+    icon: crate::ui::icons::Icon,
+    tooltip: &str,
+    pal: theme::Palette,
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(22.0, 24.0), Sense::click());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 3.0, pal.hover_bg);
+    }
+    crate::ui::icons::paint(
+        ui.painter(),
+        egui::Rect::from_min_size(egui::pos2(rect.left() + 5.0, rect.center().y - 6.5), egui::vec2(13.0, 13.0)),
+        icon,
+        if response.hovered() { pal.text } else { pal.text_dim },
+    );
+    response.on_hover_text(tooltip)
+}
+
 /// A flat chip like the mockup's tool-select: label, hover fill, optional caret.
 fn chip(
     ui: &mut egui::Ui,
@@ -2045,12 +2572,6 @@ fn chip(
         );
     }
     resp
-}
-
-/// The 1px divider between chips.
-fn chip_divider(ui: &mut egui::Ui, pal: theme::Palette) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(1.0, 15.0), Sense::hover());
-    ui.painter().rect_filled(rect, 0.0, pal.border);
 }
 
 /// A copy of `text` that fits `max` pixels, with an ellipsis — for texts drawn
@@ -2138,12 +2659,12 @@ fn markdown(ui: &mut egui::Ui, text: &str, pal: theme::Palette) {
     for block in coiman_core::language::markdown::parse(text) {
         match block {
             Block::Heading { level, text, .. } => {
-                let size = 15.0 + (3 - level.min(3)) as f32;
+                let size = 14.0 + (3 - level.min(3)) as f32;
                 ui.add(egui::Label::new(inline_text(&text, pal, size)).wrap());
                 ui.add_space(2.0);
             }
             Block::Paragraph(text) => {
-                ui.add(egui::Label::new(inline_text(&text, pal, 13.0)).wrap());
+                ui.add(egui::Label::new(inline_text(&text, pal, 11.8)).wrap());
                 ui.add_space(2.0);
             }
             Block::Code { lang, text } => {
@@ -2158,7 +2679,7 @@ fn markdown(ui: &mut egui::Ui, text: &str, pal: theme::Palette) {
                             for block in item.blocks {
                                 match block {
                                     Block::Paragraph(text) => {
-                                        ui.add(egui::Label::new(inline_text(&text, pal, 13.0)).wrap());
+                                        ui.add(egui::Label::new(inline_text(&text, pal, 11.8)).wrap());
                                     }
                                     Block::Code { lang, text } => code_block(ui, &text, pal, &lang),
                                     _ => {}
@@ -2171,7 +2692,7 @@ fn markdown(ui: &mut egui::Ui, text: &str, pal: theme::Palette) {
             Block::Quote(blocks) => {
                 for block in blocks {
                     if let Block::Paragraph(text) = block {
-                        ui.add(egui::Label::new(inline_text(&text, pal, 13.0)).wrap());
+                        ui.add(egui::Label::new(inline_text(&text, pal, 11.8)).wrap());
                     }
                 }
             }
@@ -2242,6 +2763,33 @@ fn plain_inline(inlines: &[Inline]) -> String {
     out
 }
 
+fn content_text(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Array(blocks) => {
+            blocks.iter().filter_map(|block| block.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n")
+        }
+        other => json_text(other),
+    }
+}
+
+fn parse_tool_part(part: &Value) -> Option<AgentMsg> {
+    let id = part.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
+    let name = part
+        .get("tool")
+        .and_then(Value::as_str)
+        .or_else(|| part.get("name").and_then(Value::as_str))
+        .unwrap_or("tool")
+        .to_owned();
+    let state = part.get("state")?;
+    let title = state.get("title").and_then(Value::as_str).unwrap_or(&name).to_owned();
+    let input = state.get("input").map(json_text).unwrap_or_default();
+    let output =
+        state.get("output").map(json_text).or_else(|| state.get("content").map(content_text)).unwrap_or_default();
+    let status = state.get("status").and_then(Value::as_str).unwrap_or("running").to_owned();
+    Some(AgentMsg::Tool(ToolPart { id, name, title, input, output, status }))
+}
+
 fn parse_event(line: &str) -> Option<AgentMsg> {
     let value: Value = serde_json::from_str(line).ok()?;
     let kind = value.get("type").and_then(Value::as_str)?;
@@ -2249,7 +2797,54 @@ fn parse_event(line: &str) -> Option<AgentMsg> {
     let part_type = part.and_then(|p| p.get("type")).and_then(Value::as_str);
     let text =
         part.and_then(|p| p.get("text")).and_then(Value::as_str).or_else(|| value.get("text").and_then(Value::as_str));
+    let data = value.get("data");
     match kind {
+        // Current OpenCode event stream: deltas arrive while the model writes.
+        "session.text.delta" => data
+            .and_then(|data| data.get("delta").or_else(|| data.get("text")))
+            .and_then(Value::as_str)
+            .map(|delta| AgentMsg::Text(delta.to_owned())),
+        "session.reasoning.delta" => data
+            .and_then(|data| data.get("delta").or_else(|| data.get("text")))
+            .and_then(Value::as_str)
+            .map(|delta| AgentMsg::Thinking(delta.to_owned())),
+        "session.tool.called" => data.map(|data| {
+            let id = data.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
+            let name = data.get("name").and_then(Value::as_str).unwrap_or("tool").to_owned();
+            let input = data.get("input").map(json_text).unwrap_or_default();
+            AgentMsg::Tool(ToolPart {
+                id,
+                name: name.clone(),
+                title: name,
+                input,
+                output: String::new(),
+                status: "running".to_owned(),
+            })
+        }),
+        "session.tool.success" | "session.tool.failed" => data.map(|data| {
+            let failed = kind == "session.tool.failed";
+            let id = data.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
+            let name = data.get("name").and_then(Value::as_str).unwrap_or("tool").to_owned();
+            let output = if failed {
+                data.get("error")
+                    .and_then(|error| error.get("message").or_else(|| error.get("error")))
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                    .or_else(|| data.get("error").map(json_text))
+                    .unwrap_or_else(|| "tool failed".to_owned())
+            } else {
+                data.get("content").map(content_text).unwrap_or_default()
+            };
+            AgentMsg::Tool(ToolPart {
+                id,
+                name: name.clone(),
+                title: name,
+                input: String::new(),
+                output,
+                status: (if failed { "error" } else { "completed" }).to_owned(),
+            })
+        }),
+        "message.part.updated" if part_type == Some("tool") => parse_tool_part(part?),
         "text" if part_type != Some("reasoning") => Some(AgentMsg::Text(text?.to_owned())),
         "reasoning" => Some(AgentMsg::Thinking(text?.to_owned())),
         "step_start" => Some(AgentMsg::SessionId(value.get("sessionID").and_then(Value::as_str)?.to_owned())),
@@ -2436,28 +3031,32 @@ fn parse_export(value: &Option<Value>) -> Vec<Message> {
     messages
 }
 
-/// A short label for when a session was last used: the time today, else the date.
-fn time_label(updated: u64) -> String {
-    let date = local_date(updated);
-    if date.date_naive() == chrono::Local::now().date_naive() {
-        date.format("%H:%M").to_string()
-    } else {
-        date.format("%b %-d").to_string()
-    }
-}
-
-/// How long ago a session was used: now, minutes, hours, days, else the date.
-fn relative_time(updated: u64) -> String {
+/// The sessions rail's "2 wks ago" style timestamp.
+fn session_time_label(updated: u64) -> String {
     let date = local_date(updated);
     let minutes = (chrono::Local::now() - date).num_minutes().max(0);
     if minutes < 1 {
         "now".to_owned()
     } else if minutes < 60 {
-        format!("{minutes}m")
+        format!("{minutes}m ago")
     } else if minutes < 60 * 24 {
-        format!("{}h", minutes / 60)
+        format!("{}h ago", minutes / 60)
     } else if minutes < 60 * 24 * 7 {
-        format!("{}d", minutes / (60 * 24))
+        format!("{}d ago", minutes / (60 * 24))
+    } else if minutes < 60 * 24 * 30 {
+        format!("{}w ago", minutes / (60 * 24 * 7))
+    } else if minutes < 60 * 24 * 365 {
+        format!("{}mo ago", minutes / (60 * 24 * 30))
+    } else {
+        date.format("%b %-d").to_string()
+    }
+}
+
+/// A short label for when a session was last used: the time today, else the date.
+fn time_label(updated: u64) -> String {
+    let date = local_date(updated);
+    if date.date_naive() == chrono::Local::now().date_naive() {
+        date.format("%H:%M").to_string()
     } else {
         date.format("%b %-d").to_string()
     }
@@ -2634,7 +3233,7 @@ impl CodeApp {
             self.agents.open = false;
             return;
         }
-        self.agents.root = if self.file_manager.is_showing() {
+        let root = if self.file_manager.is_showing() {
             self.file_manager.current_dir()
         } else {
             self.explorer
@@ -2642,6 +3241,11 @@ impl CodeApp {
                 .clone()
                 .or_else(|| self.docs.get(self.active).and_then(|d| d.path.as_deref()?.parent()).map(Path::to_path_buf))
         };
+        if self.agents.root != root {
+            self.agents.history.clear();
+            self.agents.history_loaded = false;
+        }
+        self.agents.root = root;
         self.agents.load_model();
         self.agents.load_models();
         self.agents.active_file = self.docs.get(self.active).and_then(|doc| doc.path.clone());
@@ -2703,6 +3307,16 @@ mod tests {
         assert!(
             matches!(messages[1].parts.as_slice(), [Part::Thinking(_), Part::Tool(tool), Part::Text(_)] if tool.name == "shell" && tool.output == "/home/me\n")
         );
+    }
+
+    #[test]
+    fn shell_command_and_output_are_read_without_json_or_escape_codes() {
+        let (command, rest) = shell_input(r#"{"command":"printf hi","description":"say hi"}"#);
+        assert_eq!(command, "printf hi");
+        assert_eq!(rest, vec![("description".to_owned(), "say hi".to_owned())]);
+        assert_eq!(shell_input("echo hi").0, "echo hi");
+        let plain = coiman_core::terminal::strip_colors("\u{1b}[31mhi\u{1b}[0m\n");
+        assert_eq!(plain, "hi\n");
     }
 
     #[test]
@@ -2772,11 +3386,12 @@ mod tests {
     }
 
     #[test]
-    fn relative_time_labels() {
+    fn session_time_labels() {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
-        assert_eq!(relative_time(now), "now");
-        assert_eq!(relative_time(now - 90 * 1000), "1m");
-        assert_eq!(relative_time(now - 3 * 3600 * 1000), "3h");
+        assert_eq!(session_time_label(now), "now");
+        assert_eq!(session_time_label(now - 90 * 1000), "1m ago");
+        assert_eq!(session_time_label(now - 3 * 3600 * 1000), "3h ago");
+        assert_eq!(session_time_label(now - 14 * 24 * 3600 * 1000), "2w ago");
     }
 
     // ---- The composer's input handling, driven headlessly ----------------
@@ -2817,6 +3432,81 @@ mod tests {
         box_rect
     }
 
+    #[cfg(unix)]
+    fn fake_opencode(dir: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+
+        let script = dir.join("opencode");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do if [ \"$a\" = \"--help\" ]; then echo --standalone; exit 0; fi; done\nprintf '%s\\n' \"$@\" >> {}/args\ncat >> {}/stdin\n",
+                dir.display(),
+                dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script
+    }
+
+    #[cfg(unix)]
+    fn fake_run(dir: &Path, mode: &str, input: &str) -> String {
+        let script = fake_opencode(dir);
+        let agents = AgentsUi { mode: mode.to_owned(), ..Default::default() };
+        let (mut command, via_stdin) = agents.run_command(&script, dir, "ses_coiman_test", input, &[]);
+        let mut child = command.spawn().expect("the fake opencode runs");
+        if via_stdin && let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(input.as_bytes()).unwrap();
+        }
+        let _ = child.wait();
+        std::fs::read_to_string(dir.join("args")).unwrap_or_default()
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn the_prompt_reaches_opencode_on_stdin_once() {
+        let dir = std::env::temp_dir().join(format!("coiman-agent-prompt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = fake_opencode(&dir);
+        let agents = AgentsUi::default();
+        let (mut command, via_stdin) = agents.run_command(&script, &dir, "ses_coiman_test", "hello world", &[]);
+        assert!(via_stdin);
+        let mut child = command.spawn().expect("the fake opencode runs");
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(b"hello world").unwrap();
+        }
+        let _ = child.wait();
+        assert_eq!(std::fs::read_to_string(dir.join("stdin")).unwrap_or_default(), "hello world");
+        let args = std::fs::read_to_string(dir.join("args")).unwrap_or_default();
+        assert!(
+            !args.lines().any(|arg| arg == "hello" || arg == "world" || arg == "--"),
+            "the prompt must not be added as quoted arguments: {args}"
+        );
+        let words: Vec<&str> = args.lines().collect();
+        assert!(words.windows(2).any(|w| w == ["--agent", "build"]), "{args}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn switching_between_plan_and_agent_passes_the_agent_each_time() {
+        let dir = std::env::temp_dir().join(format!("coiman-agent-mode-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let plan = fake_run(&dir, "plan", "think");
+        let words: Vec<&str> = plan.lines().collect();
+        assert!(words.windows(2).any(|w| w == ["--agent", "plan"]), "{plan}");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let build = fake_run(&dir, "build", "edit");
+        let words: Vec<&str> = build.lines().collect();
+        assert!(words.windows(2).any(|w| w == ["--agent", "build"]), "{build}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn composer_typing_needs_focus_and_enter_sends() {
         let ctx = egui::Context::default();
@@ -2834,7 +3524,9 @@ mod tests {
         assert!(agents.queue.is_empty() && agents.input.is_empty());
 
         // Click the box: it takes focus.
-        let at = egui::pos2(box_rect.center().x, box_rect.top() + 16.0);
+        // Click the prompt line. The context row appears only when a file is
+        // attached, so an empty composer starts with the text area near the top.
+        let at = egui::pos2(box_rect.center().x, box_rect.top() + 15.0);
         composer_frame(&ctx, &mut agents, false, none, click_events(at));
         assert!(agents.input_focused, "clicking the box should focus it");
 
@@ -2914,7 +3606,7 @@ mod tests {
                     .default_size(430.0)
                     .size_range(360.0..=980.0)
                     .resizable(true)
-                    .show_separator_line(true)
+                    .show_separator_line(false)
                     .frame(egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::ZERO))
                     .show(ui, |ui| agents.panel(ui))
                     .response
@@ -2947,6 +3639,91 @@ mod tests {
         assert!(open.width() <= 470.0, "sessions column must not inflate the panel: {:.1}", open.width());
     }
 
+    fn panel_wide_with_chrome(ctx: &egui::Context, agents: &mut AgentsUi, screen: egui::Vec2) -> egui::Rect {
+        agents.checked_opencode = true;
+        agents.opencode.get_or_insert_with(|| PathBuf::from("opencode"));
+        agents.history =
+            vec![SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1, directory: None }];
+        agents.history_loaded = true;
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), screen)),
+            ..Default::default()
+        };
+        let mut rect = egui::Rect::ZERO;
+        let mut output = ctx.run_ui(raw, |ui| {
+            egui::CentralPanel::no_frame().show(ui, |ui| {
+                let mut panel = egui::Panel::right(egui::Id::unique("agents_panel_wide_test"))
+                    .default_size(820.0)
+                    .size_range(420.0..=1200.0)
+                    .resizable(true)
+                    .show_separator_line(true)
+                    .frame(egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::ZERO));
+                if agents.maximized {
+                    panel = panel.exact_size(ui.available_width().max(200.0));
+                }
+                rect = panel.show(ui, |ui| agents.panel(ui)).response.rect;
+            });
+        });
+        output.textures_delta.clear();
+        rect
+    }
+
+    #[test]
+    fn chat_composer_keeps_a_compact_height() {
+        let ctx = egui::Context::default();
+        let mut agents = AgentsUi { history_open: false, ..Default::default() };
+        agents.messages = vec![
+            Message { role: Role::User, parts: vec![Part::Text("hello".to_owned())] },
+            Message { role: Role::Agent, parts: vec![Part::Text("hi".to_owned())] },
+        ];
+        let _ = panel_wide_with_chrome(&ctx, &mut agents, egui::vec2(1100.0, 800.0));
+        let composer = agents.composer_rect.expect("the chat composer was drawn");
+        assert!(composer.height() >= COMPOSER_MIN_HEIGHT - 1.0, "the composer stays compact: {:.1}", composer.height());
+    }
+
+    #[test]
+    fn wide_workspace_renders_sessions() {
+        let ctx = egui::Context::default();
+        let mut agents = AgentsUi {
+            history_open: true,
+            last_changed_files: vec!["crates/coiman-ide/src/app/agents.rs".to_owned()],
+            ..Default::default()
+        };
+        agents.messages = vec![
+            Message { role: Role::User, parts: vec![Part::Text("Fix the UI".to_owned())] },
+            Message {
+                role: Role::Agent,
+                parts: vec![
+                    Part::Tool(ToolPart {
+                        id: "call_1".to_owned(),
+                        name: "edit".to_owned(),
+                        title: "agents.rs".to_owned(),
+                        input: r#"{"file_path":"crates/coiman-ide/src/app/agents.rs"}"#.to_owned(),
+                        output: String::new(),
+                        status: "completed".to_owned(),
+                    }),
+                    Part::Text("Updated the agent workspace.".to_owned()),
+                ],
+            },
+        ];
+        agents.last_turn_tools = tools_in_last_turn(&agents.messages);
+        let rect = panel_wide_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
+        assert!(rect.width() >= 700.0, "the Agents workspace opens wide: {:.1}", rect.width());
+        assert!(agents.composer_rect.is_none(), "the full-screen Sessions picker replaces the conversation");
+        // The full-screen picker must fit without panicking or widening the panel.
+        let mut previous = rect;
+        for _ in 0..30 {
+            let next = panel_wide_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
+            assert!(
+                (next.width() - previous.width()).abs() < 1.5,
+                "wide layout must be stable: {:.1} -> {:.1}",
+                previous.width(),
+                next.width()
+            );
+            previous = next;
+        }
+    }
+
     #[test]
     fn panel_width_is_stable_in_every_state() {
         let ctx = egui::Context::default();
@@ -2968,7 +3745,21 @@ mod tests {
                 "working set",
                 Box::new(|a: &mut AgentsUi| {
                     a.last_changed_files = vec!["src/main.rs".to_owned(), "src/lib.rs".to_owned()];
-                    a.working_set_open = true;
+                }),
+            ),
+            (
+                "long prompt",
+                Box::new(|a: &mut AgentsUi| {
+                    a.messages = vec![
+                        Message {
+                            role: Role::User,
+                            parts: vec![Part::Text(
+                                "a very long prompt that must wrap inside the bubble and never widen the panel "
+                                    .repeat(8),
+                            )],
+                        },
+                        Message { role: Role::Agent, parts: vec![Part::Text("ok".to_owned())] },
+                    ];
                 }),
             ),
             (
@@ -3094,6 +3885,23 @@ mod tests {
         assert_eq!(agents.input, "one", "the first queued message moves to the box");
         assert_eq!(agents.queue.len(), 1, "the rest wait for the next run");
         assert!(agents.running.is_none(), "the run ended");
+    }
+
+    #[test]
+    fn opening_a_session_returns_to_chat() {
+        let mut agents = AgentsUi {
+            checked_opencode: true,
+            opencode: Some(PathBuf::from("opencode")),
+            history_open: true,
+            ..Default::default()
+        };
+        agents.open_session(SessionInfo {
+            id: "ses_1".to_owned(),
+            title: "One".to_owned(),
+            updated: 1,
+            directory: None,
+        });
+        assert!(!agents.history_open, "selecting a session returns to the chat");
     }
 
     #[test]
@@ -3287,7 +4095,6 @@ mod tests {
         agents.session_title = Some("Greeting".to_owned());
         agents.last_changed_files = files_touched(&agents.messages);
         agents.last_turn_tools = tools_in_last_turn(&agents.messages);
-        agents.working_set_open = true;
         let mut rect = panel_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
         for _ in 0..6 {
             rect = panel_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
@@ -3300,6 +4107,33 @@ mod tests {
             composer,
             rect
         );
+    }
+
+    #[test]
+    fn edit_tool_renders_a_line_diff() {
+        let ctx = egui::Context::default();
+        let mut agents = AgentsUi::default();
+        agents.checked_opencode = true;
+        agents.opencode = Some(PathBuf::from("opencode"));
+        agents.history_loaded = true;
+        agents.messages = vec![Message {
+            role: Role::Agent,
+            parts: vec![Part::Tool(ToolPart {
+                id: "call_1".to_owned(),
+                name: "edit".to_owned(),
+                title: "test.html".to_owned(),
+                input: serde_json::json!({
+                    "path": "/tmp/test.html",
+                    "oldString": "old\nline",
+                    "newString": "new\nline"
+                })
+                .to_string(),
+                output: "Edited test.html (1 replacement)".to_owned(),
+                status: "completed".to_owned(),
+            })],
+        }];
+        let rect = panel_wide_with_chrome(&ctx, &mut agents, egui::vec2(1100.0, 800.0));
+        assert!(rect.width() > 0.0, "the edit diff should render");
     }
 
     #[test]
@@ -3331,7 +4165,6 @@ mod tests {
             SessionInfo { id: "ses_2".to_owned(), title: "Another".to_owned(), updated: 2, directory: None },
         ];
         agents.history_open = true;
-        agents.working_set_open = true;
         agents.input = "a draft".to_owned();
         // Every section at once: sessions column, working set, tool cards,
         // code block, delete modal, jump pill.
@@ -3371,6 +4204,57 @@ mod tests {
         assert_eq!(agents.matching_sessions().len(), 1, "ids match too");
         agents.session_search.clear();
         assert_eq!(agents.matching_sessions().len(), 2, "an empty query keeps all");
+    }
+
+    #[test]
+    fn duplicate_consecutive_prompt_is_not_pushed_twice() {
+        let ctx = egui::Context::default();
+        let mut agents = AgentsUi {
+            checked_opencode: true,
+            opencode: Some(PathBuf::from("true")),
+            input: "hello".to_owned(),
+            messages: vec![Message { role: Role::User, parts: vec![Part::Text("hello".to_owned())] }],
+            ..Default::default()
+        };
+        agents.send(&ctx, Some(std::env::temp_dir().as_path()));
+        assert_eq!(agents.messages.len(), 1, "the duplicate prompt must not be appended");
+        assert!(agents.input.is_empty(), "the duplicate prompt is consumed");
+    }
+
+    #[test]
+    fn model_search_is_loose_and_labels_are_clean() {
+        let mut agents =
+            AgentsUi { models: vec!["google/antigravity-gemini-3.8-flash-high".to_owned()], ..Default::default() };
+        agents.model_search = "Gemini 3.8 flash".to_owned();
+        assert_eq!(agents.matching_models().len(), 1, "loose search ignores punctuation/case");
+        assert_eq!(model_label("google/antigravity-gemini-3.8-flash-high"), "Antigravity Gemini 3.8 Flash High");
+        assert!(!truncate(&model_label("google/antigravity-gemini-3.8-flash-high"), 50).ends_with('…'));
+    }
+
+    #[test]
+    fn parses_live_delta_events() {
+        let text = r#"{"type":"session.text.delta","data":{"delta":"Hel"}}"#;
+        assert!(matches!(parse_event(text), Some(AgentMsg::Text(t)) if t == "Hel"));
+        let thinking = r#"{"type":"session.reasoning.delta","data":{"delta":"hmm"}}"#;
+        assert!(matches!(parse_event(thinking), Some(AgentMsg::Thinking(t)) if t == "hmm"));
+        let called =
+            r#"{"type":"session.tool.called","data":{"id":"call_1","name":"read","input":{"path":"src/main.rs"}}}"#;
+        match parse_event(called) {
+            Some(AgentMsg::Tool(tool)) => {
+                assert_eq!(tool.name, "read");
+                assert_eq!(tool.status, "running");
+                assert!(tool.input.contains("src/main.rs"));
+            }
+            _ => panic!("tool start event not parsed"),
+        }
+        let done = r#"{"type":"session.tool.success","data":{"id":"call_1","content":[{"type":"text","text":"ok"}]}}"#;
+        match parse_event(done) {
+            Some(AgentMsg::Tool(tool)) => {
+                assert_eq!(tool.status, "completed");
+                assert_eq!(tool.output, "ok");
+            }
+            _ => panic!("tool completion event not parsed"),
+        }
     }
 
     #[test]

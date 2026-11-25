@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, Receiver};
 
 use coiman_core::language::lsp::companions::{self, Companion};
 use coiman_core::language::lsp::convert;
@@ -33,19 +34,21 @@ enum Ask {
 
 struct Running {
     id: u64,
-    spec: &'static Companion,
+    spec: Companion,
     root: PathBuf,
     client: Client,
     /// Documents sent to it: uri, and the version sent, by document uid.
     open: HashMap<u64, (lt::Url, u64)>,
 }
 
-#[derive(Default)]
 pub(crate) struct Companions {
     running: Vec<Running>,
+    /// Known servers are ready at once; the rest are found in the background.
+    specs: Vec<Companion>,
+    discovering: Option<Receiver<Vec<Companion>>>,
     next_id: u64,
     /// (server, project) pairs that stopped or couldn't start: not tried again.
-    failed: HashSet<(&'static str, PathBuf)>,
+    failed: HashSet<(String, PathBuf)>,
     /// Problems by (server id, file key), with the path as reported.
     diagnostics: HashMap<(u64, PathBuf), (PathBuf, Vec<lt::Diagnostic>)>,
     pending: HashMap<(u64, i64), Ask>,
@@ -53,11 +56,56 @@ pub(crate) struct Companions {
     pub(crate) owners: HashMap<String, u64>,
 }
 
+impl Default for Companions {
+    fn default() -> Self {
+        Self {
+            running: Vec::new(),
+            specs: companions::known_companions(),
+            discovering: None,
+            next_id: 0,
+            failed: HashSet::new(),
+            diagnostics: HashMap::new(),
+            pending: HashMap::new(),
+            owners: HashMap::new(),
+        }
+    }
+}
+
 impl CodeApp {
     /// Starts what the open files need, keeps them in sync, and reads their messages.
     pub(crate) fn pump_companions(&mut self, ctx: &egui::Context) {
+        // Plain language servers from VS Code extensions' folders: no extension code runs, so
+        // they don't wait for `plugins.vscode_extensions` (only for a trusted folder).
         if !self.settings.lsp.enabled || !self.settings.lsp.extension_servers {
+            if !self.companions.running.is_empty() {
+                self.companions.running.clear();
+                self.companions.diagnostics.clear();
+                self.companions.pending.clear();
+                self.companions.owners.clear();
+            }
             return;
+        }
+        // Discovery scans installed extension folders. Do it off the UI thread so
+        // the first frame stays quick; known servers are usable immediately.
+        if self.companions.discovering.is_none() {
+            let (tx, rx) = mpsc::channel();
+            let wake = repaint(ctx);
+            std::thread::spawn(move || {
+                let _ = tx.send(companions::discovered_companions());
+                wake();
+            });
+            self.companions.discovering = Some(rx);
+        }
+        if let Some(rx) = self.companions.discovering.as_ref()
+            && let Ok(found) = rx.try_recv()
+        {
+            self.companions.discovering = None;
+            let known: Vec<String> = self.companions.specs.iter().map(|c| c.extension.to_lowercase()).collect();
+            for spec in found {
+                if !known.contains(&spec.extension.to_lowercase()) {
+                    self.companions.specs.push(spec);
+                }
+            }
         }
         let top = self.explorer.root.clone();
         // Start and sync.
@@ -65,8 +113,8 @@ impl CodeApp {
             let doc = &self.docs[i];
             let Some(path) = doc.path.clone().filter(|_| !doc.large) else { continue };
             let Some(language) = companions::language_of(&doc.extension()) else { continue };
-            for spec in companions::ALL {
-                if !spec.languages.contains(&language) {
+            for spec in self.companions.specs.clone() {
+                if !spec.languages.iter().any(|id| id == language) {
                     continue;
                 }
                 let Some(root) = spec.root_for(&path, top.as_deref()) else { continue };
@@ -74,10 +122,13 @@ impl CodeApp {
                 let at = match at {
                     Some(at) => at,
                     None => {
-                        if self.companions.failed.contains(&(spec.name, root.clone())) || !trust::is_trusted(&root) {
+                        if self.companions.failed.contains(&(spec.name.clone(), root.clone()))
+                            || !trust::is_trusted(&root)
+                        {
                             continue;
                         }
-                        match start(spec, &root, ctx) {
+                        let index = self.companions.specs.iter().position(|c| c == &spec).unwrap_or(0);
+                        match start(&spec, &root, ctx, index) {
                             Ok(client) => {
                                 let id = self.companions.next_id;
                                 self.companions.next_id += 1;
@@ -88,7 +139,7 @@ impl CodeApp {
                                 ));
                                 self.companions.running.push(Running {
                                     id,
-                                    spec,
+                                    spec: spec.clone(),
                                     root: root.clone(),
                                     client,
                                     open: HashMap::new(),
@@ -97,7 +148,7 @@ impl CodeApp {
                             }
                             Err(why) => {
                                 self.status = Some(format!("{}: {why}", spec.name));
-                                self.companions.failed.insert((spec.name, root));
+                                self.companions.failed.insert((spec.name.clone(), root));
                                 continue;
                             }
                         }
@@ -161,7 +212,8 @@ impl CodeApp {
 
     fn companion_event(&mut self, id: u64, event: Event) {
         let Some(at) = self.companions.running.iter().position(|r| r.id == id) else { return };
-        let (spec, root) = (self.companions.running[at].spec, self.companions.running[at].root.clone());
+        let spec = self.companions.running[at].spec.clone();
+        let root = self.companions.running[at].root.clone();
         match event {
             Event::Notification { method, params } => {
                 if method == "window/logMessage" && params["type"].as_i64().is_some_and(|t| t <= 1) {
@@ -286,7 +338,7 @@ impl CodeApp {
             Event::Exited(why) => {
                 coiman_core::applog::info(&format!("companion: {} stopped: {why}", spec.name));
                 self.status = Some(format!("{} stopped", spec.name));
-                self.companions.failed.insert((spec.name, root));
+                self.companions.failed.insert((spec.name.clone(), root));
                 self.companions.running.remove(at);
                 self.companions.diagnostics.retain(|(sid, _), _| *sid != id);
                 let dropped = self.companions.pending.keys().filter(|(sid, _)| *sid == id).count();
@@ -439,7 +491,7 @@ fn pull(client: &mut Client, uri: &lt::Url) -> Option<i64> {
     Some(client.request("textDocument/diagnostic", json!({ "textDocument": { "uri": uri } })))
 }
 
-fn start(spec: &'static Companion, root: &Path, ctx: &egui::Context) -> Result<Client, String> {
+fn start(spec: &Companion, root: &Path, ctx: &egui::Context, index: usize) -> Result<Client, String> {
     let script =
         spec.installed_script().ok_or_else(|| format!("its VS Code extension ({}) isn't installed", spec.extension))?;
     let node = which("node").ok_or("needs Node.js (node on PATH)")?;
@@ -450,7 +502,7 @@ fn start(spec: &'static Companion, root: &Path, ctx: &egui::Context) -> Result<C
         env: Vec::new(),
     };
     // A kind of its own: these never mix with the main servers.
-    let kind = ServerKind::Custom(u16::MAX - companions::ALL.iter().position(|c| *c == spec).unwrap_or(0) as u16);
+    let kind = ServerKind::Custom(u16::MAX - index as u16);
     // Files are watched here: Tailwind's own watcher reads its start as changes, and
     // restarts its project over and over.
     Client::start_with(kind, &launch, root, Value::Null, true, repaint(ctx)).map_err(|e| e.to_string())

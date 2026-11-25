@@ -65,6 +65,13 @@ impl Default for PackSettings {
     }
 }
 
+impl Settings {
+    /// Whether VS Code extensions are enabled. Off by default.
+    pub fn vscode_extensions_enabled(&self) -> bool {
+        self.plugins.vscode_extensions || self.lsp.extension_host
+    }
+}
+
 /// More than one folder in a window (a project's own setting, in `.coiman/settings.toml`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
@@ -363,6 +370,10 @@ pub struct LspSettings {
     pub enabled: bool,
     /// Path to rust-analyzer; empty finds it on PATH or in ~/.cargo/bin.
     pub rust_analyzer_path: String,
+    /// TypeScript's `lib` folder (with `tsserver.js`), or its package folder,
+    /// for JavaScript and TypeScript IntelliSense. Empty finds the project's,
+    /// npm's global copy, or VS Code's.
+    pub typescript_path: String,
     /// Offer to install a missing language server (rust-analyzer, pyright…).
     pub ask_to_install: bool,
     /// How much rust-analyzer may keep in memory: "default", "low" (fewer
@@ -380,6 +391,19 @@ pub struct LspSettings {
     /// beside a file's own server, when the extension is installed and the project uses
     /// the tool.
     pub extension_servers: bool,
+    /// Run installed VS Code extensions in a Node host, started after the first frame.
+    pub extension_host: bool,
+    /// Offer completions as you type, like VS Code's IntelliSense.
+    pub completion: bool,
+    /// Apply a completion's `additionalTextEdits` (normally an auto-import).
+    pub completion_auto_import: bool,
+    /// Expand snippet completions and place the cursor at their tab stops.
+    pub completion_snippets: bool,
+    /// Open completion after the server's trigger characters (`."(::`).
+    pub completion_trigger_characters: bool,
+    /// Most completion rows to render. Large lists (Tailwind CSS) are capped;
+    /// typing narrows them.
+    pub completion_max_rows: usize,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -454,14 +478,28 @@ pub struct DebugSettings {
 pub struct PluginSettings {
     /// Load installed plugins.
     pub enabled: bool,
+    /// Enable VS Code extension support (activity bar views, custom webviews, language servers, and commands).
+    pub vscode_extensions: bool,
+    /// You were told what running VS Code extensions means (their JavaScript runs with your
+    /// rights) and let them run. Asked the first time the extension host would start.
+    pub vscode_extensions_ok: bool,
     /// Plugin registry: a folder or an http(s)/file URL with a `registry.json`.
     /// Only read when you check it from the Extensions view.
     pub registry: String,
+    /// The Open VSX tab in the Extensions view: open-vsx.org is reached (through `curl`) only
+    /// when you search or browse there.
+    pub marketplace: bool,
 }
 
 impl Default for PluginSettings {
     fn default() -> Self {
-        Self { enabled: true, registry: String::new() }
+        Self {
+            enabled: true,
+            vscode_extensions: false,
+            vscode_extensions_ok: false,
+            registry: String::new(),
+            marketplace: true,
+        }
     }
 }
 
@@ -494,11 +532,18 @@ impl Default for LspSettings {
         Self {
             enabled: true,
             rust_analyzer_path: String::new(),
+            typescript_path: String::new(),
             ask_to_install: true,
             rust_analyzer_memory: "default".to_owned(),
             rust_analyzer_separate_target: false,
             paths: std::collections::BTreeMap::new(),
-            extension_servers: true,
+            extension_servers: false,
+            extension_host: false,
+            completion: true,
+            completion_auto_import: true,
+            completion_snippets: true,
+            completion_trigger_characters: true,
+            completion_max_rows: 120,
         }
     }
 }
@@ -1075,6 +1120,43 @@ color_theme = \"Nord\"
             "# note\n[editor]\nfont_size = 15.0\n# tab_size = 4\n[files]\ntab_size = 9\n"
         );
         assert_eq!(remove_value_in_text(text, "git", "enabled"), text);
+    }
+
+    #[test]
+    fn vscode_extensions_disabled_by_default() {
+        let s = Settings::default();
+        assert!(!s.vscode_extensions_enabled());
+        assert!(!s.plugins.vscode_extensions);
+        assert!(!s.lsp.extension_host);
+        assert!(!s.lsp.extension_servers);
+    }
+
+    #[test]
+    fn vscode_extensions_can_be_enabled() {
+        let (s, problems) = from_table(table("[plugins]\nvscode_extensions = true"));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(s.vscode_extensions_enabled());
+        assert!(s.plugins.vscode_extensions);
+
+        let (s2, problems2) = from_table(table("[lsp]\nextension_host = true"));
+        assert!(problems2.is_empty(), "{problems2:?}");
+        assert!(s2.vscode_extensions_enabled());
+        assert!(s2.lsp.extension_host);
+    }
+
+    #[test]
+    fn completion_settings_have_vscode_defaults() {
+        let s = LspSettings::default();
+        assert!(s.completion && s.completion_snippets && s.completion_auto_import);
+        assert!(s.completion_trigger_characters);
+        assert_eq!(s.completion_max_rows, 120);
+        assert!(s.typescript_path.is_empty());
+        let (_, problems) =
+            from_table(table("[lsp]\ncompletion = false\ncompletion_max_rows = 80\ncompletion_snippets = false"));
+        assert!(problems.is_empty(), "{problems:?}");
+        let (s, problems) = from_table(table("[lsp]\ntypescript_path = \"/opt/typescript/lib\""));
+        assert!(problems.is_empty(), "{problems:?}");
+        assert_eq!(s.lsp.typescript_path, "/opt/typescript/lib");
     }
 
     #[test]

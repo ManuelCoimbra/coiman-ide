@@ -856,6 +856,7 @@ dependencies = [
  "eframe",
  "egui",
  "image",
+ "nucleo",
  "resvg 0.45.1",
  "rfd",
  "ropey",

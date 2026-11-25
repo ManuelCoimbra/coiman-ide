@@ -110,11 +110,8 @@ struct Checked {
 enum Job {
     /// The registry's latest versions, and updates for installed plugins.
     Index(Result<Box<Checked>, String>),
-    Downloaded {
-        entry: Box<Entry>,
-        result: Result<Box<Package>, String>,
-        diff: Option<Box<UpdateDiff>>,
-    },
+    #[allow(dead_code)]
+    Downloaded { entry: Box<Entry>, result: Result<Box<Package>, String>, diff: Option<Box<UpdateDiff>> },
     /// A dev mode build has ended.
     DevBuilt(Box<dev::Built>),
 }
@@ -193,6 +190,8 @@ pub(crate) struct PluginState {
     /// A plugin whose command just ran: its next panel comes to the front. Other panel updates
     /// (a log that streams) leave the tab shown alone.
     reveal: Option<String>,
+    /// The Extensions view shows the Open VSX marketplace rather than Coiman's own.
+    open_vsx: bool,
 }
 
 /// The lens command of a plugin's code lens: its arguments are (plugin, command, argument).
@@ -820,6 +819,19 @@ impl CodeApp {
     /// Runs a palette entry from [`plugin_commands`](Self::plugin_commands).
     pub(crate) fn run_plugin_command(&mut self, key: &str) {
         if let Some((plugin, command)) = key.split_once('\n') {
+            if plugin == "ext" {
+                if !self.settings.vscode_extensions_enabled() {
+                    self.status = Some("VS Code extensions are disabled in settings".to_owned());
+                    return;
+                }
+                if self.ext_host.request("command/execute", serde_json::json!({ "id": command, "args": [] })).is_some()
+                {
+                    self.status = Some(format!("Ran extension command {command}"));
+                } else {
+                    self.status = Some("The VS Code extension host isn't running".to_owned());
+                }
+                return;
+            }
             self.run_plugin(plugin, command, "");
         }
     }
@@ -866,13 +878,20 @@ impl CodeApp {
 
     /// Palette entries for running plugins' commands: (title, key).
     pub(crate) fn plugin_commands(&self) -> Vec<(String, String)> {
-        self.plugins
+        let mut out: Vec<(String, String)> = self
+            .plugins
             .infos
             .iter()
             .filter(|i| i.running)
             .filter_map(|i| i.manifest.as_ref())
             .flat_map(|m| m.commands.iter().map(|c| (c.title.clone(), command_key(&m.id, &c.id))))
-            .collect()
+            .collect();
+        if self.settings.vscode_extensions_enabled() {
+            for (title, id) in self.ext_host.commands() {
+                out.push((title, format!("ext\n{id}")));
+            }
+        }
+        out
     }
 
     // ----- registry and installs ----------------------------------------------------
@@ -928,8 +947,11 @@ impl CodeApp {
     }
 
     pub(crate) fn show_extensions(&mut self) {
+        // Coiman's own extensions and packs are always here; VS Code's are a tab of it.
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Extensions;
+        self.active_ext_view = None;
+        self.show_marketplace();
     }
 
     /// Plugins: Check for Updates — reads the registry (only when asked).
@@ -975,6 +997,7 @@ impl CodeApp {
         });
     }
 
+    #[allow(dead_code)]
     fn download(&mut self, ctx: &egui::Context, entry: Entry, diff: Option<UpdateDiff>) {
         let base = self.settings.plugins.registry.trim().to_owned();
         let tx = self.jobs();
@@ -1089,6 +1112,31 @@ impl CodeApp {
     pub(crate) fn extensions_view(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let pal = theme::colors();
+        // Coiman's own extensions and packs, or VS Code's from Open VSX (reached only when that
+        // tab is used).
+        if self.settings.plugins.marketplace {
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.plugins.open_vsx, false, "Coiman");
+                ui.selectable_value(&mut self.plugins.open_vsx, true, "Open VSX");
+                if self.plugins.open_vsx {
+                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                        let more = ui.button("⋯").on_hover_text("Filter");
+                        egui::Popup::menu(&more).show(|ui| {
+                            for (label, query) in [("Installed Extensions", "@installed"), ("Updates", "@updates")] {
+                                if ui.button(label).clicked() {
+                                    self.set_marketplace_query(query.to_owned());
+                                    ui.close();
+                                }
+                            }
+                        });
+                    });
+                }
+            });
+            if self.plugins.open_vsx {
+                self.marketplace_sidebar(ui);
+                return;
+            }
+        }
         ui.horizontal(|ui| {
             ui.label(RichText::new("EXTENSIONS").small().strong());
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
@@ -1368,7 +1416,7 @@ impl CodeApp {
         }
     }
 
-    fn installed_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(crate) fn installed_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let pal = theme::colors();
         ui.label(RichText::new("INSTALLED").small().strong());
         if self.plugins.infos.is_empty() {

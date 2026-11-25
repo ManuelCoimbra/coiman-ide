@@ -7,6 +7,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Work by [MostafaXS1](https://github.com/MostafaXS1):
+  - **The Open VSX marketplace**, a tab of the Extensions view beside Coiman's own extensions
+    and packs: search, filters, and a page for each extension with its details,
+    contributions, changelog and runtime status. open-vsx.org is reached through `curl`, only
+    when the tab is used; pictures are kept on disk. `plugins.marketplace = false` removes it.
+  - **VS Code extensions' code**, in a Node.js extension host with a `vscode` API shim
+    (`plugins.vscode_extensions`, off by default). The first time, Coiman says what it means
+    and asks; it runs for trusted folders only. Webviews open in your browser, served from
+    127.0.0.1 under a secret path, only while open, with the extensions' own files only.
+  - **Language servers from VS Code extensions** beside a file's own: ESLint, Tailwind CSS,
+    Stylelint, YAML, Pylance and any extension that ships one; trusted folders only.
+  - **Prettier and Biome** format web files, from the project or a VS Code extension.
+  - **Sticky scroll**, a find box set inside the text area, a scrolling completion list with
+    fuzzy ranking, and TypeScript taken from the project.
+  - **The Agents panel**, reworked: a sessions rail beside the conversation when it's wide,
+    and a floating sheet in the Dock layout.
+
 - The Serial Monitor and Binary Size are now the Serial Monitor and Binary Size extensions of
   the Embedded and systems pack, each in a panel. Their built-in windows and code left the
   program. The Memory and Disassembly views stay built in (they belong to the debugger).

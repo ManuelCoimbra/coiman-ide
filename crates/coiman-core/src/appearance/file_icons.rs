@@ -238,8 +238,6 @@ const VSCODE_LANGUAGES: &[(&str, &[&str])] = &[
     ("ocaml", &["ml", "mli"]),
     ("groovy", &["groovy", "gradle"]),
     ("latex", &["tex"]),
-    ("vue", &["vue"]),
-    ("svelte", &["svelte"]),
     ("plaintext", &["txt"]),
 ];
 

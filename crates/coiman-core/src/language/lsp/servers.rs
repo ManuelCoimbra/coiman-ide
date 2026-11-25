@@ -236,25 +236,173 @@ pub fn rust_analyzer_options(check: &str, memory: &str, separate_target: bool) -
     options
 }
 
+/// The global npm modules folder, asking npm itself when it is on PATH.
+/// This follows nvm, Volta, asdf and custom prefixes instead of guessing.
+fn npm_global_root() -> Option<PathBuf> {
+    let npm = which("npm")?;
+    let out = quiet_command(&npm)
+        .args(["root", "-g"])
+        .current_dir(std::env::temp_dir())
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| {
+            let text = String::from_utf8_lossy(&out.stdout);
+            let path = text.lines().rev().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+            PathBuf::from(path)
+        })
+        .filter(|p| p.is_dir())
+}
+
+/// The `typescript/lib` folders a user-set path can mean: the package folder,
+/// its `lib` folder (VS Code's `typescript.tsdk`), or `tsserver.js` itself.
+fn configured_typescript_libs(path: &Path) -> Vec<PathBuf> {
+    let path = match path.strip_prefix("~") {
+        Ok(rest) => home().map_or_else(|| path.to_path_buf(), |home| home.join(rest)),
+        Err(_) => path.to_path_buf(),
+    };
+    if path.is_file() {
+        if path.file_name().is_some_and(|name| name == "tsserver.js") {
+            return path.parent().map(Path::to_path_buf).into_iter().collect();
+        }
+        if path.file_name().is_some_and(|name| name == "package.json") {
+            return path.parent().map(|dir| dir.join("lib")).into_iter().collect();
+        }
+        return Vec::new();
+    }
+    vec![path.join("lib"), path]
+}
+
+/// The TypeScript copies inside an editor's extensions folder.
+fn extension_typescript_libs(extensions: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(extensions) else { return Vec::new() };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path().join("node_modules/typescript/lib"))
+        .filter(|lib| lib.join("tsserver.js").is_file())
+        .collect()
+}
+
+/// Where `typescript-language-server` can find TypeScript's `tsserver.js`.
+///
+/// A project's own TypeScript comes first, as in VS Code. Then the Node the
+/// server runs under (nvm, fnm, Volta, asdf, or the system), npm's global
+/// folder, and finally the TypeScript bundled with VS Code or one of its
+/// extensions: a machine can have the server but not the `typescript`
+/// package, and VS Code ships a usable copy.
+fn typescript_libs(root: &Path, launch: &Launch) -> Vec<PathBuf> {
+    let mut libs = Vec::new();
+    // A project's own TypeScript, nearest folder first.
+    for folder in root.ancestors() {
+        libs.push(folder.join("node_modules/typescript/lib"));
+        libs.push(folder.join(".vscode/pnpify/typescript/lib"));
+        libs.push(folder.join(".yarn/sdks/typescript/lib"));
+        libs.push(folder.join(".pnpm/sdks/typescript/lib"));
+    }
+    // The Node the server runs under, and any TypeScript beside the server.
+    let mut programs = vec![launch.program.clone()];
+    if let Some(node) = which("node") {
+        programs.push(node);
+    }
+    for program in programs {
+        let program = std::fs::canonicalize(&program).unwrap_or(program);
+        if let Some(prefix) = program.parent().and_then(Path::parent) {
+            libs.push(prefix.join("lib/node_modules/typescript/lib"));
+            libs.push(prefix.join("node_modules/typescript/lib"));
+            libs.push(prefix.join("lib/node_modules/typescript-language-server/node_modules/typescript/lib"));
+        }
+    }
+    if let Some(global) = npm_global_root() {
+        libs.push(global.join("typescript/lib"));
+        libs.push(global.join("typescript-language-server/node_modules/typescript/lib"));
+    }
+    if let Some(home) = home() {
+        libs.push(home.join(".local/share/npm/lib/node_modules/typescript/lib"));
+        libs.push(home.join(".npm-global/lib/node_modules/typescript/lib"));
+        libs.push(home.join("node_modules/typescript/lib"));
+        libs.push(
+            home.join(
+                "Applications/Visual Studio Code.app/Contents/Resources/app/extensions/node_modules/typescript/lib",
+            ),
+        );
+        libs.push(
+            home.join("Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/extensions/node_modules/typescript/lib"),
+        );
+    }
+    // npm-installed by the system (Fedora's nodejs-typescript, for example).
+    libs.push(PathBuf::from("/usr/lib/node_modules/typescript/lib"));
+    libs.push(PathBuf::from("/usr/local/lib/node_modules/typescript/lib"));
+    // VS Code's own TypeScript, stable first, then the extensions' copies.
+    libs.extend(
+        [
+            "/usr/share/code/resources/app/extensions/node_modules/typescript/lib",
+            "/usr/lib/code/resources/app/extensions/node_modules/typescript/lib",
+            "/opt/visual-studio-code/resources/app/extensions/node_modules/typescript/lib",
+            "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/node_modules/typescript/lib",
+            "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/extensions/node_modules/typescript/lib",
+            "/usr/share/code-insiders/resources/app/extensions/node_modules/typescript/lib",
+            "/usr/lib/code-insiders/resources/app/extensions/node_modules/typescript/lib",
+            "/opt/visual-studio-code-insiders/resources/app/extensions/node_modules/typescript/lib",
+            "/snap/code/current/usr/share/code/resources/app/extensions/node_modules/typescript/lib",
+        ]
+        .map(PathBuf::from),
+    );
+    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+        let local = PathBuf::from(local);
+        libs.push(local.join("Programs/Microsoft VS Code/resources/app/extensions/node_modules/typescript/lib"));
+        libs.push(
+            local.join("Programs/Microsoft VS Code Insiders/resources/app/extensions/node_modules/typescript/lib"),
+        );
+    }
+    if let Some(programs) = std::env::var_os("ProgramFiles") {
+        let programs = PathBuf::from(programs);
+        libs.push(programs.join("Microsoft VS Code/resources/app/extensions/node_modules/typescript/lib"));
+        libs.push(programs.join("Microsoft VS Code Insiders/resources/app/extensions/node_modules/typescript/lib"));
+    }
+    if let Some(home) = home() {
+        for folder in [".vscode", ".vscode-insiders", ".vscode-server", ".vscode-oss", ".cursor"] {
+            libs.extend(extension_typescript_libs(&home.join(folder).join("extensions")));
+        }
+    }
+    libs
+}
+
+fn find_typescript_lib(root: &Path, launch: &Launch) -> Option<PathBuf> {
+    typescript_libs(root, launch).into_iter().find(|lib| lib.join("tsserver.js").is_file())
+}
+
+/// The `tsserver.js` folder a user-set path names, without falling back to
+/// anything else: an explicit choice must win over the project's TypeScript.
+fn configured_typescript_lib(path: &Path) -> Option<PathBuf> {
+    configured_typescript_libs(path).into_iter().find(|lib| lib.join("tsserver.js").is_file())
+}
+
 /// `initializationOptions` a server needs (besides rust-analyzer's, which
 /// the editor builds from its settings).
-pub fn init_options(kind: ServerKind, launch: &Launch) -> serde_json::Value {
+pub fn init_options(
+    kind: ServerKind,
+    launch: &Launch,
+    root: &Path,
+    typescript_path: Option<&Path>,
+) -> serde_json::Value {
     match kind {
         // Lets go to definition reach classes inside jars.
         ServerKind::Jdtls => {
             serde_json::json!({ "extendedClientCapabilities": { "classFileContentsSupport": true } })
         }
         // A global typescript-language-server needs to be told where the
-        // global TypeScript is; a project's own TypeScript still wins.
+        // global TypeScript is; a project's own TypeScript still wins unless
+        // the user set one.
         ServerKind::TypeScript => {
-            // Beside a global install's command, or above a project's `.bin`.
-            let folder = launch.program.parent();
-            let global = folder.map(|d| d.join("node_modules"));
-            let local = folder.and_then(Path::parent).map(Path::to_path_buf);
-            let found = [global, local].into_iter().flatten().map(|d| d.join("typescript").join("lib"));
-            match found.into_iter().find(|l| l.join("tsserver.js").is_file()) {
-                Some(lib) => serde_json::json!({ "tsserver": { "fallbackPath": lib } }),
-                None => serde_json::Value::Null,
+            if let Some(lib) = typescript_path.and_then(configured_typescript_lib) {
+                serde_json::json!({ "tsserver": { "path": lib.join("tsserver.js") } })
+            } else {
+                match find_typescript_lib(root, launch) {
+                    Some(lib) => serde_json::json!({ "tsserver": { "fallbackPath": lib } }),
+                    None => serde_json::Value::Null,
+                }
             }
         }
         // Says what it's doing with each file, for the C/C++ window.
@@ -683,6 +831,40 @@ mod tests {
                 "procMacro": { "enable": false },
             })
         );
+    }
+
+    #[test]
+    fn typescript_init_points_at_a_real_tsserver_when_installed() {
+        let launch = Launch::new(
+            which("typescript-language-server").unwrap_or_else(|| PathBuf::from("typescript-language-server")),
+            &["--stdio"],
+        );
+        let options = init_options(ServerKind::TypeScript, &launch, Path::new("."), None);
+        if let Some(path) = options.pointer("/tsserver/fallbackPath").and_then(|v| v.as_str()) {
+            assert!(Path::new(path).join("tsserver.js").is_file(), "tsserver.path must hold tsserver.js: {path}");
+        }
+    }
+
+    #[test]
+    fn a_configured_typescript_path_can_be_the_package_folder_or_its_lib() {
+        let root = std::env::temp_dir().join(format!("coiman-typescript-lib-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let package = root.join("node_modules/typescript");
+        let lib = package.join("lib");
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(lib.join("tsserver.js"), "").unwrap();
+        std::fs::write(package.join("package.json"), "{}").unwrap();
+
+        assert!(configured_typescript_libs(&package).contains(&lib));
+        assert!(configured_typescript_libs(&lib).contains(&lib));
+        assert!(configured_typescript_libs(&lib.join("tsserver.js")).contains(&lib));
+        let launch = Launch::new("typescript-language-server", &["--stdio"]);
+        assert_eq!(configured_typescript_lib(&package), Some(lib.clone()));
+        let options = init_options(ServerKind::TypeScript, &launch, &root, Some(&package));
+        let tsserver = lib.join("tsserver.js");
+        assert_eq!(options.pointer("/tsserver/path").and_then(|v| v.as_str()), tsserver.to_str());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

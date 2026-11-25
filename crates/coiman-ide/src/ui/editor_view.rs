@@ -9,9 +9,9 @@ use crate::buffer::{Buffer, Change, Selection, char_width, tab_width, visual_wid
 use crate::document::Document;
 use crate::ui::theme;
 
-const SCROLLBAR: f32 = 12.0;
+pub(crate) const SCROLLBAR: f32 = 12.0;
 /// The minimap's width, when it stands in for the scrollbar.
-const MINIMAP: f32 = 96.0;
+pub(crate) const MINIMAP: f32 = 96.0;
 /// Height of one row and width of one column in the minimap.
 const MINI_ROW: f32 = 2.0;
 const MINI_COL: f32 = 1.0;
@@ -677,7 +677,13 @@ pub fn show(
     glide(ui, view, opts.smooth_scrolling, scroll_before.clamp(0.0, max_y) - view.scroll.y, text_rect.height());
 
     // ----- paint ---------------------------------------------------------------
-    paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts, deco });
+    let sticky = paint(ui, doc, view, PaintCtx { layout: &layout, m: &m, rect, text_rect, has_focus, opts, deco });
+    if let Some(line) = sticky {
+        // Clicking a sticky header scrolls to it without moving the cursor.
+        let row = layout.row_of(doc, view, doc.buffer.line_start(line));
+        view.scroll.y = row as f32 * row_h;
+        ui.ctx().request_repaint();
+    }
     if opts.minimap {
         paint_minimap(ui, doc, view, &layout, &m, rect, text_rect);
     }
@@ -1492,8 +1498,26 @@ struct PaintCtx<'a> {
     deco: &'a Decorations,
 }
 
-fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: PaintCtx) {
+/// The enclosing symbols a sticky-scroll header shows, outermost first.
+fn sticky_chain(
+    symbols: &[coiman_core::editor::structure::Symbol],
+    top_line: usize,
+) -> Vec<(usize, coiman_core::editor::structure::SymbolKind)> {
+    const MAX_ROWS: usize = 5;
+    let mut chain: Vec<_> = symbols
+        .iter()
+        .filter(|s| s.start_line < top_line && top_line <= s.end_line && s.end_line > s.start_line)
+        .map(|s| (s.start_line, s.kind))
+        .collect();
+    chain.sort_by_key(|(line, _)| *line);
+    chain.dedup_by_key(|(line, _)| *line);
+    let innermost_first: Vec<_> = chain.into_iter().rev().take(MAX_ROWS).collect();
+    innermost_first.into_iter().rev().collect()
+}
+
+fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: PaintCtx) -> Option<usize> {
     let PaintCtx { layout, m, rect, text_rect, has_focus, opts, deco } = ctx;
+    let mut sticky_click = None;
     let pal = theme::colors();
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, theme::colors().editor_bg);
@@ -1971,36 +1995,40 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
         }
     }
 
-    // Sticky scroll: the symbols around the first visible line stay at the top, as in VS Code.
+    // Sticky scroll: the enclosing symbols stay pinned above the code, one
+    // line per nesting level, outermost first. Clicking one scrolls to it.
     if opts.sticky_scroll && first_row > 0 {
         let top_line = layout.row(doc, view, first_row).line;
-        let mut starts: Vec<usize> = doc
-            .structure()
-            .symbols
-            .iter()
-            .filter(|s| s.start_line < top_line && top_line <= s.end_line && s.end_line > s.start_line)
-            .map(|s| s.start_line)
-            .collect();
-        starts.sort_unstable();
-        starts.dedup();
-        let chain: Vec<usize> = starts.into_iter().rev().take(3).collect();
-        for (i, line) in chain.into_iter().rev().enumerate() {
-            let rect = Rect::from_min_size(
+        let chain = sticky_chain(&doc.structure().symbols, top_line);
+        for (i, (line, kind)) in chain.into_iter().enumerate() {
+            let row = Rect::from_min_size(
                 Pos2::new(text_rect.left(), text_rect.top() + i as f32 * m.row_h),
                 Vec2::new(text_rect.width(), m.row_h),
             );
-            painter.rect_filled(rect, 0.0, pal.sidebar_bg);
-            painter.hline(rect.x_range(), rect.bottom(), Stroke::new(1.0, pal.border));
-            let text = doc.buffer.line_text(line);
-            let text = text.trim_end();
+            let resp = ui.interact(row, egui::Id::unique(("sticky_scroll", doc.uid, line)), Sense::click());
+            let bg = if resp.hovered() { pal.hover_bg } else { pal.widget_bg };
+            painter.rect_filled(row, 0.0, bg);
+            painter.hline(row.x_range(), row.bottom(), Stroke::new(1.0, pal.border));
+            let text = doc.buffer.line_text(line).trim_end().to_owned();
             let indent = indent_cols(&doc.buffer, line).min(12) as f32 * m.char_w;
+            let glyph = kind.word().chars().next().unwrap_or('·').to_ascii_uppercase().to_string();
             painter.text(
-                Pos2::new(rect.left() + 8.0 + indent, rect.center().y),
+                Pos2::new(row.left() + 4.0 + indent, row.center().y),
+                egui::Align2::LEFT_CENTER,
+                glyph,
+                m.font_id.clone(),
+                pal.accent,
+            );
+            painter.text(
+                Pos2::new(row.left() + 20.0 + indent, row.center().y),
                 egui::Align2::LEFT_CENTER,
                 text,
                 m.font_id.clone(),
                 pal.text,
             );
+            if resp.clicked() {
+                sticky_click = Some(line);
+            }
         }
     }
 
@@ -2042,6 +2070,7 @@ fn paint(ui: &mut egui::Ui, doc: &mut Document, view: &mut ViewState, ctx: Paint
             }
         }
     }
+    sticky_click
 }
 
 /// A wavy underline from `x0` to `x1` around height `y`.
@@ -2357,13 +2386,8 @@ fn paint_minimap(
     let view_h = text_rect.height();
     let first = minimap_first(layout.total_rows, track.height(), view.scroll.y, m.row_h);
     let start = first.floor() as usize;
-    // A short file is stretched to fill the scrollbar, so the minimap starts at its top
-    // and ends at its bottom; a long one keeps the normal scale and scrolls.
-    let content_h = layout.total_rows as f32 * MINI_ROW;
-    let scale = if content_h > 0.0 && content_h < track.height() { track.height() / content_h } else { 1.0 };
-    let mini_row = MINI_ROW * scale;
-    let shift = (first - start as f32) * mini_row;
-    let rows = (track.height() / mini_row).ceil() as usize + 1;
+    let shift = (first - start as f32) * MINI_ROW;
+    let rows = (track.height() / MINI_ROW).ceil() as usize + 1;
     let max_cols = ((track.width() - 8.0) / MINI_COL) as usize;
     // Colored as the text is: tree-sitter's spans for these lines, else the grammar's.
     let last_row = (start + rows).min(layout.total_rows.max(1) - 1);
@@ -2394,7 +2418,7 @@ fn paint_minimap(
         let Some((_, chars, line_start, colors)) = cached.as_ref() else { continue };
         // Faint, as VS Code's: the shape of the code, its colors a hint.
         let ink = |i: usize| colors.get(i).copied().unwrap_or(pal.text).gamma_multiply(0.6);
-        let y = track.top() + k as f32 * mini_row - shift;
+        let y = track.top() + k as f32 * MINI_ROW - shift;
         let (a, b) = (row.start - line_start, (row.end - line_start).min(chars.len()));
         let mut col = 0usize;
         // A run of one color: (first column, color).
@@ -2405,7 +2429,7 @@ fn paint_minimap(
             if to > from {
                 let x = track.left() + 5.0 + from as f32 * MINI_COL;
                 painter.rect_filled(
-                    Rect::from_min_size(Pos2::new(x, y), Vec2::new((to - from) as f32 * MINI_COL, mini_row * 0.7)),
+                    Rect::from_min_size(Pos2::new(x, y), Vec2::new((to - from) as f32 * MINI_COL, MINI_ROW * 0.7)),
                     0.0,
                     color,
                 );
@@ -2438,10 +2462,10 @@ fn paint_minimap(
         }
     }
     // The part in view.
-    let top = track.top() + (view.scroll.y / m.row_h - first) * mini_row;
+    let top = track.top() + (view.scroll.y / m.row_h - first) * MINI_ROW;
     let band = Rect::from_min_size(
         Pos2::new(track.left() + 1.0, top),
-        Vec2::new(track.width() - 1.0, (view_h / m.row_h * mini_row).min(track.height())),
+        Vec2::new(track.width() - 1.0, view_h / m.row_h * MINI_ROW),
     );
     let hovered = ui.rect_contains_pointer(track);
     painter.rect_filled(band, 0.0, pal.text.gamma_multiply(if hovered { 0.16 } else { 0.09 }));
@@ -2505,7 +2529,7 @@ fn publish_selection(
 
 #[cfg(test)]
 mod tests {
-    use super::{Layout, ViewState, WordShift, move_by_rows, shifted, unshift, wrap_segments};
+    use super::{Layout, ViewState, WordShift, move_by_rows, shifted, sticky_chain, unshift, wrap_segments};
     use crate::buffer::Selection;
     use crate::document::Document;
 
@@ -2554,6 +2578,28 @@ last line
             assert_eq!(shifted(&shifts, cell), drawn, "cell {cell}");
             assert_eq!(unshift(&shifts, drawn), cell, "drawn {drawn}");
         }
+    }
+
+    #[test]
+    fn sticky_headers_run_outermost_first() {
+        use coiman_core::editor::structure::{Symbol, SymbolKind};
+        let symbol = |name: &str, kind, start, end| Symbol {
+            name: name.to_owned(),
+            kind,
+            depth: 0,
+            line: start,
+            start_line: start,
+            end_line: end,
+        };
+        let symbols = vec![
+            symbol("outer", SymbolKind::Function, 0, 100),
+            symbol("middle", SymbolKind::Function, 10, 50),
+            symbol("inner", SymbolKind::Function, 20, 30),
+            symbol("past", SymbolKind::Function, 40, 60),
+        ];
+        let chain = sticky_chain(&symbols, 25);
+        assert_eq!(chain.iter().map(|(line, _)| *line).collect::<Vec<_>>(), vec![0, 10, 20]);
+        assert!(sticky_chain(&symbols, 0).is_empty(), "the top of a symbol isn't hidden");
     }
 
     #[test]

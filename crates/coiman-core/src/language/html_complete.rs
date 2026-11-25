@@ -1,15 +1,8 @@
-//! Suggestions in HTML and Vue templates with no language server: element names after
-//! `<`, an element's attributes inside its tag, and the values of attributes that take
-//! a fixed set of them. Vue adds its directives and built-in components.
+//! Suggestions in HTML with no language server: element names after `<`, an
+//! element's attributes inside its tag, and the values of attributes that take
+//! a fixed set of them.
 
 use crate::language::html_attributes::{ELEMENTS, GLOBAL};
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Flavor {
-    Html,
-    /// A Vue single-file component's template.
-    Vue,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -214,39 +207,6 @@ const VALUES: &[(&str, &str, &[&str])] = &[
     ("style", "lang", &["css", "scss", "sass", "less", "stylus"]),
 ];
 
-/// Vue's directives, with whether they take a value.
-const VUE_DIRECTIVES: &[(&str, bool)] = &[
-    ("v-if", true),
-    ("v-else-if", true),
-    ("v-else", false),
-    ("v-for", true),
-    ("v-show", true),
-    ("v-model", true),
-    ("v-bind", true),
-    ("v-on", true),
-    ("v-slot", false),
-    ("v-html", true),
-    ("v-text", true),
-    ("v-once", false),
-    ("v-memo", true),
-    ("v-pre", false),
-    ("v-cloak", false),
-    ("ref", true),
-    ("key", true),
-    ("is", true),
-];
-
-/// Vue's own components.
-const VUE_COMPONENTS: &[&str] =
-    &["template", "slot", "component", "transition", "transition-group", "keep-alive", "teleport", "suspense"];
-
-/// Attributes of Vue's single-file component blocks.
-const VUE_BLOCK_ATTRIBUTES: &[(&str, &[&str])] = &[
-    ("script", &["setup", "lang", "generic", "src"]),
-    ("style", &["scoped", "module", "lang", "src"]),
-    ("template", &["lang", "functional", "src"]),
-];
-
 fn name_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '-' | ':' | '_' | '.' | '@' | '#')
 }
@@ -272,7 +232,7 @@ fn suggestion(label: &str, insert: String, detail: &'static str, kind: Kind) -> 
 }
 
 /// What to suggest at the end of `before`, if anything.
-pub fn suggest(flavor: Flavor, before: &str) -> Option<Suggestions> {
+pub fn suggest(before: &str) -> Option<Suggestions> {
     if in_raw_text(before) {
         return None;
     }
@@ -284,11 +244,8 @@ pub fn suggest(flavor: Flavor, before: &str) -> Option<Suggestions> {
     let element: String = tag.chars().take_while(|c| name_char(*c)).collect();
     // Still writing the element's name.
     if element.len() == tag.len() {
-        let mut items: Vec<Suggestion> =
+        let items: Vec<Suggestion> =
             ELEMENTS.iter().map(|(name, _)| suggestion(name, (*name).to_owned(), "element", Kind::Element)).collect();
-        if flavor == Flavor::Vue {
-            items.extend(VUE_COMPONENTS.iter().map(|name| suggestion(name, (*name).to_owned(), "Vue", Kind::Element)));
-        }
         return Some(Suggestions { back: element.chars().count(), items });
     }
     let lower = element.to_ascii_lowercase();
@@ -334,30 +291,8 @@ pub fn suggest(flavor: Flavor, before: &str) -> Option<Suggestions> {
         suggestion(name, insert, detail, Kind::Attribute)
     };
     let mut items: Vec<Suggestion> = Vec::new();
-    // `:` and `@` in Vue bind a prop or listen to an event.
-    if flavor == Flavor::Vue && (word.starts_with(':') || word.starts_with('@')) {
-        let (prefix, names): (&str, Vec<&str>) = if word.starts_with(':') {
-            (":", attributes_of(&lower))
-        } else {
-            ("@", EVENTS.iter().map(|e| &e[2..]).collect())
-        };
-        for name in names {
-            let label = format!("{prefix}{name}");
-            items.push(suggestion(&label, format!("{label}=\"$1\""), "Vue", Kind::Attribute));
-        }
-        return Some(Suggestions { back: word.chars().count(), items });
-    }
-    if flavor == Flavor::Vue
-        && let Some((_, attrs)) = VUE_BLOCK_ATTRIBUTES.iter().find(|(block, _)| *block == lower)
-    {
-        items
-            .extend(attrs.iter().map(|a| named(a, !matches!(*a, "setup" | "scoped" | "module" | "functional"), "Vue")));
-    }
     items.extend(attributes_of(&lower).into_iter().map(|a| named(a, !BOOLEAN.contains(&a), "attribute")));
     items.extend(EVENTS.iter().map(|e| named(e, true, "event")));
-    if flavor == Flavor::Vue {
-        items.extend(VUE_DIRECTIVES.iter().map(|(d, value)| named(d, *value, "Vue")));
-    }
     items.retain(|s| !present.contains(&s.label.to_ascii_lowercase()));
     let mut seen = std::collections::HashSet::new();
     items.retain(|s| seen.insert(s.label.clone()));
@@ -366,70 +301,50 @@ pub fn suggest(flavor: Flavor, before: &str) -> Option<Suggestions> {
 
 #[cfg(test)]
 mod tests {
-    use super::Flavor::*;
     use super::*;
 
-    fn labels(flavor: Flavor, before: &str) -> Option<(usize, Vec<String>)> {
-        suggest(flavor, before).map(|s| (s.back, s.items.into_iter().map(|i| i.label).collect()))
+    fn labels(before: &str) -> Option<(usize, Vec<String>)> {
+        suggest(before).map(|s| (s.back, s.items.into_iter().map(|i| i.label).collect()))
     }
 
-    fn insert_of(flavor: Flavor, before: &str, label: &str) -> String {
-        suggest(flavor, before).unwrap().items.into_iter().find(|i| i.label == label).unwrap().insert
+    fn insert_of(before: &str, label: &str) -> String {
+        suggest(before).unwrap().items.into_iter().find(|i| i.label == label).unwrap().insert
     }
 
     #[test]
     fn elements_after_a_less_than() {
-        let (back, names) = labels(Html, "<body>\n  <di").unwrap();
+        let (back, names) = labels("<body>\n  <di").unwrap();
         assert_eq!(back, 2);
         assert!(names.contains(&"div".to_owned()) && names.contains(&"dialog".to_owned()));
         assert!(!names.contains(&"transition".to_owned()));
-        assert!(labels(Vue, "<tran").unwrap().1.contains(&"transition".to_owned()));
-        assert_eq!(labels(Html, "</di"), None);
-        assert_eq!(labels(Html, "text"), None);
+        assert_eq!(labels("</di"), None);
+        assert_eq!(labels("text"), None);
     }
 
     #[test]
     fn an_elements_own_attributes_first_and_with_quotes() {
-        let (back, names) = labels(Html, "<img sr").unwrap();
+        let (back, names) = labels("<img sr").unwrap();
         assert_eq!(back, 2);
         assert_eq!(names[0], "alt", "the element's own come first");
         assert!(names.contains(&"src".to_owned()) && names.contains(&"class".to_owned()));
         assert!(!names.contains(&"href".to_owned()), "an <a> attribute");
-        assert_eq!(insert_of(Html, "<img ", "src"), "src=\"$1\"");
-        assert_eq!(insert_of(Html, "<input ", "disabled"), "disabled", "boolean");
+        assert_eq!(insert_of("<img ", "src"), "src=\"$1\"");
+        assert_eq!(insert_of("<input ", "disabled"), "disabled", "boolean");
         // Those already there aren't offered again.
-        assert!(!labels(Html, "<img src=\"a\" ").unwrap().1.contains(&"src".to_owned()));
-        assert_eq!(labels(Html, "<img"), Some((3, labels(Html, "<img").unwrap().1)), "still the element's name");
+        assert!(!labels("<img src=\"a\" ").unwrap().1.contains(&"src".to_owned()));
+        assert_eq!(labels("<img"), Some((3, labels("<img").unwrap().1)), "still the element's name");
     }
 
     #[test]
     fn values_of_attributes_that_take_a_set() {
-        let (back, values) = labels(Html, "<input type=\"chec").unwrap();
+        let (back, values) = labels("<input type=\"chec").unwrap();
         assert_eq!(back, 4);
         assert!(values.contains(&"checkbox".to_owned()) && values.contains(&"email".to_owned()));
-        assert!(labels(Html, "<button type=\"").unwrap().1.contains(&"submit".to_owned()));
-        assert!(!labels(Html, "<button type=\"").unwrap().1.contains(&"checkbox".to_owned()));
+        assert!(labels("<button type=\"").unwrap().1.contains(&"submit".to_owned()));
+        assert!(!labels("<button type=\"").unwrap().1.contains(&"checkbox".to_owned()));
         // A list takes one word at a time.
-        assert_eq!(labels(Html, "<a rel=\"noopener nore").unwrap().0, 4);
-        assert_eq!(labels(Html, "<div title=\""), None, "free text");
-        assert_eq!(labels(Html, "<input type=\"text\" "), labels(Html, "<input type=\"text\" "), "after the value");
-    }
-
-    #[test]
-    fn vue_directives_bindings_and_blocks() {
-        let names = labels(Vue, "<div v-").unwrap().1;
-        assert!(names.contains(&"v-if".to_owned()) && names.contains(&"v-for".to_owned()));
-        assert_eq!(insert_of(Vue, "<div ", "v-else"), "v-else");
-        assert_eq!(insert_of(Vue, "<div ", "v-model"), "v-model=\"$1\"");
-        let bound = labels(Vue, "<img :sr").unwrap();
-        assert_eq!(bound.0, 3);
-        assert!(bound.1.contains(&":src".to_owned()));
-        assert!(labels(Vue, "<button @cl").unwrap().1.contains(&"@click".to_owned()));
-        assert!(labels(Vue, "<script ").unwrap().1.contains(&"setup".to_owned()));
-        assert!(labels(Vue, "<style ").unwrap().1.contains(&"scoped".to_owned()));
-        assert!(!labels(Html, "<div ").unwrap().1.contains(&"v-if".to_owned()));
-        // Inside a script block, nothing.
-        assert_eq!(labels(Vue, "<script setup>\nconst a = 1 <b"), None);
-        assert!(labels(Vue, "<script setup>x</script>\n<template>\n  <di").is_some());
+        assert_eq!(labels("<a rel=\"noopener nore").unwrap().0, 4);
+        assert_eq!(labels("<div title=\""), None, "free text");
+        assert_eq!(labels("<input type=\"text\" "), labels("<input type=\"text\" "), "after the value");
     }
 }

@@ -1397,7 +1397,7 @@ default:
                 if cfg!(windows) {
                     assert!(p.command.ends_with(r"if ($?) { & '.\prog.exe' }"), "{}", p.command);
                 } else {
-                    assert!(p.command.ends_with("&& ./prog"), "{}", p.command);
+                    assert!(p.command.ends_with("&& ./'prog'") || p.command.ends_with("&& ./prog"), "{}", p.command);
                 }
             }
             // Without make here, it says so instead.

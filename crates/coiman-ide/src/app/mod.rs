@@ -59,7 +59,7 @@ enum SidebarView {
 
 /// Tabs of the bottom panel.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum PanelTab {
+pub(crate) enum PanelTab {
     Problems,
     References,
     Output,
@@ -108,6 +108,9 @@ struct FindBar {
     show_replace: bool,
     replacement: String,
     focus_requested: bool,
+    editor_rect: Option<egui::Rect>,
+    bar_rect: Option<egui::Rect>,
+    width: Option<f32>,
     /// Matches for (doc uid, buffer version, query, match case), recomputed only on change.
     cache: Option<FindCache>,
 }
@@ -291,6 +294,37 @@ pub struct CodeApp {
     pub(crate) startup_probe: Option<(std::time::Instant, std::time::Duration, PathBuf)>,
     /// When the program started, until its first frame is logged.
     pub(crate) first_frame_from: Option<std::time::Instant>,
+    pub(crate) pending_session: Option<coiman_core::project::session::Session>,
+    pub(crate) pending_docs: std::collections::VecDeque<coiman_core::editor::document::Document>,
+    pub(crate) pending_active: usize,
+    /// VS Code extension host, started a second after the first frame.
+    pub(crate) ext_host: coiman_core::extensions::host::Host,
+    pub(crate) ext_host_at: Option<std::time::Instant>,
+    /// Diagnostics published by extension-host language features.
+    pub(crate) ext_diagnostics:
+        std::collections::HashMap<std::path::PathBuf, Vec<coiman_core::language::lsp::types::Diagnostic>>,
+    pub(crate) ext_requests: std::collections::HashMap<i64, crate::app::extensions::host::Request>,
+    pub(crate) ext_views: Vec<coiman_core::extensions::host::ViewContainer>,
+    pub(crate) active_ext_view: Option<String>,
+    pub(crate) ext_tree: std::collections::HashMap<String, Vec<(String, String)>>,
+    pub(crate) ext_tree_pending: std::collections::HashSet<String>,
+    pub(crate) ext_icons: std::collections::HashMap<String, egui::TextureHandle>,
+    /// Status bar items contributed by VS Code extensions: (text, tooltip, command).
+    pub(crate) ext_status_bar: std::collections::HashMap<String, (String, String, String)>,
+    /// Terminal tabs created by VS Code extensions: extension terminal ID -> Coiman PTY tab ID.
+    pub(crate) ext_terminals: std::collections::HashMap<String, u64>,
+    /// Webview panels created by VS Code extensions: webview ID -> (title, html content).
+    pub(crate) ext_webviews: std::collections::HashMap<String, (String, String)>,
+    /// Output channels created by VS Code extensions: channel name -> lines of output.
+    pub(crate) ext_outputs: std::collections::HashMap<String, Vec<String>>,
+    /// Decoration styles registered by extensions.
+    pub(crate) ext_decoration_types: std::collections::HashMap<String, crate::app::extensions::host::ExtDecorationType>,
+    /// Active range decorations by (decoration key, document path).
+    pub(crate) ext_decorations:
+        std::collections::HashMap<(String, std::path::PathBuf), crate::app::extensions::host::ExtLineHighlights>,
+    pub(crate) marketplace: crate::app::extensions::marketplace::MarketplaceUi,
+    pub(crate) active_view: Option<crate::app::views::view_tabs::ActiveView>,
+    pub(crate) agents_pinned: bool,
     /// Background tree-sitter parser, started on the first frame.
     syntax: Option<SyntaxWorker>,
     /// Language servers and the state of their features.
@@ -455,6 +489,27 @@ impl CodeApp {
             last_title: String::new(),
             startup_probe: None,
             first_frame_from: None,
+            pending_session: None,
+            pending_docs: std::collections::VecDeque::new(),
+            pending_active: 0,
+            ext_host: Default::default(),
+            ext_host_at: None,
+            ext_diagnostics: std::collections::HashMap::new(),
+            ext_requests: std::collections::HashMap::new(),
+            ext_views: Vec::new(),
+            active_ext_view: None,
+            ext_tree: std::collections::HashMap::new(),
+            ext_tree_pending: std::collections::HashSet::new(),
+            ext_icons: std::collections::HashMap::new(),
+            ext_status_bar: std::collections::HashMap::new(),
+            ext_terminals: std::collections::HashMap::new(),
+            ext_webviews: std::collections::HashMap::new(),
+            ext_outputs: std::collections::HashMap::new(),
+            ext_decoration_types: std::collections::HashMap::new(),
+            ext_decorations: std::collections::HashMap::new(),
+            marketplace: crate::app::extensions::marketplace::MarketplaceUi::default(),
+            active_view: None,
+            agents_pinned: false,
             syntax: None,
             lsp: lsp::LspState::default(),
             git: git::GitState::default(),
@@ -674,6 +729,7 @@ impl CodeApp {
             let max_side = (ui.available_width() * 0.5).max(200.0);
             let gaps = dock_edges(theme::island_gaps(false, true, false, gap_below), dock, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
+            let max_h = ui.available_height();
             let side = self
                 .layout
                 .side_panel("side_bar")
@@ -682,7 +738,10 @@ impl CodeApp {
                 .resizable(true)
                 .show_separator_line(classic)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
-                .show_collapsible(ui, &mut true, |ui| self.sidebar(ui));
+                .show_collapsible(ui, &mut true, |ui| {
+                    ui.set_max_height(max_h);
+                    self.sidebar(ui);
+                });
             if let Some(side) = &side {
                 self.layout.saw_side(&ctx, side.response.rect.width());
             }
@@ -697,7 +756,10 @@ impl CodeApp {
         }
 
         self.agents_prepare();
-        let agents_right = self.agents.is_open() && self.settings.workbench.agents_enabled;
+        // In the Dock layout an unpinned Agents window floats over the code instead (agents_sheet).
+        let agents_right = self.agents.is_open()
+            && self.settings.workbench.agents_enabled
+            && !agents_float(dock, zen, self.agents_pinned);
         if agents_right {
             let agents_id = self.layout.id("agents_panel");
             let agents_maximized = self.agents.maximized;
@@ -708,10 +770,17 @@ impl CodeApp {
             if agents_maximized {
                 agents_panel = agents_panel.exact_size(ui.available_width().max(200.0));
             }
-            agents_panel
-                .show_separator_line(true)
-                .frame(egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::symmetric(8, 6)))
-                .show(ui, |ui| self.agents.panel(ui));
+            let max_h = ui.available_height();
+            let frame = if classic {
+                egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::symmetric(8, 6))
+            } else {
+                let gaps = theme::island_gaps(false, false, false, gap_below);
+                theme::island_frame(theme::colors().sidebar_bg, egui::Margin::symmetric(10, 8), gaps)
+            };
+            agents_panel.show_separator_line(classic).frame(frame).show(ui, |ui| {
+                ui.set_max_height(max_h);
+                self.agents.panel(ui);
+            });
             if let Some(path) = self.agents.open_request.take() {
                 self.open_file(&path);
             }
@@ -852,12 +921,18 @@ impl CodeApp {
             self.tour_spot("editor", r.shrink(8.0));
         }
         let central = egui::CentralPanel::no_frame().frame(frame).show(ui, |ui| {
-            if self.settings_tab_open() {
+            if self.showing_extension_tab() || self.showing_settings_tab() || self.showing_webview_tab().is_some() {
                 egui::Frame::new().fill(theme::tab_bar_bg()).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     self.tab_bar(ui);
                 });
-                self.settings_tab_view(ui);
+                if self.showing_extension_tab() {
+                    self.marketplace_detail_view(ui);
+                } else if self.showing_settings_tab() {
+                    self.settings_tab_view(ui);
+                } else if let Some(wv_id) = self.showing_webview_tab() {
+                    self.webview_tab_view(ui, &wv_id);
+                }
                 return;
             }
             if self.docs.is_empty() {
@@ -893,7 +968,6 @@ impl CodeApp {
             self.hidden_bar(ui);
             self.lock_bar(ui);
             self.lsp_offer_bar(ui);
-            self.find_bar(ui);
             if !view_showing {
                 self.glyph_bar(ui);
             }
@@ -1002,6 +1076,9 @@ impl CodeApp {
         if floating && !zen {
             self.side_sheet(&ctx, central.response.rect - gaps, left_open);
         }
+        if agents_float(dock, zen, self.agents_pinned) {
+            self.agents_sheet(&ctx, central.response.rect - gaps);
+        }
         if panel_floating && panel_open {
             self.panel_window(&ctx, central.response.rect - gaps);
         }
@@ -1033,6 +1110,9 @@ impl CodeApp {
         self.git_popups(&ctx);
         self.editor_menu_ui(&ctx);
         self.terminal_window(&ctx);
+        self.find_overlay(&ctx);
+        self.pump_session();
+        self.pump_ext_host(&ctx);
 
         if self.palette.open {
             self.palette.plugin_commands = self.plugin_commands();
@@ -1131,6 +1211,94 @@ impl CodeApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+
+    pub(crate) fn showing_webview_tab(&self) -> Option<String> {
+        match &self.active_view {
+            Some(crate::app::views::view_tabs::ActiveView::Webview(id)) => Some(id.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn webview_tab_view(&mut self, ui: &mut egui::Ui, view_id: &str) {
+        if !self.settings.vscode_extensions_enabled() {
+            return;
+        }
+        let Some((title, html)) = self.ext_webviews.get(view_id).cloned() else { return };
+        let pal = theme::colors();
+        let server_url = self.ext_host.webview_server().map(|s| s.url_for(view_id));
+        egui::Frame::new().fill(pal.editor_bg).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(14.0);
+                ui.label(egui::RichText::new(&title).strong());
+                if let Some(ref url) = server_url {
+                    ui.label(egui::RichText::new("🟢 Live Webview").small().color(pal.accent));
+                    if ui.button("🌐 Open in Browser").clicked() {
+                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                    }
+                    if ui.button("📋 Copy URL").clicked() {
+                        ui.ctx().copy_text(url.clone());
+                    }
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Close").clicked() {
+                        self.close_view_tab(crate::app::views::view_tabs::ViewTab::Webview(view_id.to_owned()));
+                    }
+                });
+            });
+            ui.separator();
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(14.0);
+                    ui.vertical(|ui| {
+                        if let Some(ref url) = server_url {
+                            ui.group(|ui| {
+                                ui.label(egui::RichText::new("Interactive Extension Webview").strong());
+                                ui.label(egui::RichText::new(format!("Serving at: {url}")).small().color(pal.text_dim));
+                                ui.label(
+                                    egui::RichText::new("Extension scripts and bidirectional messaging are active.")
+                                        .small()
+                                        .color(pal.text_dim),
+                                );
+                                if ui.link(url).clicked() {
+                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
+                                }
+                            });
+                            ui.add_space(8.0);
+                        }
+                        if html.is_empty() {
+                            ui.label(egui::RichText::new("Loading webview content…").color(pal.text_dim));
+                        } else {
+                            let stripped = html
+                                .replace("<br>", "\n")
+                                .replace("<br/>", "\n")
+                                .replace("</p>", "\n\n")
+                                .replace("</div>", "\n")
+                                .replace("</h1>", "\n\n")
+                                .replace("</h2>", "\n\n")
+                                .replace("</h3>", "\n\n");
+                            let mut in_tag = false;
+                            let mut clean = String::new();
+                            for ch in stripped.chars() {
+                                if ch == '<' {
+                                    in_tag = true;
+                                } else if ch == '>' {
+                                    in_tag = false;
+                                } else if !in_tag {
+                                    clean.push(ch);
+                                }
+                            }
+                            let text = clean.trim();
+                            if !text.is_empty() {
+                                ui.label(egui::RichText::new("Content Preview:").small().strong().color(pal.text_dim));
+                                ui.label(egui::RichText::new(text).color(pal.text));
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    }
 }
 
 /// Logs a step of starting that took 50 ms or more, so a slow start shows where.
@@ -1157,4 +1325,14 @@ fn dock_edges(gaps: egui::Margin, dock: bool, at_left: bool) -> egui::Margin {
     }
     const EDGE: i8 = 8;
     egui::Margin { left: if at_left { EDGE } else { gaps.left }, right: EDGE, ..gaps }
+}
+
+/// How wide a new Agents window opens. The reference's 820px was too wide for
+/// most screens: 2.2x smaller leaves room for the code beside it.
+pub(crate) const AGENTS_DEFAULT_WIDTH: f32 = 820.0 / 2.2;
+
+/// In the Dock layout the Agents window floats over the code unless it is pinned.
+#[allow(dead_code)]
+fn agents_float(dock: bool, zen: bool, pinned: bool) -> bool {
+    dock && !zen && !pinned
 }

@@ -274,7 +274,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | JavaScript performance profiling | Missing | |
 | Accessibility inspection | Missing | |
 | Visual component tree | Missing | |
-| React, Vue, Angular component inspection | Missing | |
+| React, Angular component inspection | Missing | |
 | Hot module replacement management | Missing | |
 | HTTP request client | Done | HTTP Client extension: `.http` files sent through curl |
 | REST API testing environment | Done | `.http` files, environments, history |

@@ -65,8 +65,8 @@ impl IndentRules {
             "py" | "pyw" | "pyi" => Self::Python,
             "yaml" | "yml" => Self::Yaml,
             "html" | "htm" | "xhtml" | "xml" | "svg" | "xaml" | "csproj" | "fsproj" | "vbproj" | "props"
-            | "targets" | "plist" | "vue" | "svelte" | "jinja" | "jinja2" | "j2" | "njk" | "hbs" | "handlebars"
-            | "ejs" | "twig" | "liquid" => Self::Markup,
+            | "targets" | "plist" | "jinja" | "jinja2" | "j2" | "njk" | "hbs" | "handlebars" | "ejs" | "twig"
+            | "liquid" => Self::Markup,
             "rb" | "rake" | "gemspec" => Self::Ruby,
             "lua" => Self::Lua,
             "sh" | "bash" | "zsh" => Self::Shell,
@@ -227,7 +227,6 @@ mod tests {
         assert_eq!(open_tag("<input type=\"x\">"), None);
         assert_eq!(for_ext("tsx"), Brackets);
         assert_eq!(for_ext("py"), Python);
-        assert_eq!(for_ext("vue"), Markup);
         assert_eq!(for_ext("md"), Plain);
         assert!(!Plain.opens("list:") && !Plain.opens("("));
     }

@@ -421,8 +421,11 @@ fn client_capabilities() -> Value {
                     "documentationFormat": ["markdown", "plaintext"],
                     "labelDetailsSupport": true,
                     "insertReplaceSupport": true,
+                    "insertTextModeSupport": { "valueSet": [1, 2] },
                     "deprecatedSupport": true,
-                    "tagSupport": { "valueSet": [1] },
+                    "commitCharactersSupport": true,
+                    "preselectSupport": true,
+                    "tagSupport": { "valueSet": [1, 2] },
                     // Filled in when picked or shown: rust-analyzer only offers completions
                     // that add an import (`additionalTextEdits`) to a client that asks.
                     "resolveSupport": { "properties": ["documentation", "detail", "additionalTextEdits"] },
@@ -528,6 +531,10 @@ mod tests {
         assert!(props.contains(&"additionalTextEdits"));
         assert!(props.contains(&"documentation"));
         assert_eq!(item["insertReplaceSupport"], true);
+        assert_eq!(item["commitCharactersSupport"], true);
+        assert_eq!(item["preselectSupport"], true);
+        assert_eq!(item["tagSupport"]["valueSet"], json!([1, 2]));
+        assert_eq!(item["insertTextModeSupport"]["valueSet"], json!([1, 2]));
     }
 
     #[test]

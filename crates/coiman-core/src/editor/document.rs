@@ -457,8 +457,6 @@ fn built_in_language_name(ext: &str) -> &'static str {
         "xml" => "XML",
         "sql" => "SQL",
         "lua" => "Lua",
-        "vue" => "Vue",
-        "svelte" => "Svelte",
         "svg" => "SVG",
         "xaml" => "XAML",
         "csproj" | "fsproj" | "vbproj" | "props" | "targets" => "MSBuild",

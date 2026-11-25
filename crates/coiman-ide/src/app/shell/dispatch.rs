@@ -109,8 +109,13 @@ impl CodeApp {
                 self.explorer.open_filter();
             }
             Command::Save => {
-                // A project's own formatter owns its files: the server would fight it.
+                // A project's own formatter owns its files: run it from the project
+                // or its VS Code extension instead of asking the language server.
                 let owner = self.settings.editor.format_on_save.then(|| self.formatter_owner()).flatten();
+                if self.settings.editor.format_on_save && owner.is_some() && self.format_web_document(self.active, true)
+                {
+                    return;
+                }
                 // Format first if asked to; the save happens when formatting is done.
                 if !(self.settings.editor.format_on_save
                     && owner.is_none()
@@ -197,7 +202,10 @@ impl CodeApp {
             Command::RenameSymbol => self.start_rename(),
             Command::QuickFix => self.request_code_actions(),
             Command::FormatDocument => {
-                if !self.request_format(ctx, self.active, false) && !self.format_json_active() {
+                if !self.format_web_document(self.active, false)
+                    && !self.request_format(ctx, self.active, false)
+                    && !self.format_json_active()
+                {
                     self.status = Some("No formatter available for this file".to_owned());
                 }
             }

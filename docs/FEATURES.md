@@ -100,7 +100,6 @@ Everything Coiman IDE does, area by area. The [README](../README.md) says how to
   bracket pair the cursor is in, from opener to closer. Line numbers, current-line and
   matching-bracket highlight. Matching, the pair guide, **Go to Bracket** and Vim's `%` pass over
   brackets in strings and comments, as the highlighting knows them.
-- In HTML, XML, Vue, Svelte and JSX, the cursor in a tag's name frames that tag and its partner.
   Elements nest by name; comments, `<script>` and `<style>` text and attribute values are skipped;
   void and self-closing tags have none. Settings: **Rainbow brackets**, **Active indent guide**,
   **Bracket pair guide**, **Matching tags**.
@@ -332,7 +331,6 @@ In JSX and TSX a tag only starts where an expression can, so `Array<string>` and
 `useState<number>` are left alone. Nothing is completed inside `<script>` or `<style>`.
 `editor.auto_close_tags` and `editor.auto_create_quotes` turn these off.
 
-With no HTML language server, HTML, its templates and Vue still get suggestions as you type,
 or with `Ctrl+Space`:
 
 - element names after `<`
@@ -341,15 +339,10 @@ or with `Ctrl+Space`:
 - values for attributes with a fixed set: `type`, `target`, `rel` (one word at a time),
   `method`, `loading`, `autocomplete`, `<meta name>` and others
 
-In Vue files, the suggestions also include:
 
-- Vue's directives (`v-if`, `v-for`, `v-model`…)
 - `:` for bound attributes and `@` for events
-- Vue's own components (`transition`, `keep-alive`…)
 - `<script setup>`, `<style scoped>` and the other block attributes
 
-Vue templates are checked like HTML with Vue's rules: any tag may close itself, `{{ }}` and
-`<script setup>` are fine, and a `lang="pug"` template is left alone. Svelte components are
 checked too, reading around `{#if}`, `{:else}`, `{/if}`, `{@html}` and `{expressions}`, with
 `on:`, `bind:` and `class:` attributes and `<script context>` allowed.
 
@@ -364,7 +357,6 @@ would look over the editor.
 Where colors are found:
 
 - **Style sheets** (CSS, SCSS, Sass, Less, Stylus): everywhere, names included.
-- **Pages, Vue, Svelte and SVG:** in `<style>`, `style="..."`, color attributes such as `fill` and
   `stroke`, and anything written as a color.
 - **Code** (JS, TS, JSON, YAML, TOML, Python, Go, Rust, C#, Java, Kotlin, Swift, Dart, Lua, Ruby):
   inside strings only, so `#cafe` in a comment or `#[derive]` stays plain. Flutter's
@@ -398,7 +390,6 @@ stands for here, such as `serif` in Times New Roman. A font that isn't installed
 so a name in plain code is one the page can't use on this machine. The line with the cursor shows
 plain text, for editing.
 
-Lists are found in style sheets, in `<style>` and `style="..."` in pages, Vue and Svelte, and in
 `fontFamily` strings in JS and TS. Resting the pointer on a list opens a card with a sample line in
 each font, marking the one a browser here would use and showing a missing one in its fallback.
 **CSS: Preview Font Family** opens the card for the list under the cursor. Both are under
@@ -504,19 +495,21 @@ Projects laid out as C courses give them (a `makefile`, MinGW on Windows, and VS
 
 ## Servers from VS Code extensions, paths and tag pairs
 
-- **ESLint and Tailwind CSS** run beside a file's own language server, from their installed
-  VS Code extensions (`dbaeumer.vscode-eslint`, `bradlc.vscode-tailwindcss`): no copy of
-  their own is needed, only Node.js. They start for projects that use the tool (an ESLint
-  configuration, `tailwindcss` in `package.json` or a Tailwind configuration), in trusted
-  folders, since they run the project's own configuration. ESLint's problems show with the
-  rest and its fixes are on `Ctrl+.`; Tailwind completes class names (with their colors),
-  and reports its problems. `lsp.extension_servers = false` turns them off. The Language
-  Servers window lists them.
+- **Language servers from VS Code extensions** run beside a file's own language server:
+  ESLint, Tailwind CSS, Stylelint, YAML, Pylance, plus any installed extension whose folder
+  contains a language server and whose manifest declares the languages it serves. No copy
+  of the tool is needed in the project, only Node.js. Known servers start for projects
+  that use the tool (its configuration file, or its name in `package.json`); discovered
+  ones start for their declared languages. All of them run only in trusted folders, since
+  they read the project's own configuration. Problems show with the rest, fixes appear on
+  `Ctrl+.`, and completions join the normal list. `lsp.extension_servers = false` turns
+  them off. Known servers are ready at once; scanning installed extensions for others
+  happens in the background after the first frame, so it doesn't slow the start. The
+  Language Servers window lists what is running.
 - **Paths complete in strings**: in `"./`, `src="`, `href="`, `url(`, imports and `#include`,
   the folder's files and folders are offered, folders first; picking a folder lists
   what's in it. `/` starts at the open folder. `editor.path_completion` turns it off.
 - **Tags rename in pairs**: typing in a tag's name changes its partner too, in HTML, XML,
-  JSX and Vue, and one undo takes both back. `editor.rename_tags` turns it off.
 
 ## Code generation and NULL checks
 
@@ -901,7 +894,7 @@ arguments):
 | --- | --- | --- |
 | Rust | [rust-analyzer](https://rust-analyzer.github.io/) (`lsp.rust_analyzer_path` also works) | `rustup component add rust-analyzer` |
 | Python | pyright (or basedpyright, pylsp) | `npm install -g pyright`, or `pip install --user python-lsp-server` without Node.js |
-| JavaScript, TypeScript | typescript-language-server | `npm install -g typescript-language-server typescript@6` |
+| JavaScript, TypeScript | typescript-language-server (TypeScript comes from the project, npm, VS Code, or `lsp.typescript_path`) | `npm install -g typescript-language-server typescript@6` |
 | C, C++ | clangd (also found in `C:\Program Files\LLVM`) | download the latest clangd release |
 | Java | Eclipse JDT Language Server | download it; plus a Java 25 runtime (Eclipse Temurin) if Java 25+ isn't installed |
 | C# | csharp-ls (or a downloaded OmniSharp) | `dotnet tool install --global csharp-ls` |
@@ -915,7 +908,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Feature | How |
 | --- | --- |
 | Errors and warnings | Squiggles, the message after the line (Error Lens style), hover for details; Problems panel (`Ctrl+Shift+M`), counts in the status bar; `F8` / `Shift+F8` next/previous problem |
-| Completion | As you type, after `.`/`:`, or `Ctrl+Space`; `Enter`/`Tab` accepts, snippets place the cursor. The picked entry's signature and docs show beside the list (to its left when there's no room). Completions of names not yet imported (rust-analyzer's `HashMap` from anywhere) add the `use` line when taken: the server fills an entry in on request (`completionItem/resolve`), even after the list was fetched again as you typed |
+| Completion | As you type, after `.`/`:`, or `Ctrl+Space`; `Enter`/`Tab` accepts, snippets place the cursor. The narrow list shows twelve rows at a time and scrolls for the rest, below the current line or above it when there is no room below. The picked entry's signature and docs show beside the list (to its left when there's no room). Completions of names not yet imported (rust-analyzer's `HashMap` from anywhere) add the `use` line when taken: the server fills an entry in on request (`completionItem/resolve`), even after the list was fetched again as you typed |
 | Hover | Rest the pointer on a symbol, or `Ctrl+K Ctrl+I` at the cursor |
 | Go to Definition / Implementations | `F12` or `Ctrl+Click` / `Ctrl+F12` |
 | Go to Type Definition | **Go > Go to Type Definition**, or the command palette |
@@ -941,7 +934,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Structure and rules | In Lisp files, `Ctrl+Alt+Right` slurps and `Ctrl+Alt+Left` barfs, with `Shift` for the backward moves. `Shift+Alt+R` raises, `Shift+Alt+S` splices and `Shift+Alt+W` wraps, and the `Structure:` commands wrap in other brackets. Other languages raise and wrap through their syntax tree. `Search: Find by Syntax Tree` runs a tree-sitter query over the project. A project's own lint rules go in `.coiman/rules.toml` (`id`, `language`, `query`, `message`, optional `severity` and `fix` using `$capture`), and reach Problems for the open file or with `Rules: Check Project`. `Rules: Apply Fixes in File` applies fixes. Rules see syntax only, not types |
 | Lenses and hierarchies | Code lens titles beside the code can be clicked: rust-analyzer's Run, Run Test and implementation counts work here. Call and type hierarchies open as a tree in the References panel, a level at a time |
 | Live sessions | `Preview: Constant Preview` keeps showing what the active file does: a page or stylesheet follows edits in your browser, Markdown shows its preview, and a program saves and runs again after each pause in typing, marking the lines of output that changed, or runs its tests if it's a library. Only in trusted folders, so anything the program does happens again on each run. `Live: Show Session` attaches to a running system on this computer: nREPL (reading `.nrepl-port` if there is one), a Python kernel (a new one, or an existing `kernel-*.json`; needs `jupyter_client` and `ipykernel`), Swank for Common Lisp, a BEAM node for Elixir and Erlang (needs Erlang on `PATH`), or RIDE for Dyalog APL. It says what it's attached to and what the server offers, and Interrupt only appears if the server can. In Clojure files, `Ctrl+Enter` sends the selection or the top-level form and shows the answer beside it, gone once the line changes, and slow code never holds up the editor. The inspector shows the namespace's values, in the same rows as the debugger's variables, opening maps and lists. New systems add a `Session` adapter |
-| Web authoring | Tab grows Emmet abbreviations in HTML and CSS (`ul>li.item$*3`, `m10-20`); `Emmet: Expand Abbreviation` also works in JSX and PHP. `Color: Pick Color at Cursor` keeps a color's format and shows WCAG contrast and when it leaves sRGB or Display P3. Hover shows Baseline availability and selector specificity. `web.baseline` (`widely`, `newly` or a year, in `.coiman/settings.toml`) flags what falls below a project's target. Image files (PNG, JPEG, GIF, WebP, BMP, ICO, TIFF) open in a viewer. It fits the picture or zooms it: `+`, `-`, `1` for actual size and `0` to fit, Ctrl and the wheel or a pinch about the pointer, a double click to fit. Drag or the wheel moves it. It's smooth when smaller and shows crisp pixels when zoomed in, with a checkerboard behind transparency. Photos are turned the way their EXIF says. GIFs and WebPs animate. A picture wider than the graphics card holds is shown smaller, and says so. A broken file says what is wrong, and AVIF, HEIC, JPEG XL and PSD say they can't be shown. HTML, CSS and JSON use `vscode-langservers-extracted` if it's on PATH. Format on save leaves a file alone if the project has Prettier, Biome or dprint, and the doctor names formatters that conflict. Baseline data comes from [web-features](https://github.com/web-platform-dx/web-features) (Apache-2.0), regenerated by `scripts/gen-baseline.py` |
+| Web authoring | Tab grows Emmet abbreviations in HTML and CSS (`ul>li.item$*3`, `m10-20`); `Emmet: Expand Abbreviation` also works in JSX and PHP. `Color: Pick Color at Cursor` keeps a color's format and shows WCAG contrast and when it leaves sRGB or Display P3. Hover shows Baseline availability and selector specificity. `web.baseline` (`widely`, `newly` or a year, in `.coiman/settings.toml`) flags what falls below a project's target. Image files (PNG, JPEG, GIF, WebP, BMP, ICO, TIFF) open in a viewer. It fits the picture or zooms it: `+`, `-`, `1` for actual size and `0` to fit, Ctrl and the wheel or a pinch about the pointer, a double click to fit. Drag or the wheel moves it. It's smooth when smaller and shows crisp pixels when zoomed in, with a checkerboard behind transparency. Photos are turned the way their EXIF says. GIFs and WebPs animate. A picture wider than the graphics card holds is shown smaller, and says so. A broken file says what is wrong, and AVIF, HEIC, JPEG XL and PSD say they can't be shown. HTML, CSS and JSON use `vscode-langservers-extracted` if it's on PATH. Format on save runs the project's Prettier or Biome when they are set up, looking in the project's `node_modules` or in the installed VS Code extension, and the doctor names formatters that conflict. Baseline data comes from [web-features](https://github.com/web-platform-dx/web-features) (Apache-2.0), regenerated by `scripts/gen-baseline.py` |
 | One Python | The terminal, Run and Python's language server all use the same Python: the project's `.venv`, `venv` or `env`, then `.python-version` with pyenv, `environment.yml` with conda, what was active at launch, then PATH. The status bar names it and why; click it to choose (`python.interpreter`) |
 | Languages as data | Add a language with a few lines in `languages.toml` (**Language: Open languages.toml**): extensions, comment, server, root markers, run command. Thirteen ship ready, finding their servers on PATH. **Language: Doctor** shows for the active file what works, what doesn't and why |
 | Live preview | Run on an HTML file (or **Preview: Open Live Preview**) shows it in your browser from a server on this computer. Edits appear as you type: stylesheets swap in place, anything else reloads. TypeScript compiles with no setup, `console` output lands in the **PAGE** panel, script errors in Problems, and `Alt`+click in the page jumps to the element's line |
@@ -961,7 +954,8 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Logs | Two files in `<config>/logs`. `coiman-ide.log` says what the app did: commands, files opened, clicks, status messages and each change to what's on screen, with times. `crash.log` holds each panic's place, message, backtrace and the last lines of the log, and notes a session that ended without closing. **Developer: Open Log** and **Developer: Open Crash Log** open them. They stay on this computer and never hold text you type |
 | Motion | Panels slide, a line slides between tabs, and rail icons and popups ease in, in under a sixth of a second. `workbench.reduced_motion` makes it all immediate |
 | File buttons | Beside the tabs, what the active file can do: Preview for Markdown and SVG, Table for CSV, Live Preview for HTML, Tree and Format for JSON, YAML and TOML, Scripts for `package.json`, Header/Source and Flags for C and C++, Log View, Run Tests and Coverage, REPL, and Hex for anything |
-| Import from VS Code | **Extensions: Import from VS Code**, or the arrow in Extensions, takes themes, snippets and language names and comments from an installed extension, a `.vsix` or a folder. **Extensions: VS Code Compatibility Report**, or the check mark beside the arrow, lists every installed extension: built in here (and by what), data that imports, a pack, or code that can't run (with the VS Code APIs it calls and what's similar here). Extensions' code can't run here and their TextMate colors aren't read: the status bar says what stayed behind. What you already have stays as it is |
+| Import from VS Code | **Extensions: Import from VS Code**, or the arrow in Extensions, takes themes, snippets and language names and comments from an installed extension, a `.vsix` or a folder. **Extensions: VS Code Compatibility Report**, or the check mark beside the arrow, lists every installed extension: built in here (and by what), data that imports, a pack, or code that can't run (with the VS Code APIs it calls and what's similar here). With `plugins.vscode_extensions = true` (off by default), extensions with a `main` script also load in a Node.js extension host with a `vscode` API shim (commands, configuration, output channels, diagnostics, document events, language providers, Uri/Range/Position, workspace and window APIs and more). Their JavaScript runs outside Coiman's sandbox with your rights, so the first time Coiman says so and asks, and it runs only for trusted folders. Activation follows `activationEvents` (language, command, view, startup); activity-bar buttons from extension view containers appear once their extension is active. Extension completion providers feed the normal completion list; extension diagnostics feed the problem list. A webview opens in your browser, served from 127.0.0.1 under a secret path, only while it is open. TextMate colors aren't read; the status bar says what stayed behind |
+| Extensions marketplace | The **Open VSX** tab of the Extensions view, beside Coiman's own extensions and packs: a search box, a filter menu (`@installed`, `@updates`, sort orders) and a list of extension cards. Clicking a card opens an **Extension: …** tab with the publisher, downloads, rating, install and uninstall, and five pages: Details, Feature Contributions, Changelog, Extension Pack and Runtime Status. open-vsx.org is reached through `curl` over HTTPS, only when the tab is used; an extension's icon and README pictures are kept in `<config>/cache/open-vsx`. Downloads are checked against the published SHA-256. `plugins.marketplace = false` removes the tab. Installed extensions live in Coiman's settings folder, not VS Code's; their themes, snippets and languages are imported, and the page says what of their code can run here |
 | Background image | **Background: Choose Image** or **Choose Folder of Images** lays a picture faintly over the window or just the editor, without patching anything. The editor, side bars and panel can have their own pictures over it. Set its strength with `workbench.background_opacity`, a folder's rotation with `workbench.background_interval`, and `workbench.background_random` for no order |
 | Theme schedule | `workbench.theme_schedule = "sunrise Coiman Light; 19:00 Coiman Dark"` changes theme by this computer's clock. `sunrise` and `sunset` are worked out here from `workbench.theme_location`, which you type in; nothing looks up where you are. A theme chosen by hand stays until the next time on the list |
 | Project tree | The Explorer reads like a JetBrains project tree, going by each language's conventions: a project root row, blue source roots, green test roots, resources with bars, packages with a dot and chains as one `org.example` row (`workbench.compact_folders`), orange build output, a blue square on modules. In every language a file named after the type it declares shows that type in a ring (C, I, E, R, A, @, T, O); Java, Kotlin, Scala, Groovy and C# also drop the extension. A green triangle marks where a program starts and a flask where tests are, in the tree and on tabs. The gutter gets a play button on `main` in some 25 languages. Completion rows use the same rings, from any language server. New (the + button or right click) offers 29 kinds of file, those already in the project first, filling in `package` where it is known. Web projects get the same: `app`, `pages`, `components` as source roots and `public` as resources beside a `package.json`, framework output in orange, rings for components, hooks, pages, routes and CSS Modules, and a file's tests, styles and built files nested under it (`workbench.nest_files`). The gutter gets a play button on each `package.json` script, on `<html>` and `<script>`, on `describe`, and on a page, which opens its address on the dev server, starting it if needed; stylesheets show their colors there. A running dev server's address appears in the status bar. New offers React, Vue, Svelte, Astro, CSS Module and test files according to the project's dependencies. Collapse All and Select Opened File |
@@ -971,8 +965,7 @@ install a server (Node.js, the .NET SDK, Go), it says what to install. Downloade
 | Debugging Go and JavaScript | `F5` on a `.go` file uses Delve (`dlv`, on `PATH` or in `go install`'s folder). On a `.js`, `.mjs` or `.cjs` file it uses js-debug on Node, offered as a small pinned download the first time. TypeScript isn't covered yet |
 | Quick fixes | A light bulb in the margin of the cursor's line when the language server offers actions there: yellow for fixes, grey for refactorings. Click it or press `Ctrl+.` |
 | Likely problems | Warns while you type about loops that look endless (Python, JS, TS, Java, C, C++, C#, Go, Rust, Zig) and memory that looks leaked (C, C++, Zig; `mem::forget` in Rust). C and C++ also use `clang-tidy`'s analyzer on save if it's on `PATH`, in trusted folders. These are likely findings, not proof: some are wrong and some leaks are missed. `editor.likely_problems = false` turns them off |
-| Markup problems | HTML is checked while you type, with no language server. That covers `.html`, `.htm` and `.xhtml`, and Jinja, Nunjucks, Handlebars, Mustache, EJS, Twig and Liquid templates. It finds tags never closed, closed in the wrong order or never opened; broken tags such as an unclosed quote; a repeated attribute; `<div/>`, which HTML doesn't close; and attributes an element doesn't have, from the HTML standard's list. `data-*`, `aria-*`, event handlers and framework attributes (Vue, Angular, Alpine, htmx, Svelte) are left alone, and obsolete ones such as `bgcolor` are noted. Tags HTML closes by itself (`<li>`, `<p>`, `<td>` and others) are noted, not called errors. Template tags (`{% %}`, `{{ }}`, `<% %>`, `<?php ?>`) are read around. Where a template has branches, which can open and close tags, a tag that looks unbalanced is only noted. XML files (`.xml`, `.svg`, `.csproj`, `.xaml` and others) report every mismatched tag and repeated attribute, and read on past a syntax error where they can. They show in the editor and in Problems. `editor.markup_problems = false` turns this off |
-| Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving |
+| Formatting | `Shift+Alt+F`; `editor.format_on_save = true` formats before saving. Web files use the project's Prettier or Biome, from its `node_modules` or a VS Code extension; other files ask their language server |
 
 Click the server's name in the status bar, or run **Language Servers: Show Status**, for its state,
 how long it has been running, memory use, and each task with its elapsed time. **Restart** restarts

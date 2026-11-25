@@ -1,6 +1,6 @@
 //! Which formatters a web project has set up, and where they would fight.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 const PRETTIER_FILES: &[&str] = &[
     ".prettierrc",
@@ -90,6 +90,112 @@ impl WebTools {
     }
 }
 
+/// A formatter program and the arguments that format stdin for `path`.
+/// Looks in the project first, then in installed VS Code extensions, so a
+/// project without its own `node_modules` can still use Prettier or Biome.
+pub fn program_for(root: &Path, name: &str, path: &Path) -> Option<(PathBuf, Vec<String>)> {
+    let node = crate::language::lsp::servers::which("node");
+    match name {
+        "Prettier" => {
+            let script = root.join("node_modules/prettier/bin/prettier.cjs");
+            if script.is_file() {
+                let node = node?;
+                return Some((
+                    node,
+                    vec![
+                        script.to_string_lossy().into_owned(),
+                        "--stdin-filepath".to_owned(),
+                        path.to_string_lossy().into_owned(),
+                    ],
+                ));
+            }
+            let bin = root.join("node_modules/.bin/prettier");
+            if bin.is_file() {
+                return Some((bin, vec!["--stdin-filepath".to_owned(), path.to_string_lossy().into_owned()]));
+            }
+            for dir in extension_dirs() {
+                let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+                for entry in entries.filter_map(Result::ok) {
+                    let folder = entry.path();
+                    if !folder
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_lowercase()
+                        .starts_with("esbenp.prettier-vscode-")
+                    {
+                        continue;
+                    }
+                    let script = folder.join("node_modules/prettier/bin/prettier.cjs");
+                    if script.is_file() {
+                        let node = node.clone()?;
+                        return Some((
+                            node,
+                            vec![
+                                script.to_string_lossy().into_owned(),
+                                "--stdin-filepath".to_owned(),
+                                path.to_string_lossy().into_owned(),
+                            ],
+                        ));
+                    }
+                }
+            }
+            None
+        }
+        "Biome" => {
+            let mut candidates = Vec::new();
+            candidates.push(root.join("node_modules/.bin/biome"));
+            for dir in extension_dirs() {
+                let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+                for entry in entries.filter_map(Result::ok) {
+                    let folder = entry.path();
+                    if !folder
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_lowercase()
+                        .starts_with("biomejs.biome-")
+                    {
+                        continue;
+                    }
+                    if let Ok(inner) = std::fs::read_dir(folder.join("node_modules")) {
+                        for package in inner.filter_map(Result::ok) {
+                            let name = package.file_name().to_string_lossy().to_lowercase();
+                            if name.starts_with("@biomejs")
+                                && package.path().is_dir()
+                                && let Ok(clis) = std::fs::read_dir(package.path())
+                            {
+                                for cli in clis.filter_map(Result::ok) {
+                                    let candidate = cli.path().join("biome");
+                                    if candidate.is_file() {
+                                        candidates.push(candidate);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let binary = candidates.into_iter().find(|p| p.is_file())?;
+            Some((binary, vec!["format".to_owned(), format!("--stdin-file-path={}", path.to_string_lossy())]))
+        }
+        _ => None,
+    }
+}
+
+fn extension_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
+        let home = PathBuf::from(home);
+        out.push(home.join(".vscode").join("extensions"));
+        out.push(home.join(".vscode-insiders").join("extensions"));
+    }
+    if let Some(dir) = crate::extensions::vscode_import::coiman_extensions_dir() {
+        out.push(dir);
+    }
+    out
+}
+
 /// File types those formatters take care of.
 pub fn is_web_file(extension: &str) -> bool {
     matches!(
@@ -108,8 +214,6 @@ pub fn is_web_file(extension: &str) -> bool {
             | "htm"
             | "json"
             | "jsonc"
-            | "vue"
-            | "svelte"
     )
 }
 
@@ -130,6 +234,20 @@ mod tests {
             std::fs::write(dir.join(name), text).unwrap();
         }
         dir
+    }
+
+    #[test]
+    fn a_project_formatter_is_found_for_stdin_formatting() {
+        let dir = project(&[("package.json", r#"{"name":"web"}"#)]);
+        let script = dir.join("node_modules/prettier/bin/prettier.cjs");
+        std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+        std::fs::write(&script, "// prettier").unwrap();
+        let file = dir.join("a.js");
+        let (program, args) = program_for(&dir, "Prettier", &file).expect("prettier is found");
+        assert!(program.to_string_lossy().contains("node"));
+        assert!(args.contains(&"--stdin-filepath".to_owned()));
+        assert!(args.iter().any(|a| a.ends_with("prettier.cjs")));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

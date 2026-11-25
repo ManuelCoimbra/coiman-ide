@@ -83,8 +83,6 @@ const OUTPUT: &[&str] = &[
     ".mypy_cache",
     ".tox",
     ".next",
-    ".nuxt",
-    ".svelte-kit",
     ".output",
     ".turbo",
     ".parcel-cache",
@@ -187,9 +185,9 @@ pub enum ClassKind {
     Annotation,
     Object,
     Trait,
-    /// A web component: `Button.tsx`, `.vue`, `.svelte`, `.astro`.
+    /// A web component: `Button.tsx`, `.astro`.
     Component,
-    /// A React or Vue `useThing`.
+    /// A React `useThing`.
     Hook,
     /// What a framework serves at an address.
     Page,
@@ -229,12 +227,12 @@ impl FileRole {
 }
 
 /// What a web framework makes of a file by where it is, and the address it's served at,
-/// unless that takes values to fill in. Next and Nuxt `app/` and `pages/`, SvelteKit `routes/`.
+/// unless that takes values to fill in. Next `app/` and `pages/`, `routes/`.
 pub fn web_page(relative: &str) -> Option<(ClassKind, Option<String>)> {
     let parts: Vec<&str> = relative.split(['/', '\\']).filter(|p| !p.is_empty()).collect();
     let (&file, above) = parts.split_last()?;
     let (stem, extension) = file.rsplit_once('.')?;
-    if !matches!(extension, "tsx" | "jsx" | "ts" | "js" | "vue" | "svelte" | "astro" | "mdx") {
+    if !matches!(extension, "tsx" | "jsx" | "ts" | "js" | "astro" | "mdx") {
         return None;
     }
     let at = above.iter().rposition(|p| matches!(*p, "app" | "pages" | "routes"))?;
@@ -267,7 +265,7 @@ fn web_kind(relative: &str) -> Option<ClassKind> {
     let hook = stem.strip_prefix("use").and_then(|r| r.chars().next()).is_some_and(char::is_uppercase);
     match extension {
         "css" | "scss" | "sass" | "less" if stem.ends_with(".module") => Some(ClassKind::CssModule),
-        "vue" | "svelte" | "astro" => Some(ClassKind::Component),
+        "astro" => Some(ClassKind::Component),
         "tsx" | "jsx" if capital => Some(ClassKind::Component),
         "ts" | "js" | "tsx" | "jsx" if hook && !stem.contains('.') => Some(ClassKind::Hook),
         _ => None,
@@ -277,7 +275,7 @@ fn web_kind(relative: &str) -> Option<ClassKind> {
 /// Files that belong under another of the same folder, as (file, the one above it): what's
 /// built from it, its tests, its styles.
 pub fn nested_files(names: &[&str]) -> std::collections::HashMap<String, String> {
-    const VIEWS: &[&str] = &["tsx", "jsx", "vue", "svelte", "ts", "js", "html"];
+    const VIEWS: &[&str] = &["tsx", "jsx", "ts", "js", "html"];
     // Looked up for every candidate: a set, so a folder of thousands stays quick.
     let present: std::collections::HashSet<&str> = names.iter().copied().collect();
     let above = |name: &str| -> Option<String> {
@@ -544,18 +542,6 @@ pub const TEMPLATES: &[Template] = &[
         needs: "react",
         extension: "tsx",
         body: "export default function {name}() {\n  return <div></div>;\n}\n",
-    },
-    Template {
-        label: "Vue Component",
-        needs: "vue",
-        extension: "vue",
-        body: "<script setup lang=\"ts\">\n</script>\n\n<template>\n  <div></div>\n</template>\n",
-    },
-    Template {
-        label: "Svelte Component",
-        needs: "svelte",
-        extension: "svelte",
-        body: "<script lang=\"ts\">\n</script>\n\n<div></div>\n",
     },
     Template { label: "Astro Component", needs: "astro", extension: "astro", body: "---\n---\n\n<div></div>\n" },
     Template { label: "CSS Module", needs: "", extension: "module.css", body: "" },
@@ -861,8 +847,6 @@ fn main() {}",
     fn web_files_by_what_they_are() {
         let kind = |p: &str| FileRole::of_name(p).class;
         assert_eq!(kind("src/Button.tsx"), Some(ClassKind::Component));
-        assert_eq!(kind("Card.vue"), Some(ClassKind::Component));
-        assert_eq!(kind("card.svelte"), Some(ClassKind::Component));
         assert_eq!(kind("useAuth.ts"), Some(ClassKind::Hook));
         assert_eq!(kind("user.ts"), None);
         assert_eq!(kind("button.tsx"), None);
@@ -878,16 +862,13 @@ fn main() {}",
         assert_eq!(at("app/page.tsx"), Some((Page, Some("/".into()))));
         assert_eq!(at("src/app/blog/(x)/page.tsx"), Some((Page, Some("/blog".into()))));
         assert_eq!(at("app/api/a/route.ts"), Some((Route, Some("/api/a".into()))));
-        assert_eq!(at("pages/index.vue"), Some((Page, Some("/".into()))));
         assert_eq!(at("pages/about.tsx"), Some((Page, Some("/about".into()))));
         assert_eq!(at("pages/api/a.ts"), Some((Route, Some("/api/a".into()))));
-        assert_eq!(at("src/routes/x/+page.svelte"), Some((Page, Some("/x".into()))));
         assert_eq!(at("src/routes/x/+server.ts"), Some((Route, Some("/x".into()))));
         assert_eq!(at("app/blog/[id]/page.tsx"), Some((Page, None)));
         assert_eq!(at("pages/_app.tsx"), None);
         assert_eq!(at("app/layout.tsx"), None);
         assert_eq!(at("pages/About.java"), None);
-        assert!(FileRole::of_name("pages/about.vue").runs);
         assert!(!FileRole::of_name("app/blog/[id]/page.tsx").runs);
         assert!(FileRole::of("server.js", "app.listen(3000);").runs);
         assert!(FileRole::of("page.html", "<html>").runs);

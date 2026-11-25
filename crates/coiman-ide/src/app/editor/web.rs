@@ -3,7 +3,9 @@
 //! formatters that fight.
 
 use std::collections::HashMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use coiman_core::build::formatters::{self, WebTools};
 use coiman_core::editor::emmet::{self, Syntax};
@@ -313,6 +315,53 @@ impl CodeApp {
             Some(owner) => (format!("{owner}. Format on save leaves these files alone, so run it yourself"), true),
             None => ("The language server, if it can".to_owned(), true),
         })
+    }
+
+    /// Runs the tool this project uses (from its `node_modules` or a VS Code
+    /// extension) over the buffer's text. Returns whether it formatted it.
+    pub(crate) fn format_web_document(&mut self, index: usize, save: bool) -> bool {
+        let Some(doc) = self.docs.get(index) else { return false };
+        let Some(path) = doc.path.clone() else { return false };
+        if !formatters::is_web_file(&doc.extension()) {
+            return false;
+        }
+        let Some(root) = self.web_project_root(&path) else { return false };
+        let Some(owner) = WebTools::of(&root).owner() else { return false };
+        let Some((program, args)) = formatters::program_for(&root, owner, &path) else { return false };
+        let text = doc.text();
+        let Ok(mut child) = Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+        else {
+            return false;
+        };
+        let Some(mut stdin) = child.stdin.take() else { return false };
+        if stdin.write_all(text.as_bytes()).is_err() {
+            return false;
+        }
+        drop(stdin);
+        let Ok(out) = child.wait_with_output() else { return false };
+        if !out.status.success() {
+            return false;
+        }
+        let Ok(formatted) = String::from_utf8(out.stdout) else { return false };
+        if formatted == text {
+            self.status = Some(format!("{owner} found nothing to change"));
+            return save && self.save_doc(index);
+        }
+        if let Some(doc) = self.docs.get_mut(index) {
+            let end = doc.buffer.len_chars();
+            doc.buffer.apply_edits(vec![(0, end, formatted)]);
+            doc.buffer.set_single(Selection::cursor(0));
+        }
+        self.status = Some(format!("Formatted with {owner}"));
+        if save {
+            self.save_doc(index);
+        }
+        true
     }
 
     pub(crate) fn web_windows(&mut self, ctx: &egui::Context) {

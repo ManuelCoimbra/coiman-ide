@@ -259,16 +259,19 @@ pub fn examine(dir: &Path) -> Result<Report, String> {
 /// VS Code's installed extensions, examined, sorted by name.
 pub fn installed() -> Vec<Report> {
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from);
-    let Some(entries) = home.and_then(|h| std::fs::read_dir(h.join(".vscode").join("extensions")).ok()) else {
-        return Vec::new();
-    };
-    let mut out: Vec<Report> = entries
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.is_dir())
-        .filter_map(|d| examine(&d).ok())
-        .collect();
+    let mut dirs = vec![
+        home.map(|h| h.join(".vscode").join("extensions")),
+        crate::extensions::vscode_import::coiman_extensions_dir(),
+    ];
+    let mut out: Vec<Report> = Vec::new();
+    for dir in dirs.drain(..).flatten() {
+        let Ok(entries) = std::fs::read_dir(dir) else { continue };
+        out.extend(
+            entries.filter_map(Result::ok).map(|e| e.path()).filter(|p| p.is_dir()).filter_map(|d| examine(&d).ok()),
+        );
+    }
     out.sort_by_key(|r| r.name.to_lowercase());
+    out.dedup_by_key(|r| r.id.clone());
     out
 }
 

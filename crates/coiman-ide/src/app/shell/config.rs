@@ -333,6 +333,18 @@ impl CodeApp {
             self.docs[i].uid = uid;
         }
         self.reload_settings(ctx);
+        if !self.settings.vscode_extensions_enabled() {
+            let _ = self.ext_host.shutdown();
+            self.ext_views.clear();
+            self.active_ext_view = None;
+            if matches!(&self.active_view, Some(crate::app::views::view_tabs::ActiveView::Webview(_))) {
+                self.active_view = None;
+            }
+            self.ext_webviews.clear();
+            self.ext_decorations.clear();
+            self.ext_diagnostics.clear();
+            self.ext_host_at = None;
+        }
         Ok(())
     }
 

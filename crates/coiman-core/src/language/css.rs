@@ -694,7 +694,7 @@ fn is_style_sheet(extension: &str) -> bool {
 /// Pages and components: colors in `<style>` and anywhere written as one, and names
 /// in `style="..."` attributes and SVG's color attributes.
 fn is_page(extension: &str) -> bool {
-    matches!(extension, "html" | "htm" | "xhtml" | "vue" | "svelte" | "svg" | "xml" | "astro" | "php")
+    matches!(extension, "html" | "htm" | "xhtml" | "svg" | "xml" | "astro" | "php")
 }
 
 /// Languages whose strings often hold colors: only inside quotes there.

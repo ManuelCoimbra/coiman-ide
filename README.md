@@ -113,7 +113,9 @@ PASS, FAIL or GAP; a GAP is a known shortfall tracked on the roadmap and doesn't
 
 ## Privacy
 
-No telemetry, no network access, no account, no built-in AI. The optional Agents panel uses
+No telemetry, no account, no built-in AI, and no connection unless you ask for one (the Open
+VSX marketplace, a language server's install, Git's push and pull). VS Code extensions' own
+code runs only if you turn it on, for trusted folders. The optional Agents panel uses
 the `opencode` program you install yourself, and asks before the agent edits or runs anything. See [PRIVACY.md](PRIVACY.md) for what
 is read and written on your machine.
 
@@ -139,7 +141,10 @@ Thank you to everyone who has helped Coiman IDE along:
   through AppImageUpdate.
 - [MostafaXS1](https://github.com/MostafaXS1), for the Android build: the APK port in
   [artcraft-android](https://github.com/MostafaXS1/artcraft-android) that runs Coiman IDE on
-  Android, and the testing that shaped the porting hooks in [docs/PORTING.md](docs/PORTING.md).
+  Android, and the testing that shaped the porting hooks in [docs/PORTING.md](docs/PORTING.md);
+  and for the Open VSX marketplace, VS Code extensions with their webviews and language
+  servers, Prettier and Biome formatting, sticky scroll, the find box, fuzzy completion and
+  the reworked Agents panel.
 - Everyone who starred, tried or shared the project.
 
 ## License

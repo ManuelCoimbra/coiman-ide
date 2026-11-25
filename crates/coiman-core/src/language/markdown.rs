@@ -234,7 +234,9 @@ impl Builder {
                 self.html_tag(&rest[..=end]);
                 rest = &rest[end + 1..];
             } else {
-                let end = rest[1..].find('<').map_or(rest.len(), |i| i + 1);
+                // Skip the first *character*, not the first byte: an emoji or
+                // other multibyte character there would make `rest[1..]` panic.
+                let end = rest.char_indices().skip(1).find(|(_, ch)| *ch == '<').map_or(rest.len(), |(byte, _)| byte);
                 let words: Vec<&str> = rest[..end].split_whitespace().collect();
                 if !words.is_empty() {
                     let lead = rest[..end].starts_with(char::is_whitespace) && !self.inlines.is_empty();
@@ -585,6 +587,14 @@ mod tests {
             })
             .collect();
         assert_eq!(anchors, ["hello-world", "hello-world-1", "café-"]);
+    }
+
+    #[test]
+    fn html_text_starting_with_an_emoji_does_not_panic() {
+        let blocks = parse("🐘<b>bold</b> tail");
+        let all = format!("{blocks:?}");
+        assert!(all.contains("🐘"), "{all}");
+        assert!(all.contains("bold"), "{all}");
     }
 
     #[test]
