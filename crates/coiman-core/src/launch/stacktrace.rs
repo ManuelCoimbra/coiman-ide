@@ -85,7 +85,6 @@ const SOURCE_EXTENSIONS: &[(&str, &str)] = &[
     ("jsx", "JavaScript"),
     ("ts", "TypeScript"),
     ("tsx", "TypeScript"),
-    ("vue", "Vue"),
     ("rs", "Rust"),
     ("go", "Go"),
     ("c", "C"),

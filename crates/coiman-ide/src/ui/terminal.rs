@@ -235,6 +235,17 @@ impl Terminals {
         Ok(())
     }
 
+    /// ID of the most recently created terminal tab.
+    pub fn last_tab_id(&self) -> Option<u64> {
+        self.tabs.last().map(|t| t.id)
+    }
+
+    /// Closes the terminal tab with this ID.
+    pub fn close_tab(&mut self, id: u64) {
+        self.tabs.retain(|t| t.id != id);
+        self.active = self.active.min(self.tabs.len().saturating_sub(1));
+    }
+
     /// Runs a program (a run configuration) in a new tab named after it.
     /// The tab stays open after it ends so its output can be read.
     pub fn run_task(&mut self, ctx: &egui::Context, task: Task, scrollback: usize) -> Result<(), String> {

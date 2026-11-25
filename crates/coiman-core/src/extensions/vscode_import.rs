@@ -204,6 +204,12 @@ pub fn read(dir: &Path) -> Result<Contents, String> {
     })
 }
 
+/// Where extensions downloaded from Open VSX are kept: beside Coiman's settings,
+/// never in VS Code's own folder.
+pub fn coiman_extensions_dir() -> Option<PathBuf> {
+    crate::settings::config_dir().map(|dir| dir.join("vscode-extensions"))
+}
+
 /// The extensions VS Code has installed that hold something that can come across.
 pub fn installed() -> Vec<(PathBuf, Contents)> {
     let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from);

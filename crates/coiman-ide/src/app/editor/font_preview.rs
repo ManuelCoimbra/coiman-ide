@@ -98,9 +98,22 @@ fn generic_face(db: &Database, name: &str) -> Option<String> {
         "ui-monospace" => {
             first(&["Cascadia Mono", "SF Mono", "Consolas", "DejaVu Sans Mono"]).or_else(|| generic(Family::Monospace))
         }
-        "ui-serif" | "serif" => generic(Family::Serif),
-        "sans-serif" => generic(Family::SansSerif),
-        "monospace" => generic(Family::Monospace),
+        "ui-serif" | "serif" => first(&["Times New Roman", "Liberation Serif", "DejaVu Serif", "Noto Serif"])
+            .or_else(|| generic(Family::Serif)),
+        "sans-serif" => {
+            first(&["Arial", "Helvetica", "Liberation Sans", "DejaVu Sans", "Noto Sans", "Cantarell", "Ubuntu"])
+                .or_else(|| generic(Family::SansSerif))
+        }
+        "monospace" => first(&[
+            "Cascadia Mono",
+            "SF Mono",
+            "Consolas",
+            "DejaVu Sans Mono",
+            "Liberation Mono",
+            "Noto Sans Mono",
+            "Source Code Pro",
+        ])
+        .or_else(|| generic(Family::Monospace)),
         "cursive" => generic(Family::Cursive),
         "fantasy" => generic(Family::Fantasy),
         "emoji" => first(&["Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji"]),

@@ -19,8 +19,8 @@ pub enum TagMode {
 impl TagMode {
     pub fn for_extension(extension: &str) -> Self {
         match extension {
-            "html" | "htm" | "xhtml" | "vue" | "svelte" | "jinja" | "jinja2" | "j2" | "njk" | "hbs" | "handlebars"
-            | "ejs" | "twig" | "liquid" | "php" => Self::Html,
+            "html" | "htm" | "xhtml" | "jinja" | "jinja2" | "j2" | "njk" | "hbs" | "handlebars" | "ejs" | "twig"
+            | "liquid" | "php" => Self::Html,
             "xml" | "svg" | "xaml" | "csproj" | "fsproj" | "vbproj" | "props" | "targets" | "plist" | "resx"
             | "xsd" | "xsl" | "xslt" => Self::Xml,
             "jsx" | "tsx" => Self::Jsx,

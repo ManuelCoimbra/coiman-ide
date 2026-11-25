@@ -13,7 +13,7 @@ pub enum Syntax {
 impl Syntax {
     pub fn for_extension(ext: &str) -> Option<Self> {
         Some(match ext {
-            "html" | "htm" | "xhtml" | "vue" | "svelte" | "php" => Self::Html,
+            "html" | "htm" | "xhtml" | "php" => Self::Html,
             "jsx" | "tsx" => Self::Jsx,
             "css" | "scss" | "less" => Self::Css,
             _ => return None,
@@ -23,7 +23,7 @@ impl Syntax {
     /// Whether Tab may expand here. In `.php` and JSX a word is usually code,
     /// so those only expand on the command.
     pub fn expands_on_tab(ext: &str) -> bool {
-        matches!(ext, "html" | "htm" | "xhtml" | "vue" | "svelte" | "css" | "scss" | "less")
+        matches!(ext, "html" | "htm" | "xhtml" | "css" | "scss" | "less")
     }
 }
 

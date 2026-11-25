@@ -899,7 +899,17 @@ impl CodeApp {
         let Some(sig) = &self.lsp.extra.signature else { return };
         let (Some(rect), Some(doc)) = (self.lsp.cursor_rect, self.docs.get(self.active)) else { return };
         let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-        if doc.uid != sig.uid || escape {
+        // The help belongs to the call the caret is in. Moving the caret off
+        // the arguments (without typing `)`) must put it away too.
+        let head = doc.buffer.primary().head;
+        let from = doc.buffer.line_start(doc.buffer.char_to_line(head).saturating_sub(2));
+        let before = doc.buffer.slice_string(from, head);
+        let depth = before.chars().fold(0i32, |depth, ch| match ch {
+            '(' => depth + 1,
+            ')' => depth - 1,
+            _ => depth,
+        });
+        if doc.uid != sig.uid || escape || depth <= 0 {
             self.lsp.extra.signature = None;
             return;
         }
@@ -996,5 +1006,51 @@ impl CodeApp {
         if let Some(s) = self.lsp.extra.workspace_symbols.get(index).cloned() {
             self.jump_to(&s.path, s.range, true);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::Document;
+
+    #[test]
+    fn signature_help_closes_when_the_caret_leaves_the_call() {
+        let ctx = egui::Context::default();
+        let root = std::env::temp_dir().join(format!("coiman-signature-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("main.js");
+        std::fs::write(&path, "console.log()").unwrap();
+        let mut doc = Document::open(&path).unwrap();
+        doc.uid = 1;
+        let mut app = CodeApp::new(None, &ctx);
+        app.docs.clear();
+        app.docs.push(doc);
+        app.active = 0;
+        app.lsp.cursor_rect = Some(egui::Rect::from_min_size(egui::Pos2::new(100.0, 200.0), egui::vec2(2.0, 16.0)));
+        app.lsp.extra.signature = Some(Signature {
+            uid: 1,
+            label: "log(message: any)".to_owned(),
+            active: None,
+            documentation: String::new(),
+        });
+
+        let frame = |app: &mut CodeApp| {
+            let raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 600.0))),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |_ui| app.signature_popup(&ctx));
+            output.textures_delta.clear();
+        };
+        app.docs[0].buffer.set_single(crate::buffer::Selection::cursor(12));
+        frame(&mut app);
+        assert!(app.lsp.extra.signature.is_some(), "inside the call the help stays");
+
+        app.docs[0].buffer.set_single(crate::buffer::Selection::cursor(0));
+        frame(&mut app);
+        assert!(app.lsp.extra.signature.is_none(), "away from the call the help closes");
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

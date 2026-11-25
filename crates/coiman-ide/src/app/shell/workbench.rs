@@ -2,6 +2,7 @@
 
 use crate::commands::Command;
 use crate::document::{DiskState, Document};
+use crate::ui::editor_view;
 use crate::ui::explorer::ExplorerAction;
 use crate::ui::icons::{self, Icon};
 use crate::ui::terminal::Action as TerminalAction;
@@ -10,6 +11,7 @@ use coiman_core::editor::find;
 use coiman_core::project::project_tree::{self, FileRole};
 use egui::{Align, Color32, Key, RichText, Sense, Stroke};
 
+use crate::app::views::view_tabs::ViewTab;
 use crate::app::{CodeApp, FindCache, PanelTab, PendingClose, SidebarView};
 
 fn font_for_target(ui: &egui::Ui) -> egui::FontId {
@@ -733,8 +735,41 @@ impl CodeApp {
             let debugging = side == Some(SidebarView::Debug);
             icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
         }
-        let extensions = side == Some(SidebarView::Extensions);
-        icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
+        if self.settings.vscode_extensions_enabled() {
+            let extensions = side == Some(SidebarView::Extensions) && self.active_ext_view.is_none();
+            icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
+            if self.ext_views.is_empty() {
+                self.ext_views = self.ext_host.all_view_containers();
+            }
+            for container in self.ext_views.clone() {
+                let active = side == Some(SidebarView::Extensions)
+                    && self.active_ext_view.as_deref() == Some(container.id.as_str());
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(48.0, 44.0), Sense::click());
+                let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
+                if active {
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_size(rect.min, egui::vec2(2.0, rect.height())),
+                        0.0,
+                        theme::colors().accent,
+                    );
+                }
+                let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(22.0, 22.0));
+                if let Some(texture) = self.ext_icon(ui.ctx(), &container, color) {
+                    egui::Image::from_texture(&texture).paint_at(ui, icon_rect);
+                } else {
+                    icons::paint(ui.painter(), icon_rect, Icon::Extensions, color);
+                }
+                if resp.clicked() {
+                    self.sidebar_visible = true;
+                    self.sidebar_view = SidebarView::Extensions;
+                    self.active_ext_view = Some(container.id.clone());
+                    self.request_ext_tree(ui.ctx(), &container);
+                }
+                resp.on_hover_text(format!("{} (extension view)", container.title));
+            }
+        } else {
+            self.ext_views.clear();
+        }
         if self.settings.workbench.agents_enabled {
             let agents = self.agents.is_open();
             icon(ui, Icon::Agent, "Agents", agents, Command::ShowAgents);
@@ -1164,7 +1199,15 @@ impl CodeApp {
             SidebarView::Git => self.source_control_view(ui),
             SidebarView::Testing => self.testing_view(ui),
             SidebarView::Debug => self.debug_view(ui),
-            SidebarView::Extensions => self.extensions_view(ui),
+            SidebarView::Extensions => {
+                if self.settings.vscode_extensions_enabled()
+                    && let Some(view) = self.active_ext_view.clone()
+                {
+                    self.extension_tree_view(ui, &view);
+                } else {
+                    self.extensions_view(ui);
+                }
+            }
             SidebarView::Agents => {}
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
@@ -1224,6 +1267,11 @@ impl CodeApp {
                     // Off the bar, the tab goes back to its place and a card follows the pointer instead.
                     let pointer_x = ui.input(|i| i.pointer.latest_pos()).filter(|p| rows.contains(p.y)).map(|p| p.x);
                     let parent = ui.layer_id();
+                    // File tabs live on their own layers; paint their active
+                    // marker above those layers, as on the file and view tabs.
+                    let marks = ui
+                        .ctx()
+                        .layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("tab_markers")));
                     let span = ui.clip_rect().x_range();
                     for (i, doc) in self.docs.iter().enumerate() {
                         let dragged = self.tab_drag == Some(doc.uid);
@@ -1323,14 +1371,13 @@ impl CodeApp {
                             grab = Some(from - natural.left());
                         }
                         let ctx = ui.ctx().clone();
-                        let slide = egui::Id::unique(("tab_x", doc.uid));
+                        // Tabs take their new places at once. A separate slide here
+                        // trailed the side sheet's animation and looked out of step.
                         let x = match (dragged, pointer_x) {
                             (true, Some(px)) => {
-                                let left =
-                                    (px - self.tab_grab).clamp(span.min, (span.max - natural.width()).max(span.min));
-                                ctx.animate_value_with_time(slide, left, 0.0)
+                                (px - self.tab_grab).clamp(span.min, (span.max - natural.width()).max(span.min))
                             }
-                            _ => ctx.animate_value_with_time(slide, natural.left(), 0.14),
+                            _ => natural.left(),
                         };
                         let dx = x - natural.left();
                         if layer.order == parent.order {
@@ -1349,34 +1396,95 @@ impl CodeApp {
                                 lit = Some((r, dragged));
                             }
                         } else if active && theme::islands() {
-                            // A line under the tab, that slides over from the last one.
-                            let ctx = ui.ctx().clone();
-                            let time = ctx.global_style().animation_time;
-                            let left = ctx.animate_value_with_time(egui::Id::unique("tab_line_left"), r.left(), time);
-                            let right =
-                                ctx.animate_value_with_time(egui::Id::unique("tab_line_right"), r.right(), time);
+                            // The active tab's underline follows the tab immediately.
+                            let (left, right) = (r.left(), r.right());
                             let y = r.bottom() - 2.0;
                             let line = egui::Rect::from_x_y_ranges(left + 4.0..=right - 4.0, y..=y + 2.0);
-                            ui.painter().rect_filled(line, 1.0, theme::colors().accent);
+                            marks.rect_filled(line, 1.0, theme::colors().accent);
                         } else if active {
-                            ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, theme::colors().accent));
+                            marks.hline(r.x_range(), r.top(), Stroke::new(1.0, theme::colors().accent));
                         } else if !theme::islands() {
                             ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, theme::colors().border));
                         }
                     }
-                    if let Some((r, dragged)) = lit {
-                        // The lit card glides over from the one before. A card being dragged is lit
-                        // itself, so the glow stays with it instead of trailing behind.
-                        let ctx = ui.ctx().clone();
-                        let (left_id, right_id) = (egui::Id::unique("card_left"), egui::Id::unique("card_right"));
-                        let (left, right) = if dragged {
-                            (
-                                ctx.animate_value_with_time(left_id, r.left(), 0.0),
-                                ctx.animate_value_with_time(right_id, r.right(), 0.0),
-                            )
+                    for (tab, title, shown) in &view_tabs {
+                        let pal = theme::colors();
+                        // Views use the same tab chrome as files, in every style:
+                        // a card in Dock, a filled tab in Islands and Classic.
+                        let frame = if cards {
+                            let fill = if *shown {
+                                theme::tab_bar_bg().lerp_to_gamma(pal.accent, 0.18)
+                            } else {
+                                Color32::TRANSPARENT
+                            };
+                            let edge = if *shown { Color32::TRANSPARENT } else { pal.border };
+                            egui::Frame::new()
+                                .fill(fill)
+                                .stroke(Stroke::new(1.0, edge))
+                                .corner_radius(9.0)
+                                .inner_margin(egui::Margin::symmetric(11, 5))
+                                .outer_margin(egui::Margin::symmetric(0, 6))
                         } else {
-                            (theme::glide(&ctx, left_id, r.left()), theme::glide(&ctx, right_id, r.right()))
+                            let fill = if *shown { pal.tab_active_bg } else { pal.tab_inactive_bg };
+                            egui::Frame::new().fill(fill).inner_margin(egui::Margin::symmetric(10, 7))
                         };
+                        let settings = matches!(tab, ViewTab::Settings);
+                        let resp = frame
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    let color = if *shown { pal.tab_active_fg } else { pal.text_dim };
+                                    let size = ui.text_style_height(&egui::TextStyle::Body);
+                                    if settings {
+                                        let (icon_rect, _) =
+                                            ui.allocate_exact_size(egui::vec2(size, size), Sense::hover());
+                                        icons::paint(ui.painter(), icon_rect, Icon::Gear, color);
+                                    } else {
+                                        icons::show_file(ui, title, size);
+                                    }
+                                    ui.add_space(4.0);
+                                    let label = ui.add(
+                                        egui::Label::new(RichText::new(title).color(color))
+                                            .sense(Sense::click())
+                                            .selectable(false),
+                                    );
+                                    if label.clicked() {
+                                        view_select = Some(tab.clone());
+                                    }
+                                    if label.middle_clicked() {
+                                        view_close = Some(tab.clone());
+                                    }
+                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+                                    let hovered = resp.hovered();
+                                    if hovered {
+                                        ui.painter().rect_filled(rect, 3.0, pal.hover_bg);
+                                    }
+                                    let glyph = if hovered { pal.tab_active_fg } else { pal.text_dim };
+                                    icons::paint(ui.painter(), rect.shrink(size * 0.12), Icon::Close, glyph);
+                                    if resp.on_hover_text("Close (Ctrl+W)").clicked() {
+                                        view_close = Some(tab.clone());
+                                    }
+                                });
+                            })
+                            .response;
+                        let r = resp.rect;
+                        if *shown && cards {
+                            lit = Some((r, false));
+                        } else if *shown && theme::islands() {
+                            let y = r.bottom() - 2.0;
+                            marks.rect_filled(
+                                egui::Rect::from_x_y_ranges(r.left() + 4.0..=r.right() - 4.0, y..=y + 2.0),
+                                1.0,
+                                pal.accent,
+                            );
+                        } else if *shown {
+                            marks.hline(r.x_range(), r.top(), Stroke::new(1.0, pal.accent));
+                        } else if !cards {
+                            ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, pal.border));
+                        }
+                    }
+                    if let Some((r, _dragged)) = lit {
+                        // The glow follows its tab at once, file or Settings alike.
+                        let (left, right) = (r.left(), r.right());
                         let at = egui::Rect::from_x_y_ranges(left..=right, r.shrink2(egui::vec2(0.0, 6.0)).y_range());
                         let pal = theme::colors();
                         let shape = egui::epaint::RectShape::new(
@@ -1388,49 +1496,6 @@ impl CodeApp {
                         );
                         ui.painter().set(glow, shape);
                     }
-                    for (tab, title, shown) in &view_tabs {
-                        let pal = theme::colors();
-                        let fill = if *shown { pal.tab_active_bg } else { pal.tab_inactive_bg };
-                        let resp = egui::Frame::new()
-                            .fill(fill)
-                            .inner_margin(egui::Margin::symmetric(10, 7))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    let color = if *shown { pal.tab_active_fg } else { pal.text_dim };
-                                    let size = ui.text_style_height(&egui::TextStyle::Body);
-                                    icons::show_file(ui, title, size);
-                                    ui.add_space(4.0);
-                                    let label = ui.add(
-                                        egui::Label::new(RichText::new(title).color(color))
-                                            .sense(Sense::click())
-                                            .selectable(false),
-                                    );
-                                    if label.clicked() {
-                                        view_select = Some(*tab);
-                                    }
-                                    if label.middle_clicked() {
-                                        view_close = Some(*tab);
-                                    }
-                                    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
-                                    let hovered = resp.hovered();
-                                    if hovered {
-                                        ui.painter().rect_filled(rect, 3.0, pal.hover_bg);
-                                    }
-                                    let glyph = if hovered { pal.tab_active_fg } else { pal.text_dim };
-                                    icons::paint(ui.painter(), rect.shrink(size * 0.12), Icon::Close, glyph);
-                                    if resp.on_hover_text("Close (Ctrl+W)").clicked() {
-                                        view_close = Some(*tab);
-                                    }
-                                });
-                            })
-                            .response;
-                        let r = resp.rect;
-                        if *shown {
-                            ui.painter().hline(r.x_range(), r.top(), Stroke::new(1.0, pal.accent));
-                        } else {
-                            ui.painter().vline(r.right(), r.y_range(), Stroke::new(1.0, pal.border));
-                        }
-                    }
                 });
             });
         if let Some(i) = select {
@@ -1441,7 +1506,7 @@ impl CodeApp {
         if let Some(tab) = view_close {
             self.close_view_tab(tab);
         } else if let Some(tab) = view_select {
-            self.show_view_tab(tab);
+            self.show_view_tab(ui.ctx(), tab);
         }
         if let Some(i) = close {
             self.request_close_tab(i);
@@ -1458,9 +1523,9 @@ impl CodeApp {
         }
     }
 
-    pub(crate) fn breadcrumbs(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn breadcrumbs(&mut self, ui: &mut egui::Ui) -> Option<egui::Rect> {
         let symbols = self.breadcrumb_symbols();
-        let Some(doc) = self.docs.get(self.active) else { return };
+        let doc = self.docs.get(self.active)?;
         let text = match (&doc.path, &self.explorer.root) {
             (Some(p), Some(root)) => p
                 .strip_prefix(root)
@@ -1476,31 +1541,48 @@ impl CodeApp {
         };
         let mut jump = None;
         let mut pick = false;
-        ui.horizontal(|ui| {
-            ui.add_space(14.0);
-            let dim = theme::colors().text_dim;
-            let size = small_size(ui);
-            let file = ui.add(egui::Label::new(RichText::new(text).size(size).color(dim)).sense(Sense::click()));
-            if file.on_hover_text("Go to Symbol in Editor (Ctrl+Shift+O)").clicked() {
-                pick = true;
-            }
-            for (label, line) in symbols {
-                ui.label(RichText::new("›").size(size).color(dim));
-                let crumb = ui.add(egui::Label::new(RichText::new(label).size(size).color(dim)).sense(Sense::click()));
-                if crumb.clicked() {
-                    jump = Some(line);
+        let bar = ui
+            .horizontal(|ui| {
+                ui.add_space(14.0);
+                let dim = theme::colors().text_dim;
+                let size = small_size(ui);
+                let file = ui.add(egui::Label::new(RichText::new(text).size(size).color(dim)).sense(Sense::click()));
+                if file.on_hover_text("Go to Symbol in Editor (Ctrl+Shift+O)").clicked() {
+                    pick = true;
                 }
-            }
-        });
+                for (label, line) in symbols {
+                    ui.label(RichText::new("›").size(size).color(dim));
+                    let crumb =
+                        ui.add(egui::Label::new(RichText::new(label).size(size).color(dim)).sense(Sense::click()));
+                    if crumb.clicked() {
+                        jump = Some(line);
+                    }
+                }
+            })
+            .response
+            .rect;
         if let Some(line) = jump {
             self.jump_to_symbol_line(line);
         }
         if pick {
             self.go_to_symbol();
         }
+        Some(bar)
     }
 
-    pub(crate) fn find_bar(&mut self, ui: &mut egui::Ui) {
+    /// The find box's right edge sits just inside the text area: beside the
+    /// minimap when it is on, or with a small margin at the editor's right edge
+    /// when it is off. It lines up with the file-name row above the editor.
+    /// Its top never moves when the replace row opens.
+    fn find_overlay_at(editor: egui::Rect, bar: Option<egui::Rect>, minimap: bool) -> egui::Pos2 {
+        const MARGIN: f32 = 8.0;
+        const ROW: f32 = 40.0;
+        let right = editor.right() - if minimap { editor_view::MINIMAP } else { 0.0 } - MARGIN;
+        let top = bar.map_or(editor.top() - ROW + 4.0, |bar| bar.center().y - ROW / 2.0);
+        egui::pos2(right, top)
+    }
+
+    pub(crate) fn find_overlay(&mut self, ctx: &egui::Context) {
         if !self.find.open {
             return;
         }
@@ -1528,78 +1610,117 @@ impl CodeApp {
         let mut go_prev = false;
         let mut replace_one = false;
         let mut replace_all = false;
-        ui.horizontal(|ui| {
-            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                ui.add_space(14.0);
-                if icons::button(ui, Icon::Close, "Close (Escape)").clicked() {
-                    self.find.open = false;
-                }
-                if icons::button(ui, Icon::ArrowDown, "Next Match (Enter)").clicked() {
-                    go_next = true;
-                }
-                if icons::button(ui, Icon::ArrowUp, "Previous Match (Shift+Enter)").clicked() {
-                    go_prev = true;
-                }
-                let count = if self.find.options.query.is_empty() {
-                    String::new()
-                } else if let Some(e) = &error {
-                    e.clone()
-                } else if matches.is_empty() {
-                    "No results".to_owned()
-                } else {
-                    let shown = current.map_or(matches.len(), |c| c + 1);
-                    format!("{shown} of {}", matches.len())
-                };
-                ui.add(egui::Label::new(RichText::new(count).small().color(theme::colors().text_dim)).truncate());
-                let toggle = |ui: &mut egui::Ui, on: &mut bool, text: &str, tip: &str| {
-                    if ui.selectable_label(*on, RichText::new(text).monospace()).on_hover_text(tip).clicked() {
-                        *on = !*on;
-                    }
-                };
-                toggle(ui, &mut self.find.options.regex, ".*", "Use Regular Expression");
-                toggle(ui, &mut self.find.options.whole_word, "ab", "Match Whole Word");
-                toggle(ui, &mut self.find.options.match_case, "Aa", "Match Case");
-                let edit = ui.add(
-                    egui::TextEdit::singleline(&mut self.find.options.query).hint_text("Find").desired_width(220.0),
-                );
-                if self.find.focus_requested {
-                    edit.request_focus();
-                    self.find.focus_requested = false;
-                }
-                if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                    if ui.input(|i| i.modifiers.shift) {
-                        go_prev = true;
-                    } else {
-                        go_next = true;
-                    }
-                    edit.request_focus();
-                }
-                if edit.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
-                    self.find.open = false;
-                }
-                let arrow = if self.find.show_replace { Icon::ChevronDown } else { Icon::ChevronRight };
-                if icons::button(ui, arrow, "Toggle Replace (Ctrl+H)").clicked() {
-                    self.find.show_replace = !self.find.show_replace;
-                }
+        let screen = ctx.content_rect();
+        let editor = self.find.editor_rect.unwrap_or(screen);
+        let at = Self::find_overlay_at(editor, self.find.bar_rect, self.settings.editor.minimap);
+        let width = self.find.width.unwrap_or(430.0);
+        egui::Area::new(egui::Id::unique("find_overlay"))
+            .order(egui::Order::Foreground)
+            .pivot(egui::Align2::RIGHT_TOP)
+            .default_width(430.0)
+            .fixed_pos(at)
+            .constrain(true)
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(theme::colors().sidebar_bg)
+                    .stroke(Stroke::new(1.0, theme::colors().border))
+                    .inner_margin(egui::Margin::symmetric(5, 5))
+                    .corner_radius(4.0)
+                    .show(ui, |ui| {
+                        ui.set_width(width);
+                        let first_row = ui.horizontal(|ui| {
+                            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                if icons::button(ui, Icon::Close, "Close (Escape)").clicked() {
+                                    self.find.open = false;
+                                }
+                                if icons::button(ui, Icon::ArrowDown, "Next Match (Enter)").clicked() {
+                                    go_next = true;
+                                }
+                                if icons::button(ui, Icon::ArrowUp, "Previous Match (Shift+Enter)").clicked() {
+                                    go_prev = true;
+                                }
+                                let count = if self.find.options.query.is_empty() {
+                                    String::new()
+                                } else if let Some(e) = &error {
+                                    e.clone()
+                                } else if matches.is_empty() {
+                                    "No results".to_owned()
+                                } else {
+                                    let shown = current.map_or(matches.len(), |c| c + 1);
+                                    format!("{shown} of {}", matches.len())
+                                };
+                                ui.add(
+                                    egui::Label::new(RichText::new(count).small().color(if error.is_some() {
+                                        theme::colors().modified
+                                    } else {
+                                        theme::colors().text_dim
+                                    }))
+                                    .truncate(),
+                                );
+                                let toggle = |ui: &mut egui::Ui, on: &mut bool, text: &str, tip: &str| {
+                                    if ui
+                                        .selectable_label(*on, RichText::new(text).monospace())
+                                        .on_hover_text(tip)
+                                        .clicked()
+                                    {
+                                        *on = !*on;
+                                    }
+                                };
+                                toggle(ui, &mut self.find.options.regex, ".*", "Use Regular Expression");
+                                toggle(ui, &mut self.find.options.whole_word, "ab", "Match Whole Word");
+                                toggle(ui, &mut self.find.options.match_case, "Aa", "Match Case");
+                                let edit = ui.add(
+                                    egui::TextEdit::singleline(&mut self.find.options.query)
+                                        .hint_text("Find")
+                                        .desired_width(180.0),
+                                );
+                                if self.find.focus_requested {
+                                    edit.request_focus();
+                                    self.find.focus_requested = false;
+                                }
+                                if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                                    if ui.input(|i| i.modifiers.shift) {
+                                        go_prev = true;
+                                    } else {
+                                        go_next = true;
+                                    }
+                                    edit.request_focus();
+                                }
+                                if edit.has_focus() && ui.input(|i| i.key_pressed(Key::Escape)) {
+                                    self.find.open = false;
+                                }
+                                let arrow = if self.find.show_replace { Icon::ChevronDown } else { Icon::ChevronRight };
+                                if icons::button(ui, arrow, "Toggle Replace (Ctrl+H)").clicked() {
+                                    self.find.show_replace = !self.find.show_replace;
+                                }
+                            })
+                            .response
+                        });
+                        // Keep only the space the controls actually need: the
+                        // right edge is anchored, so only the left edge moves.
+                        self.find.width = Some(first_row.inner.rect.width().max(120.0));
+                        if self.find.show_replace {
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                                    replace_all = ui.button("Replace All").clicked();
+                                    replace_one = ui.button("Replace").clicked();
+                                    let hint =
+                                        if self.find.options.regex { "Replace ($1 for groups)" } else { "Replace" };
+                                    let edit = ui.add(
+                                        egui::TextEdit::singleline(&mut self.find.replacement)
+                                            .hint_text(hint)
+                                            .desired_width(180.0),
+                                    );
+                                    if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+                                        replace_one = true;
+                                        edit.request_focus();
+                                    }
+                                });
+                            });
+                        }
+                    });
             });
-        });
-        if self.find.show_replace {
-            ui.horizontal(|ui| {
-                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                    ui.add_space(14.0);
-                    replace_all = ui.button("Replace All").clicked();
-                    replace_one = ui.button("Replace").clicked();
-                    let hint = if self.find.options.regex { "Replace ($1 for groups)" } else { "Replace" };
-                    let edit = ui.add(
-                        egui::TextEdit::singleline(&mut self.find.replacement).hint_text(hint).desired_width(220.0),
-                    );
-                    if edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-                        replace_one = true;
-                        edit.request_focus();
-                    }
-                });
-            });
-        }
         if replace_all {
             let (options, with) = (self.find.options.clone(), self.find.replacement.clone());
             self.status = Some(match self.docs[self.active].replace_all(&options, &with) {
@@ -1609,7 +1730,6 @@ impl CodeApp {
             return;
         }
         if replace_one {
-            // The match under the selection gets replaced; otherwise go to the next.
             let (start, end) = {
                 let p = doc.buffer.primary();
                 (p.start(), p.end())
@@ -1635,7 +1755,6 @@ impl CodeApp {
             return;
         }
         let target = if go_next {
-            // First match strictly after the current selection start.
             let replacing = replace_one && sel_start < matches[matches.len() - 1].0 + 1;
             let found = if replacing { matches.iter().find(|&&(s, _)| s >= sel_start) } else { None };
             Some(found.or(matches.iter().find(|&&(s, _)| s > sel_start)).unwrap_or(&matches[0]))
@@ -1645,7 +1764,6 @@ impl CodeApp {
             None
         };
         if let Some(&(s, e)) = target {
-            // Keep focus in the find box (like VS Code); just move the selection.
             doc.buffer.set_single(crate::buffer::Selection::new(s, e));
             doc.reveal = true;
         }
@@ -1702,6 +1820,23 @@ impl CodeApp {
                 }
             }
             self.plugin_status_items(ui, coiman_core::extensions::plugin::manifest::Alignment::Left, size);
+            let mut ext_cmd = None;
+            for (text, tip, cmd) in self.ext_status_bar.values() {
+                if !text.is_empty() {
+                    let mut label = egui::Label::new(white(text.clone())).selectable(false);
+                    if !cmd.is_empty() {
+                        label = label.sense(Sense::click());
+                    }
+                    let resp = ui.add(label);
+                    let resp = if !tip.is_empty() { resp.on_hover_text(tip) } else { resp };
+                    if resp.clicked() && !cmd.is_empty() {
+                        ext_cmd = Some(format!("ext\n{cmd}"));
+                    }
+                }
+            }
+            if let Some(cmd) = ext_cmd {
+                self.run_plugin_command(&cmd);
+            }
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
             }
@@ -2203,3 +2338,128 @@ fn small_size(ui: &egui::Ui) -> f32 {
 /// All matches of `query` in `text`, as `[start, end)` char index ranges.
 /// Most matches the find bar counts and steps through.
 const MAX_FIND_MATCHES: usize = 10_000;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_overlay_sits_inside_the_text_area() {
+        let editor = egui::Rect::from_min_max(egui::pos2(100.0, 200.0), egui::pos2(1000.0, 800.0));
+        let with_minimap = CodeApp::find_overlay_at(editor, None, true);
+        assert_eq!(with_minimap.x, editor.right() - editor_view::MINIMAP - 8.0);
+        assert_eq!(with_minimap.y, editor.top() - 36.0);
+
+        let without = CodeApp::find_overlay_at(editor, None, false);
+        assert_eq!(without.x, editor.right() - 8.0);
+        // Opening the replace row must not move the box up.
+        assert_eq!(without.y, with_minimap.y);
+
+        let bar = egui::Rect::from_min_max(egui::pos2(100.0, 176.0), egui::pos2(900.0, 196.0));
+        let lined_up = CodeApp::find_overlay_at(editor, Some(bar), false);
+        assert_eq!(lined_up.y, bar.center().y - 20.0);
+        assert!(lined_up.y > without.y, "the box moves down to the file-name row");
+    }
+
+    #[test]
+    fn find_overlay_fits_its_controls_and_grows_downwards() {
+        let ctx = egui::Context::default();
+        let root = std::env::temp_dir().join(format!("coiman-find-overlay-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("main.js");
+        std::fs::write(&path, "let a = 1;\n").unwrap();
+        let doc = crate::document::Document::open(&path).unwrap();
+        let mut app = CodeApp::new(None, &ctx);
+        app.docs.clear();
+        app.docs.push(doc);
+        app.active = 0;
+        app.find.open = true;
+        app.settings.editor.minimap = false;
+        let editor = egui::Rect::from_min_max(egui::pos2(100.0, 200.0), egui::pos2(1000.0, 700.0));
+        let bar = egui::Rect::from_min_max(egui::pos2(100.0, 176.0), egui::pos2(900.0, 196.0));
+        app.find.editor_rect = Some(editor);
+        app.find.bar_rect = Some(bar);
+        let id = egui::Id::unique("find_overlay");
+
+        let frame = |app: &mut CodeApp| {
+            let raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+                ..Default::default()
+            };
+            let mut output = ctx.run_ui(raw, |_ui| app.find_overlay(&ctx));
+            output.textures_delta.clear();
+        };
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        let closed = ctx.memory(|m| m.area_rect(id)).expect("the find overlay was drawn");
+        assert!((closed.right() - (editor.right() - 8.0)).abs() < 1.0, "{closed:?}");
+        assert!(closed.width() < 450.0, "no dead space on the left: {closed:?}");
+        assert!((closed.top() - (bar.center().y - 20.0)).abs() < 1.0, "{closed:?}");
+        let top = closed.top();
+
+        app.find.show_replace = true;
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        let open = ctx.memory(|m| m.area_rect(id)).expect("the replace row was drawn");
+        assert!((open.top() - top).abs() < 1.0, "the box does not move up: {top} -> {open:?}");
+        assert!(open.height() > closed.height(), "the replace row grows downwards");
+
+        app.find.show_replace = false;
+        app.settings.editor.minimap = true;
+        for _ in 0..3 {
+            frame(&mut app);
+        }
+        let beside = ctx.memory(|m| m.area_rect(id)).expect("the overlay was drawn beside the minimap");
+        assert!((beside.right() - (editor.right() - editor_view::MINIMAP - 8.0)).abs() < 1.0, "{beside:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn panel_separator_lengths_match() {
+        let ctx = egui::Context::default();
+        crate::ui::theme::set_islands(&ctx, false);
+        crate::ui::theme::set_dock(false);
+        let mut app = CodeApp::new(None, &ctx);
+        app.sidebar_visible = true;
+        app.welcome_sidebar = true;
+        app.sidebar_view = SidebarView::Explorer;
+        app.agents.open = true;
+        app.settings.workbench.agents_enabled = true;
+        app.panel_visible = true;
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        let mut side_line = None;
+        let mut agents_line = None;
+        for _frame in 0..2 {
+            let mut output = ctx.run_ui(raw.clone(), |ui| {
+                app.draw_frame(ui);
+            });
+            if _frame == 1 {
+                for clipped in &output.shapes {
+                    if let egui::epaint::Shape::LineSegment { points, .. } = &clipped.shape
+                        && (points[0].x - points[1].x).abs() < 0.1
+                    {
+                        let len = (points[0].y - points[1].y).abs();
+                        if (points[0].x - 314.0).abs() < 5.0 {
+                            side_line = Some(len);
+                        } else if (points[0].x - 770.0).abs() < 5.0 {
+                            agents_line = Some(len);
+                        }
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+        assert!(side_line.is_some(), "side separator line exists");
+        assert!(agents_line.is_some(), "agents separator line exists");
+        assert_eq!(
+            side_line, agents_line,
+            "Agents separator length must match file explorer separator length: {agents_line:?} vs {side_line:?}"
+        );
+    }
+}

@@ -8,7 +8,7 @@ use crate::commands::Command;
 use crate::ui::icons::{self, Icon};
 use crate::ui::theme;
 
-use crate::app::{CodeApp, PanelTab, SidebarView};
+use crate::app::{AGENTS_DEFAULT_WIDTH, CodeApp, PanelTab, SidebarView};
 
 /// Height of the strip the dock sits in.
 pub(crate) const STRIP_HEIGHT: f32 = 46.0;
@@ -167,10 +167,18 @@ impl CodeApp {
                 SidebarView::Testing => self.testing_available(),
                 SidebarView::Debug => self.can_debug(),
                 SidebarView::Agents => self.settings.workbench.agents_enabled,
+                SidebarView::Extensions => self.settings.vscode_extensions_enabled(),
                 _ => true,
             })
             .collect();
-        let count = side.len() + PANELS.len();
+        if self.settings.vscode_extensions_enabled() {
+            if self.ext_views.is_empty() {
+                self.ext_views = self.ext_host.all_view_containers();
+            }
+        } else {
+            self.ext_views.clear();
+        }
+        let count = side.len() + self.ext_views.len() + PANELS.len();
         let width = count as f32 * BUTTON.x + 12.0 + 16.0;
         let pill = egui::Rect::from_center_size(
             egui::pos2(strip.center().x.max(strip.left() + width / 2.0 + 8.0), strip.center().y),
@@ -208,6 +216,40 @@ impl CodeApp {
                 self.tour_spot(spot, rect);
             }
             x += BUTTON.x;
+        }
+        if self.settings.vscode_extensions_enabled() {
+            for container in self.ext_views.clone() {
+                let open = self.sidebar_shown()
+                    && self.sidebar_view == SidebarView::Extensions
+                    && self.active_ext_view.as_deref() == Some(container.id.as_str());
+                let rect = egui::Rect::from_min_size(egui::pos2(x, pill.top() + 3.0), BUTTON);
+                if open {
+                    open_at = Some(x + BUTTON.x / 2.0);
+                }
+                let color = if open { pal.accent } else { pal.text_dim };
+                let icon = self.ext_icon(ui.ctx(), &container, color);
+                if let Some(texture) = icon {
+                    let (icon_rect, resp) = ui.allocate_exact_size(BUTTON, egui::Sense::click());
+                    egui::Image::from_texture(&texture).paint_at(ui, icon_rect);
+                    if resp.clicked() {
+                        self.sidebar_visible = true;
+                        self.welcome_sidebar = false;
+                        self.sidebar_view = SidebarView::Extensions;
+                        self.active_ext_view = Some(container.id.clone());
+                        self.request_ext_tree(ui.ctx(), &container);
+                    }
+                    x += BUTTON.x;
+                    continue;
+                }
+                if self.dock_button(ui, rect, Icon::Extensions, &container.title, open) {
+                    self.sidebar_visible = true;
+                    self.welcome_sidebar = false;
+                    self.sidebar_view = SidebarView::Extensions;
+                    self.active_ext_view = Some(container.id.clone());
+                    self.request_ext_tree(ui.ctx(), &container);
+                }
+                x += BUTTON.x;
+            }
         }
         // Between the sheets and the panels.
         let sep = egui::pos2(x + 6.0, pill.center().y);
@@ -310,6 +352,89 @@ impl CodeApp {
         response.clicked()
     }
 
+    /// The Agents window as a floating sheet over the code in the Dock layout.
+    /// It uses the same slide/fade curve as the file-explorer sheet, and a click
+    /// in the code puts it away.
+    pub(crate) fn agents_sheet(&mut self, ctx: &egui::Context, code: egui::Rect) {
+        let shown = self.agents.is_open() && self.settings.workbench.agents_enabled;
+        let time = ctx.global_style().animation_time * 1.4;
+        let t = ctx.animate_bool_with_time(egui::Id::unique("agents_sheet_open"), shown, time);
+        if t <= 0.0 {
+            return;
+        }
+
+        let pal = theme::colors();
+        let maximized = self.agents.maximized;
+        let width = if maximized {
+            code.width()
+        } else {
+            AGENTS_DEFAULT_WIDTH.min((code.width() - 2.0 * SHEET_GAP).max(320.0))
+        };
+        let height = if maximized { code.height() } else { code.height() - 2.0 * SHEET_GAP };
+        let eased = 1.0 - (1.0 - t).powi(3);
+        let away = (1.0 - eased) * (width + SHEET_GAP + 24.0);
+        let left = code.right() - SHEET_GAP - width + away;
+        let top = if maximized { code.top() } else { code.top() + SHEET_GAP };
+        let rect = egui::Rect::from_min_size(egui::pos2(left, top), egui::vec2(width, height));
+        let frame = egui::Frame::new()
+            .fill(pal.sidebar_bg)
+            .corner_radius(if maximized { 0.0 } else { 14.0 })
+            .stroke(egui::Stroke::new(1.0, pal.border))
+            .shadow(egui::Shadow { offset: [0, 8], blur: 28, spread: 0, color: Color32::from_black_alpha(110) })
+            .inner_margin(if maximized {
+                egui::Margin::ZERO
+            } else {
+                egui::Margin { left: 10, right: 10, top: 8, bottom: 14 }
+            });
+        let area = egui::Area::new(egui::Id::unique("agents_sheet"))
+            .order(egui::Order::Middle)
+            .fixed_pos(rect.min)
+            .interactable(shown)
+            .show(ctx, |ui| {
+                ui.set_opacity(eased.max(0.35));
+                frame.show(ui, |ui| {
+                    if maximized {
+                        ui.set_width(rect.width());
+                        ui.set_height(rect.height());
+                    } else {
+                        ui.set_width(rect.width() - 20.0);
+                        ui.set_height(rect.height() - 22.0);
+                    }
+                    self.agents.panel(ui);
+                });
+            });
+
+        if shown {
+            let sheet = area.response.rect;
+            if !maximized {
+                // A short seam beside the code, kept inside the sheet's height.
+                let top = sheet.top() + 14.0;
+                let bottom = sheet.bottom() - 14.0;
+                if bottom > top {
+                    let seam = sheet.left() - 2.0;
+                    ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::unique("agents_seam")))
+                        .line_segment(
+                            [egui::pos2(seam, top), egui::pos2(seam, bottom)],
+                            egui::Stroke::new(1.0, pal.border),
+                        );
+                }
+            }
+            self.tour_spot("agents", sheet);
+            if self.pin_chip_as(ctx, sheet, false, "agents_pin") {
+                self.agents_pinned = true;
+                return;
+            }
+            let away = ctx.input(|i| i.pointer.primary_pressed().then(|| i.pointer.interact_pos()).flatten());
+            if let Some(at) = away
+                && code.contains(at)
+                && !sheet.expand(4.0).contains(at)
+                && ctx.layer_id_at(at).is_none_or(|layer| layer.order == egui::Order::Background)
+            {
+                self.agents.open = false;
+            }
+        }
+    }
+
     /// The open tool as a sheet over the code (`code` is where the code is), unless pinned.
     /// A click in the code closes it.
     pub(crate) fn side_sheet(&mut self, ctx: &egui::Context, code: egui::Rect, shown: bool) {
@@ -401,6 +526,17 @@ impl CodeApp {
     /// The round button on a sheet's edge toward the code that pins it beside the code, or
     /// lets it float again. Returns whether it was clicked.
     pub(crate) fn pin_chip(&mut self, ctx: &egui::Context, sheet: egui::Rect, pinned: bool) -> bool {
+        self.pin_chip_as(ctx, sheet, pinned, "sheet_pin")
+    }
+
+    /// The same chip with its own id, so two tools can be pinned independently.
+    pub(crate) fn pin_chip_as(
+        &mut self,
+        ctx: &egui::Context,
+        sheet: egui::Rect,
+        pinned: bool,
+        salt: &'static str,
+    ) -> bool {
         let pal = theme::colors();
         // On the right it sits at the bottom corner, clear of a panel's buttons beside it.
         let center = if self.layout.side_right() {
@@ -409,7 +545,7 @@ impl CodeApp {
             egui::pos2(sheet.right() + 16.0, sheet.top() + 22.0)
         };
         let mut clicked = false;
-        egui::Area::new(egui::Id::unique("sheet_pin"))
+        egui::Area::new(egui::Id::unique(salt))
             .order(egui::Order::Foreground)
             .fixed_pos(center - egui::vec2(12.0, 12.0))
             .show(ctx, |ui| {

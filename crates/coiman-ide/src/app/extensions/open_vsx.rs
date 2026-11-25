@@ -24,7 +24,7 @@ pub(crate) struct OpenVsxUi {
 /// What the window asks the app to do.
 enum Ask {
     Search,
-    Install(Found),
+    Install(Box<Found>),
     UseTheme(String),
     UseIcons(String),
 }
@@ -195,7 +195,7 @@ impl CodeApp {
                                         .add_enabled(installing.is_none(), egui::Button::new("Install"))
                                         .clicked()
                                     {
-                                        ask = Some(Ask::Install(item.clone()));
+                                        ask = Some(Ask::Install(Box::new(item.clone())));
                                     }
                                 });
                             });
@@ -207,7 +207,7 @@ impl CodeApp {
         self.open_vsx.open = open;
         match ask {
             Some(Ask::Search) => self.open_vsx_search(ctx),
-            Some(Ask::Install(found)) => self.open_vsx_install(ctx, found),
+            Some(Ask::Install(found)) => self.open_vsx_install(ctx, *found),
             Some(Ask::UseTheme(label)) => self.set_color_theme(ctx, &label),
             Some(Ask::UseIcons(id)) => {
                 let value = toml::Value::String(id).to_string();

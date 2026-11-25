@@ -15,6 +15,8 @@ use coiman_core::language::lsp::types as lt;
 use coiman_core::language::lsp::{Client, Event, convert, language_id};
 use coiman_core::project::trust;
 use egui::{Align, Key, Modifiers, Pos2, Rect, RichText, Sense};
+use nucleo::pattern::{CaseMatching, Normalization, Pattern};
+use nucleo::{Config, Matcher, Utf32Str};
 use serde_json::{Value, json};
 
 use crate::document::Document;
@@ -31,7 +33,10 @@ const HOVER_DELAY: f64 = 0.35;
 /// Seconds to wait for format-on-save before saving unformatted.
 const FORMAT_ON_SAVE_TIMEOUT: f64 = 2.0;
 /// Completion rows visible without scrolling.
+/// Rows visible at once; more completions are reached by scrolling.
 const COMPLETION_ROWS: usize = 12;
+/// The completion list stays narrow so it doesn't cover the line being typed.
+const COMPLETION_WIDTH: f32 = 360.0;
 
 /// Where we are in finding one kind of server.
 pub(crate) enum Setup {
@@ -69,6 +74,9 @@ pub(crate) enum Pending {
     WorkspaceSymbols,
     Completion {
         uid: u64,
+        request: CompletionRequest,
+        /// Whether the server was asked through a trigger character rather than typing or Ctrl+Space.
+        trigger: bool,
     },
     /// A completion item filled in: its docs while the list shows, or, once accepted
     /// (`apply_at`: the start of its line then), the imports it adds above it.
@@ -165,9 +173,23 @@ pub(crate) struct Completion {
     scroll_to_selected: bool,
     /// The label whose docs were asked for.
     docs_asked: Option<String>,
+    /// The label selected before the latest re-filter, kept selected while it still matches.
+    selected_label: Option<String>,
+    /// The id of the request this list was fetched for: a newer request must not replace it.
+    requested: Option<u64>,
+    /// The list was opened by a trigger character (`.` / `:`), so typing a word can filter it.
+    triggered: bool,
     /// Items the server filled in, by label: the list is fetched again as you type, so
     /// an answer can come for an entry that has since been replaced.
     resolved: HashMap<String, lt::CompletionItem>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompletionRequest {
+    id: u64,
+    version: u64,
+    head: usize,
+    trigger: Option<char>,
 }
 
 pub(crate) struct Hover {
@@ -200,6 +222,8 @@ pub(crate) struct LspState {
     pub(crate) clients: Vec<Client>,
     /// Requests in flight, by (server, server root, request id).
     pub(crate) pending: HashMap<(ServerKind, PathBuf, i64), Pending>,
+    /// Source of ids for completion requests; the latest answer wins.
+    next_completion: u64,
     pub(crate) extra: crate::app::lsp_extra::LspExtra,
     pub(crate) room: crate::app::lsp_room::Room,
     /// Diagnostics by file (key: [`path_key`]), with the path as reported.
@@ -324,10 +348,26 @@ fn word_start(doc: &Document, pos: usize) -> usize {
     start
 }
 
-/// Case-insensitive subsequence match.
-fn fuzzy(text: &str, query: &str) -> bool {
-    let mut chars = text.chars().flat_map(char::to_lowercase);
-    query.chars().flat_map(char::to_lowercase).all(|q| chars.any(|c| c == q))
+/// Rows drawn in a scroll area at once: never more than fit in a short list.
+fn completion_visible_rows(shown: usize, cap: usize) -> usize {
+    shown.min(cap).min(COMPLETION_ROWS)
+}
+
+fn completion_list_height(rows: usize, row_h: f32, gap: f32) -> f32 {
+    (row_h + gap) * rows as f32 - gap
+}
+
+/// Where to put the completion list: under the current line while it fits,
+/// over it when there is no room below.
+fn completion_anchor(cursor: Rect, screen: Rect, height: f32) -> Pos2 {
+    let below = cursor.left_bottom() + egui::vec2(0.0, 2.0);
+    if below.y + height <= screen.bottom() { below } else { cursor.left_top() - egui::vec2(0.0, height + 2.0) }
+}
+
+/// Whether a completion item is marked deprecated by the server.
+fn completion_deprecated(item: &lt::CompletionItem) -> bool {
+    item.deprecated == Some(true)
+        || item.tags.as_ref().is_some_and(|tags| tags.contains(&lt::CompletionItemTag::DEPRECATED))
 }
 
 pub(crate) fn hover_markdown(value: Value) -> String {
@@ -492,10 +532,16 @@ impl CodeApp {
                     let root = workspace_root(&path, self.explorer.root.as_deref());
                     (root, self.rust_analyzer_settings())
                 } else {
-                    (
-                        servers::root_for(kind, &path, self.explorer.root.as_deref()),
-                        servers::init_options(kind, &launch),
-                    )
+                    let root = servers::root_for(kind, &path, self.explorer.root.as_deref());
+                    let typescript = self.settings.lsp.typescript_path.trim();
+                    let typescript = (!typescript.is_empty()).then(|| PathBuf::from(typescript));
+                    let options = servers::init_options(kind, &launch, &root, typescript.as_deref());
+                    if kind == ServerKind::TypeScript && options.is_null() {
+                        coiman_core::applog::info(
+                            "lsp: no TypeScript found for typescript-language-server; install it (`npm install -g typescript`) or set lsp.typescript_path",
+                        );
+                    }
+                    (root, options)
                 };
                 // Servers run a project's code (build scripts, its own TypeScript).
                 if !trust::is_trusted(&root) {
@@ -509,9 +555,23 @@ impl CodeApp {
                     let extra = self.clangd_arguments(&root);
                     launch.args.extend(extra);
                 }
-                match Client::start(kind, &launch, &root, options, repaint(ctx)) {
-                    Ok(client) => self.lsp.clients.push(client),
+                match Client::start(kind, &launch, &root, options.clone(), repaint(ctx)) {
+                    Ok(client) => {
+                        let tsserver = options
+                            .pointer("/tsserver/fallbackPath")
+                            .or_else(|| options.pointer("/tsserver/path"))
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("(none)");
+                        coiman_core::applog::info(&format!(
+                            "lsp: started {} for {} (root {}, tsserver={tsserver})",
+                            kind.name(),
+                            path.display(),
+                            root.display()
+                        ));
+                        self.lsp.clients.push(client);
+                    }
                     Err(e) => {
+                        coiman_core::applog::info(&format!("lsp: could not start {}: {e}", kind.name()));
                         self.status = Some(format!("Could not start {}: {e}", kind.name()));
                         self.lsp.setups.insert(kind, Setup::Off);
                         continue;
@@ -704,8 +764,10 @@ impl CodeApp {
             }
             Event::Exited(why) => {
                 let why = if why.is_empty() { String::new() } else { format!(" Last output: {why}") };
-                self.lsp.room.last_stop = Some(format!("{} stopped.{why}", kind.name()));
-                self.status = Some(format!("{} stopped. Click its name here for details.", kind.name()));
+                let detail = format!("{} stopped.{why}", kind.name());
+                self.lsp.room.last_stop = Some(detail.clone());
+                self.status = Some(format!("{detail} Click Language Servers for details."));
+                coiman_core::applog::info(&format!("lsp: {detail}"));
                 self.lsp.pending.retain(|(k, r, _), _| !(*k == kind && r == root));
                 self.lsp.progress.clear();
             }
@@ -781,7 +843,7 @@ impl CodeApp {
             }
         };
         match pending {
-            Pending::Completion { uid } => self.on_completion(uid, value),
+            Pending::Completion { uid, request, trigger } => self.on_completion(uid, request, trigger, value),
             Pending::CompletionResolve { uid, idx, apply_at } => self.on_completion_resolved(uid, idx, apply_at, value),
             Pending::Hover { uid, pos, anchor } => self.on_hover(uid, pos, anchor, value),
             Pending::Locations { title, word } => self.on_locations(title, &word, value),
@@ -882,6 +944,9 @@ impl CodeApp {
             .collect();
         all.retain(|d| d.source.as_deref() != Some("rustc") || !own.contains(&(d.range.start.line, d.code.clone())));
         all.extend(self.companion_problems(&k));
+        if self.settings.vscode_extensions_enabled() {
+            all.extend(self.ext_diagnostics.get(path).into_iter().flatten().cloned());
+        }
         all.extend(self.plugin_problems(&k));
         all.extend(self.run_problems(&k));
         all.extend(self.constant_problems(&k));
@@ -1055,7 +1120,7 @@ impl CodeApp {
     // ----- editing from the server -------------------------------------------------
 
     /// Applies LSP text edits to document `i` as one undo step.
-    fn apply_text_edits(&mut self, i: usize, edits: Vec<lt::TextEdit>) {
+    pub(crate) fn apply_text_edits(&mut self, i: usize, edits: Vec<lt::TextEdit>) {
         let Some(doc) = self.docs.get_mut(i) else { return };
         let rope = doc.buffer.rope();
         let mut edits: Vec<(usize, usize, String)> = edits
@@ -1177,32 +1242,74 @@ impl CodeApp {
 
     /// Asks for completions at the cursor (`trigger`: the character typed).
     pub(crate) fn request_completion(&mut self, trigger: Option<char>) {
+        if trigger.is_some() && !self.settings.lsp.completion_trigger_characters {
+            return;
+        }
+        if !self.settings.lsp.completion && !self.settings.lsp.completion_trigger_characters {
+            self.lsp.completion = None;
+            return;
+        }
         if self.path_completion() {
             return;
         }
-        if let Some(flavor) = self.markup_flavor_unserved() {
-            self.markup_completion(flavor);
+        if self.markup_unserved() {
+            self.markup_completion();
             return;
         }
         let i = self.active;
         let Some(doc) = self.docs.get(i) else { return };
-        let (uid, head) = (doc.uid, doc.buffer.primary().head);
+        let uid = doc.uid;
+        let (head, version) = (doc.buffer.primary().head, doc.buffer.version());
         let start = if trigger.is_some() { head } else { word_start(doc, head) };
         let context = match trigger {
             Some(c) => json!({ "triggerKind": 2, "triggerCharacter": c.to_string() }),
             None => json!({ "triggerKind": 1 }),
         };
+        let ext_params = if self.ext_host.running() {
+            doc.path
+                .as_deref()
+                .and_then(coiman_core::language::lsp::convert::uri_from_path)
+                .zip(coiman_core::language::lsp::language_id(&doc.extension()))
+                .map(|(uri, language)| {
+                    let line = doc.buffer.char_to_line(head);
+                    let line_start = doc.buffer.line_start(line);
+                    let character = doc.buffer.slice_string(line_start, head).encode_utf16().count();
+                    json!({
+                        "kind": "completion", "uri": uri.to_string(), "languageId": language,
+                        "text": doc.text(), "position": { "line": line, "character": character },
+                    })
+                })
+        } else {
+            None
+        };
         let asked = self.companion_completion(i, head, &context);
-        let sent = self.request_for(i, "textDocument/completion", Pending::Completion { uid }, |doc, td| {
-            let mut p = Self::position_params(doc, td, head);
-            p["context"] = context;
-            p
-        });
+        if let Some(params) = ext_params
+            && let Some(id) = self.ext_host.request("invoke", params)
+        {
+            self.ext_requests.insert(id, crate::app::extensions::host::Request::Completion { uid });
+        }
+        self.lsp.next_completion = self.lsp.next_completion.wrapping_add(1);
+        let id = self.lsp.next_completion;
+        let request = CompletionRequest { id, version, head, trigger };
+        let sent = self.request_for(
+            i,
+            "textDocument/completion",
+            Pending::Completion { uid, request, trigger: trigger.is_some() },
+            |doc, td| {
+                let mut p = Self::position_params(doc, td, head);
+                p["context"] = context;
+                p
+            },
+        );
         if !sent && asked == 0 {
             return;
         }
         match &mut self.lsp.completion {
-            Some(c) if c.uid == uid && c.start == start => c.waiting = true,
+            Some(c) if c.uid == uid && c.start == start => {
+                c.waiting = true;
+                c.requested = Some(request.id);
+                c.triggered = trigger.is_some();
+            }
             _ => {
                 self.lsp.completion = Some(Completion {
                     uid,
@@ -1215,40 +1322,54 @@ impl CodeApp {
                     filtered_for: (u64::MAX, 0),
                     scroll_to_selected: true,
                     docs_asked: None,
+                    selected_label: None,
+                    requested: Some(request.id),
+                    triggered: trigger.is_some(),
                     resolved: HashMap::new(),
                 });
             }
         }
     }
 
-    /// The active file's markup, when it's HTML or Vue and no ready server serves it.
-    fn markup_flavor_unserved(&self) -> Option<html_complete::Flavor> {
-        let doc = self.docs.get(self.active)?;
-        let flavor = match doc.extension().as_str() {
-            "vue" => html_complete::Flavor::Vue,
-            "html" | "htm" | "xhtml" | "svelte" | "jinja" | "jinja2" | "j2" | "njk" | "hbs" | "handlebars" | "ejs"
-            | "twig" | "liquid" | "php" => html_complete::Flavor::Html,
-            _ => return None,
-        };
+    /// Whether the active file is HTML-like and has no ready language server for it.
+    fn markup_unserved(&self) -> bool {
+        let Some(doc) = self.docs.get(self.active) else { return false };
+        if !matches!(
+            doc.extension().as_str(),
+            "html"
+                | "htm"
+                | "xhtml"
+                | "jinja"
+                | "jinja2"
+                | "j2"
+                | "njk"
+                | "hbs"
+                | "handlebars"
+                | "ejs"
+                | "twig"
+                | "liquid"
+                | "php"
+        ) {
+            return false;
+        }
         let served = lsp_target(doc)
             .is_some_and(|(path, _, kind)| self.lsp.clients.iter().any(|c| serves(c, kind, &path) && c.is_ready()));
-        (!served).then_some(flavor)
+        !served
     }
 
     /// Suggestions from what the cursor is in: an element's name, its attributes, or a
     /// value: after typing, or when asked for.
-    fn markup_completion(&mut self, flavor: html_complete::Flavor) {
+    fn markup_completion(&mut self) {
         let Some(doc) = self.docs.get(self.active) else { return };
         let (uid, head) = (doc.uid, doc.buffer.primary().head);
         let rope = doc.buffer.rope();
         let before = rope.slice(head.saturating_sub(16_384)..head).to_string();
-        let Some(found) = html_complete::suggest(flavor, &before).filter(|s| !s.items.is_empty()) else {
+        let Some(found) = html_complete::suggest(&before).filter(|s| !s.items.is_empty()) else {
             self.lsp.completion = None;
             return;
         };
         let start = head - found.back;
         // Still the same word: the open list narrows. A word's first character can change
-        // the list: `@` in Vue turns attributes into events.
         if found.back > 1 && self.lsp.completion.as_ref().is_some_and(|c| c.uid == uid && c.start == start) {
             self.refilter_completion();
             return;
@@ -1286,13 +1407,18 @@ impl CodeApp {
             filtered_for: (u64::MAX, 0),
             scroll_to_selected: true,
             docs_asked: None,
+            selected_label: None,
+            requested: None,
+            triggered: false,
             resolved: HashMap::new(),
         });
         self.refilter_completion();
     }
 
-    fn on_completion(&mut self, uid: u64, value: Value) {
-        let Some(c) = self.lsp.completion.as_mut().filter(|c| c.uid == uid) else { return };
+    fn on_completion(&mut self, uid: u64, request: CompletionRequest, _trigger: bool, value: Value) {
+        let Some(c) = self.lsp.completion.as_mut().filter(|c| c.uid == uid && c.requested == Some(request.id)) else {
+            return;
+        };
         let (incomplete, items) = match serde_json::from_value::<Option<lt::CompletionResponse>>(value) {
             Ok(Some(lt::CompletionResponse::Array(items))) => (false, items),
             Ok(Some(lt::CompletionResponse::List(list))) => (list.is_incomplete, list.items),
@@ -1362,6 +1488,9 @@ impl CodeApp {
                 filtered_for: (u64::MAX, 0),
                 scroll_to_selected: true,
                 docs_asked: None,
+                selected_label: None,
+                requested: None,
+                triggered: false,
                 resolved: HashMap::new(),
             });
         }
@@ -1383,6 +1512,7 @@ impl CodeApp {
     /// Re-filters the list for what has been typed since it opened; closes it
     /// when the cursor leaves the word or nothing matches.
     fn refilter_completion(&mut self) {
+        let max_rows = self.settings.lsp.completion_max_rows.clamp(1, COMPLETION_ROWS * 10);
         let Some(c) = &mut self.lsp.completion else { return };
         let Some(doc) = self.docs.iter().find(|d| d.uid == c.uid) else {
             self.lsp.completion = None;
@@ -1399,21 +1529,43 @@ impl CodeApp {
             return;
         }
         let typed = doc.buffer.slice_string(c.start, head).to_lowercase();
-        let mut shown: Vec<(bool, &str, usize)> = c
-            .entries
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| {
-                let filter = e.item.filter_text.as_deref().unwrap_or(&e.label);
-                fuzzy(filter, &typed).then(|| {
-                    let sort = e.item.sort_text.as_deref().unwrap_or(&e.label);
-                    (!filter.to_lowercase().starts_with(&typed), sort, i)
+        if typed.is_empty() {
+            let mut entries: Vec<(usize, String)> = c
+                .entries
+                .iter()
+                .enumerate()
+                .map(|(i, e)| (i, e.item.sort_text.clone().unwrap_or_else(|| e.label.clone())))
+                .collect();
+            entries.sort_by(|a, b| a.1.cmp(&b.1).then(a.0.cmp(&b.0)));
+            c.shown = entries.into_iter().map(|s| s.0).collect();
+        } else {
+            let pattern = Pattern::parse(&typed, CaseMatching::Smart, Normalization::Smart);
+            let mut matcher = Matcher::new(Config::DEFAULT);
+            let mut buf = Vec::new();
+            let mut scored: Vec<(u32, bool, String, usize)> = c
+                .entries
+                .iter()
+                .enumerate()
+                .filter_map(|(i, e)| {
+                    let filter = e.item.filter_text.as_deref().unwrap_or(&e.label);
+                    let score = pattern.score(Utf32Str::new(filter, &mut buf), &mut matcher)?;
+                    let prefix = filter.to_lowercase().starts_with(&typed);
+                    let sort = e.item.sort_text.clone().unwrap_or_else(|| e.label.clone());
+                    Some((score, prefix, sort, i))
                 })
-            })
-            .collect();
-        shown.sort();
-        c.shown = shown.into_iter().map(|s| s.2).collect();
-        c.selected = 0;
+                .collect();
+            scored.sort_by(|a, b| {
+                b.1.cmp(&a.1).then_with(|| b.0.cmp(&a.0)).then_with(|| a.2.cmp(&b.2)).then_with(|| a.3.cmp(&b.3))
+            });
+            c.shown = scored.into_iter().map(|s| s.3).collect();
+        }
+        let keep = c.selected_label.as_deref().and_then(|label| {
+            c.shown.iter().position(|&idx| c.entries[idx].item.label == label).filter(|_| !c.shown.is_empty())
+        });
+        let preselect = (!c.shown.is_empty() && c.shown.len() == c.entries.len())
+            .then(|| c.entries.iter().position(|e| e.item.preselect == Some(true)))
+            .flatten();
+        c.selected = keep.or(preselect).unwrap_or(0).min(c.shown.len().saturating_sub(1).min(max_rows - 1));
         c.scroll_to_selected = true;
         if c.shown.is_empty() && !c.waiting {
             self.lsp.completion = None;
@@ -1454,10 +1606,10 @@ impl CodeApp {
 
     /// The picked entry's docs, asked for once it's been picked.
     fn resolve_selected_completion(&mut self) {
-        let Some(c) = &self.lsp.completion else { return };
+        let Some(c) = &mut self.lsp.completion else { return };
         let Some(&idx) = c.shown.get(c.selected) else { return };
-        let label = &c.entries[idx].item.label;
-        if c.docs_asked.as_ref() == Some(label) || c.entries[idx].resolved || c.resolved.contains_key(label) {
+        let label = c.entries[idx].item.label.clone();
+        if c.docs_asked.as_ref() == Some(&label) || c.entries[idx].resolved || c.resolved.contains_key(&label) {
             return;
         }
         let (uid, item) = (c.uid, c.entries[idx].item.clone());
@@ -1492,6 +1644,9 @@ impl CodeApp {
         // Accepted already: add the imports, which go above its line, so the text there
         // is as the server saw it.
         let Some(i) = self.doc_index(uid) else { return };
+        if !self.settings.lsp.completion_auto_import {
+            return;
+        }
         let doc = &mut self.docs[i];
         let rope = doc.buffer.rope();
         let edits: Vec<(usize, usize, String)> = item
@@ -1500,7 +1655,7 @@ impl CodeApp {
             .flatten()
             .map(|e| {
                 let (a, b) = convert::chars_of(rope, e.range);
-                (a, b, e.new_text.clone())
+                (a, b, e.new_text.replace("\r\n", "\n").replace('\n', doc.buffer.line_ending))
             })
             .filter(|(_, b, _)| *b <= line_start)
             .collect();
@@ -1516,18 +1671,22 @@ impl CodeApp {
     }
 
     fn accept_completion(&mut self) {
+        self.accept_completion_with_commit(None)
+    }
+
+    /// Accepts the selected completion, optionally typing `commit` after it as VS Code
+    /// does for a completion item's commit characters.
+    fn accept_completion_with_commit(&mut self, commit: Option<String>) {
         let Some(c) = self.lsp.completion.take() else { return };
         let Some(&idx) = c.shown.get(c.selected) else { return };
         let Some(i) = self.doc_index(c.uid) else { return };
-        // Not filled in yet: the imports it adds come after, from the server.
-        let resolve_later = (!c.entries[idx].resolved && self.resolves_completions(i)).then(|| {
-            (
-                c.uid,
-                c.entries[idx].item.clone(),
-                self.docs[i].buffer.line_start(self.docs[i].buffer.char_to_line(c.start)),
-            )
-        });
-        let item = &c.entries[idx].item;
+        let item = c.entries[idx].item.clone();
+        // Not filled in yet: the imports it adds come after, from the server, unless the
+        // user turned auto-import off.
+        let resolve_later = (self.settings.lsp.completion_auto_import
+            && !c.entries[idx].resolved
+            && self.resolves_completions(i))
+        .then(|| (c.uid, item.clone(), self.docs[i].buffer.line_start(self.docs[i].buffer.char_to_line(c.start))));
         // A folder in a path: what's in it comes next.
         let into_folder = c.entries[idx].companion
             && item.kind == Some(lt::CompletionItemKind::FOLDER)
@@ -1548,36 +1707,67 @@ impl CodeApp {
         };
         // The user may have typed more since the request: replace up to the cursor.
         let (start, end) = (start.min(head), end.max(head));
-        let snippet = item.insert_text_format == Some(lt::InsertTextFormat::SNIPPET);
-        let (text, sel) = if snippet {
+        let snippet =
+            self.settings.lsp.completion_snippets && item.insert_text_format == Some(lt::InsertTextFormat::SNIPPET);
+        let (mut text, mut sel) = if snippet {
             convert::expand_snippet(&text)
         } else {
             let n = text.chars().count();
             (text, (n, n))
         };
-        let mut edits: Vec<(usize, usize, String)> = item
-            .additional_text_edits
-            .iter()
-            .flatten()
-            .map(|e| {
-                let (a, b) = convert::chars_of(rope, e.range);
-                (a, b, e.new_text.clone())
-            })
-            .filter(|(a, b, _)| *b <= start || *a >= end)
-            .collect();
+        if text.contains('\n') && doc.buffer.line_ending != "\n" {
+            text = text.replace('\n', doc.buffer.line_ending);
+        }
+        let commit = commit.filter(|s| !s.is_empty());
+        let mut edits: Vec<(usize, usize, String)> = Vec::new();
+        if self.settings.lsp.completion_auto_import {
+            edits.extend(
+                item.additional_text_edits
+                    .iter()
+                    .flatten()
+                    .map(|e| {
+                        let (a, b) = convert::chars_of(rope, e.range);
+                        (a, b, e.new_text.replace("\r\n", "\n").replace('\n', doc.buffer.line_ending))
+                    })
+                    .filter(|(a, b, _)| *b <= start || *a >= end),
+            );
+        }
         // Edits before the completion shift where it lands.
         let shift: isize = edits
             .iter()
             .filter(|(_, b, _)| *b <= start)
             .map(|(a, b, t)| t.chars().count() as isize - (b - a) as isize)
             .sum();
+        let mut after = String::new();
+        if let Some(commit) = commit {
+            after = commit;
+        }
+        if !after.is_empty() {
+            text.push_str(&after);
+            // The commit character is typed, so the caret belongs after it.
+            // A snippet keeps its first tab stop instead.
+            if !snippet {
+                sel.0 = text.chars().count();
+                sel.1 = sel.0;
+            }
+        }
         edits.push((start, end, text));
+        // Apply as one undo step, like a single completion action.
         doc.buffer.apply_edits(edits);
         let base = (start as isize + shift) as usize;
         doc.buffer.set_single(crate::buffer::Selection::new(base + sel.0, base + sel.1));
         doc.reveal = true;
         if let Some((uid, item, line_start)) = resolve_later {
             self.resolve_completion(i, uid, idx, &item, Some(line_start));
+        }
+        if let Some(command) = item.command.filter(|_| !c.entries[idx].companion) {
+            let args = command.arguments.unwrap_or_default();
+            self.request_for(
+                i,
+                "workspace/executeCommand",
+                Pending::Execute,
+                |_, _| json!({ "command": command.command, "arguments": args }),
+            );
         }
         if into_folder {
             self.path_completion();
@@ -1613,8 +1803,15 @@ impl CodeApp {
         if c.shown.is_empty() {
             return;
         }
-        let n = c.shown.len();
-        let (up, down, page_up, page_down, accept, escape) = ctx.input_mut(|i| {
+        let n = c.shown.len().min(self.settings.lsp.completion_max_rows.clamp(1, COMPLETION_ROWS * 10));
+        c.selected = c.selected.min(n - 1);
+        let (up, down, page_up, page_down, accept, escape, commit) = ctx.input_mut(|i| {
+            let commit = i.events.iter().find_map(|e| match e {
+                egui::Event::Text(text) if text.chars().all(|ch| !ch.is_control()) => {
+                    text.chars().find(|ch| !ch.is_control())
+                }
+                _ => None,
+            });
             (
                 i.consume_key(Modifiers::NONE, Key::ArrowUp),
                 i.consume_key(Modifiers::NONE, Key::ArrowDown),
@@ -1622,8 +1819,10 @@ impl CodeApp {
                 i.consume_key(Modifiers::NONE, Key::PageDown),
                 i.consume_key(Modifiers::NONE, Key::Enter) || i.consume_key(Modifiers::NONE, Key::Tab),
                 i.consume_key(Modifiers::NONE, Key::Escape),
+                commit,
             )
         });
+        let old = c.selected;
         if up {
             c.selected = c.selected.checked_sub(1).unwrap_or(n - 1);
         }
@@ -1636,11 +1835,25 @@ impl CodeApp {
         if page_down {
             c.selected = (c.selected + COMPLETION_ROWS).min(n - 1);
         }
+        if c.selected != old {
+            c.selected_label = c.shown.get(c.selected).map(|&idx| c.entries[idx].item.label.clone());
+        }
+        let item = c.shown.get(c.selected).map(|&idx| &c.entries[idx].item);
+        let commit = commit.filter(|ch| {
+            item.is_some_and(|item| {
+                item.commit_characters.as_ref().is_some_and(|chars| chars.iter().any(|s| s == &ch.to_string()))
+            })
+        });
         c.scroll_to_selected |= up || down || page_up || page_down;
         if escape {
             self.lsp.completion = None;
         } else if accept {
             self.accept_completion();
+        } else if let Some(ch) = commit {
+            ctx.input_mut(|i| {
+                i.events.retain(|e| !matches!(e, egui::Event::Text(text) if text.contains(ch)));
+            });
+            self.accept_completion_with_commit(Some(ch.to_string()));
         }
     }
 
@@ -1692,6 +1905,9 @@ impl CodeApp {
             filtered_for: (u64::MAX, 0),
             scroll_to_selected: true,
             docs_asked: None,
+            selected_label: None,
+            requested: None,
+            triggered: false,
             resolved: HashMap::new(),
         });
         self.refilter_completion();
@@ -1700,6 +1916,10 @@ impl CodeApp {
 
     /// Opens, updates or closes completion after the user typed `typed`.
     fn completion_after_typing(&mut self, typed: &str, focused: bool) {
+        if !self.settings.lsp.completion && !self.settings.lsp.completion_trigger_characters {
+            self.lsp.completion = None;
+            return;
+        }
         let Some(doc) = self.docs.get(self.active) else { return };
         let uid = doc.uid;
         if !focused || self.lsp.completion.as_ref().is_some_and(|c| c.uid != uid) {
@@ -1716,13 +1936,13 @@ impl CodeApp {
             return;
         }
         let Some(doc) = self.docs.get(self.active) else { return };
-        // HTML and Vue with no server get tags, attributes and values from here.
-        if focused && let Some(flavor) = self.markup_flavor_unserved() {
+        // HTML with no server gets tags, attributes and values from here.
+        if focused && self.markup_unserved() {
             // Only typing looks again; otherwise the open list follows the cursor.
             if typed.is_empty() {
                 self.refilter_completion();
             } else {
-                self.markup_completion(flavor);
+                self.markup_completion();
             }
             return;
         }
@@ -1738,12 +1958,16 @@ impl CodeApp {
         triggers.extend(companion.unwrap_or_default());
         let open = self.lsp.completion.is_some();
         if let Some(ch) = typed.chars().last() {
-            if triggers.contains(&ch) {
+            if triggers.contains(&ch) && self.settings.lsp.completion_trigger_characters {
                 self.request_completion(Some(ch));
                 return;
             }
-            if is_word_char(ch) {
-                if !open || self.lsp.completion.as_ref().is_some_and(|c| c.incomplete) {
+            if is_word_char(ch)
+                && (self.settings.lsp.completion || self.lsp.completion.as_ref().is_some_and(|c| c.triggered))
+            {
+                let needs_items =
+                    self.lsp.completion.as_ref().is_some_and(|c| c.waiting || c.entries.is_empty() || c.incomplete);
+                if !open || needs_items {
                     self.request_completion(None);
                     return;
                 }
@@ -1858,6 +2082,23 @@ impl CodeApp {
                     return;
                 }
                 self.lsp.hover_rest = Some((uid, pos, since, true));
+                if self.ext_host.running()
+                    && let Some(doc) = self.docs.get(self.active)
+                    && let Some(path) = doc.path.as_deref()
+                    && let Some(uri) = coiman_core::language::lsp::convert::uri_from_path(path)
+                    && let Some(language) = coiman_core::language::lsp::language_id(&doc.extension())
+                {
+                    let line = doc.buffer.char_to_line(pos);
+                    let line_start = doc.buffer.line_start(line);
+                    let character = doc.buffer.slice_string(line_start, pos).encode_utf16().count();
+                    let params = json!({
+                        "kind": "hover", "uri": uri.to_string(), "languageId": language,
+                        "text": doc.text(), "position": { "line": line, "character": character },
+                    });
+                    if let Some(id) = self.ext_host.request("invoke", params) {
+                        self.ext_requests.insert(id, crate::app::extensions::host::Request::Hover { uid, pos });
+                    }
+                }
                 let i = self.active;
                 if self.doc_client(i).is_some() {
                     let anchor = Some(pointer);
@@ -1882,6 +2123,36 @@ impl CodeApp {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// Adds hover text from an extension host, without a pointer anchor.
+    pub(crate) fn add_host_hover(&mut self, uid: u64, pos: usize, markdown: String) {
+        if markdown.is_empty() {
+            return;
+        }
+        let anchor = self.lsp.cursor_rect.map(|r| r.left_bottom()).unwrap_or(Pos2::ZERO);
+        if let Some(hover) = self.lsp.hover.as_mut().filter(|h| h.uid == uid && h.pos == pos) {
+            if !hover.markdown.is_empty() {
+                hover.markdown.push_str("\n\n");
+            }
+            hover.markdown.push_str(&markdown);
+        } else {
+            self.lsp.hover =
+                Some(Hover { uid, version: 0, pos, anchor, markdown, problems: Vec::new(), sticky: None, rect: None });
+        }
+    }
+
+    /// Applies formatting edits from an extension host.
+    pub(crate) fn apply_host_format(&mut self, uid: u64, edits: Vec<lt::TextEdit>, save: bool) {
+        if edits.is_empty() {
+            return;
+        }
+        if let Some(i) = self.doc_index(uid) {
+            self.apply_text_edits(i, edits);
+            if save {
+                self.save_doc(i);
+            }
         }
     }
 
@@ -1919,6 +2190,24 @@ impl CodeApp {
         let pos = pos.unwrap_or(doc.buffer.primary().head);
         let word = doc.buffer.word_at(pos).map(|(a, b)| doc.buffer.slice_string(a, b)).unwrap_or_default();
         let references = title == "References";
+        if self.ext_host.running()
+            && let Some(uri) = doc.path.as_deref().and_then(convert::uri_from_path)
+        {
+            let position = convert::position_of(doc.buffer.rope(), pos);
+            let kind = if references { "reference" } else { "definition" };
+            let mut p = json!({
+                "kind": kind,
+                "uri": uri.as_str(),
+                "position": position,
+            });
+            if references {
+                p["context"] = json!({ "includeDeclaration": true });
+            }
+            if let Some(id) = self.ext_host.request("invoke", p) {
+                self.ext_requests
+                    .insert(id, crate::app::extensions::host::Request::Locations { title, word: word.clone() });
+            }
+        }
         self.request_for(i, method, Pending::Locations { title, word }, |doc, td| {
             let mut p = Self::position_params(doc, td, pos);
             if references {
@@ -2325,17 +2614,40 @@ impl CodeApp {
                         .is_some_and(|f| !matches!(f, lt::OneOf::Left(false)))
             })
         });
-        if !can_format {
+        if !can_format && !self.ext_host.running() {
             return false;
         }
+        let host_params = if self.ext_host.running() {
+            doc.path
+                .as_deref()
+                .and_then(coiman_core::language::lsp::convert::uri_from_path)
+                .zip(coiman_core::language::lsp::language_id(&doc.extension()))
+                .map(|(uri, language)| {
+                    let indent = doc.buffer.indent;
+                    json!({
+                        "kind": "formatting", "uri": uri.to_string(), "languageId": language,
+                        "text": doc.text(),
+                        "options": { "tabSize": indent.size, "insertSpaces": !indent.use_tabs },
+                    })
+                })
+        } else {
+            None
+        };
         let sent = self.request_for(i, "textDocument/formatting", Pending::Format { uid, version, save }, |doc, td| {
             let indent = doc.buffer.indent;
             json!({ "textDocument": td, "options": { "tabSize": indent.size, "insertSpaces": !indent.use_tabs } })
         });
+        let mut host_sent = false;
+        if let Some(params) = host_params
+            && let Some(id) = self.ext_host.request("invoke", params)
+        {
+            self.ext_requests.insert(id, crate::app::extensions::host::Request::Format { uid, save });
+            host_sent = true;
+        }
         if sent && save {
             self.lsp.format_save = Some((uid, ctx.input(|inp| inp.time)));
         }
-        sent
+        sent || host_sent
     }
 
     /// Format-on-save finished (or failed): apply the edits, then save.
@@ -2476,30 +2788,35 @@ impl CodeApp {
         self.signature_popup(ctx);
         self.resolve_selected_completion();
         let active_uid = self.docs.get(self.active).map(|d| d.uid);
-        let font = egui::FontId::monospace(self.font_size);
+        let font = egui::FontId::monospace(self.font_size * 0.85);
         let mut accept = None;
         self.lsp.completion_rect = None;
         if let (Some(c), Some(rect)) = (&mut self.lsp.completion, self.lsp.cursor_rect)
             && Some(c.uid) == active_uid
             && !c.shown.is_empty()
         {
+            let mut hovered = None;
+            // Only twelve rows fit on screen at once; the rest of the list is
+            // still drawn, so it can be reached by scrolling.
+            let cap = self.settings.lsp.completion_max_rows.clamp(1, COMPLETION_ROWS * 10);
+            let visible = completion_visible_rows(c.shown.len(), cap);
+            let row_h = ctx.fonts_mut(|f| f.row_height(&font)) + 1.0;
+            let gap = 0.0;
+            let list_h = completion_list_height(visible, row_h, gap);
+            let at = completion_anchor(rect, ctx.content_rect(), list_h + 4.0);
             let shown = egui::Area::new(egui::Id::unique("lsp_completion"))
                 .order(egui::Order::Foreground)
-                .fixed_pos(rect.left_bottom() + egui::vec2(0.0, 2.0))
+                .fixed_pos(at)
                 .constrain(true)
                 .show(ctx, |ui| {
                     egui::Frame::popup(ui.style()).fill(theme::colors().sidebar_bg).inner_margin(2.0).show(ui, |ui| {
-                        ui.set_width(440.0);
-                        let row_h = ui.fonts_mut(|f| f.row_height(&font)) + 4.0;
-                        // As tall as its rows, up to the most shown: the scroll area otherwise
-                        // keeps the height of an earlier, shorter list.
-                        let rows = c.shown.len().min(COMPLETION_ROWS) as f32;
-                        let gap = ui.spacing().item_spacing.y;
-                        let scroll = egui::ScrollArea::vertical()
-                            .max_height((row_h + gap) * COMPLETION_ROWS as f32 - gap)
-                            .min_scrolled_height((row_h + gap) * rows - gap);
+                        ui.set_width(COMPLETION_WIDTH);
+                        // The height must follow the rows shown now: a scroll
+                        // area otherwise keeps the height of an earlier, shorter list.
+                        let scroll = egui::ScrollArea::vertical().max_height(list_h).min_scrolled_height(list_h);
                         scroll.show(ui, |ui| {
-                            for (row, &idx) in c.shown.iter().enumerate() {
+                            ui.spacing_mut().item_spacing.y = 0.0;
+                            for (row, &idx) in c.shown.iter().take(cap).enumerate() {
                                 let e = &c.entries[idx];
                                 let selected = row == c.selected;
                                 let (rect, resp) =
@@ -2512,6 +2829,7 @@ impl CodeApp {
                                 } else if resp.hovered() {
                                     ui.painter().rect_filled(rect, 2.0, theme::colors().hover_bg);
                                 }
+                                let deprecated = completion_deprecated(&e.item);
                                 let (glyph, color) = lsp_ui::kind_glyph(e.item.kind);
                                 let y = rect.center().y;
                                 let p = ui.painter();
@@ -2528,15 +2846,58 @@ impl CodeApp {
                                         color,
                                     ),
                                 }
-                                p.text(
-                                    egui::pos2(rect.left() + 24.0, y),
-                                    egui::Align2::LEFT_CENTER,
-                                    &e.label,
-                                    font.clone(),
-                                    theme::colors().text,
-                                );
+                                let label_color =
+                                    if deprecated { theme::colors().text_dim } else { theme::colors().text };
+                                let label_pos = egui::pos2(rect.left() + 24.0, y);
+                                p.text(label_pos, egui::Align2::LEFT_CENTER, &e.label, font.clone(), label_color);
+                                if deprecated {
+                                    let width =
+                                        p.layout_no_wrap(e.label.clone(), font.clone(), label_color).rect.width();
+                                    p.line_segment(
+                                        [label_pos, label_pos + egui::vec2(width, 0.0)],
+                                        egui::Stroke::new(1.0, label_color),
+                                    );
+                                }
+                                let small = egui::FontId::proportional(self.font_size * 0.74);
+                                let label_w = p.layout_no_wrap(e.label.clone(), font.clone(), label_color).rect.width();
+                                let mut after_label = label_pos.x + label_w + 4.0;
+                                if let Some(detail) = e
+                                    .item
+                                    .label_details
+                                    .as_ref()
+                                    .and_then(|d| d.detail.as_deref())
+                                    .filter(|s| !s.is_empty())
+                                {
+                                    p.text(
+                                        egui::pos2(after_label, y),
+                                        egui::Align2::LEFT_CENTER,
+                                        detail,
+                                        small.clone(),
+                                        theme::colors().text_dim,
+                                    );
+                                    after_label += p
+                                        .layout_no_wrap(detail.to_owned(), small.clone(), theme::colors().text_dim)
+                                        .rect
+                                        .width()
+                                        + 4.0;
+                                }
+                                if let Some(description) = e
+                                    .item
+                                    .label_details
+                                    .as_ref()
+                                    .and_then(|d| d.description.as_deref())
+                                    .filter(|s| !s.is_empty())
+                                {
+                                    p.text(
+                                        egui::pos2(after_label, y),
+                                        egui::Align2::LEFT_CENTER,
+                                        description,
+                                        small,
+                                        theme::colors().text_dim,
+                                    );
+                                }
                                 if !e.detail.is_empty() {
-                                    let small = egui::FontId::proportional(self.font_size * 0.85);
+                                    let small = egui::FontId::proportional(self.font_size * 0.74);
                                     p.text(
                                         egui::pos2(rect.right() - 6.0, y),
                                         egui::Align2::RIGHT_CENTER,
@@ -2545,11 +2906,19 @@ impl CodeApp {
                                         theme::colors().text_dim,
                                     );
                                 }
+                                if resp.hovered() && c.selected != row {
+                                    hovered = Some(row);
+                                }
                                 if resp.clicked() {
+                                    c.selected_label = Some(e.item.label.clone());
                                     accept = Some(row);
                                 }
                             }
                         });
+                        if let Some(row) = hovered {
+                            c.selected = row;
+                            c.selected_label = c.shown.get(row).map(|&idx| c.entries[idx].item.label.clone());
+                        }
                         c.scroll_to_selected = false;
                     });
                 });
@@ -2561,8 +2930,15 @@ impl CodeApp {
                     Some(lt::Documentation::MarkupContent(m)) => m.value.clone(),
                     None => String::new(),
                 };
+                let label_detail = entry.item.label_details.as_ref().and_then(|d| d.detail.as_deref()).unwrap_or("");
+                let label_description =
+                    entry.item.label_details.as_ref().and_then(|d| d.description.as_deref()).unwrap_or("");
                 let detail = entry.item.detail.clone().unwrap_or_default();
-                if !docs.trim().is_empty() || !detail.trim().is_empty() {
+                if !docs.trim().is_empty()
+                    || !detail.trim().is_empty()
+                    || !label_detail.is_empty()
+                    || !label_description.is_empty()
+                {
                     // Right of the list if there's room, else left of it, else under it.
                     const DOCS_W: f32 = 396.0;
                     let list = shown.response.rect;
@@ -2590,8 +2966,26 @@ impl CodeApp {
                                         .show(ui, |ui| {
                                             if !detail.trim().is_empty() {
                                                 ui.label(RichText::new(&detail).monospace().size(code_size));
+                                            } else if !label_detail.trim().is_empty()
+                                                || !label_description.trim().is_empty()
+                                            {
+                                                ui.horizontal(|ui| {
+                                                    ui.label(RichText::new(label_detail).monospace().size(code_size));
+                                                    if !label_description.trim().is_empty() {
+                                                        ui.label(
+                                                            RichText::new(label_description)
+                                                                .size(code_size)
+                                                                .color(theme::colors().text_dim),
+                                                        );
+                                                    }
+                                                });
                                             }
-                                            if !detail.trim().is_empty() && !docs.trim().is_empty() {
+                                            if ((detail.trim().is_empty()
+                                                && (!label_detail.trim().is_empty()
+                                                    || !label_description.trim().is_empty()))
+                                                || !detail.trim().is_empty())
+                                                && !docs.trim().is_empty()
+                                            {
                                                 ui.separator();
                                             }
                                             lsp_ui::markdown(ui, &docs, code_size);
@@ -2604,7 +2998,13 @@ impl CodeApp {
         }
         if let Some(row) = accept {
             if let Some(c) = &mut self.lsp.completion {
-                c.selected = row;
+                c.selected = row.min(
+                    c.shown
+                        .len()
+                        .saturating_sub(1)
+                        .min(self.settings.lsp.completion_max_rows.clamp(1, COMPLETION_ROWS * 10) - 1),
+                );
+                c.selected_label = c.shown.get(c.selected).map(|&idx| c.entries[idx].item.label.clone());
             }
             self.accept_completion();
             // The click took focus from the editor: typing goes on there.
@@ -2782,5 +3182,236 @@ fn action_title(a: &lt::CodeActionOrCommand) -> String {
     match a {
         lt::CodeActionOrCommand::Command(c) => c.title.clone(),
         lt::CodeActionOrCommand::CodeAction(c) => c.title.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn twelve_rows_show_at_once_and_the_rest_stay_scrollable() {
+        assert_eq!(completion_visible_rows(120, 120), COMPLETION_ROWS);
+        assert_eq!(completion_visible_rows(4, 120), 4);
+        assert_eq!(completion_visible_rows(40, 4), 4);
+        let height = completion_list_height(COMPLETION_ROWS, 20.0, 4.0);
+        assert_eq!(height, 12.0 * 24.0 - 4.0);
+    }
+
+    #[test]
+    fn a_long_completion_list_stays_narrow_and_scrolls() {
+        let ctx = egui::Context::default();
+        let root = std::env::temp_dir().join(format!("coiman-completion-ui-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("main.js");
+        std::fs::write(&path, "cons").unwrap();
+        let mut doc = Document::open(&path).unwrap();
+        doc.uid = 1;
+        let entries = (0..100)
+            .map(|i| {
+                let label = format!("item{i:03}");
+                CompletionEntry {
+                    label: label.clone(),
+                    detail: String::new(),
+                    item: lt::CompletionItem::new_simple(label, String::new()),
+                    resolved: false,
+                    companion: false,
+                }
+            })
+            .collect();
+        let mut app = CodeApp::new(None, &ctx);
+        app.docs.clear();
+        app.docs.push(doc);
+        app.active = 0;
+        app.lsp.completion = Some(Completion {
+            uid: 1,
+            start: 0,
+            entries,
+            shown: (0..100).collect(),
+            selected: 0,
+            incomplete: false,
+            waiting: false,
+            filtered_for: (u64::MAX, 0),
+            scroll_to_selected: false,
+            docs_asked: None,
+            selected_label: None,
+            requested: None,
+            triggered: false,
+            resolved: HashMap::new(),
+        });
+        app.lsp.cursor_rect = Some(Rect::from_min_size(Pos2::new(100.0, 300.0), egui::vec2(2.0, 20.0)));
+        let raw = egui::RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        let mut output = ctx.run_ui(raw, |_ui| app.lsp_popups(&ctx));
+        output.textures_delta.clear();
+        let rect =
+            ctx.memory(|m| m.area_rect(egui::Id::unique("lsp_completion"))).expect("the completion list was drawn");
+        assert!(rect.width() > 340.0 && rect.width() < 400.0, "the list is wider than before: {rect:?}");
+        assert!(rect.height() < 300.0, "twelve small rows fit before scrolling: {rect:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn completion_shows_below_the_line_until_there_is_no_room() {
+        let screen = Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let cursor = Rect::from_min_size(Pos2::new(100.0, 300.0), egui::vec2(2.0, 20.0));
+        let at = completion_anchor(cursor, screen, 200.0);
+        assert_eq!(at, cursor.left_bottom() + egui::vec2(0.0, 2.0));
+
+        let near_bottom = Rect::from_min_size(Pos2::new(100.0, 500.0), egui::vec2(2.0, 20.0));
+        let at = completion_anchor(near_bottom, screen, 200.0);
+        assert_eq!(at.y, near_bottom.top() - 202.0);
+        assert_eq!(at.x, near_bottom.left());
+    }
+
+    #[test]
+    fn completion_deprecated_reads_the_tag_and_legacy_flag() {
+        let mut item = lt::CompletionItem::new_simple("old".to_owned(), String::new());
+        assert!(!completion_deprecated(&item));
+        item.deprecated = Some(true);
+        assert!(completion_deprecated(&item));
+        item.deprecated = None;
+        item.tags = Some(vec![lt::CompletionItemTag::DEPRECATED]);
+        assert!(completion_deprecated(&item));
+    }
+
+    #[test]
+    fn a_completion_answer_is_used_only_for_the_request_it_was_asked_for() {
+        let root = std::env::temp_dir().join(format!("coiman-completion-answer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("main.js");
+        std::fs::write(&path, "cons").unwrap();
+        let mut doc = Document::open(&path).unwrap();
+        doc.uid = 1;
+        doc.buffer.set_single(crate::buffer::Selection::cursor(4));
+
+        let ctx = egui::Context::default();
+        let mut app = CodeApp::new(None, &ctx);
+        app.docs.clear();
+        app.docs.push(doc);
+        app.active = 0;
+        app.lsp.completion = Some(Completion {
+            uid: 1,
+            start: 0,
+            entries: Vec::new(),
+            shown: Vec::new(),
+            selected: 0,
+            incomplete: false,
+            waiting: true,
+            filtered_for: (u64::MAX, 0),
+            scroll_to_selected: true,
+            docs_asked: None,
+            selected_label: None,
+            requested: Some(7),
+            triggered: false,
+            resolved: HashMap::new(),
+        });
+
+        let asked = CompletionRequest { id: 7, version: 0, head: 4, trigger: None };
+        app.on_completion(1, asked, false, json!([{ "label": "console" }]));
+        let list = app.lsp.completion.as_ref().expect("the answer fills the open list");
+        assert!(list.entries.iter().any(|e| e.label == "console"));
+        assert!(!list.shown.is_empty(), "the typed prefix must match the answer");
+        assert!(!list.waiting);
+
+        // An answer to an older request must not replace the list.
+        app.lsp.completion.as_mut().unwrap().requested = Some(8);
+        app.on_completion(1, asked, false, json!([{ "label": "conflict" }]));
+        let list = app.lsp.completion.as_ref().expect("the newer list stays");
+        assert!(list.entries.iter().any(|e| e.label == "console"));
+        assert!(!list.entries.iter().any(|e| e.label == "conflict"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_commit_character_leaves_the_caret_after_it() {
+        let root = std::env::temp_dir().join(format!("coiman-completion-commit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("main.js");
+        std::fs::write(&path, "cons").unwrap();
+        let mut doc = Document::open(&path).unwrap();
+        doc.uid = 1;
+        doc.buffer.set_single(crate::buffer::Selection::cursor(4));
+        let mut item = lt::CompletionItem::new_simple("console".to_owned(), String::new());
+        item.commit_characters = Some(vec![".".to_owned()]);
+        let mut app = CodeApp::new(None, &egui::Context::default());
+        app.docs.clear();
+        app.docs.push(doc);
+        app.active = 0;
+        app.lsp.completion = Some(Completion {
+            uid: 1,
+            start: 0,
+            entries: vec![CompletionEntry {
+                label: "console".to_owned(),
+                detail: String::new(),
+                item,
+                resolved: false,
+                companion: false,
+            }],
+            shown: vec![0],
+            selected: 0,
+            incomplete: false,
+            waiting: false,
+            filtered_for: (u64::MAX, 0),
+            scroll_to_selected: false,
+            docs_asked: None,
+            selected_label: None,
+            requested: None,
+            triggered: false,
+            resolved: HashMap::new(),
+        });
+        app.accept_completion_with_commit(Some(".".to_owned()));
+        assert_eq!(app.docs[0].text(), "console.");
+        assert_eq!(app.docs[0].buffer.primary().head, 8);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn typing_while_completion_is_empty_requests_again() {
+        let root = std::env::temp_dir().join(format!("coiman-completion-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("main.js");
+        std::fs::write(&path, "cons").unwrap();
+        let mut doc = Document::open(&path).unwrap();
+        doc.uid = 1;
+        doc.buffer.set_single(crate::buffer::Selection::cursor(4));
+
+        let ctx = egui::Context::default();
+        let mut app = CodeApp::new(None, &ctx);
+        app.docs.clear();
+        app.docs.push(doc);
+        app.active = 0;
+        app.lsp.completion = Some(Completion {
+            uid: 1,
+            start: 0,
+            entries: Vec::new(),
+            shown: Vec::new(),
+            selected: 0,
+            incomplete: false,
+            waiting: true,
+            filtered_for: (u64::MAX, 0),
+            scroll_to_selected: true,
+            docs_asked: None,
+            selected_label: None,
+            requested: None,
+            triggered: false,
+            resolved: HashMap::new(),
+        });
+
+        // No server is running in the fixture, so this exercises the request path without
+        // doing transport: an empty/loading list must be refreshed as the word grows.
+        app.completion_after_typing("s", true);
+        let completion = app.lsp.completion.as_ref().expect("the loading list stays open while waiting for items");
+        assert!(completion.waiting);
+        assert!(completion.entries.is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }

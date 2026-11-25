@@ -81,28 +81,46 @@ impl CodeApp {
         }
     }
 
+    /// Restores the cheap parts of a session now and leaves the tabs for later frames.
     pub(crate) fn restore_session(&mut self, saved: Session) {
+        use crate::app::slow_step;
+        let mut clock = std::time::Instant::now();
         if let Some(root) = saved.root.clone().filter(|r| r.is_dir()) {
             self.open_folder(root);
         }
+        slow_step("session: opening the folder", &mut clock);
         self.log_to_open = saved.log_view.clone().filter(|p| p.is_file());
         self.restore_log_views(saved.log_views.iter().filter(|p| p.is_file()).cloned().collect());
         self.at_cursor_restore(&saved.cursor_pins, saved.cursor_info_beside);
         self.rails.restore(&saved.right_tools, saved.panel_right);
-        // Opening the folder shows the side bar; a session that had it hidden keeps it so.
+        slow_step("session: restoring the side views", &mut clock);
         if saved.sidebar_hidden {
             self.sidebar_visible = false;
         }
         self.layout.saved = saved.layout.clone();
-        // Started once there's a window to draw them in.
         self.terminals_to_restore = Some(saved.terminals.clone());
         self.sheet_pinned = saved.layout.side_pinned;
-        let active = saved.active;
-        for doc in saved.restore_docs() {
+        self.pending_active = saved.active;
+        self.pending_docs = saved.restore_docs().into();
+    }
+
+    /// Brings the saved tabs back a few per frame, so one slow file can't stall startup.
+    pub(crate) fn pump_session(&mut self) {
+        if let Some(saved) = self.pending_session.take() {
+            self.restore_session(saved);
+        }
+        let mut opened = 0usize;
+        while opened < 3
+            && let Some(doc) = self.pending_docs.pop_front()
+        {
             self.untitled_counter = self.untitled_counter.max(doc.untitled_index());
             self.add_doc(doc);
+            opened += 1;
         }
-        self.active = active.min(self.docs.len().saturating_sub(1));
+        if self.pending_docs.is_empty() && self.pending_active > 0 {
+            self.active = self.pending_active.min(self.docs.len().saturating_sub(1));
+            self.pending_active = 0;
+        }
     }
 
     /// Writes the session if it changed. Returns false if writing failed.
@@ -698,6 +716,7 @@ impl CodeApp {
         self.settings_reload = true;
         self.terminal.set_cwd(&path);
         self.explorer.set_root(path);
+        slow_step("reading the project tree", &mut clock);
         self.finder.mark_stale();
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Explorer;

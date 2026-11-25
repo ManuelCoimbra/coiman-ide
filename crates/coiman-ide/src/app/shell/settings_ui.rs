@@ -485,10 +485,53 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "lsp",
                 "extension_servers",
                 "Servers from VS Code extensions",
-                "ESLint and Tailwind CSS, from their installed VS Code extensions, beside a file's own server.",
+                "ESLint and Tailwind CSS, from their installed VS Code extensions, beside a file's own server. Requires VS Code extensions to be enabled.",
                 Kind::Toggle,
             ),
+            row(
+                "lsp",
+                "extension_host",
+                "VS Code extension host",
+                "Run installed extensions' JavaScript with a vscode API shim, started after the window is up. Off by default.",
+                Kind::Toggle,
+            ),
+            row("lsp", "completion", "IntelliSense", "Offer completions as you type, like VS Code.", Kind::Toggle),
+            row(
+                "lsp",
+                "completion_trigger_characters",
+                "Trigger characters",
+                "Open completion after characters the server asks for, such as '.' and ':'.",
+                Kind::Toggle,
+            ),
+            row(
+                "lsp",
+                "completion_snippets",
+                "Snippets",
+                "Expand snippet completions and place the cursor at their tab stops.",
+                Kind::Toggle,
+            ),
+            row(
+                "lsp",
+                "completion_auto_import",
+                "Auto imports",
+                "Apply a completion's additional edits, normally the import it needs.",
+                Kind::Toggle,
+            ),
+            row(
+                "lsp",
+                "completion_max_rows",
+                "Completion rows",
+                "Most completion rows to show. Large lists, such as Tailwind CSS, are capped.",
+                Kind::Whole(12, 240),
+            ),
             row("lsp.paths", "python", "Python server", "Program and arguments. Empty finds it.", Kind::Text("")),
+            row(
+                "lsp",
+                "typescript_path",
+                "TypeScript folder",
+                "The folder with `tsserver.js`, or the typescript package. Empty finds the project's, npm's, or VS Code's.",
+                Kind::Text(""),
+            ),
             row(
                 "lsp.paths",
                 "typescript",
@@ -607,7 +650,14 @@ const SECTIONS: &[(&str, &[Row])] = &[
     (
         "Plugins",
         &[
-            row("plugins", "enabled", "Load plugins", "", Kind::Toggle),
+            row("plugins", "enabled", "Load plugins", "Load installed native plugins.", Kind::Toggle),
+            row(
+                "plugins",
+                "vscode_extensions",
+                "VS Code extensions",
+                "Enable VS Code extension support (activity bar views, custom webviews, language servers, and commands). Off by default.",
+                Kind::Toggle,
+            ),
             row(
                 "plugins",
                 "registry",
@@ -867,20 +917,29 @@ pub(crate) fn searchable() -> Vec<(String, String)> {
 }
 
 impl CodeApp {
-    /// Whether Settings is showing as an editor tab.
+    /// Whether Settings exists as an editor tab.
     pub(crate) fn settings_tab_open(&self) -> bool {
         self.settings_ui.open && self.settings_ui.tab
+    }
+
+    /// Whether Settings is the tab currently in front.
+    pub(crate) fn showing_settings_tab(&self) -> bool {
+        self.settings_tab_open() && matches!(self.active_view, Some(crate::app::views::view_tabs::ActiveView::Settings))
     }
 
     pub(crate) fn open_settings_tab(&mut self) {
         self.settings_ui.workspace = false;
         self.settings_ui.tab = true;
         self.settings_ui.open = true;
+        self.active_view = Some(crate::app::views::view_tabs::ActiveView::Settings);
     }
 
     pub(crate) fn close_settings_tab(&mut self) {
         self.settings_ui.tab = false;
         self.settings_ui.open = false;
+        if matches!(self.active_view, Some(crate::app::views::view_tabs::ActiveView::Settings)) {
+            self.active_view = None;
+        }
     }
 
     /// Opens Settings on one setting.
@@ -889,6 +948,9 @@ impl CodeApp {
         self.settings_ui.filter = label.to_owned();
         self.settings_ui.tab = self.settings.workbench.settings_in_tab;
         self.settings_ui.open = true;
+        if self.settings_ui.tab {
+            self.active_view = Some(crate::app::views::view_tabs::ActiveView::Settings);
+        }
     }
 
     pub(crate) fn settings_tab_view(&mut self, ui: &mut egui::Ui) {

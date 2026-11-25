@@ -369,8 +369,8 @@ pub enum Verdict {
     Unknown,
 }
 
-/// Prefixes and characters that belong to frameworks and templates, not to HTML: Vue,
-/// Angular, Alpine, htmx, Svelte and the like read these, not the browser.
+/// Prefixes and characters that belong to frameworks and templates, not to HTML:
+/// Angular, Alpine and htmx read these, not the browser.
 fn framework(name: &str) -> bool {
     name.contains([':', '@', '[', '(', '#', '*', '.', '{', '}', '$', '%'])
         || ["v-", "x-", "hx-", "ng-", "th:", "wire:", "on:", "bind:", "class:", "use:", "data-", "aria-"]

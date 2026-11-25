@@ -120,18 +120,28 @@ pub fn island_frame(fill: Color32, inner: Margin, gaps: Margin) -> egui::Frame {
 /// Rounds off what panels drew square, right to the corners of their islands: tab bars and
 /// editors don't know they're in one.
 pub fn round_island_corners(ctx: &egui::Context, islands: &[Rect]) {
+    round_island_corners_sides(ctx, islands, true, true);
+}
+
+/// The same rounding, for an island that meets another one on a side: that
+/// side stays square, so there is a clean seam instead of a cut-out corner.
+pub fn round_island_corners_sides(ctx: &egui::Context, islands: &[Rect], left: bool, right: bool) {
     let id = egui::LayerId::new(egui::Order::Background, egui::Id::unique("island_corners"));
     let painter = ctx.layer_painter(id);
     let canvas = colors().activity_bg;
     let radius = f32::from(RADIUS);
     let mut mesh = egui::Mesh::default();
     for rect in islands {
-        for (corner, x, y) in [
-            (rect.left_top(), 1.0, 1.0),
-            (rect.right_top(), -1.0, 1.0),
-            (rect.left_bottom(), 1.0, -1.0),
-            (rect.right_bottom(), -1.0, -1.0),
-        ] {
+        let corners = [
+            (rect.left_top(), 1.0, 1.0, left),
+            (rect.right_top(), -1.0, 1.0, right),
+            (rect.left_bottom(), 1.0, -1.0, left),
+            (rect.right_bottom(), -1.0, -1.0, right),
+        ];
+        for (corner, x, y, on) in corners {
+            if !on {
+                continue;
+            }
             let center = corner + egui::vec2(x, y) * radius;
             let apex = mesh.vertices.len() as u32;
             mesh.colored_vertex(corner, canvas);

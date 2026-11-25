@@ -33,7 +33,7 @@ impl Lang {
         Some(match ext.as_str() {
             "rs" => Self::Rust,
             "py" | "pyi" => Self::Python,
-            "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" | "vue" | "svelte" => Self::Script,
+            "js" | "jsx" | "mjs" | "cjs" | "ts" | "tsx" | "mts" | "cts" => Self::Script,
             "java" => Self::Java,
             "cs" => Self::CSharp,
             "go" => Self::Go,
@@ -574,7 +574,7 @@ impl<'a> Context<'a> {
     // ---- JavaScript and TypeScript ----
 
     fn script(&self, file: &Path, text: &str) -> Vec<(usize, usize)> {
-        const EXTS: [&str; 10] = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts", "vue", "svelte"];
+        const EXTS: [&str; 8] = ["ts", "tsx", "js", "jsx", "mjs", "cjs", "mts", "cts"];
         let mut out = Vec::new();
         let dir = file.parent().unwrap_or(self.root);
         for (line, code) in code_lines(text, false) {

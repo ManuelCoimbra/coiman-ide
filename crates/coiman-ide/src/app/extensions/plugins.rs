@@ -110,11 +110,8 @@ struct Checked {
 enum Job {
     /// The registry's latest versions, and updates for installed plugins.
     Index(Result<Box<Checked>, String>),
-    Downloaded {
-        entry: Box<Entry>,
-        result: Result<Box<Package>, String>,
-        diff: Option<Box<UpdateDiff>>,
-    },
+    #[allow(dead_code)]
+    Downloaded { entry: Box<Entry>, result: Result<Box<Package>, String>, diff: Option<Box<UpdateDiff>> },
     /// A dev mode build has ended.
     DevBuilt(Box<dev::Built>),
 }
@@ -632,6 +629,19 @@ impl CodeApp {
     /// Runs a palette entry from [`plugin_commands`](Self::plugin_commands).
     pub(crate) fn run_plugin_command(&mut self, key: &str) {
         if let Some((plugin, command)) = key.split_once('\n') {
+            if plugin == "ext" {
+                if !self.settings.vscode_extensions_enabled() {
+                    self.status = Some("VS Code extensions are disabled in settings".to_owned());
+                    return;
+                }
+                if self.ext_host.request("command/execute", serde_json::json!({ "id": command, "args": [] })).is_some()
+                {
+                    self.status = Some(format!("Ran extension command {command}"));
+                } else {
+                    self.status = Some("The VS Code extension host isn't running".to_owned());
+                }
+                return;
+            }
             self.run_plugin(plugin, command, "");
         }
     }
@@ -647,13 +657,20 @@ impl CodeApp {
 
     /// Palette entries for running plugins' commands: (title, key).
     pub(crate) fn plugin_commands(&self) -> Vec<(String, String)> {
-        self.plugins
+        let mut out: Vec<(String, String)> = self
+            .plugins
             .infos
             .iter()
             .filter(|i| i.running)
             .filter_map(|i| i.manifest.as_ref())
             .flat_map(|m| m.commands.iter().map(|c| (c.title.clone(), command_key(&m.id, &c.id))))
-            .collect()
+            .collect();
+        if self.settings.vscode_extensions_enabled() {
+            for (title, id) in self.ext_host.commands() {
+                out.push((title, format!("ext\n{id}")));
+            }
+        }
+        out
     }
 
     // ----- registry and installs ----------------------------------------------------
@@ -709,8 +726,15 @@ impl CodeApp {
     }
 
     pub(crate) fn show_extensions(&mut self) {
+        if !self.settings.vscode_extensions_enabled() {
+            self.status =
+                Some("VS Code extensions are disabled in settings (plugins.vscode_extensions = false)".to_owned());
+            return;
+        }
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Extensions;
+        self.active_ext_view = None;
+        self.show_marketplace();
     }
 
     /// Plugins: Check for Updates — reads the registry (only when asked).
@@ -756,6 +780,7 @@ impl CodeApp {
         });
     }
 
+    #[allow(dead_code)]
     fn download(&mut self, ctx: &egui::Context, entry: Entry, diff: Option<UpdateDiff>) {
         let base = self.settings.plugins.registry.trim().to_owned();
         let tx = self.jobs();
@@ -863,25 +888,54 @@ impl CodeApp {
     pub(crate) fn extensions_view(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let pal = theme::colors();
+        let mut action = None;
         ui.horizontal(|ui| {
-            ui.label(RichText::new("EXTENSIONS").small().strong());
+            ui.add_space(14.0);
+            ui.label(RichText::new("EXTENSIONS: MARKETPLACE").small().strong());
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if icons::button(ui, Icon::Refresh, "Check the registry for plugins and updates").clicked() {
-                    self.check_registry(&ctx);
-                }
-                if icons::button(ui, Icon::FolderOpen, "Install from Folder…").clicked() {
-                    self.install_plugin_from_folder(&ctx);
-                }
-                if icons::button(ui, Icon::ArrowDown, "Import from VS Code: themes, snippets, languages").clicked() {
-                    self.import_from_vscode();
-                }
-                if icons::button(ui, Icon::Check, "VS Code Compatibility Report: which extensions work here, and why")
-                    .clicked()
-                {
-                    self.vscode_compatibility(&ctx);
+                let more = ui.button("⋯").on_hover_text("More Actions");
+                egui::Popup::menu(&more).show(|ui| {
+                    for (label, query) in [
+                        ("Installed Extensions", "@installed"),
+                        ("Updates", "@updates"),
+                        ("Coiman Plugins", "@plugins"),
+                    ] {
+                        if ui.button(label).clicked() {
+                            self.set_marketplace_query(query.to_owned());
+                            ui.close();
+                        }
+                    }
+                    ui.separator();
+                    if ui.button("Install from Folder…").clicked() {
+                        action = Some(0);
+                        ui.close();
+                    }
+                    if ui.button("Import from VS Code").clicked() {
+                        action = Some(1);
+                        ui.close();
+                    }
+                    if ui.button("VS Code Compatibility Report").clicked() {
+                        action = Some(2);
+                        ui.close();
+                    }
+                    ui.separator();
+                    if ui.button("Refresh Registry").clicked() {
+                        action = Some(3);
+                        ui.close();
+                    }
+                });
+                if icons::button(ui, Icon::Refresh, "Refresh").clicked() {
+                    action = Some(3);
                 }
             });
         });
+        match action {
+            Some(0) => self.install_plugin_from_folder(&ctx),
+            Some(1) => self.import_from_vscode(),
+            Some(2) => self.vscode_compatibility(&ctx),
+            Some(3) => self.check_registry(&ctx),
+            _ => {}
+        }
         if !self.settings.plugins.enabled {
             ui.label(RichText::new("Plugins are turned off (plugins.enabled = false).").color(pal.text_dim));
             return;
@@ -1002,83 +1056,11 @@ impl CodeApp {
             self.plugins.consent = None;
         }
 
-        // A floating bar would cover each plugin's uninstall button when it widens.
-        ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
-        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            self.installed_section(ui, &ctx);
-            if !self.plugins.updates.is_empty() {
-                ui.add_space(8.0);
-                ui.label(RichText::new("UPDATES").small().strong());
-                let mut update = None;
-                for d in &self.plugins.updates {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{} {} to {}", d.name, d.from, d.to));
-                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                            if ui.small_button("Update…").clicked() {
-                                update = Some(d.clone());
-                            }
-                        });
-                    });
-                    if !d.manifest.added_permissions.is_empty() || !d.manifest.added_programs.is_empty() || d.key_changed {
-                        ui.label(RichText::new("Asks for more, review before updating").small().color(WARNING));
-                    }
-                }
-                if let Some(d) = update {
-                    self.download(&ctx, d.entry.clone(), Some(d));
-                }
-            }
-            ui.add_space(8.0);
-            ui.label(RichText::new("REGISTRY").small().strong());
-            let registry = self.settings.plugins.registry.trim();
-            if registry.is_empty() {
-                ui.label(
-                    RichText::new("No registry set. Set plugins.registry to a folder or URL, then check it with the refresh button.")
-                        .color(pal.text_dim),
-                );
-            } else {
-                ui.label(RichText::new(registry).small().color(pal.text_dim));
-                if !self.plugins.registry_checked && self.plugins.busy.is_none() {
-                    ui.label(RichText::new("Not checked yet (nothing is fetched until you click refresh).").color(pal.text_dim));
-                }
-            }
-            if let Some(e) = &self.plugins.registry_error {
-                ui.label(RichText::new(e).color(ERROR));
-            }
-            let mut install = None;
-            for e in &self.plugins.available {
-                let installed = self.plugins.lock.get(&e.id).map(|l| l.version.clone());
-                let broken = self.plugins.infos.iter().any(|i| i.id == e.id && i.manifest.is_none());
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(&e.name).strong());
-                    ui.label(RichText::new(&e.version).small().color(pal.text_dim));
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| match &installed {
-                        Some(v) if *v == e.version && broken => {
-                            if ui.small_button("Reinstall…").clicked() {
-                                install = Some(e.clone());
-                            }
-                        }
-                        Some(v) if *v == e.version => {
-                            ui.label(RichText::new("installed").small().color(pal.text_dim));
-                        }
-                        Some(_) => {}
-                        None => {
-                            if ui.small_button("Install…").clicked() {
-                                install = Some(e.clone());
-                            }
-                        }
-                    });
-                });
-                if !e.description.is_empty() {
-                    ui.label(RichText::new(&e.description).small().color(pal.text_dim));
-                }
-            }
-            if let Some(e) = install {
-                self.download(&ctx, e, None);
-            }
-        });
+        // The marketplace is the sidebar: search, cards and the extension detail tab.
+        self.marketplace_sidebar(ui);
     }
 
-    fn installed_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
+    pub(crate) fn installed_section(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let pal = theme::colors();
         ui.label(RichText::new("INSTALLED").small().strong());
         if self.plugins.infos.is_empty() {
