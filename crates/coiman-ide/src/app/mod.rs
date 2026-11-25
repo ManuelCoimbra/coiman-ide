@@ -961,9 +961,8 @@ impl CodeApp {
             });
             // These speak of the file behind, not of a view showing over it.
             let view_showing = self.view_tabs().iter().any(|t| t.2);
-            if !zen && !view_showing {
-                self.breadcrumbs(ui);
-            }
+            // The find box sits on the file-name row, at the editor's right edge.
+            self.find.bar_rect = if !zen && !view_showing { self.breadcrumbs(ui) } else { None };
             self.disk_conflict_bar(ui);
             self.hidden_bar(ui);
             self.lock_bar(ui);
@@ -1007,6 +1006,7 @@ impl CodeApp {
             self.svg_preview_ui(ui);
             self.at_cursor_side(ui);
             let (active_rect, other_rect) = self.split_rects(ui);
+            self.find.editor_rect = Some(active_rect);
             let mut active_ui = ui.new_child(egui::UiBuilder::new().max_rect(active_rect));
             let pane = self.active_pane();
             let mut deco = self.decorations(self.active);

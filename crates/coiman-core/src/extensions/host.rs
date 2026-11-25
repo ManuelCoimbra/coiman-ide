@@ -287,9 +287,12 @@ impl Host {
     }
 
     /// The webview server, started for the first webview (it serves the extensions' folders).
-    pub fn open_webview_server(&mut self) -> Option<Arc<super::webview::WebviewServer>> {
+    pub fn open_webview_server(
+        &mut self,
+        wake: impl Fn() + Send + Sync + 'static,
+    ) -> Option<Arc<super::webview::WebviewServer>> {
         if self.webview_server.is_none() {
-            let server = super::webview::WebviewServer::start(0, || {}).ok().map(Arc::new)?;
+            let server = super::webview::WebviewServer::start(0, wake).ok().map(Arc::new)?;
             for ext in &self.extensions {
                 server.allow_folder(&ext.dir);
             }

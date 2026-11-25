@@ -91,6 +91,12 @@ impl CodeApp {
             }
             ViewTab::Webview(id) => {
                 self.ext_webviews.remove(&id);
+                // Closed here: the extension hears so, and the server stops with the last one.
+                if let Some(server) = self.ext_host.webview_server().cloned() {
+                    server.remove_panel(&id);
+                }
+                self.ext_host.close_idle_webview_server();
+                self.ext_host.notify("webview/closed", serde_json::json!({ "id": id }));
                 if matches!(&self.active_view, Some(ActiveView::Webview(open)) if open.as_str() == id.as_str()) {
                     self.active_view = None;
                 }

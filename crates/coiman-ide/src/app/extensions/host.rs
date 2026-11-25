@@ -428,7 +428,7 @@ impl CodeApp {
                         self.ext_webviews.insert(id.to_owned(), (title, String::new()));
                         self.active_view = Some(crate::app::views::view_tabs::ActiveView::Webview(id.to_owned()));
                         // The server starts with the first webview, and stops after the last.
-                        if let Some(server) = self.ext_host.open_webview_server() {
+                        if let Some(server) = self.ext_host.open_webview_server(crate::app::repaint(ctx)) {
                             server.set_html(id, "");
                             let url = server.url_for(id);
                             ctx.open_url(egui::OpenUrl::new_tab(&url));

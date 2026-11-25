@@ -178,7 +178,9 @@ impl MarketplaceUi {
             );
         }
         let center = rect.left_center() + egui::vec2(30.0, 0.0);
-        if let Some(texture) = self.icon(ui.ctx(), &card.found.icon) {
+        // Icons only for the cards in view: the rest are fetched when scrolled to.
+        let texture = if ui.is_rect_visible(rect) { self.icon(ui.ctx(), &card.found.icon) } else { None };
+        if let Some(texture) = texture {
             egui::Image::from_texture(&texture)
                 .paint_at(ui, egui::Rect::from_center_size(center, egui::vec2(36.0, 36.0)));
         } else {

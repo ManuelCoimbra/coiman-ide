@@ -2061,6 +2061,15 @@ function handle(msg) {
       }
       break;
     }
+    case 'webview/closed': {
+      // The user closed it in Coiman: as when VS Code's tab is closed.
+      const p = webviewPanels.get(params.id);
+      if (p) {
+        webviewPanels.delete(params.id);
+        p.onDidDispose.fire();
+      }
+      break;
+    }
     case 'webview/message': {
       const p = webviewPanels.get(params.id);
       if (p) {

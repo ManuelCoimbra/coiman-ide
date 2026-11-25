@@ -1584,7 +1584,8 @@ impl CodeApp {
     }
 
     pub(crate) fn find_overlay(&mut self, ctx: &egui::Context) {
-        if !self.find.open {
+        // It searches the file: not over a view (a webview, settings, an extension's page).
+        if !self.find.open || self.view_tabs().iter().any(|t| t.2) {
             return;
         }
         let Some(doc) = self.docs.get_mut(self.active) else { return };

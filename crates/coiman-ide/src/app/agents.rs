@@ -276,11 +276,9 @@ impl AgentsUi {
         }
         self.prefs_loaded = true;
         self.mode = "build".to_owned();
-        // This surface drives `opencode run`, rather than OpenCode's interactive
-        // terminal. Tool requests cannot be answered here yet, so a new session
-        // should be useful out of the box instead of rejecting every edit or shell
-        // command that needs a decision.
-        self.permissions = "auto".to_owned();
+        // The agent asks before it edits or runs anything unless you choose Auto: with
+        // `opencode run`, Manual turns down what needs a decision and says so.
+        self.permissions = "manual".to_owned();
         let Some(path) = Self::config_file() else { return };
         let Ok(text) = std::fs::read_to_string(path) else { return };
         let Ok(value) = serde_json::from_str::<Value>(&text) else { return };
