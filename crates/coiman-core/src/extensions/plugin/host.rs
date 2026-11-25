@@ -33,15 +33,20 @@ wasmtime::component::bindgen!({
 pub use coiman::plugin::types::{
     Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind,
     FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult,
-    JobSpec, MenuItem, Pick, PickAction, PickChoice, PickItem, PickQuery, Problem, RemoteAttach, Row, ServerResponse,
-    Severity, Span, Table, TerminalLine, TreeItem,
+    JobSpec, LogView, MenuItem, Parity, Pick, PickAction, PickChoice, PickItem, PickQuery, PlotSeries, Problem,
+    RemoteAttach, Row, SerialClosed, SerialData, SerialOpened, SerialPort, SerialSettings, ServerResponse, Severity,
+    Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
 const TICK: Duration = Duration::from_millis(10);
 const CALL_TICKS: u64 = 200;
-/// Memory a plugin may use.
+/// Memory a plugin may use, unless its `plugin.toml` asks for more (`memory`).
 const MEMORY_LIMIT: usize = 64 << 20;
+/// Serial ports one plugin may have open.
+const MAX_SERIAL: usize = 4;
+/// How long bytes a port received are gathered before they're delivered.
+const SERIAL_GATHER: Duration = Duration::from_millis(100);
 const MAX_READ_BYTES: u64 = 8 << 20;
 const MAX_LIST: u32 = 10_000;
 /// Jobs one plugin may have running, and output kept from each stream.
@@ -364,6 +369,20 @@ struct State {
     /// Programs running for this plugin; stopped when it is.
     jobs: Arc<Mutex<HashMap<u64, Arc<Mutex<Child>>>>>,
     next_id: u64,
+    /// Serial ports open for this plugin; closed when it stops.
+    serials: HashMap<u64, OpenPort>,
+}
+
+/// A serial port a plugin opened, read on a thread of its own until it's dropped.
+struct OpenPort {
+    port: Arc<crate::project::serial::Port>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Drop for OpenPort {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
 }
 
 impl Drop for State {
@@ -455,6 +474,8 @@ impl Worker {
             let component = Component::new(&self.engine, wasm)?;
             let mut linker = Linker::<State>::new(&self.engine);
             Plugin::add_to_linker::<State, HasSelf<State>>(&mut linker, |s| s)?;
+            let memory =
+                manifest.memory.map_or(MEMORY_LIMIT, |mb| (mb.min(super::manifest::MAX_MEMORY_MB) as usize) << 20);
             let state = State {
                 plugin: id.clone(),
                 manifest,
@@ -463,16 +484,12 @@ impl Worker {
                 messages: self.messages.clone(),
                 jobs: Arc::default(),
                 next_id: 1,
+                serials: HashMap::new(),
                 env: Vec::new(),
                 context: self.context.clone(),
                 updates: self.updates.clone(),
                 wake: self.wake.clone(),
-                limits: StoreLimitsBuilder::new()
-                    .memory_size(MEMORY_LIMIT)
-                    .instances(16)
-                    .tables(16)
-                    .memories(4)
-                    .build(),
+                limits: StoreLimitsBuilder::new().memory_size(memory).instances(16).tables(16).memories(4).build(),
             };
             let mut store = Store::new(&self.engine, state);
             store.limiter(|s| &mut s.limits);
@@ -1061,10 +1078,135 @@ impl coiman::plugin::host::Host for State {
         let mut out: Vec<DirEntry> = read
             .flatten()
             .take(MAX_DIR)
-            .map(|e| DirEntry { name: e.file_name().to_string_lossy().into_owned(), is_dir: e.path().is_dir() })
+            .map(|e| {
+                let meta = e.metadata().ok();
+                let is_dir = e.path().is_dir();
+                let size = meta.as_ref().filter(|_| !is_dir).map_or(0, |m| m.len());
+                let modified = meta
+                    .and_then(|m| m.modified().ok())
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map_or(0, |d| d.as_millis() as u64);
+                DirEntry { name: e.file_name().to_string_lossy().into_owned(), is_dir, size, modified }
+            })
             .collect();
         out.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(out)
+    }
+
+    fn read_bytes(&mut self, path: String, offset: u64, length: u32) -> Result<Vec<u8>, String> {
+        use std::io::Seek;
+        self.need(Permission::WorkspaceRead)?;
+        let full = self.resolve(&path, true)?;
+        let mut file = std::fs::File::open(&full).map_err(|e| format!("{path}: {e}"))?;
+        file.seek(std::io::SeekFrom::Start(offset)).map_err(|e| format!("{path}: {e}"))?;
+        let mut out = Vec::new();
+        file.take(u64::from(length).min(MAX_READ_BYTES)).read_to_end(&mut out).map_err(|e| format!("{path}: {e}"))?;
+        Ok(out)
+    }
+
+    fn file_size(&mut self, path: String) -> Result<u64, String> {
+        self.need(Permission::WorkspaceRead)?;
+        let full = self.resolve(&path, true)?;
+        std::fs::metadata(&full).map(|m| m.len()).map_err(|e| format!("{path}: {e}"))
+    }
+
+    fn serial_ports(&mut self) -> Result<Vec<SerialPort>, String> {
+        self.need(Permission::Serial)?;
+        Ok(crate::project::serial::ports()
+            .into_iter()
+            .map(|p| SerialPort { path: p.path, description: p.description })
+            .collect())
+    }
+
+    fn serial_open(&mut self, path: String, settings: SerialSettings) -> Result<SerialOpened, String> {
+        use crate::project::serial;
+        self.need(Permission::Serial)?;
+        if self.serials.len() >= MAX_SERIAL {
+            return Err(format!("this plugin already has {MAX_SERIAL} ports open"));
+        }
+        if !(5..=8).contains(&settings.data_bits) || settings.baud == 0 {
+            return Err(format!("{} baud with {} data bits can't be set", settings.baud, settings.data_bits));
+        }
+        let parity = match settings.parity {
+            Parity::None => serial::Parity::None,
+            Parity::Odd => serial::Parity::Odd,
+            Parity::Even => serial::Parity::Even,
+        };
+        let s = serial::Settings {
+            baud: settings.baud,
+            data_bits: settings.data_bits,
+            parity,
+            two_stop_bits: settings.two_stop_bits,
+            dtr: settings.dtr,
+            rts: settings.rts,
+        };
+        let path = path.trim().to_owned();
+        let port = Arc::new(serial::Port::open(&path, &s)?);
+        let is_serial = port.is_serial();
+        let id = self.next_id;
+        self.next_id += 1;
+        let stop = Arc::new(AtomicBool::new(false));
+        let (reader, stopped) = (port.clone(), stop.clone());
+        let (messages, plugin) = (self.messages.clone(), self.plugin.clone());
+        self.send(Update::Log { plugin: self.plugin.clone(), line: format!("opened serial port {path}") });
+        std::thread::spawn(move || {
+            let mut buf = vec![0u8; 4096];
+            let mut gathered: Vec<u8> = Vec::new();
+            let mut since = std::time::Instant::now();
+            let deliver = |data: Vec<u8>| {
+                let event = Event::SerialData(SerialData { id, data });
+                messages.send(Msg::Deliver { plugin: plugin.clone(), event }).is_ok()
+            };
+            while !stopped.load(Ordering::Relaxed) {
+                match reader.read(&mut buf) {
+                    Ok(n) => {
+                        if gathered.is_empty() {
+                            since = std::time::Instant::now();
+                        }
+                        gathered.extend_from_slice(&buf[..n]);
+                        // Delivered once a tenth of a second has gone by, when nothing more is
+                        // coming, or when a lot has come.
+                        let due = since.elapsed() >= SERIAL_GATHER || n == 0 || gathered.len() >= 64 * 1024;
+                        if due && !gathered.is_empty() && !deliver(std::mem::take(&mut gathered)) {
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        if !gathered.is_empty() {
+                            deliver(std::mem::take(&mut gathered));
+                        }
+                        if stopped.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        // Unplugged, or the other end hung up (a pipe): the OS says it its way.
+                        let gone = e.kind() == std::io::ErrorKind::BrokenPipe
+                            || matches!(e.raw_os_error(), Some(109 | 22 | 995 | 1167));
+                        let reason = if gone { "the device went away (unplugged?)".to_owned() } else { e.to_string() };
+                        let event = Event::SerialClosed(SerialClosed { id, reason });
+                        let _ = messages.send(Msg::Deliver { plugin, event });
+                        return;
+                    }
+                }
+            }
+        });
+        self.serials.insert(id, OpenPort { port, stop });
+        Ok(SerialOpened { id, is_serial })
+    }
+
+    fn serial_write(&mut self, id: u64, data: Vec<u8>) -> Result<(), String> {
+        let open = self.serials.get(&id).ok_or("that port isn't open")?;
+        open.port.write_all(&data).map_err(|e| format!("couldn't send: {e}"))
+    }
+
+    fn serial_set_lines(&mut self, id: u64, dtr: bool, rts: bool) -> Result<(), String> {
+        let open = self.serials.get(&id).ok_or("that port isn't open")?;
+        open.port.set_lines(dtr, rts).map_err(|e| format!("couldn't set DTR/RTS: {e}"))
+    }
+
+    fn serial_close(&mut self, id: u64) {
+        if self.serials.remove(&id).is_some() {
+            self.send(Update::Log { plugin: self.plugin.clone(), line: "closed a serial port".to_owned() });
+        }
     }
 
     fn storage_read(&mut self) -> String {

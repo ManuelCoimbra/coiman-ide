@@ -359,7 +359,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Hardware debugging integration | Missing | |
 | GDB integration | Done | |
 | OpenOCD integration | Missing | |
-| Serial monitor | Done | Serial: Open Monitor: text, hex, plot, send, log |
+| Serial monitor | Done | Serial Monitor extension: text, hex, plot, send, log |
 | UART communication tools | Missing | |
 | I2C inspection | Missing | |
 | SPI inspection | Missing | |
@@ -369,7 +369,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Arduino development support | Missing | |
 | ESP-IDF integration | Missing | |
 | Memory map visualisation | Missing | |
-| Binary size analysis | Done | Build: Analyze Binary Size: groups, symbols, sections, flash and RAM, changes |
+| Binary size analysis | Done | Binary Size extension: groups, symbols, sections, flash and RAM, changes |
 | Firmware section analysis | Missing | |
 
 ## 12. Game development

@@ -165,9 +165,7 @@ impl CodeApp {
             }
             Command::ShowAndroid => self.show_android(ctx),
             Command::ShowMcpServers => self.show_mcp(),
-            Command::AnalyzeBinarySize => self.show_binary_size(ctx),
             Command::PreviewShader => self.show_shader_preview(ctx),
-            Command::SerialMonitor => self.show_serial(),
             Command::KillTerminal => self.terminal.kill_active(),
             Command::ClearTerminal => self.terminal.clear_active(),
             Command::DetachTerminal => {

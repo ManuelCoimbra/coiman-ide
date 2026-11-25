@@ -18,10 +18,11 @@ pub enum Permission {
     LanguageServer,
     Terminal,
     Environment,
+    Serial,
 }
 
 impl Permission {
-    pub const ALL: [Permission; 7] = [
+    pub const ALL: [Permission; 8] = [
         Permission::WorkspaceRead,
         Permission::WorkspaceWrite,
         Permission::EditorRead,
@@ -29,6 +30,7 @@ impl Permission {
         Permission::LanguageServer,
         Permission::Terminal,
         Permission::Environment,
+        Permission::Serial,
     ];
 
     pub fn name(self) -> &'static str {
@@ -40,6 +42,7 @@ impl Permission {
             Permission::LanguageServer => "language-server",
             Permission::Terminal => "terminal",
             Permission::Environment => "environment",
+            Permission::Serial => "serial",
         }
     }
 
@@ -56,6 +59,7 @@ impl Permission {
                  config, and list folders outside the open folder"
             }
             Permission::Environment => "Read your environment variables, which may hold passwords and keys",
+            Permission::Serial => "List, open and talk to the serial ports of this computer (boards on USB)",
         }
     }
 }
@@ -140,6 +144,10 @@ pub struct Manifest {
     /// Files this plugin opens in place of the editor: by extension, and by how they start.
     #[serde(default)]
     pub openers: Vec<OpenerDecl>,
+    /// Memory it may use, in MB (64 when not said, at most 1024): for one that reads large
+    /// files, like programs to measure.
+    #[serde(default)]
+    pub memory: Option<u32>,
 }
 
 /// Files a plugin opens: a file with one of `extensions` (without the dot, any case) that starts
@@ -160,6 +168,9 @@ pub struct LanguageDecl {
     #[serde(default)]
     pub line_comment: Option<String>,
 }
+
+/// The most memory a plugin may ask for, in MB.
+pub const MAX_MEMORY_MB: u32 = 1024;
 
 /// Parses and checks a `plugin.toml`.
 pub fn parse(text: &str) -> Result<Manifest, String> {
@@ -215,6 +226,11 @@ impl Manifest {
                     return Err(format!("{kind} id \"{id}\" is declared twice"));
                 }
             }
+        }
+        if let Some(mb) = self.memory
+            && !(16..=MAX_MEMORY_MB).contains(&mb)
+        {
+            return Err(format!("memory = {mb}: from 16 to {MAX_MEMORY_MB} (MB)"));
         }
         for item in &self.status_items {
             if let Some(c) = &item.command

@@ -68,7 +68,7 @@ pub const PACKS: [Pack; 10] = [
             "Binary size by crate, section and symbol",
             "Memory and disassembly views while debugging",
         ],
-        extensions: &[],
+        extensions: &["coiman.serial-monitor", "coiman.binary-size"],
     },
     Pack {
         id: MOBILE,

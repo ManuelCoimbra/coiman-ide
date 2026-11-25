@@ -1,0 +1,16 @@
+id = "coiman.binary-size"
+name = "Binary Size"
+version = "1.0.0"
+description = "What takes room in a program, a library or an object file (ELF, PE, Mach-O, COFF): by crate or namespace, by symbol and by section, flash and RAM for an embedded program, and what changed since the last look."
+permissions = ["workspace-read"]
+events = ["active-changed"]
+# Large programs: their symbol names are read, never their code.
+memory = 512
+
+[[commands]]
+id = "show"
+title = "Build: Analyze Binary Size..."
+
+[[panels]]
+id = "binary-size"
+title = "Binary Size"

@@ -1,6 +1,6 @@
 //! Serial ports, for a board on USB (Arduino, ESP32, a Pico…): the ports there are, opening
-//! one with its speed and format, reading what the board prints and sending it text. Plus the
-//! pieces the monitor shows: lines with their times, bytes in hex, and numbers to plot.
+//! one with its speed and format, reading what the board prints and sending it text. The
+//! Serial Monitor extension shows what comes (through the plugin host's `serial-*` calls).
 //!
 //! A Windows named pipe (`\\.\pipe\name`) or a Unix FIFO opens too, with no settings to
 //! apply: a program can stand in for a board.
@@ -43,70 +43,13 @@ impl Settings {
         };
         format!("{}{p}{}", self.data_bits, if self.two_stop_bits { 2 } else { 1 })
     }
-
-    /// From `8N1`, `7E1`, `8O2`.
-    pub fn with_format(mut self, format: &str) -> Option<Self> {
-        let mut c = format.trim().chars();
-        let bits = c.next()?.to_digit(10)? as u8;
-        let parity = match c.next()?.to_ascii_uppercase() {
-            'N' => Parity::None,
-            'O' => Parity::Odd,
-            'E' => Parity::Even,
-            _ => return None,
-        };
-        let stop = c.next()?.to_digit(10)?;
-        if !(5..=8).contains(&bits) || !(1..=2).contains(&stop) || c.next().is_some() {
-            return None;
-        }
-        self.data_bits = bits;
-        self.parity = parity;
-        self.two_stop_bits = stop == 2;
-        Some(self)
-    }
 }
-
-/// The speeds offered (any other can be typed).
-pub const BAUDS: [u32; 13] =
-    [300, 1200, 2400, 4800, 9600, 19_200, 38_400, 57_600, 74_880, 115_200, 230_400, 460_800, 921_600];
-pub const FORMATS: [&str; 5] = ["8N1", "8E1", "8O1", "7E1", "8N2"];
 
 /// A port there is: what to open, and what it is when that's known.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PortInfo {
     pub path: String,
     pub description: String,
-}
-
-/// What's added to each line sent.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Ending {
-    None,
-    #[default]
-    Lf,
-    Cr,
-    CrLf,
-}
-
-impl Ending {
-    pub const ALL: [Ending; 4] = [Ending::None, Ending::Lf, Ending::Cr, Ending::CrLf];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Ending::None => "No line ending",
-            Ending::Lf => "Newline (LF)",
-            Ending::Cr => "Carriage return (CR)",
-            Ending::CrLf => "Both (CR LF)",
-        }
-    }
-
-    pub fn bytes(self) -> &'static [u8] {
-        match self {
-            Ending::None => b"",
-            Ending::Lf => b"\n",
-            Ending::Cr => b"\r",
-            Ending::CrLf => b"\r\n",
-        }
-    }
 }
 
 /// An open port. Reading waits a little (about 50 ms) and gives 0 bytes when nothing came;
@@ -560,146 +503,14 @@ fn describe(device: &str) -> String {
     .to_owned()
 }
 
-// ----- What the monitor shows --------------------------------------------------------------
-
-/// The text received, as lines with the time each started (seconds since the monitor
-/// opened), and the last bytes for the hex view.
-#[derive(Default)]
-pub struct Received {
-    pub lines: Vec<(f64, String)>,
-    /// The line still coming (no newline yet).
-    partial: Vec<u8>,
-    partial_since: f64,
-    pub bytes: std::collections::VecDeque<u8>,
-    pub total: u64,
-}
-
-/// How many lines and bytes are kept.
-pub const KEEP_LINES: usize = 20_000;
-pub const KEEP_BYTES: usize = 64 * 1024;
-
-impl Received {
-    pub fn push(&mut self, data: &[u8], now: f64) {
-        self.total += data.len() as u64;
-        self.bytes.extend(data);
-        while self.bytes.len() > KEEP_BYTES {
-            self.bytes.pop_front();
-        }
-        for &b in data {
-            if self.partial.is_empty() {
-                self.partial_since = now;
-            }
-            if b == b'\n' {
-                let mut line = std::mem::take(&mut self.partial);
-                if line.last() == Some(&b'\r') {
-                    line.pop();
-                }
-                self.lines.push((self.partial_since, String::from_utf8_lossy(&line).into_owned()));
-            } else {
-                self.partial.push(b);
-            }
-        }
-        if self.lines.len() > KEEP_LINES {
-            let extra = self.lines.len() - KEEP_LINES;
-            self.lines.drain(..extra);
-        }
-    }
-
-    /// The line still coming, if any.
-    pub fn partial(&self) -> Option<(f64, String)> {
-        let text = String::from_utf8_lossy(&self.partial);
-        let text = text.trim_end_matches('\r');
-        (!text.is_empty()).then(|| (self.partial_since, text.to_owned()))
-    }
-
-    pub fn clear(&mut self) {
-        *self = Received::default();
-    }
-
-    /// All of it as text, each line with its time when asked, for saving.
-    pub fn text(&self, times: bool) -> String {
-        let mut out = String::new();
-        for (t, line) in self.lines.iter().chain(self.partial().iter()) {
-            if times {
-                out.push_str(&format!("{} ", clock(*t)));
-            }
-            out.push_str(line);
-            out.push('\n');
-        }
-        out
-    }
-}
-
-/// Seconds since opening as `mm:ss.mmm` (or `h:mm:ss.mmm`).
-pub fn clock(t: f64) -> String {
-    let ms = (t * 1000.0).max(0.0) as u64;
-    let (h, m, s, ms) = (ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000);
-    if h > 0 { format!("{h}:{m:02}:{s:02}.{ms:03}") } else { format!("{m:02}:{s:02}.{ms:03}") }
-}
-
-/// Bytes as hex rows of 16, with their text beside.
-pub fn hex_rows(bytes: &[u8], offset: u64) -> Vec<String> {
-    bytes
-        .chunks(16)
-        .enumerate()
-        .map(|(i, row)| {
-            let hex: Vec<String> = row.iter().map(|b| format!("{b:02X}")).collect();
-            let text: String = row.iter().map(|&b| if (0x20..0x7f).contains(&b) { b as char } else { '.' }).collect();
-            format!("{:08X}  {:<47}  {text}", offset + i as u64 * 16, hex.join(" "))
-        })
-        .collect()
-}
-
-/// The numbers on a line, as the Arduino plotter reads them: separated by commas, spaces or
-/// tabs, each maybe named (`temp:21.5`). Words without a number are skipped.
-pub fn plot_values(line: &str) -> Vec<(Option<String>, f64)> {
-    line.split([',', ' ', '\t', ';'])
-        .filter(|p| !p.trim().is_empty())
-        .filter_map(|p| match p.split_once([':', '=']) {
-            Some((name, v)) => v.trim().parse().ok().map(|v| (Some(name.trim().to_owned()), v)),
-            None => p.trim().parse().ok().map(|v| (None, v)),
-        })
-        .filter(|(_, v): &(Option<String>, f64)| v.is_finite())
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn formats_and_endings() {
-        let s = Settings::default();
-        assert_eq!(s.format(), "8N1");
-        let e = s.with_format("7e1").unwrap();
-        assert_eq!((e.data_bits, e.parity, e.two_stop_bits), (7, Parity::Even, false));
-        assert_eq!(s.with_format("8O2").unwrap().format(), "8O2");
-        assert!(s.with_format("9N1").is_none() && s.with_format("8X1").is_none() && s.with_format("8N1x").is_none());
-        assert_eq!(Ending::CrLf.bytes(), b"\r\n");
+    fn port_kinds() {
         assert_eq!(describe(r"\Device\USBSER000"), "USB serial (CDC: Arduino, Pico…)");
         assert_eq!(describe(r"\Device\Serial0"), "Built-in serial port");
-    }
-
-    #[test]
-    fn lines_hex_and_plots() {
-        let mut r = Received::default();
-        r.push(b"hel", 1.0);
-        assert_eq!(r.partial(), Some((1.0, "hel".to_owned())));
-        r.push(b"lo\r\nworld\nnext", 2.0);
-        assert_eq!(r.lines, [(1.0, "hello".to_owned()), (2.0, "world".to_owned())]);
-        assert_eq!(r.partial(), Some((2.0, "next".to_owned())));
-        assert_eq!(r.total, 17);
-        assert_eq!(r.text(false), "hello\nworld\nnext\n");
-        assert!(r.text(true).starts_with("00:01.000 hello"));
-        assert_eq!(clock(3725.5), "1:02:05.500");
-        let rows = hex_rows(b"AB\n\x00xyz", 0);
-        assert_eq!(rows, ["00000000  41 42 0A 00 78 79 7A                             AB..xyz"]);
-        assert_eq!(plot_values("21.5,40"), [(None, 21.5), (None, 40.0)]);
-        assert_eq!(
-            plot_values("temp:21.5 hum=40\tx"),
-            [(Some("temp".to_owned()), 21.5), (Some("hum".to_owned()), 40.0)]
-        );
-        assert!(plot_values("Booting… done").is_empty());
     }
 
     /// A program on the other end of a named pipe, standing in for a board.
@@ -743,16 +554,16 @@ mod tests {
         let port = Port::open(&name, &Settings::default()).unwrap();
         assert!(!port.is_serial());
         port.set_lines(false, false).unwrap();
-        let mut received = Received::default();
+        let mut received = Vec::new();
         let mut buf = [0u8; 256];
         for _ in 0..40 {
             let n = port.read(&mut buf).unwrap();
-            received.push(&buf[..n], 0.0);
-            if received.lines.len() == 2 {
+            received.extend_from_slice(&buf[..n]);
+            if received.ends_with(b"temp:21.5\r\n") {
                 break;
             }
         }
-        assert_eq!(received.lines.iter().map(|l| l.1.as_str()).collect::<Vec<_>>(), ["boot", "temp:21.5"]);
+        assert_eq!(received, b"boot\r\ntemp:21.5\r\n");
         port.write_all(b"ping\n").unwrap();
         assert_eq!(board.join().unwrap(), b"ping\n");
         // The board hung up: reading says so.

@@ -5,6 +5,23 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The Serial Monitor and Binary Size are now the Serial Monitor and Binary Size extensions of
+  the Embedded and systems pack, each in a panel. Their built-in windows and code left the
+  program. The Memory and Disassembly views stay built in (they belong to the debugger).
+  - Serial Monitor: **Save log…** became **Open as text** (save it from the editor), and the
+    lines sent before come back as **Send again** buttons rather than with Up and Down.
+  - Binary Size: a program of hundreds of megabytes is read in steps, a page at a time, and
+    only its headers, sections and symbol names are read. **Choose…** became a path in the
+    open folder.
+- Plugin API 0.7: the `serial` permission (`serial-ports`, `serial-open`, `serial-write`,
+  `serial-set-lines`, `serial-close`, and the `serial-data` and `serial-closed` events);
+  `read-bytes` and `file-size` for files that aren't text; `read-dir` gives each entry's
+  size and when it changed; `log` blocks (many lines, only those in view drawn) and `plot`
+  blocks; `memory = <MB>` in `plugin.toml` for a plugin that needs more than 64 MB. Plugins
+  built for 0.6 need rebuilding.
+
 ## [0.7.0] - 2026-11-24
 
 ### Added

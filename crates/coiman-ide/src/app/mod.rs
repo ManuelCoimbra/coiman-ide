@@ -152,11 +152,9 @@ pub struct CodeApp {
     /// Agents: MCP Servers.
     mcp: extensions::mcp_ui::McpView,
     /// Build: Analyze Binary Size.
-    binary_size: launch::binary_size_ui::BinarySizeView,
     /// GLSL problems from the driver, and Preview: Shader.
     shader: views::shader_ui::ShaderUi,
     /// Serial: Open Monitor.
-    serial: project::serial_ui::SerialView,
     /// HTTP Client: `.http` requests and their responses.
     /// OpenAPI: a spec's endpoints and models.
     /// Git Tools: history search, submodules, hooks, ignore rules.
@@ -363,9 +361,7 @@ impl CodeApp {
             android: Default::default(),
             notebook: Default::default(),
             mcp: Default::default(),
-            binary_size: Default::default(),
             shader: Default::default(),
-            serial: Default::default(),
             double_shift: Default::default(),
             look: Default::default(),
             logged_ui: String::new(),
@@ -1028,9 +1024,7 @@ impl CodeApp {
         self.android_window(&ctx);
         self.notebook_window(&ctx);
         self.mcp_window(&ctx);
-        self.binary_size_window(&ctx);
         self.shader_preview_window(&ctx);
-        self.serial_window(&ctx);
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
         self.open_vsx_window(&ctx);

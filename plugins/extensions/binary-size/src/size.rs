@@ -1,12 +1,13 @@
-//! Binary size: what takes room in a program, a library or an object file (ELF, PE, Mach-O,
-//! COFF): its sections, its symbols, and the symbols grouped by crate or namespace. Read
-//! straight from the file, with no tool needed. For an embedded ELF program it also says what
-//! goes to flash and what to RAM, the way `size` does.
+//! What takes room in a program, a library or an object file (ELF, PE, Mach-O, COFF): its
+//! sections, its symbols, and the symbols grouped by crate or namespace, read straight from the
+//! file with no tool needed. For an embedded ELF program it also says what goes to flash and
+//! what to RAM, the way `size` does.
+//!
+//! The reading goes in steps ([`Scan`]), so a large program never holds a call up for long.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 
-use object::{Object, ObjectSection, ObjectSymbol, SectionKind, SymbolKind, SymbolSection};
+use object::{Object, ObjectSection, ObjectSymbol, ReadRef, SectionKind, SymbolKind, SymbolSection};
 
 /// What a section holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -79,7 +80,8 @@ pub struct Memory {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Report {
-    pub path: PathBuf,
+    /// As chosen (relative to the open folder).
+    pub path: String,
     /// "ELF executable, Arm", "PE program, x86-64"…
     pub format: String,
     pub file_size: u64,
@@ -123,19 +125,30 @@ impl Report {
         out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         out
     }
+
+    /// What's kept of it to compare a later report with.
+    pub fn summary(&self) -> Summary {
+        Summary { loaded: self.loaded(), groups: self.groups().into_iter().map(|(g, n, _)| (g, n)).collect() }
+    }
+}
+
+/// An earlier report of the same file, as much as a comparison needs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Summary {
+    pub loaded: u64,
+    pub groups: HashMap<String, u64>,
 }
 
 /// What changed since an earlier report of the same file: each group's size then and now
 /// (0 where it wasn't there), biggest change first, unchanged ones left out.
-pub fn group_changes(before: &Report, after: &Report) -> Vec<(String, u64, u64)> {
-    let old: HashMap<String, u64> = before.groups().into_iter().map(|(g, n, _)| (g, n)).collect();
+pub fn group_changes(before: &Summary, after: &Report) -> Vec<(String, u64, u64)> {
     let new: HashMap<String, u64> = after.groups().into_iter().map(|(g, n, _)| (g, n)).collect();
-    let mut names: Vec<&String> = old.keys().chain(new.keys()).collect();
+    let mut names: Vec<&String> = before.groups.keys().chain(new.keys()).collect();
     names.sort();
     names.dedup();
     let mut out: Vec<(String, u64, u64)> = names
         .into_iter()
-        .map(|g| (g.clone(), old.get(g).copied().unwrap_or(0), new.get(g).copied().unwrap_or(0)))
+        .map(|g| (g.clone(), before.groups.get(g).copied().unwrap_or(0), new.get(g).copied().unwrap_or(0)))
         .filter(|(_, a, b)| a != b)
         .collect();
     out.sort_by_key(|(_, a, b)| std::cmp::Reverse(a.abs_diff(*b)));
@@ -196,7 +209,7 @@ pub fn group_of(name: &str) -> String {
     }
 }
 
-fn format_name(file: &object::File) -> String {
+fn format_name<'d, R: ReadRef<'d>>(file: &object::File<'d, R>) -> String {
     let format = match file.format() {
         object::BinaryFormat::Elf => "ELF",
         object::BinaryFormat::Pe => "PE",
@@ -230,160 +243,188 @@ fn format_name(file: &object::File) -> String {
     format!("{format} {kind}, {arch}")
 }
 
-/// Reads `path`.
-pub fn analyze(path: &Path) -> Result<Report, String> {
-    let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if data.starts_with(b"!<arch>\n") {
+/// A defined symbol with a place, found so far.
+struct Found {
+    section: usize,
+    address: u64,
+    size: u64,
+    /// Demangled.
+    name: String,
+    text: bool,
+}
+
+/// A file being read: its sections first, then its symbols a share at a time ([`Scan::step`]),
+/// then [`Scan::finish`] makes the report. Each step parses the file again from `data` (a cache
+/// of what was read keeps that cheap).
+pub struct Scan {
+    path: String,
+    format: String,
+    file_size: u64,
+    pe: bool,
+    elf_program: bool,
+    sections: Vec<Section>,
+    /// By section index: name, start, length, part.
+    places: HashMap<usize, (String, u64, u64, Part)>,
+    found: Vec<Found>,
+    /// Symbols looked at so far.
+    next: usize,
+}
+
+fn parse<'d, R: ReadRef<'d>>(data: R) -> Result<object::File<'d, R>, String> {
+    if data.read_bytes_at(0, 8).is_ok_and(|b| b == b"!<arch>\n") {
         return Err("This is an archive (a static library): choose a program or an object file.".to_owned());
     }
-    let file = object::File::parse(&*data).map_err(|e| format!("Not a program or object file Coiman reads: {e}"))?;
+    object::File::parse(data).map_err(|e| format!("Not a program or object file Coiman reads: {e}"))
+}
 
-    let mut sections = Vec::new();
-    let mut section_names: HashMap<object::SectionIndex, (String, u64, u64, Part)> = HashMap::new();
-    for s in file.sections() {
-        let name = s.name().unwrap_or("?").to_owned();
-        // MinGW's DWARF sections in a PE file come out as "other".
-        let part = if name.starts_with(".debug") || name.starts_with(".zdebug") || name.starts_with("__debug") {
-            Part::Debug
-        } else {
-            Part::of(s.kind())
-        };
-        let size = s.size();
-        section_names.insert(s.index(), (name.clone(), s.address(), size, part));
-        if size > 0 {
-            sections.push(Section { name, size, part });
-        }
-    }
-    sections.sort_by_key(|a| std::cmp::Reverse(a.size));
-
-    // Defined symbols with a place, one per address (aliases share one).
-    let mut found: Vec<(object::SectionIndex, u64, u64, String, bool)> = Vec::new();
-    for sym in file.symbols() {
-        let SymbolSection::Section(index) = sym.section() else { continue };
-        if !sym.is_definition() || matches!(sym.kind(), SymbolKind::Section | SymbolKind::File) {
-            continue;
-        }
-        let Ok(raw) = sym.name() else { continue };
-        // Local labels, mapping symbols, and a section's own name.
-        let section_name = section_names.get(&index).map(|s| s.0.as_str());
-        if raw.is_empty() || raw.starts_with(".L") || raw.starts_with('$') || section_name == Some(raw) {
-            continue;
-        }
-        found.push((index, sym.address(), sym.size(), raw.to_owned(), sym.kind() == SymbolKind::Text));
-    }
-    found.sort_by(|a, b| (a.0.0, a.1).cmp(&(b.0.0, b.1)).then(b.2.cmp(&a.2)));
-    found.dedup_by(|b, a| a.0 == b.0 && a.1 == b.1);
-
-    // Formats without sizes (PE, COFF, Mach-O): a symbol runs to the next one in its section.
-    let mut symbols = Vec::with_capacity(found.len());
-    for i in 0..found.len() {
-        let (index, address, size, raw, text) = &found[i];
-        let Some((section, start, length, part)) = section_names.get(index) else { continue };
-        let size = if *size > 0 {
-            *size
-        } else {
-            let end = match found.get(i + 1) {
-                Some(next) if next.0 == *index => next.1,
-                _ => start + length,
+impl Scan {
+    /// Reads what the file is and its sections.
+    pub fn start<'d, R: ReadRef<'d>>(path: &str, data: R, file_size: u64) -> Result<Scan, String> {
+        let file = parse(data)?;
+        let mut sections = Vec::new();
+        let mut places = HashMap::new();
+        for s in file.sections() {
+            let name = s.name().unwrap_or("?").to_owned();
+            // MinGW's DWARF sections in a PE file come out as "other".
+            let part = if name.starts_with(".debug") || name.starts_with(".zdebug") || name.starts_with("__debug") {
+                Part::Debug
+            } else {
+                Part::of(s.kind())
             };
-            end.saturating_sub(*address)
-        };
-        if size == 0 || !part.loaded() {
-            continue;
+            let size = s.size();
+            places.insert(s.index().0, (name.clone(), s.address(), size, part));
+            if size > 0 {
+                sections.push(Section { name, size, part });
+            }
         }
-        let name = demangle(raw);
-        let group = group_of(&name);
-        symbols.push(Symbol { name, size, section: section.clone(), code: *text || *part == Part::Code, group });
+        sections.sort_by_key(|a| std::cmp::Reverse(a.size));
+        Ok(Scan {
+            path: path.to_owned(),
+            format: format_name(&file),
+            file_size,
+            pe: file.format() == object::BinaryFormat::Pe,
+            elf_program: file.format() == object::BinaryFormat::Elf && file.kind() == object::ObjectKind::Executable,
+            sections,
+            places,
+            found: Vec::new(),
+            next: 0,
+        })
     }
-    symbols.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.name.cmp(&b.name)));
 
-    let no_symbols = symbols.is_empty().then_some(match file.format() {
-        object::BinaryFormat::Pe => {
-            "No symbols in this file: Visual C++ and Rust's MSVC builds keep them in a .pdb beside it. Sections only."
+    /// Looks at up to `count` more symbols; true once all have been.
+    pub fn step<'d, R: ReadRef<'d>>(&mut self, data: R, count: usize) -> Result<bool, String> {
+        let file = parse(data)?;
+        let mut seen = 0;
+        for sym in file.symbols().skip(self.next).take(count) {
+            seen += 1;
+            let SymbolSection::Section(index) = sym.section() else { continue };
+            if !sym.is_definition() || matches!(sym.kind(), SymbolKind::Section | SymbolKind::File) {
+                continue;
+            }
+            let Some((section, _, _, part)) = self.places.get(&index.0) else { continue };
+            // Debug info and the like aren't counted, so their names needn't be read.
+            if !part.loaded() {
+                continue;
+            }
+            let Ok(raw) = sym.name() else { continue };
+            // Local labels, mapping symbols, and a section's own name.
+            if raw.is_empty() || raw.starts_with(".L") || raw.starts_with('$') || section == raw {
+                continue;
+            }
+            self.found.push(Found {
+                section: index.0,
+                address: sym.address(),
+                size: sym.size(),
+                name: demangle(raw),
+                text: sym.kind() == SymbolKind::Text,
+            });
         }
-        _ => "No symbols in this file (stripped). Sections only.",
-    });
+        self.next += seen;
+        Ok(seen < count)
+    }
 
-    let memory =
-        (file.format() == object::BinaryFormat::Elf && file.kind() == object::ObjectKind::Executable).then(|| {
+    /// Symbols looked at so far.
+    pub fn progress(&self) -> usize {
+        self.next
+    }
+
+    pub fn finish(self) -> Report {
+        let Scan { path, format, file_size, pe, elf_program, sections, places, mut found, .. } = self;
+        // One per address (aliases share one), the biggest kept.
+        found.sort_by(|a, b| (a.section, a.address).cmp(&(b.section, b.address)).then(b.size.cmp(&a.size)));
+        found.dedup_by(|b, a| a.section == b.section && a.address == b.address);
+        // Formats without sizes (PE, COFF, Mach-O): a symbol runs to the next one in its section.
+        let ends: Vec<Option<u64>> = (0..found.len())
+            .map(|i| found.get(i + 1).filter(|n| n.section == found[i].section).map(|n| n.address))
+            .collect();
+        let mut symbols = Vec::with_capacity(found.len());
+        for (f, next) in found.into_iter().zip(ends) {
+            let Some((section, start, length, part)) = places.get(&f.section) else { continue };
+            let size = if f.size > 0 { f.size } else { next.unwrap_or(start + length).saturating_sub(f.address) };
+            if size == 0 {
+                continue;
+            }
+            let group = group_of(&f.name);
+            symbols.push(Symbol {
+                name: f.name,
+                size,
+                section: section.clone(),
+                code: f.text || *part == Part::Code,
+                group,
+            });
+        }
+        symbols.sort_by(|a, b| b.size.cmp(&a.size).then_with(|| a.name.cmp(&b.name)));
+        let no_symbols = symbols.is_empty().then_some(if pe {
+            "No symbols in this file: Visual C++ and Rust's MSVC builds keep them in a .pdb beside it. Sections only."
+        } else {
+            "No symbols in this file (stripped). Sections only."
+        });
+        let memory = elf_program.then(|| {
             let sum = |parts: &[Part]| sections.iter().filter(|s| parts.contains(&s.part)).map(|s| s.size).sum();
             Memory { flash: sum(&[Part::Code, Part::ReadOnly, Part::Data]), ram: sum(&[Part::Data, Part::Zeroed]) }
         });
+        Report { path, format, file_size, sections, symbols, no_symbols, memory }
+    }
+}
 
-    Ok(Report {
-        path: path.to_path_buf(),
-        format: format_name(&file),
-        file_size: data.len() as u64,
-        sections,
-        symbols,
-        no_symbols,
-        memory,
+/// Reads a whole file held in memory, for tests and small files.
+pub fn analyze(path: &str, data: &[u8]) -> Result<Report, String> {
+    let mut scan = Scan::start(path, data, data.len() as u64)?;
+    while !scan.step(data, 10_000)? {}
+    Ok(scan.finish())
+}
+
+/// Whether a file name looks like a program, library or object file by its extension; `None`
+/// when it has none (then its first bytes tell, see [`binary_start`]).
+pub fn binary_name(name: &str) -> Option<bool> {
+    if name.starts_with('.') {
+        return Some(false);
+    }
+    name.rsplit_once('.').map(|(_, ext)| {
+        matches!(
+            ext.to_ascii_lowercase().as_str(),
+            "exe" | "dll" | "so" | "dylib" | "elf" | "axf" | "out" | "o" | "obj" | "wasm"
+        )
     })
 }
 
-/// Programs, libraries and object files in a project's build folders (`target`, `build`,
-/// `out`, `cmake-build-*`), newest first.
-pub fn candidates(root: &Path) -> Vec<PathBuf> {
-    let mut found: Vec<(std::time::SystemTime, PathBuf)> = Vec::new();
-    let Ok(top) = std::fs::read_dir(root) else { return Vec::new() };
-    for entry in top.flatten() {
-        let name = entry.file_name().to_string_lossy().to_string();
-        let build = matches!(name.as_str(), "target" | "build" | "out" | "bin" | "Debug" | "Release")
-            || name.starts_with("cmake-build-");
-        if build && entry.path().is_dir() {
-            walk(&entry.path(), 0, &mut found);
-        }
-    }
-    found.sort_by_key(|a| std::cmp::Reverse(a.0));
-    found.into_iter().map(|(_, p)| p).take(40).collect()
+/// Whether a file starts like an ELF or Mach-O program.
+pub fn binary_start(head: &[u8]) -> bool {
+    head.starts_with(b"\x7fELF")
+        || head.starts_with(&[0xcf, 0xfa, 0xed, 0xfe])
+        || head.starts_with(&[0xce, 0xfa, 0xed, 0xfe])
 }
 
-fn walk(dir: &Path, depth: usize, found: &mut Vec<(std::time::SystemTime, PathBuf)>) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = entry.file_name().to_string_lossy().to_string();
-        let Ok(meta) = entry.metadata() else { continue };
-        if meta.is_dir() {
-            // Cargo's intermediate folders hold thousands of files nobody picks.
-            let skip =
-                matches!(name.as_str(), "deps" | "build" | "incremental" | ".fingerprint" | "examples" | "CMakeFiles");
-            if depth < 3 && !skip && !name.starts_with('.') {
-                walk(&path, depth + 1, found);
-            }
-            continue;
-        }
-        if looks_binary(&path, &name)
-            && let Ok(time) = meta.modified()
-        {
-            found.push((time, path));
-        }
-    }
+/// A project's build folders, where programs are looked for.
+pub fn build_folder(name: &str) -> bool {
+    matches!(name, "target" | "build" | "out" | "bin" | "Debug" | "Release") || name.starts_with("cmake-build-")
 }
 
-/// Whether `path` looks like a program, library or object file (by extension, or an ELF or
-/// Mach-O start).
-pub fn can_open(path: &Path) -> bool {
-    let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-    looks_binary(path, &name)
-}
-
-fn looks_binary(path: &Path, name: &str) -> bool {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-    if matches!(ext.as_str(), "exe" | "dll" | "so" | "dylib" | "elf" | "axf" | "out" | "o" | "obj" | "wasm") {
-        return true;
-    }
-    // Programs without an extension (Linux, embedded targets): look at the start.
-    if ext.is_empty() && !name.starts_with('.') {
-        let mut head = [0u8; 4];
-        if let Ok(mut f) = std::fs::File::open(path) {
-            use std::io::Read;
-            if f.read_exact(&mut head).is_ok() {
-                return head == *b"\x7fELF" || head == [0xcf, 0xfa, 0xed, 0xfe] || head == [0xce, 0xfa, 0xed, 0xfe];
-            }
-        }
-    }
-    false
+/// Folders inside a build folder that aren't looked in: Cargo's intermediate ones hold
+/// thousands of files nobody picks.
+pub fn skipped_folder(name: &str) -> bool {
+    matches!(name, "deps" | "build" | "incremental" | ".fingerprint" | "examples" | "CMakeFiles")
+        || name.starts_with('.')
 }
 
 #[cfg(test)]
@@ -408,6 +449,12 @@ mod tests {
         assert_eq!(human(812), "812 B");
         assert_eq!(human(14_540), "14.2 KiB");
         assert_eq!(human_change(2048, 1024), "-1.0 KiB");
+        assert_eq!(binary_name("app.EXE"), Some(true));
+        assert_eq!(binary_name("app.d"), Some(false));
+        assert_eq!(binary_name("firmware"), None);
+        assert_eq!(binary_name(".hidden"), Some(false));
+        assert!(binary_start(b"\x7fELF...") && !binary_start(b"MZ"));
+        assert!(build_folder("cmake-build-debug") && !build_folder("src"));
     }
 
     /// Real object files from rustc: one for this computer (COFF on Windows, which has no
@@ -444,7 +491,12 @@ mod tests {
                 continue;
             }
             made += 1;
-            let report = analyze(&out).unwrap();
+            let data = std::fs::read(&out).unwrap();
+            // A step at a time, the way the panel reads.
+            let mut scan = Scan::start("sizes.o", &*data, data.len() as u64).unwrap();
+            while !scan.step(&*data, 3).unwrap() {}
+            let report = scan.finish();
+            assert_eq!(report, analyze("sizes.o", &data).unwrap());
             assert!(report.format.contains("object file"), "{}", report.format);
             assert_eq!(report.no_symbols, None, "{report:?}");
             let size = |name: &str| report.symbols.iter().find(|s| s.name.ends_with(name)).map(|s| s.size);
@@ -458,7 +510,7 @@ mod tests {
             // Without the big function, that's what changed.
             let mut smaller = report.clone();
             smaller.symbols.retain(|s| !s.name.ends_with("sizes::big"));
-            let changes = group_changes(&report, &smaller);
+            let changes = group_changes(&report.summary(), &smaller);
             assert_eq!(changes[0].0, "sizes");
             assert_eq!(changes[0].1 - changes[0].2, big.unwrap());
         }
@@ -468,20 +520,36 @@ mod tests {
 
     #[test]
     fn not_a_binary() {
-        let dir = std::env::temp_dir().join(format!("coiman-binsize-{}", std::process::id()));
-        std::fs::create_dir_all(dir.join("target").join("release")).unwrap();
-        let text = dir.join("notes.txt");
-        std::fs::write(&text, "hello").unwrap();
-        assert!(analyze(&text).is_err());
-        let ar = dir.join("lib.a");
-        std::fs::write(&ar, b"!<arch>\nxx").unwrap();
-        assert!(analyze(&ar).unwrap_err().contains("archive"));
-        // Found in the build folder: a program by its extension and one by its first bytes.
-        std::fs::write(dir.join("target").join("release").join("app.exe"), b"MZ").unwrap();
-        std::fs::write(dir.join("target").join("release").join("firmware"), b"\x7fELF....").unwrap();
-        std::fs::write(dir.join("target").join("release").join("app.d"), b"deps").unwrap();
-        let found = candidates(&dir);
-        assert_eq!(found.len(), 2, "{found:?}");
-        std::fs::remove_dir_all(&dir).unwrap();
+        assert!(analyze("notes.txt", b"hello").is_err());
+        assert!(analyze("lib.a", b"!<arch>\nxx").unwrap_err().contains("archive"));
+    }
+}
+
+/// How long a large program takes, read the way the panel reads it (a cache over the file):
+/// `cargo test --release timing -- --ignored --nocapture`.
+#[cfg(test)]
+mod timing {
+    #[test]
+    #[ignore]
+    fn timing() {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../target/release/coiman-ide.exe");
+        let file = std::fs::File::open(path).unwrap();
+        let len = file.metadata().unwrap().len();
+        let cache = crate::pages::Pages::new(file, len);
+        let t = std::time::Instant::now();
+        let mut scan = super::Scan::start("coiman-ide.exe", &cache, len).unwrap();
+        let mut steps = 0;
+        while !scan.step(&cache, 2000).unwrap() {
+            steps += 1;
+        }
+        let report = scan.finish();
+        eprintln!(
+            "{} symbols, {} groups, {steps} steps, {:?}, {} MB read",
+            report.symbols.len(),
+            report.groups().len(),
+            t.elapsed(),
+            cache.read_so_far() >> 20
+        );
+        assert!(report.symbols.len() > 1000);
     }
 }

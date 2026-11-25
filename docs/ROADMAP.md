@@ -74,8 +74,9 @@ program itself gets smaller too:
 2. Git, more of it: done (Git Graph and Git Tools).
 3. Web and APIs: done (HTTP Client and OpenAPI).
 4. Containers: done (Docker, GitHub Actions, remote over SSH, remote debugging).
-   Databases: done (SQL Databases, Redis, MongoDB; notebooks stay built in). Then Embedded,
-   Mobile.
+   Databases: done (SQL Databases, Redis, MongoDB; notebooks stay built in). Embedded: done
+   (Serial Monitor, Binary Size; the debugger's Memory and Disassembly views stay built in).
+   Then Mobile.
 5. Graphics and Agents last: shader previews and the agents panel need the most from the host.
 
 ## Next, nothing to download

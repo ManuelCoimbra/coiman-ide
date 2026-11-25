@@ -145,11 +145,9 @@ pub enum Command {
     /// The MCP servers the Agents panel's opencode gets.
     ShowMcpServers,
     /// What takes room in a program: groups, symbols, sections.
-    AnalyzeBinarySize,
     /// The active fragment shader, drawn live.
     PreviewShader,
     /// A board's serial port: what it prints, and sending it text.
-    SerialMonitor,
     SplitTerminal,
     KillTerminal,
     ClearTerminal,
@@ -326,9 +324,7 @@ impl Command {
     pub fn pack(self) -> Option<&'static str> {
         use crate::packs::*;
         Some(match self {
-            Command::SerialMonitor | Command::AnalyzeBinarySize | Command::ShowMemory | Command::ShowDisassembly => {
-                SYSTEMS
-            }
+            Command::ShowMemory | Command::ShowDisassembly => SYSTEMS,
             Command::ShowAndroid => MOBILE,
             Command::PreviewShader => GRAPHICS,
             Command::ShowFunctionFlow
@@ -457,9 +453,7 @@ pub const COMMANDS: &[(Command, &str)] = &[
     (Command::NewTerminalWithProfile, "Terminal: New Terminal With Profile..."),
     (Command::ShowAndroid, "Android: Devices and Logcat"),
     (Command::ShowMcpServers, "Agents: MCP Servers..."),
-    (Command::AnalyzeBinarySize, "Build: Analyze Binary Size..."),
     (Command::PreviewShader, "Preview: Shader"),
-    (Command::SerialMonitor, "Serial: Open Monitor..."),
     (Command::SplitTerminal, "Terminal: Split Terminal"),
     (Command::KillTerminal, "Terminal: Kill the Active Terminal Instance"),
     (Command::ClearTerminal, "Terminal: Clear"),
@@ -758,9 +752,7 @@ pub const COMMAND_IDS: &[(Command, &str)] = &[
     (Command::NewTerminalWithProfile, "workbench.action.terminal.newWithProfile"),
     (Command::ShowAndroid, "coiman.android.show"),
     (Command::ShowMcpServers, "coiman.agents.mcpServers"),
-    (Command::AnalyzeBinarySize, "coiman.build.binarySize"),
     (Command::PreviewShader, "coiman.preview.shader"),
-    (Command::SerialMonitor, "coiman.serial.monitor"),
     (Command::SplitTerminal, "workbench.action.terminal.split"),
     (Command::KillTerminal, "workbench.action.terminal.kill"),
     (Command::ClearTerminal, "workbench.action.terminal.clear"),

@@ -1,0 +1,13 @@
+id = "coiman.serial-monitor"
+name = "Serial Monitor"
+version = "1.0.0"
+description = "A board's serial port (Arduino, ESP32, a Pico...): what it prints as text with times, as hex or as a plot of its numbers, and lines sent to it. A named pipe or FIFO can stand in for a board."
+permissions = ["serial"]
+
+[[commands]]
+id = "show"
+title = "Serial: Open Monitor..."
+
+[[panels]]
+id = "serial"
+title = "Serial Monitor"

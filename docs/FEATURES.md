@@ -668,7 +668,8 @@ appear, and its background work doesn't run.
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
-SQL Databases, Redis and MongoDB with Databases, Terminal Commands
+SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
+and systems, Terminal Commands
 with Terminal extras); removing it
 uninstalls them. The choice is `[packs] installed`
 in the settings (`"all"` for every pack); a project's `.coiman/settings.toml` can set its own,
@@ -682,7 +683,8 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
 
 - **Sandboxed**: a plugin gets only the editor's plugin API. It has no WASI, so it has no
   file system, network, clock or environment of its own. File access stays inside the open
-  folder. Each call has a 2-second time limit and each plugin a 64 MB memory limit. A plugin
+  folder. Each call has a 2-second time limit and each plugin a 64 MB memory limit (up to
+  1024 MB when its `plugin.toml` says `memory = <MB>`). A plugin
   that crashes or runs too long is stopped, and the Extensions view shows why.
 - **Programs**: `programs = ["git"]` in `plugin.toml` asks to start programs by name. They
   run outside the sandbox with your rights, so each starts unapproved until you tick it, only
@@ -691,7 +693,8 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
 - **Permissions**: `plugin.toml` lists what a plugin needs: `workspace-read`,
   `workspace-write`, `editor-read`, `editor-write`, `language-server` (standard or custom
   requests to the active file's server), `terminal` (the command lines of the terminals,
-  typing into them, the shells' history files, and folders outside the open folder). You
+  typing into them, the shells' history files, and folders outside the open folder),
+  `serial` (the serial ports: listing, opening, reading and sending). You
   approve them before it is
   installed and can uncheck any of them, then or later. A call without its permission fails
   with `permission denied`.
@@ -745,6 +748,15 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   for where database clients' installers put it. **Openers** in `plugin.toml` (extensions,
   and how the file starts) hand a file to the plugin instead of a tab. The `document` has
   its `selection`, current when a command runs. A `table` block draws only the rows in view.
+- **Serial ports and large files** (API 0.7): with `serial`, **`serial-ports`** lists the
+  ports, **`serial-open`** opens one (speed, format, DTR, RTS; a named pipe or FIFO stands in
+  for a board), and what it receives comes as `serial-data` events, gathered for up to a tenth
+  of a second; `serial-write`, `serial-set-lines` and `serial-close` go with it, and
+  `serial-closed` says when a board went away. **`read-bytes`** reads part of a file that
+  isn't text (8 MB at a time) and **`file-size`** gives its size; `read-dir` gives each
+  entry's size and when it changed. **`log`** blocks hold many fixed-width lines (only those
+  in view are drawn, and they can follow the newest); **`plot`** blocks draw numbers over
+  time.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;
@@ -813,6 +825,9 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
   values and a console; see Databases.
 - **MongoDB** (program `mongosh`): a MongoDB server's collections, documents and scripts;
   see Databases.
+- **Serial Monitor** (`serial`): a board's serial port; see Serial monitor.
+- **Binary Size** (`workspace-read`; up to 512 MB of memory): what takes room in a program;
+  see Binary size.
 - **Remote Debugging** (`workspace-read`, `workspace-write`; programs `ssh`, `scp`): gdb on a
   program under gdbserver on another machine; see Remote debugging under Debugging.
 - **Remote over SSH** (`workspace-read`, `terminal`; programs `ssh`, `tar`): a folder on
@@ -1107,8 +1122,9 @@ opens the **OpenAPI** panel.
 
 ## Serial monitor
 
-**Serial: Open Monitor...** opens a board's serial port (an Arduino, ESP32 or Pico on USB),
-like the Arduino IDE's monitor. Nothing needs installing: Coiman talks to the port itself.
+**Serial: Open Monitor...** (the **Serial Monitor** extension, in its panel) opens a board's
+serial port (an Arduino, ESP32 or Pico on USB), like the Arduino IDE's monitor. Nothing more
+needs installing: Coiman talks to the port itself.
 
 - **The port** comes from a list of the ports there are (on Windows, what the drivers
   registered, with the kind of chip; on Linux `ttyUSB`/`ttyACM` and built-in ports; on macOS
@@ -1120,18 +1136,21 @@ like the Arduino IDE's monitor. Nothing needs installing: Coiman talks to the po
   **Follow** keeps the newest in view. **Hex** shows the last 64 KiB as bytes. **Plot** draws
   the numbers on each line over time, one colored line per value, as Arduino's plotter reads
   them (`21.5,40`, or named: `temp:21.5 hum:40`).
-- **Send** sends a line with the chosen ending (none, LF, CR, or CR LF); Up and Down bring
-  back the lines sent before. **Save log…** writes what came to a file; **Clear** empties
-  the view.
+- **Send** sends a line with the chosen ending (none, LF, CR, or CR LF); the last lines sent
+  each have **Send again**. **Open as text** puts what came in an editor tab, to save where
+  you like; **Clear** empties the view.
 - A Windows named pipe (`\\.\pipe\name`) or a Unix FIFO opens too, with no settings to
-  apply, so a program can stand in for a board. Closing the window closes the port.
+  apply, so a program can stand in for a board. **Disconnect** closes the port.
 
 ## Binary size
 
-**Build: Analyze Binary Size...** shows what takes room in a program, a shared library or an
-object file (ELF, PE, Mach-O and COFF, read by Coiman itself: no tool needed). It picks the file
-open in the editor if it is one, else the newest one in the project's build folders (`target`,
-`build`, `out`, `cmake-build-*`); **Choose…** opens another.
+**Build: Analyze Binary Size...** (the **Binary Size** extension, in its panel) shows what
+takes room in a program, a shared library or an object file (ELF, PE, Mach-O and COFF, read by
+the extension itself: no tool needed). It picks the file open in the editor if it is one, else
+the newest one in the project's build folders (`target`, `build`, `out`, `cmake-build-*`);
+**Built here** lists them, and another path in the open folder can be typed. A large program
+is read in steps, and only its headers, sections and symbol names: the panel shows how far
+it got.
 
 - The summary gives the format and processor, the file's size and what is loaded with the
   program, split into code, read-only data, data and zero-filled data. For an ELF program
@@ -1145,7 +1164,7 @@ open in the editor if it is one, else the newest one in the project's build fold
 - **Analyze again** after a build shows the change: in total, and for each group (bigger in
   red, smaller in green).
 - A program built with Visual C++ (or Rust's MSVC toolchain) keeps its symbols in a `.pdb`
-  beside it; the window says so and shows the sections only.
+  beside it; the panel says so and shows the sections only.
 
 ## Profiling
 

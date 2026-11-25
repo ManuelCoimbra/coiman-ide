@@ -1,6 +1,5 @@
 //! Running, building, testing and debugging: Cargo, Maven, the debugger, tests, coverage, live sessions and REPLs.
 
-pub(crate) mod binary_size_ui;
 pub(crate) mod cargo;
 pub(crate) mod coverage;
 pub(crate) mod debug;

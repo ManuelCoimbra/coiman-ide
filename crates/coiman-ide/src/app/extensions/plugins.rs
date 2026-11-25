@@ -1630,6 +1630,16 @@ impl CodeApp {
                             run = Some(r);
                         }
                     }
+                    Block::Log(log) => {
+                        let last = index + 1 == panel.blocks.len();
+                        let room = ui.clip_rect().height().max(200.0);
+                        let height = if last { room - 8.0 } else { (room * 0.6).max(160.0) };
+                        log_ui(ui, index, log, height);
+                    }
+                    Block::Plot(series) => {
+                        let room = ui.clip_rect().height().max(200.0);
+                        plot_ui(ui, series, (room * 0.6).max(160.0));
+                    }
                     Block::Form(form) => {
                         if let Some(values) = form_ui(ui, &panel.plugin, form, &mut forms) {
                             submitted = Some(values);
@@ -1861,6 +1871,82 @@ fn form_ui(
 
 /// A plugin's table: a header, then only the rows in sight (a query's 10,000 rows draw as fast
 /// as ten), each column as wide as its widest text in the first rows, scrolling both ways.
+/// A `log` block: fixed-width lines, only those in view drawn.
+fn log_ui(ui: &mut egui::Ui, index: usize, log: &coiman_core::extensions::plugin::host::LogView, height: f32) {
+    let pal = theme::colors();
+    let row_h = ui.text_style_height(&egui::TextStyle::Monospace);
+    egui::Frame::new().fill(pal.editor_bg).inner_margin(4.0).show(ui, |ui| {
+        egui::ScrollArea::both()
+            .id_salt(("plugin_log", index))
+            .auto_shrink([false, false])
+            .max_height(height)
+            .min_scrolled_height(height)
+            .stick_to_bottom(log.follow)
+            .show_rows(ui, row_h, log.lines.len(), |ui, range| {
+                for line in &log.lines[range] {
+                    ui.label(RichText::new(line).monospace());
+                }
+            });
+    });
+}
+
+/// A `plot` block: each series a colored line over time, all scaled to fit together.
+fn plot_ui(ui: &mut egui::Ui, series: &[coiman_core::extensions::plugin::host::PlotSeries], height: f32) {
+    const COLORS: [egui::Color32; 6] = [
+        egui::Color32::from_rgb(0x4F, 0x9D, 0xFF),
+        egui::Color32::from_rgb(0xF2, 0x9E, 0x4C),
+        egui::Color32::from_rgb(0x57, 0xC0, 0x6A),
+        egui::Color32::from_rgb(0xE5, 0x48, 0x4D),
+        egui::Color32::from_rgb(0xB0, 0x7C, 0xF7),
+        egui::Color32::from_rgb(0x3F, 0xC1, 0xC9),
+    ];
+    let pal = theme::colors();
+    let number = |t: f64| format!("{t:.3}").trim_end_matches('0').trim_end_matches('.').to_owned();
+    ui.horizontal_wrapped(|ui| {
+        for (i, s) in series.iter().enumerate() {
+            let last = s.values.last().map(|v| number(*v)).unwrap_or_default();
+            ui.label(RichText::new(format!("■ {} {last}", s.name)).color(COLORS[i % COLORS.len()]));
+        }
+    });
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), height), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_stroke(rect, 4.0, egui::Stroke::new(1.0, pal.border), egui::StrokeKind::Inside);
+    let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+    for x in series.iter().flat_map(|s| &s.values).filter(|x| x.is_finite()) {
+        lo = lo.min(*x);
+        hi = hi.max(*x);
+    }
+    if !lo.is_finite() {
+        return;
+    }
+    if hi - lo < 1e-9 {
+        lo -= 1.0;
+        hi += 1.0;
+    }
+    let pad = (hi - lo) * 0.05;
+    let (lo, hi) = (lo - pad, hi + pad);
+    let inner = rect.shrink(6.0);
+    let y = |x: f64| inner.bottom() - ((x - lo) / (hi - lo)) as f32 * inner.height();
+    // Zero, when it's in view.
+    if lo < 0.0 && hi > 0.0 {
+        painter.hline(inner.x_range(), y(0.0), egui::Stroke::new(1.0, pal.border));
+    }
+    for (i, s) in series.iter().enumerate() {
+        let n = s.values.len().max(2);
+        let points: Vec<egui::Pos2> = s
+            .values
+            .iter()
+            .enumerate()
+            .filter(|(_, x)| x.is_finite())
+            .map(|(k, &x)| egui::pos2(inner.left() + inner.width() * k as f32 / (n - 1) as f32, y(x)))
+            .collect();
+        painter.add(egui::Shape::line(points, egui::Stroke::new(1.5, COLORS[i % COLORS.len()])));
+    }
+    let font = egui::FontId::monospace(11.0);
+    painter.text(inner.left_top(), egui::Align2::LEFT_TOP, number(hi), font.clone(), pal.text_dim);
+    painter.text(inner.left_bottom(), egui::Align2::LEFT_BOTTOM, number(lo), font, pal.text_dim);
+}
+
 fn table_ui(ui: &mut egui::Ui, index: usize, table: &coiman_core::extensions::plugin::host::Table) {
     let pal = theme::colors();
     let font = egui::TextStyle::Body.resolve(ui.style());
