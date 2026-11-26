@@ -1,0 +1,5 @@
+id = "coiman.agents"
+name = "Agents"
+version = "1.0.0"
+description = "opencode, installed on this computer, in the Agents panel: chats with its agents in the open folder, their thinking and tool calls as they come, past sessions, models, and Plan or Agent mode. Coiman has no AI of its own; the agent asks before it edits or runs anything unless you choose Auto."
+programs = ["opencode"]

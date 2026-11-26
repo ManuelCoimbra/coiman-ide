@@ -2430,6 +2430,7 @@ mod tests {
         app.welcome_sidebar = true;
         app.sidebar_view = SidebarView::Explorer;
         app.agents.open = true;
+        app.agents.filled_for_test();
         app.settings.workbench.agents_enabled = true;
         app.panel_visible = true;
         let raw = egui::RawInput {

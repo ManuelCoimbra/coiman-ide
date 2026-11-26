@@ -1,16 +1,14 @@
-//! The Agents window: OpenCode installed on this computer, in a chat-like view.
+//! The chat view (the Agents panel): a conversation with an agent, filled by an extension.
 //!
-//! Coiman doesn't implement an AI model of its own. This view runs the `opencode`
-//! command line in the open folder, asks it for its models, and shows its replies,
-//! thinking and tool calls in a transcript. In a wide panel it becomes the
-//! reference Agents workspace: a 260px sessions rail beside the conversation.
-//! A narrow panel keeps the focused Chat view.
+//! Coiman has no AI of its own. The Agents extension runs `opencode` in the open folder and
+//! fills this view through the plugin API (`set-chat`): the transcript, sessions, models and
+//! choices. The view keeps the box you type in, its history, queue and attachments, and sends
+//! what you do back as `chat-action` events. Sessions are a full-panel picker.
 
-use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
+
+use coiman_core::extensions::plugin::host::{ChatAction, ChatPart, ChatView};
 
 use coiman_core::language::highlight;
 use coiman_core::language::markdown::Inline;
@@ -51,23 +49,34 @@ struct Message {
     parts: Vec<Part>,
 }
 
+impl From<coiman_core::extensions::plugin::host::ChatMessage> for Message {
+    fn from(m: coiman_core::extensions::plugin::host::ChatMessage) -> Self {
+        let parts = m
+            .parts
+            .into_iter()
+            .map(|p| match p {
+                ChatPart::Text(t) => Part::Text(t),
+                ChatPart::Thinking(t) => Part::Thinking(t),
+                ChatPart::Tool(t) => Part::Tool(ToolPart {
+                    id: t.id,
+                    name: t.name,
+                    title: t.title,
+                    input: t.input,
+                    output: t.output,
+                    status: t.status,
+                }),
+            })
+            .collect();
+        Self { role: if m.from_user { Role::User } else { Role::Agent }, parts }
+    }
+}
+
 #[derive(Clone)]
 struct SessionInfo {
     id: String,
     title: String,
     updated: u64,
-    directory: Option<PathBuf>,
 }
-
-/// How the ids Coiman makes for new sessions start.
-const NEW_SESSION: &str = "ses_coiman_";
-
-/// Manual for an older OpenCode: edits, commands and fetches need asking.
-///
-/// `opencode run` has no interactive approval surface, so an older client turns these
-/// requests down rather than silently granting them. Newer clients handle this policy
-/// themselves; the UI explains that limitation before the user sends a task.
-const LEGACY_MANUAL_PERMISSIONS: &str = r#"{"permission":{"edit":"ask","bash":"ask","webfetch":"ask"}}"#;
 
 /// At this width the panel becomes the reference Agents workspace: a persistent
 /// sessions rail beside the conversation. Below it, the panel keeps the focused
@@ -81,17 +90,6 @@ const SESSIONS_TOP_HEIGHT: f32 = CHAT_CONTEXT_HEIGHT;
 const SESSIONS_HEADER_HEIGHT: f32 = 29.0;
 const COMPOSER_MIN_HEIGHT: f32 = 109.0;
 
-enum AgentMsg {
-    Text(String),
-    Thinking(String),
-    Tool(ToolPart),
-    Models(Vec<String>),
-    Session(Vec<Message>),
-    /// The id OpenCode gave the session the run is in.
-    SessionId(String),
-    End(Option<i32>),
-}
-
 #[derive(Default)]
 pub(crate) struct AgentsUi {
     pub(crate) open: bool,
@@ -100,15 +98,17 @@ pub(crate) struct AgentsUi {
     session: String,
     /// The title of the current session, shown in the conversation bar.
     session_title: Option<String>,
-    running: Option<Receiver<AgentMsg>>,
-    /// True between deciding to send and registering the child process. This
-    /// closes the same-frame double-send race.
-    sending: bool,
-    child_pid: Option<u32>,
-    running_models: Option<Receiver<AgentMsg>>,
-    running_history: Option<Receiver<Vec<SessionInfo>>>,
-    running_session: Option<Receiver<AgentMsg>>,
-    running_delete: Option<Receiver<()>>,
+    /// The extension filling the view, and what to send it.
+    plugin: Option<String>,
+    outbox: Vec<ChatAction>,
+    /// Before the session's title ("OpenCode").
+    name: String,
+    /// The agent's program isn't installed: how to get it.
+    missing: Option<String>,
+    /// The status the extension gave last, so one it repeats doesn't hide the view's own.
+    plugin_status: Option<String>,
+    /// The agent is working.
+    running: bool,
     deleting: bool,
     /// The session waiting for a delete confirmation.
     delete_pending: Option<SessionInfo>,
@@ -120,18 +120,17 @@ pub(crate) struct AgentsUi {
     /// The file open in the editor, offered as context by "Add Context…".
     active_file: Option<PathBuf>,
     root: Option<PathBuf>,
-    session_root: Option<PathBuf>,
     status: Option<String>,
-    checked_opencode: bool,
-    opencode: Option<PathBuf>,
     models: Vec<String>,
     models_loading: bool,
     models_loaded: bool,
+    models_asked: bool,
     /// The model list filtered for the currently open picker. Recomputed only
     /// when the query changes, so opening the popup does not scan every model
     /// on every frame.
     model_results: Vec<String>,
-    model_results_query: String,
+    /// The query `model_results` was made for; None when the list changed since.
+    model_results_query: Option<String>,
     history: Vec<SessionInfo>,
     history_open: bool,
     history_loading: bool,
@@ -141,9 +140,8 @@ pub(crate) struct AgentsUi {
     model: Option<String>,
     /// The agent mode: "build" edits files, "plan" only discusses.
     mode: String,
-    /// "auto" approves tool use; "manual" doesn't pass --auto to OpenCode.
+    /// "auto" approves tool use; "manual" asks first.
     permissions: String,
-    prefs_loaded: bool,
     model_search: String,
     focus_input: bool,
     /// Messages typed while the agent runs, sent when it finishes.
@@ -163,15 +161,12 @@ pub(crate) struct AgentsUi {
     pub(crate) diff_request: Option<PathBuf>,
     /// How long the last turn took, for the mock-up's completion line.
     last_turn_seconds: Option<u64>,
-    turn_started: Option<std::time::Instant>,
     /// The last prompt sent, to swallow accidental double-submits.
     last_sent: Option<(String, std::time::Instant)>,
     /// Ask the app to open Settings.
     pub(crate) requests_settings: bool,
     /// The MCP servers button was clicked.
     pub(crate) requests_mcp: bool,
-    /// Set when Continue last session was chosen before the list was loaded.
-    continue_requested: bool,
     /// True while the transcript is scrolled to the bottom, for the jump pill.
     at_bottom: bool,
     /// Set to scroll the transcript back to the bottom.
@@ -207,508 +202,134 @@ impl AgentsUi {
         }
     }
 
-    fn new_session() -> String {
-        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-        // OpenCode requires session ids to start with "ses".
-        format!("{NEW_SESSION}{}_{}", std::process::id(), nanos)
+    /// Asks the extension that fills the view to do something.
+    fn act(&mut self, action: &str, argument: &str, attachments: Vec<String>) {
+        self.outbox.push(ChatAction { action: action.to_owned(), argument: argument.to_owned(), attachments });
     }
 
-    fn opencode_command(program: &Path) -> Command {
-        let mut command = coiman_core::language::lsp::discovery::quiet_command(program);
-        // Coiman may itself run inside an OpenCode session. Those variables would make the
-        // child join that session and its folder instead of the one open here.
-        for key in [
-            "OPENCODE",
-            "OPENCODE_SESSION_ID",
-            "OPENCODE_TERMINAL",
-            "OPENCODE_SERVER",
-            "OPENCODE_PORT",
-            "OPENCODE_HOST",
-        ] {
-            command.env_remove(key);
+    /// What the extension filling the view (the Agents extension) says now.
+    pub(crate) fn apply(&mut self, plugin: &str, view: ChatView) {
+        let was_running = self.running;
+        self.plugin = Some(plugin.to_owned());
+        self.name = view.name;
+        self.missing = view.missing;
+        self.session = view.session;
+        self.session_title = Some(view.title).filter(|t| !t.is_empty());
+        let from = (view.messages_from as usize).min(self.messages.len());
+        self.messages.truncate(from);
+        self.messages.extend(view.messages.into_iter().map(Message::from));
+        self.running = view.running;
+        self.session_loading = view.loading;
+        if !view.status.is_empty() && self.plugin_status.as_deref() != Some(view.status.as_str()) {
+            self.status = Some(view.status.clone());
         }
-        command
-    }
-
-    /// Whether this OpenCode has `--standalone` (newer ones, which also run a background
-    /// service). Older ones (1.19) don't: they take no made-up session id, and export a
-    /// session with `opencode export`. Asked once.
-    fn standalone(program: &Path) -> bool {
-        static STANDALONE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *STANDALONE.get_or_init(|| {
-            Self::opencode_command(program)
-                .args(["run", "--help"])
-                .stdin(Stdio::null())
-                .output()
-                .map(|o| {
-                    String::from_utf8_lossy(&o.stdout).contains("--standalone")
-                        || String::from_utf8_lossy(&o.stderr).contains("--standalone")
-                })
-                .unwrap_or(true)
-        })
-    }
-
-    /// `args` after `--standalone` where this OpenCode has it.
-    fn with_standalone<'a>(program: &Path, args: &[&'a str]) -> Vec<&'a str> {
-        let mut out = Vec::with_capacity(args.len() + 1);
-        if Self::standalone(program) {
-            out.push("--standalone");
+        self.plugin_status = Some(view.status);
+        if let Some(sessions) = view.sessions {
+            self.history =
+                sessions.into_iter().map(|s| SessionInfo { id: s.id, title: s.title, updated: s.updated }).collect();
+            self.history_loaded = true;
+            self.deleting = false;
+            self.deleting_id = None;
         }
-        out.extend_from_slice(args);
-        out
-    }
-
-    fn opencode(&mut self) -> Option<PathBuf> {
-        if !self.checked_opencode {
-            self.checked_opencode = true;
-            self.opencode = coiman_core::language::lsp::servers::which("opencode");
+        self.history_loading = view.sessions_loading;
+        if let Some(models) = view.models {
+            self.models = models;
+            self.models_loaded = true;
+            self.model_results.clear();
+            self.model_results_query = None;
         }
-        self.opencode.clone()
-    }
-
-    fn config_file() -> Option<PathBuf> {
-        coiman_core::settings::config_dir().map(|d| d.join("agents.json"))
-    }
-
-    fn load_model(&mut self) {
-        if self.prefs_loaded {
-            return;
-        }
-        self.prefs_loaded = true;
-        self.mode = "build".to_owned();
-        // The agent asks before it edits or runs anything unless you choose Auto: with
-        // `opencode run`, Manual turns down what needs a decision and says so.
-        self.permissions = "manual".to_owned();
-        let Some(path) = Self::config_file() else { return };
-        let Ok(text) = std::fs::read_to_string(path) else { return };
-        let Ok(value) = serde_json::from_str::<Value>(&text) else { return };
-        if let Some(model) = value.get("model").and_then(Value::as_str).filter(|m| !m.is_empty()) {
-            self.model = Some(model.to_owned());
-        }
-        if let Some(mode) = value.get("mode").and_then(Value::as_str).filter(|mode| *mode == "plan" || *mode == "build")
-        {
-            self.mode = mode.to_owned();
-        }
-        if let Some(permissions) = value
-            .get("permissions")
-            .and_then(Value::as_str)
-            .filter(|permissions| *permissions == "auto" || *permissions == "manual")
-        {
-            self.permissions = permissions.to_owned();
-        }
-    }
-
-    fn save_prefs(&self) {
-        let Some(path) = Self::config_file() else { return };
-        let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
-        let value = serde_json::json!({ "model": self.model, "mode": self.mode, "permissions": self.permissions });
-        let _ = std::fs::write(path, serde_json::to_string_pretty(&value).unwrap_or_default());
-    }
-
-    fn load_models(&mut self) {
-        if self.models_loading || self.models_loaded {
-            return;
-        }
-        let Some(program) = self.opencode() else { return };
-        self.models_loading = true;
-        let (tx, rx) = mpsc::channel();
-        self.running_models = Some(rx);
-        std::thread::spawn(move || {
-            let output = Self::opencode_command(&program).arg("models").output();
-            let models = match output {
-                Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
-                    .lines()
-                    .map(str::trim)
-                    .filter(|l| !l.is_empty() && !l.starts_with("Error"))
-                    .map(str::to_owned)
-                    .collect(),
-                _ => Vec::new(),
-            };
-            let _ = tx.send(AgentMsg::Models(models));
-        });
-    }
-
-    fn load_history(&mut self) {
-        if self.history_loading {
-            return;
-        }
-        let Some(program) = self.opencode() else { return };
-        self.history_loading = true;
-        let root = self.root.clone();
-        let (tx, rx) = mpsc::channel();
-        self.running_history = Some(rx);
-        std::thread::spawn(move || {
-            let mut command = Self::opencode_command(&program);
-            command
-                .args(Self::with_standalone(&program, &["session", "list", "--format", "json", "-n", "50"]))
-                .stdin(Stdio::null());
-            if let Some(root) = &root {
-                command.current_dir(root);
-                command.env("PWD", root);
-            }
-            let sessions = command
-                .output()
-                .ok()
-                .filter(|o| o.status.success())
-                .and_then(|o| serde_json::from_str::<Value>(&String::from_utf8_lossy(&o.stdout)).ok())
-                .and_then(|v| v.as_array().cloned())
-                .map(|items| {
-                    let mut sessions: Vec<SessionInfo> = items
-                        .iter()
-                        .filter_map(|item| {
-                            Some(SessionInfo {
-                                id: item.get("id")?.as_str()?.to_owned(),
-                                title: item.get("title").and_then(Value::as_str).unwrap_or("Untitled").to_owned(),
-                                updated: item.get("updated").and_then(Value::as_u64).unwrap_or(0),
-                                directory: item.get("directory").and_then(Value::as_str).map(PathBuf::from),
-                            })
-                        })
-                        .collect();
-                    sessions.sort_by_key(|session| std::cmp::Reverse(session.updated));
-                    sessions
-                })
-                .unwrap_or_default();
-            let _ = tx.send(sessions);
-        });
-    }
-
-    fn poll_history(&mut self) {
-        let Some(rx) = self.running_history.take() else { return };
-        match rx.try_recv() {
-            Ok(sessions) => {
-                self.history_loading = false;
-                self.history_loaded = true;
-                if self.continue_requested {
-                    self.continue_requested = false;
-                    if let Some(latest) = sessions.first().cloned() {
-                        self.history = sessions;
-                        self.open_session(latest);
-                        return;
-                    }
-                }
-                // The session OpenCode named: its title is the generated one.
-                if let Some(current) = sessions.iter().find(|session| session.id == self.session) {
-                    self.session_title = Some(current.title.clone());
-                }
-                self.history = sessions;
-            }
-            Err(mpsc::TryRecvError::Empty) => self.running_history = Some(rx),
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.history_loading = false;
-                self.history_loaded = true;
-            }
-        }
-    }
-
-    /// Deletes a session with OpenCode, then refreshes the list.
-    fn delete_session(&mut self, session: SessionInfo) {
-        self.delete_pending = None;
-        if self.running.is_some() || self.session_loading {
-            self.status = Some("Stop the active task before deleting a session".to_owned());
-            return;
-        }
-        let Some(program) = self.opencode() else { return };
-        self.deleting = true;
-        self.deleting_id = Some(session.id.clone());
-        let root = self.root.clone();
-        let (tx, rx) = mpsc::channel();
-        self.running_delete = Some(rx);
-        std::thread::spawn(move || {
-            let mut command = Self::opencode_command(&program);
-            command.args(Self::with_standalone(&program, &["session", "delete", &session.id])).stdin(Stdio::null());
-            if let Some(root) = &root {
-                command.current_dir(root);
-                command.env("PWD", root);
-            }
-            let _ = command.output();
-            let _ = tx.send(());
-        });
-    }
-
-    fn poll_delete(&mut self) {
-        let Some(rx) = self.running_delete.take() else { return };
-        match rx.try_recv() {
-            Ok(()) => {
-                self.deleting = false;
-                if self.deleting_id.take().as_deref() == Some(self.session.as_str()) {
-                    // The open session is gone; start fresh.
-                    self.slash("clear");
-                }
-                self.history.clear();
-                self.load_history();
-                self.status = Some("Session deleted".to_owned());
-            }
-            Err(mpsc::TryRecvError::Empty) => self.running_delete = Some(rx),
-            Err(mpsc::TryRecvError::Disconnected) => self.deleting = false,
-        }
-    }
-
-    /// Opens a past session: its transcript comes from `opencode session export`.
-    fn open_session(&mut self, session: SessionInfo) {
-        if self.running.is_some() || self.running_session.is_some() || self.session_loading {
-            self.status = Some("Stop the active task before switching sessions".to_owned());
-            return;
-        }
-        let Some(program) = self.opencode() else { return };
-        self.session = session.id.clone();
-        self.session_title = Some(session.title.clone());
-        // A session belongs to the folder it was started in; export from there so OpenCode
-        // finds its data.
-        self.session_root = session.directory.clone().or_else(|| self.root.clone());
-        self.messages.clear();
-        self.last_changed_files.clear();
-        self.last_turn_tools = 0;
-        self.last_sent = None;
-        self.history_open = false;
-        self.status = Some(format!("Opening \"{}\"…", session.title));
-        self.focus_input = true;
-        self.session_loading = true;
-        let (tx, rx) = mpsc::channel();
-        self.running_session = Some(rx);
-        let root = self.session_root.clone();
-        std::thread::spawn(move || {
-            let mut command = Self::opencode_command(&program);
-            if Self::standalone(&program) {
-                command.args(["--standalone", "session", "export", &session.id]);
-            } else {
-                command.args(["export", &session.id]);
-            }
-            command.stdin(Stdio::null());
-            if let Some(root) = &root {
-                command.current_dir(root);
-                command.env("PWD", root);
-            }
-            let value = command
-                .output()
-                .ok()
-                .filter(|output| output.status.success())
-                .and_then(|output| serde_json::from_str::<Value>(&String::from_utf8_lossy(&output.stdout)).ok());
-            let _ = tx.send(AgentMsg::Session(parse_export(&value)));
-        });
-    }
-
-    fn poll_session(&mut self) {
-        let Some(rx) = self.running_session.take() else { return };
-        match rx.try_recv() {
-            Ok(AgentMsg::Session(messages)) => {
-                self.session_loading = false;
-                self.focus_input = true;
-                self.status = Some(if messages.is_empty() {
-                    "This session has no messages".to_owned()
-                } else {
-                    "Resumed session".to_owned()
-                });
-                self.messages = messages;
-                self.refresh_working_set();
-            }
-            Err(mpsc::TryRecvError::Empty) => self.running_session = Some(rx),
-            Err(mpsc::TryRecvError::Disconnected) => {
-                self.session_loading = false;
-                self.status = Some("Couldn't load the session".to_owned());
-            }
-            Ok(_) => {}
-        }
-    }
-
-    fn poll(&mut self, ctx: &egui::Context) {
-        if let Some(rx) = self.running_models.take() {
-            match rx.try_recv() {
-                Ok(AgentMsg::Models(models)) => {
-                    self.models = models;
-                    self.models_loading = false;
-                    self.models_loaded = true;
-                    self.model_results.clear();
-                    self.model_results_query.clear();
-                }
-                Ok(_) => {}
-                Err(mpsc::TryRecvError::Empty) => self.running_models = Some(rx),
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    self.models_loading = false;
-                    self.models_loaded = true;
-                }
-            }
-        }
-
-        let Some(rx) = &self.running else { return };
-        let mut ended: Option<Option<i32>> = None;
-        loop {
-            match rx.try_recv() {
-                Ok(AgentMsg::Text(text)) => {
-                    // Errors are their own block: they must not be swallowed
-                    // into the reply text, where their red would not show.
-                    let is_error = text.starts_with("Error:");
-                    let last_is_plain_text = self
-                        .messages
-                        .last()
-                        .filter(|message| message.role == Role::Agent)
-                        .and_then(|message| message.parts.last())
-                        .is_some_and(|part| matches!(part, Part::Text(t) if !t.starts_with("Error:")));
-                    if !is_error
-                        && last_is_plain_text
-                        && let Some(Part::Text(existing)) = self.messages.last_mut().and_then(|message| match message {
-                            Message { role: Role::Agent, parts } => parts.last_mut(),
-                            Message { role: Role::User, .. } => None,
-                        })
-                    {
-                        existing.push_str(&text);
-                        continue;
-                    }
-                    if let Some(Message { role: Role::Agent, parts }) =
-                        self.messages.last_mut().filter(|m| m.role == Role::Agent)
-                    {
-                        parts.push(Part::Text(text));
-                    } else {
-                        self.messages.push(Message { role: Role::Agent, parts: vec![Part::Text(text)] });
-                    }
-                }
-                Ok(AgentMsg::Thinking(text)) => {
-                    if let Some(Message { role: Role::Agent, parts }) =
-                        self.messages.last_mut().filter(|m| m.role == Role::Agent)
-                    {
-                        if let Some(Part::Thinking(existing)) = parts.last_mut() {
-                            existing.push_str(&text);
-                        } else {
-                            parts.push(Part::Thinking(text));
-                        }
-                    } else {
-                        self.messages.push(Message { role: Role::Agent, parts: vec![Part::Thinking(text)] });
-                    }
-                }
-                Ok(AgentMsg::Tool(mut tool)) => {
-                    if let Some(Message { role: Role::Agent, parts }) =
-                        self.messages.last_mut().filter(|m| m.role == Role::Agent)
-                    {
-                        if let Some(Part::Tool(existing)) =
-                            parts.iter_mut().find(|p| matches!(p, Part::Tool(t) if t.id == tool.id))
-                        {
-                            // Completion events may omit the tool name and input that
-                            // the start event already supplied.
-                            if tool.name.is_empty() || tool.name == "tool" {
-                                tool.name = existing.name.clone();
-                            }
-                            if tool.title.is_empty() || tool.title == "tool" {
-                                tool.title = existing.title.clone();
-                            }
-                            if tool.input.is_empty() {
-                                tool.input = existing.input.clone();
-                            }
-                            *existing = tool;
-                        } else {
-                            parts.push(Part::Tool(tool));
-                        }
-                    } else {
-                        self.messages.push(Message { role: Role::Agent, parts: vec![Part::Tool(tool)] });
-                    }
-                    self.last_changed_files = files_touched(&self.messages);
-                    self.last_turn_tools = tools_in_last_turn(&self.messages);
-                }
-                Ok(AgentMsg::Models(models)) => {
-                    self.models = models;
-                    self.models_loading = false;
-                    self.models_loaded = true;
-                }
-                Ok(AgentMsg::Session(_)) => {}
-                Ok(AgentMsg::SessionId(id)) => {
-                    if self.session.starts_with(NEW_SESSION) && !id.is_empty() {
-                        self.session = id;
-                    }
-                }
-                Ok(AgentMsg::End(code)) => {
-                    // Don't break: the reader threads may still deliver lines that
-                    // were buffered before the process exited.
-                    ended = Some(code);
-                }
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => break,
-            }
-        }
-        if let Some(code) = ended {
-            self.running = None;
-            self.child_pid = None;
-            self.last_turn_seconds = self.turn_started.take().map(|started| started.elapsed().as_secs());
-            self.last_changed_files = files_touched(&self.messages);
-            self.last_turn_tools = tools_in_last_turn(&self.messages);
-            // Keep the session list fresh: this run may have created a session.
-            self.history.clear();
-            self.load_history();
-            self.status = Some(match code {
-                Some(0) | None => "Ready".to_owned(),
-                Some(code) => format!("OpenCode ended with exit code {code}"),
-            });
+        self.models_loading = view.models_loading;
+        self.model = Some(view.model).filter(|m| !m.is_empty());
+        self.mode = view.mode;
+        self.permissions = view.permissions;
+        self.last_turn_seconds = view.turn_seconds;
+        self.refresh_working_set();
+        if was_running && !self.running {
             self.focus_input = true;
             // A message typed while the agent ran sends now.
             if !self.queue.is_empty() {
                 let next = self.queue.remove(0);
                 let root = self.root.clone();
                 self.input = next;
-                self.send(ctx, root.as_deref());
+                self.send(root.as_deref());
             }
         }
-        if self.running.is_some() || self.running_models.is_some() || self.running_session.is_some() {
-            ctx.request_repaint();
+    }
+
+    /// As if the Agents extension filled the view, for tests elsewhere in the app.
+    #[cfg(test)]
+    pub(crate) fn filled_for_test(&mut self) {
+        self.plugin = Some("coiman.agents".to_owned());
+        self.name = "OpenCode".to_owned();
+    }
+
+    /// No extension fills the view any more (it was stopped or removed).
+    pub(crate) fn detach(&mut self, plugin: &str) {
+        if self.plugin.as_deref() == Some(plugin) {
+            self.plugin = None;
+            self.running = false;
+            self.session_loading = false;
         }
     }
 
-    /// The `opencode run` command for one prompt, and whether it reads that
-    /// prompt from stdin. Kept apart from sending so it can be checked without
-    /// starting a process or depending on workspace trust.
-    fn run_command(
-        &self,
-        program: &Path,
-        run_root: &Path,
-        session: &str,
-        text: &str,
-        attachments: &[String],
-    ) -> (Command, bool) {
-        let mut command = Self::opencode_command(program);
-        command.args(Self::with_standalone(program, &["run", "--thinking", "--format", "json"]));
-        // An older OpenCode won't take a session id it didn't make: a new chat starts without
-        // one, and the id arrives with the first event.
-        if Self::standalone(program) || !session.starts_with(NEW_SESSION) {
-            command.args(["--session", session]);
-        }
-        // OpenCode quotes a prompt given as one argument after `--`, and newer
-        // versions then store it twice. Its stdin is the plain prompt channel:
-        // the text arrives exactly as typed, including newlines.
-        let via_stdin = Self::standalone(program);
-        command
-            .stdin(if via_stdin { Stdio::piped() } else { Stdio::null() })
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        // The permission level: Auto approves the agent's tool use. Older Manual clients
-        // have no interactive approval surface in this embedded view, so they reject asks.
-        if self.permissions != "manual" {
-            command.arg("--auto");
-        } else if !via_stdin && std::env::var_os("OPENCODE_CONFIG_CONTENT").is_none() {
-            // An older OpenCode edits and runs commands without asking unless its config
-            // says "ask"; with no one to ask in `run`, it then turns them down.
-            command.env("OPENCODE_CONFIG_CONTENT", LEGACY_MANUAL_PERMISSIONS);
-        }
-        // OpenCode keeps a session's first agent unless it is told otherwise.
-        // Send the current choice every time, so switching back to Agent really
-        // leaves Plan mode instead of staying there for the rest of the session.
-        let agent = if self.mode == "plan" { "plan" } else { "build" };
-        command.args(["--agent", agent]);
-        if let Some(model) = &self.model {
-            command.args(["--model", model]);
-        }
-        for attachment in attachments {
-            command.args(["--file", attachment]);
-        }
-        // The standalone server runs in this directory; the background service would
-        // keep whatever directory it was started in.
-        command.current_dir(run_root);
-        command.env("PWD", run_root);
-        if !via_stdin {
-            // Older OpenCode has no stdin prompt: its words are joined as-is.
-            command.args(text.split_whitespace());
-        }
-        (command, via_stdin)
+    /// What the view asked for since the last frame, for the extension.
+    pub(crate) fn take_actions(&mut self) -> Option<(String, Vec<ChatAction>)> {
+        let plugin = self.plugin.clone()?;
+        (!self.outbox.is_empty()).then(|| (plugin, std::mem::take(&mut self.outbox)))
     }
 
-    fn send(&mut self, ctx: &egui::Context, root: Option<&Path>) {
+    fn save_prefs(&mut self) {
+        let model = self.model.clone().unwrap_or_default();
+        let (mode, permissions) = (self.mode.clone(), self.permissions.clone());
+        self.act("model", &model, Vec::new());
+        self.act("mode", &mode, Vec::new());
+        self.act("permissions", &permissions, Vec::new());
+    }
+
+    pub(crate) fn load_models(&mut self) {
+        if !self.models_loaded && !self.models_asked && self.plugin.is_some() {
+            self.models_asked = true;
+            self.act("models", "", Vec::new());
+        }
+    }
+
+    fn load_history(&mut self) {
+        if !self.history_loading && self.plugin.is_some() {
+            self.history_loading = true;
+            self.act("sessions", "", Vec::new());
+        }
+    }
+
+    /// Deletes a session, then the list comes again.
+    fn delete_session(&mut self, session: SessionInfo) {
+        self.delete_pending = None;
+        if self.running || self.session_loading {
+            self.status = Some("Stop the active task before deleting a session".to_owned());
+            return;
+        }
+        self.deleting = true;
+        self.deleting_id = Some(session.id.clone());
+        self.act("delete", &session.id, Vec::new());
+    }
+
+    /// Opens a past session.
+    fn open_session(&mut self, session: SessionInfo) {
+        if self.running || self.session_loading {
+            self.status = Some("Stop the active task before switching sessions".to_owned());
+            return;
+        }
+        self.last_changed_files.clear();
+        self.last_turn_tools = 0;
+        self.last_sent = None;
+        self.history_open = false;
+        self.focus_input = true;
+        self.session_loading = true;
+        self.act("open", &session.id, Vec::new());
+    }
+
+    fn send(&mut self, root: Option<&Path>) {
         let text = self.input.trim().to_owned();
-        if text.is_empty() || self.running.is_some() || self.session_loading {
+        if text.is_empty() || self.running || self.session_loading {
             return;
         }
         if let Some((last, at)) = &self.last_sent
@@ -723,128 +344,48 @@ impl AgentsUi {
             self.slash(command);
             return;
         }
-        let Some(root) = root.filter(|root| trust::is_trusted(root)) else {
+        if !root.is_some_and(trust::is_trusted) {
             self.status = Some("The working folder is restricted. Trust it before starting an agent.".to_owned());
             return;
-        };
-        // An existing OpenCode session belongs to the folder it was created in.
-        // Keep using that folder instead of clearing the session whenever the
-        // current workspace differs.
-        let run_root = if self.session.is_empty() { root } else { self.session_root.as_deref().unwrap_or(root) };
-        let run_root = run_root.to_path_buf();
-        if !trust::is_trusted(&run_root) {
-            self.status = Some("The session folder is restricted. Trust it before continuing.".to_owned());
+        }
+        if self.plugin.is_none() {
+            self.status = Some("The Agents extension isn't running".to_owned());
             return;
         }
-        let Some(program) = self.opencode() else {
-            self.status = Some("OpenCode isn't installed: npm install -g opencode-ai".to_owned());
-            return;
-        };
         let rendered = self.with_attachments(&text);
         let duplicate_last =
             self.messages.last().is_some_and(|message| message.role == Role::User && message_text(message) == rendered);
-        if duplicate_last || self.sending {
+        if duplicate_last {
             self.input.clear();
             self.status = Some("Duplicate prompt ignored".to_owned());
             return;
         }
-        self.sending = true;
         let attachments = std::mem::take(&mut self.attached);
-        if self.session.is_empty() {
-            self.session_root = Some(run_root.to_path_buf());
-            self.session = Self::new_session();
-            // OpenCode names the session itself; the title arrives with the
-            // history refresh after the run.
-            self.session_title = None;
-        }
-        self.messages.push(Message { role: Role::User, parts: vec![Part::Text(rendered)] });
+        self.act("send", &text, attachments);
+        // Running until the extension says otherwise: what's typed meanwhile waits its turn.
+        self.running = true;
         self.last_sent = Some((text.clone(), std::time::Instant::now()));
-        self.prompt_history.push(text.clone());
+        self.prompt_history.push(text);
         self.history_index = None;
         self.input.clear();
-        self.status = Some(format!("Working in {}", run_root.display()));
-        self.turn_started = Some(std::time::Instant::now());
-        self.last_turn_seconds = None;
         self.load_models();
-
-        let (mut command, via_stdin) = self.run_command(&program, &run_root, &self.session, &text, &attachments);
-        let mut child = match command.spawn() {
-            Ok(child) => child,
-            Err(e) => {
-                self.sending = false;
-                self.messages.pop();
-                self.attached = attachments;
-                self.last_sent = None;
-                self.input = text;
-                self.status = Some(format!("Couldn't start OpenCode: {e}"));
-                return;
-            }
-        };
-        if via_stdin && let Some(mut stdin) = child.stdin.take() {
-            let _ = stdin.write_all(text.as_bytes());
-        }
-        self.child_pid = Some(child.id());
-        let (tx, rx) = mpsc::channel();
-        let wake = ctx.clone();
-        if let Some(stdout) = child.stdout.take() {
-            let tx = tx.clone();
-            let wake = wake.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                    let Some(msg) = parse_event(&line) else { continue };
-                    if tx.send(msg).is_err() {
-                        break;
-                    }
-                    wake.request_repaint();
-                }
-            });
-        }
-        if let Some(stderr) = child.stderr.take() {
-            let tx = tx.clone();
-            let wake = wake.clone();
-            std::thread::spawn(move || {
-                for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                    let line = stderr_line(&line);
-                    if !line.trim().is_empty() && tx.send(AgentMsg::Text(format!("{line}\n"))).is_err() {
-                        break;
-                    }
-                    wake.request_repaint();
-                }
-            });
-        }
-        std::thread::spawn(move || {
-            let code = child.wait().ok().and_then(|s| s.code());
-            let _ = tx.send(AgentMsg::End(code));
-            wake.request_repaint();
-        });
-        self.running = Some(rx);
-        self.sending = false;
     }
 
-    /// Stops the current turn and sends the composed message immediately. This is the
-    /// embedded equivalent of VS Code's "Stop and Send" action.
-    fn send_now(&mut self, ctx: &egui::Context, root: Option<&Path>) {
-        if self.running.is_some() {
+    /// Stops the current turn and sends the composed message at once: VS Code's "Stop and
+    /// Send".
+    fn send_now(&mut self, root: Option<&Path>) {
+        if self.running {
             self.stop();
         }
         self.last_sent = None;
-        self.send(ctx, root);
+        self.send(root);
     }
 
     fn stop(&mut self) {
-        let Some(pid) = self.child_pid.take() else { return };
-        if cfg!(windows) {
-            let _ = Command::new("taskkill").args(["/T", "/F", "/PID", &pid.to_string()]).status();
-        } else {
-            let _ = Command::new("kill").arg(pid.to_string()).status();
-        }
-        self.running = None;
-        self.last_turn_seconds = self.turn_started.take().map(|started| started.elapsed().as_secs());
-        // A stopped run drops its queue: those messages must not fire after
-        // some later run.
+        self.act("stop", "", Vec::new());
+        self.running = false;
+        // A stopped run drops its queue: those messages must not fire after some later run.
         self.queue.clear();
-        self.refresh_working_set();
-        self.status = Some("Stopped".to_owned());
     }
 
     /// Files edited in the last turn and how many tools it used.
@@ -853,29 +394,27 @@ impl AgentsUi {
         self.last_turn_tools = tools_in_last_turn(&self.messages);
     }
 
-    /// Starts a fresh chat without letting an in-flight OpenCode process write into it.
+    /// Starts a fresh chat.
     fn new_chat(&mut self) -> bool {
-        if self.running.is_some() || self.session_loading {
+        if self.running || self.session_loading {
             self.status = Some("Stop the active task before starting a new session".to_owned());
             return false;
         }
+        self.act("new", "", Vec::new());
         self.messages.clear();
         self.session.clear();
         self.session_title = None;
-        self.session_root = None;
         self.queue.clear();
         self.attached.clear();
         self.last_changed_files.clear();
         self.last_turn_tools = 0;
         self.input.clear();
         self.history_index = None;
-        self.status = Some("New session".to_owned());
         self.history_open = false;
-        self.turn_started = None;
         self.last_turn_seconds = None;
         self.last_sent = None;
-        self.sending = false;
         self.focus_input = true;
+        self.status = Some("New session".to_owned());
         true
     }
 
@@ -906,13 +445,8 @@ impl AgentsUi {
     }
 
     pub(crate) fn panel(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        self.poll(&ctx);
-        self.poll_history();
-        self.poll_session();
-        self.poll_delete();
         let pal = theme::colors();
-        let running = self.running.is_some();
+        let running = self.running;
         let jump = std::mem::take(&mut self.jump_to_bottom);
 
         // Sessions are a full-screen picker. Selecting one returns to Chat;
@@ -974,7 +508,7 @@ impl AgentsUi {
                     self.load_history();
                 }
                 let title = self.session_title.clone().unwrap_or_else(|| "New Session".to_owned());
-                let prefix = "OpenCode · ";
+                let prefix = format!("{} · ", if self.name.is_empty() { "Agents" } else { self.name.as_str() });
                 ui.add(
                     egui::Label::new(RichText::new(prefix).size(11.0).color(pal.text_dim))
                         .wrap_mode(egui::TextWrapMode::Truncate),
@@ -1036,8 +570,15 @@ impl AgentsUi {
             egui::Stroke::new(1.0, pal.border),
         );
 
-        if self.opencode().is_none() {
-            // OpenCode missing: a centered notice fills the column.
+        if self.plugin.is_none() || self.missing.is_some() {
+            // No agent: a centered notice fills the column.
+            let (headline, how) = match &self.missing {
+                Some(how) => (format!("{} isn't installed", self.name), format!("Install it with: {how}")),
+                None => (
+                    "The Agents extension isn't running".to_owned(),
+                    "Install the Agents pack from the Extensions view".to_owned(),
+                ),
+            };
             let height = ui.available_height();
             ui.allocate_ui(egui::vec2(width, height), |ui| {
                 ui.add_space(height * 0.3);
@@ -1046,8 +587,8 @@ impl AgentsUi {
                     ui.painter().circle_filled(rect.center(), 22.0, pal.accent.gamma_multiply(0.15));
                     crate::ui::icons::paint(ui.painter(), rect.shrink(10.0), crate::ui::icons::Icon::Agent, pal.accent);
                     ui.add_space(8.0);
-                    ui.label(RichText::new("OpenCode isn't installed").strong());
-                    ui.label(RichText::new("Install it with: npm install -g opencode-ai").small().color(pal.text_dim));
+                    ui.label(RichText::new(headline).strong());
+                    ui.label(RichText::new(how).small().color(pal.text_dim));
                     ui.label(
                         RichText::new("Coiman runs the program on this computer; it has no AI of its own.")
                             .small()
@@ -1127,7 +668,7 @@ impl AgentsUi {
                                         match action {
                                             UserAction::Retry => {
                                                 self.input = text;
-                                                self.send(ui.ctx(), root.as_deref());
+                                                self.send(root.as_deref());
                                             }
                                             UserAction::Edit => {
                                                 self.input = text;
@@ -1431,18 +972,14 @@ impl AgentsUi {
         }
     }
 
-    /// Opens the most recent session, loading the list first if needed.
+    /// Opens the most recent session; the extension loads the list first if it must.
     fn continue_session(&mut self) {
-        if let Some(latest) = self.history.first().cloned() {
-            self.open_session(latest);
-        } else {
-            // The click counts even while a load is in flight: poll_history
-            // picks the flag up when the list arrives.
-            self.continue_requested = true;
-            if !self.history_loading {
-                self.load_history();
-            }
+        if self.running || self.session_loading {
+            self.status = Some("Stop the active task before switching sessions".to_owned());
+            return;
         }
+        self.history_open = false;
+        self.act("continue", "", Vec::new());
     }
 
     /// Steps through sent prompts with the up/down arrows in an empty box.
@@ -1634,7 +1171,7 @@ impl AgentsUi {
                                     self.status = Some("Queued — it sends when this turn finishes".to_owned());
                                 } else {
                                     self.input = text;
-                                    self.send(ui.ctx(), root.as_deref());
+                                    self.send(root.as_deref());
                                 }
                             }
                         }
@@ -1718,7 +1255,7 @@ impl AgentsUi {
                                     ui.label(RichText::new("Loading models…").small().color(pal.text_dim));
                                 }
                                 let query = self.model_search.clone();
-                                if self.model_results_query != query {
+                                if self.model_results_query.as_deref() != Some(query.as_str()) {
                                     self.model_results = self
                                         .models
                                         .iter()
@@ -1726,18 +1263,18 @@ impl AgentsUi {
                                         .take(80)
                                         .cloned()
                                         .collect();
-                                    self.model_results_query = query;
+                                    self.model_results_query = Some(query);
                                 }
                                 egui::ScrollArea::vertical()
                                     .id_salt("agents_model_list")
                                     .auto_shrink([false, false])
                                     .max_height(8.0 * 22.0)
                                     .show(ui, |ui| {
-                                        for name in &self.model_results {
+                                        for name in self.model_results.clone() {
                                             if ui
                                                 .selectable_label(
                                                     self.model.as_deref() == Some(name.as_str()),
-                                                    model_label(name),
+                                                    model_label(&name),
                                                 )
                                                 .clicked()
                                             {
@@ -1771,7 +1308,7 @@ impl AgentsUi {
                                         pal.text,
                                     );
                                     if send_resp.clicked() {
-                                        self.send_now(ui.ctx(), root.as_deref());
+                                        self.send_now(root.as_deref());
                                     }
                                     send_resp.on_hover_text("Stop and send now (Enter queues)");
                                 }
@@ -1798,7 +1335,7 @@ impl AgentsUi {
                                         if can_send { pal.text } else { pal.text_dim },
                                     );
                                     if resp.clicked() && can_send {
-                                        self.send(ui.ctx(), root.as_deref());
+                                        self.send(root.as_deref());
                                     }
                                     resp.on_hover_text("Send (Enter)");
                                 }
@@ -2761,272 +2298,12 @@ fn plain_inline(inlines: &[Inline]) -> String {
     out
 }
 
-fn content_text(value: &Value) -> String {
-    match value {
-        Value::String(text) => text.clone(),
-        Value::Array(blocks) => {
-            blocks.iter().filter_map(|block| block.get("text").and_then(Value::as_str)).collect::<Vec<_>>().join("\n")
-        }
-        other => json_text(other),
-    }
-}
-
-fn parse_tool_part(part: &Value) -> Option<AgentMsg> {
-    let id = part.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
-    let name = part
-        .get("tool")
-        .and_then(Value::as_str)
-        .or_else(|| part.get("name").and_then(Value::as_str))
-        .unwrap_or("tool")
-        .to_owned();
-    let state = part.get("state")?;
-    let title = state.get("title").and_then(Value::as_str).unwrap_or(&name).to_owned();
-    let input = state.get("input").map(json_text).unwrap_or_default();
-    let output =
-        state.get("output").map(json_text).or_else(|| state.get("content").map(content_text)).unwrap_or_default();
-    let status = state.get("status").and_then(Value::as_str).unwrap_or("running").to_owned();
-    Some(AgentMsg::Tool(ToolPart { id, name, title, input, output, status }))
-}
-
-fn parse_event(line: &str) -> Option<AgentMsg> {
-    let value: Value = serde_json::from_str(line).ok()?;
-    let kind = value.get("type").and_then(Value::as_str)?;
-    let part = value.get("part");
-    let part_type = part.and_then(|p| p.get("type")).and_then(Value::as_str);
-    let text =
-        part.and_then(|p| p.get("text")).and_then(Value::as_str).or_else(|| value.get("text").and_then(Value::as_str));
-    let data = value.get("data");
-    match kind {
-        // Current OpenCode event stream: deltas arrive while the model writes.
-        "session.text.delta" => data
-            .and_then(|data| data.get("delta").or_else(|| data.get("text")))
-            .and_then(Value::as_str)
-            .map(|delta| AgentMsg::Text(delta.to_owned())),
-        "session.reasoning.delta" => data
-            .and_then(|data| data.get("delta").or_else(|| data.get("text")))
-            .and_then(Value::as_str)
-            .map(|delta| AgentMsg::Thinking(delta.to_owned())),
-        "session.tool.called" => data.map(|data| {
-            let id = data.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
-            let name = data.get("name").and_then(Value::as_str).unwrap_or("tool").to_owned();
-            let input = data.get("input").map(json_text).unwrap_or_default();
-            AgentMsg::Tool(ToolPart {
-                id,
-                name: name.clone(),
-                title: name,
-                input,
-                output: String::new(),
-                status: "running".to_owned(),
-            })
-        }),
-        "session.tool.success" | "session.tool.failed" => data.map(|data| {
-            let failed = kind == "session.tool.failed";
-            let id = data.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
-            let name = data.get("name").and_then(Value::as_str).unwrap_or("tool").to_owned();
-            let output = if failed {
-                data.get("error")
-                    .and_then(|error| error.get("message").or_else(|| error.get("error")))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-                    .or_else(|| data.get("error").map(json_text))
-                    .unwrap_or_else(|| "tool failed".to_owned())
-            } else {
-                data.get("content").map(content_text).unwrap_or_default()
-            };
-            AgentMsg::Tool(ToolPart {
-                id,
-                name: name.clone(),
-                title: name,
-                input: String::new(),
-                output,
-                status: (if failed { "error" } else { "completed" }).to_owned(),
-            })
-        }),
-        "message.part.updated" if part_type == Some("tool") => parse_tool_part(part?),
-        "text" if part_type != Some("reasoning") => Some(AgentMsg::Text(text?.to_owned())),
-        "reasoning" => Some(AgentMsg::Thinking(text?.to_owned())),
-        "step_start" => Some(AgentMsg::SessionId(value.get("sessionID").and_then(Value::as_str)?.to_owned())),
-        "tool_use" => {
-            let part = part?;
-            let id = part.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
-            let name = part.get("tool").and_then(Value::as_str).unwrap_or("tool").to_owned();
-            let state = part.get("state")?;
-            let title = state.get("title").and_then(Value::as_str).unwrap_or(&name).to_owned();
-            let input = state.get("input").map(json_text).unwrap_or_default();
-            let output = state.get("output").map(json_text).unwrap_or_default();
-            let status = state.get("status").and_then(Value::as_str).unwrap_or("running").to_owned();
-            Some(AgentMsg::Tool(ToolPart { id, name, title, input, output, status }))
-        }
-        "error" => {
-            // One clean line, not the raw JSON: the provider errors carry a
-            // message like "Model unavailable: …".
-            let error = value.get("error").or_else(|| part.and_then(|p| p.get("error")));
-            let message = error
-                .and_then(|error| error.get("message").or_else(|| error.get("error")))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-                .or_else(|| error.map(json_text))
-                .unwrap_or_else(|| "unknown error".to_owned());
-            Some(AgentMsg::Text(format!("Error: {message}")))
-        }
-        _ if part_type == Some("reasoning") => Some(AgentMsg::Thinking(text?.to_owned())),
-        _ => None,
-    }
-}
-
-/// A line OpenCode wrote to stderr, without its colors; a permission it turned down (Manual,
-/// with nobody to ask) says so plainly.
-fn stderr_line(line: &str) -> String {
-    let line = coiman_core::terminal::strip_colors(line);
-    let plain = line.trim_start_matches(['!', ' ']);
-    match plain.strip_prefix("permission requested: ").and_then(|rest| rest.strip_suffix("; auto-rejecting")) {
-        Some(what) => format!("Not allowed in Manual: {what}. Switch to Auto to let the agent do this."),
-        None => line,
-    }
-}
-
 fn json_text(value: &Value) -> String {
     match value {
         Value::Null => String::new(),
         Value::String(text) => text.clone(),
         _ => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
     }
-}
-
-/// An item of an older OpenCode's `opencode export` (`{info: {role}, parts}`) in the shape
-/// `session export` gives (`{type, text}` or `{type, content}`); others as they are.
-fn older_export_item(item: &Value) -> Value {
-    let (Some(role), Some(parts)) = (
-        item.get("info").and_then(|i| i.get("role")).and_then(Value::as_str),
-        item.get("parts").and_then(Value::as_array),
-    ) else {
-        return item.clone();
-    };
-    if role == "user" {
-        let text: Vec<&str> = parts
-            .iter()
-            .filter(|p| p.get("type").and_then(Value::as_str) == Some("text"))
-            .filter_map(|p| p.get("text").and_then(Value::as_str))
-            .collect();
-        return serde_json::json!({ "type": "user", "text": text.join("\n") });
-    }
-    let content: Vec<Value> = parts
-        .iter()
-        .map(|p| {
-            let mut p = p.clone();
-            // The tool's output is a string here, blocks there.
-            if let Some(state) = p.get_mut("state").and_then(Value::as_object_mut)
-                && let Some(Value::String(output)) = state.get("output").cloned()
-            {
-                state.insert("content".into(), serde_json::json!([{ "type": "text", "text": output }]));
-            }
-            p
-        })
-        .collect();
-    serde_json::json!({ "type": "assistant", "content": content })
-}
-
-/// The transcript of a past session, from `opencode session export`.
-fn parse_export(value: &Option<Value>) -> Vec<Message> {
-    let Some(items) = value.as_ref().and_then(|value| value.get("messages")).and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    let mut messages: Vec<Message> = Vec::new();
-    for item in items {
-        let item = &older_export_item(item);
-        match item.get("type").and_then(Value::as_str) {
-            Some("user") => {
-                let text = item.get("text").and_then(Value::as_str).unwrap_or_default();
-                if !text.is_empty() {
-                    messages.push(Message { role: Role::User, parts: vec![Part::Text(text.to_owned())] });
-                }
-            }
-            Some("assistant") => {
-                let mut parts: Vec<Part> = Vec::new();
-                for part in item.get("content").and_then(Value::as_array).map(Vec::as_slice).unwrap_or(&[]) {
-                    match part.get("type").and_then(Value::as_str) {
-                        Some("text") => {
-                            let text = part.get("text").and_then(Value::as_str).unwrap_or_default();
-                            if !text.is_empty() {
-                                parts.push(Part::Text(text.to_owned()));
-                            }
-                        }
-                        Some("reasoning") => {
-                            let text = part.get("text").and_then(Value::as_str).unwrap_or_default();
-                            if !text.is_empty() {
-                                parts.push(Part::Thinking(text.to_owned()));
-                            }
-                        }
-                        Some("tool") => {
-                            let state = part.get("state");
-                            let name = part
-                                .get("name")
-                                .and_then(Value::as_str)
-                                .or_else(|| part.get("tool").and_then(Value::as_str))
-                                .unwrap_or("tool")
-                                .to_owned();
-                            let title = state
-                                .and_then(|state| state.get("title"))
-                                .and_then(Value::as_str)
-                                .unwrap_or(&name)
-                                .to_owned();
-                            let input = state.and_then(|state| state.get("input")).map(json_text).unwrap_or_default();
-                            let output = state
-                                .and_then(|state| state.get("content"))
-                                .and_then(Value::as_array)
-                                .map(|blocks| {
-                                    blocks
-                                        .iter()
-                                        .filter_map(|block| block.get("text").and_then(Value::as_str))
-                                        .collect::<Vec<_>>()
-                                        .join("\n")
-                                })
-                                .unwrap_or_default();
-                            let status = state
-                                .and_then(|state| state.get("status"))
-                                .and_then(Value::as_str)
-                                .unwrap_or("completed")
-                                .to_owned();
-                            let id = part.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
-                            parts.push(Part::Tool(ToolPart { id, name, title, input, output, status }));
-                        }
-                        _ => {}
-                    }
-                }
-                if !parts.is_empty() {
-                    // The steps of one turn arrive as separate assistant messages; show them
-                    // as a single reply, like the live transcript does.
-                    if let Some(Message { role: Role::Agent, parts: existing }) =
-                        messages.last_mut().filter(|message| message.role == Role::Agent)
-                    {
-                        existing.append(&mut parts);
-                    } else {
-                        messages.push(Message { role: Role::Agent, parts });
-                    }
-                }
-            }
-            Some("idle") if item.get("outcome").and_then(Value::as_str) == Some("failed") => {
-                // A run that failed: show its error, like the live view does.
-                let error = item.get("error");
-                let message = error
-                    .and_then(|error| error.get("message").or_else(|| error.get("error")))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-                    .or_else(|| error.map(json_text))
-                    .unwrap_or_else(|| "unknown error".to_owned());
-                let part = Part::Text(format!("Error: {message}"));
-                if let Some(Message { role: Role::Agent, parts }) =
-                    messages.last_mut().filter(|message| message.role == Role::Agent)
-                {
-                    parts.push(part);
-                } else {
-                    messages.push(Message { role: Role::Agent, parts: vec![part] });
-                }
-            }
-            _ => {}
-        }
-    }
-    messages
 }
 
 /// The sessions rail's "2 wks ago" style timestamp.
@@ -3239,12 +2516,7 @@ impl CodeApp {
                 .clone()
                 .or_else(|| self.docs.get(self.active).and_then(|d| d.path.as_deref()?.parent()).map(Path::to_path_buf))
         };
-        if self.agents.root != root {
-            self.agents.history.clear();
-            self.agents.history_loaded = false;
-        }
         self.agents.root = root;
-        self.agents.load_model();
         self.agents.load_models();
         self.agents.active_file = self.docs.get(self.active).and_then(|doc| doc.path.clone());
     }
@@ -3255,56 +2527,143 @@ impl CodeApp {
 #[allow(clippy::field_reassign_with_default, clippy::type_complexity)]
 mod tests {
     use super::*;
+    use coiman_core::extensions::plugin::host::{ChatMessage, ChatSession, ChatTool};
 
-    #[test]
-    fn parses_text_thinking_and_tools() {
-        let text = r#"{"type":"text","part":{"type":"text","text":"hello"}}"#;
-        assert!(matches!(parse_event(text), Some(AgentMsg::Text(t)) if t == "hello"));
+    /// A view the Agents extension fills.
+    fn filled() -> AgentsUi {
+        AgentsUi { plugin: Some("coiman.agents".to_owned()), name: "OpenCode".to_owned(), ..Default::default() }
+    }
 
-        let thinking = r#"{"type":"reasoning","part":{"type":"reasoning","text":"hmm"}}"#;
-        assert!(matches!(parse_event(thinking), Some(AgentMsg::Thinking(t)) if t == "hmm"));
-
-        let tool = r#"{"type":"tool_use","part":{"type":"tool","id":"call_1","tool":"read","state":{"status":"completed","title":"read","input":{"path":"."},"output":"ok"}}}"#;
-        match parse_event(tool) {
-            Some(AgentMsg::Tool(tool)) => {
-                assert_eq!(tool.name, "read");
-                assert_eq!(tool.status, "completed");
-                assert!(tool.input.contains("path"));
-                assert_eq!(tool.output, "ok");
-            }
-            _ => panic!("tool event not parsed"),
+    fn view(from: u32, messages: Vec<ChatMessage>) -> ChatView {
+        ChatView {
+            name: "OpenCode".to_owned(),
+            missing: None,
+            session: "ses_1".to_owned(),
+            title: "A chat".to_owned(),
+            messages_from: from,
+            messages,
+            running: false,
+            loading: false,
+            status: String::new(),
+            sessions: None,
+            sessions_loading: false,
+            models: None,
+            models_loading: false,
+            model: String::new(),
+            mode: "build".to_owned(),
+            permissions: "manual".to_owned(),
+            turn_seconds: None,
         }
     }
 
+    fn said(user: bool, text: &str) -> ChatMessage {
+        ChatMessage { from_user: user, parts: vec![ChatPart::Text(text.to_owned())] }
+    }
+
     #[test]
-    fn parses_an_exported_session() {
-        // The shape of `opencode session export`: one user message, then the steps of one
-        // assistant turn (reasoning, a tool call and the answer) as separate messages.
-        let export = r#"{
-            "info": {"id": "ses_1", "title": "Test"},
-            "messages": [
-                {"type": "user", "text": "What folder are we in?", "files": []},
-                {"type": "assistant", "content": [
-                    {"type": "reasoning", "text": "Let me check."},
-                    {"type": "tool", "id": "call_1", "name": "shell", "state": {
-                        "status": "completed",
-                        "input": {"command": "pwd"},
-                        "content": [{"type": "text", "text": "/home/me\n"}]
-                    }}
-                ]},
-                {"type": "assistant", "content": [
-                    {"type": "text", "text": "We're in `/home/me`."}
-                ]},
-                {"type": "idle", "outcome": "succeeded"}
-            ]
-        }"#;
-        let value = serde_json::from_str::<Value>(export).ok();
-        let messages = parse_export(&value);
-        assert_eq!(messages.len(), 2);
-        assert!(matches!(messages[0].parts.as_slice(), [Part::Text(text)] if text == "What folder are we in?"));
-        assert!(
-            matches!(messages[1].parts.as_slice(), [Part::Thinking(_), Part::Tool(tool), Part::Text(_)] if tool.name == "shell" && tool.output == "/home/me\n")
+    fn the_extension_fills_the_view_a_piece_at_a_time() {
+        let mut agents = AgentsUi::default();
+        agents.apply("coiman.agents", view(0, vec![said(true, "hi"), said(false, "Hel")]));
+        assert_eq!(agents.plugin.as_deref(), Some("coiman.agents"));
+        assert_eq!(agents.session_title.as_deref(), Some("A chat"));
+        // Only the last message comes again as it grows.
+        agents.apply("coiman.agents", view(1, vec![said(false, "Hello")]));
+        assert_eq!(agents.messages.len(), 2);
+        assert_eq!(message_text(&agents.messages[1]), "Hello");
+        // A tool card, and the working set it makes.
+        let edit = ChatPart::Tool(ChatTool {
+            id: "t".to_owned(),
+            name: "edit".to_owned(),
+            title: "edit".to_owned(),
+            input: "{\"filePath\": \"src/a.rs\"}".to_owned(),
+            output: String::new(),
+            status: "completed".to_owned(),
+        });
+        agents.apply("coiman.agents", view(1, vec![ChatMessage { from_user: false, parts: vec![edit] }]));
+        assert_eq!(agents.last_changed_files, ["src/a.rs"]);
+        // Nothing from 2 on: the two stay.
+        agents.apply("coiman.agents", view(2, vec![]));
+        assert_eq!(agents.messages.len(), 2);
+        // From 0 with none: cleared.
+        agents.apply("coiman.agents", view(0, vec![]));
+        assert!(agents.messages.is_empty());
+        // Lists come only when they changed.
+        let mut v = view(0, vec![]);
+        v.sessions = Some(vec![ChatSession { id: "s".to_owned(), title: "S".to_owned(), updated: 3 }]);
+        v.models = Some(vec!["a/b".to_owned()]);
+        agents.apply("coiman.agents", v);
+        agents.apply("coiman.agents", view(0, vec![]));
+        assert_eq!(agents.history.len(), 1);
+        assert_eq!(agents.models, ["a/b"]);
+        agents.detach("coiman.agents");
+        assert!(agents.plugin.is_none());
+    }
+
+    #[test]
+    fn what_is_done_goes_to_the_extension() {
+        let mut agents = filled();
+        let dir = std::env::temp_dir().join(format!("coiman-agents-send-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        agents.input = "hello".to_owned();
+        agents.attached = vec!["src/a.rs".to_owned()];
+        agents.send(Some(&dir));
+        assert!(agents.running, "running until the extension says otherwise");
+        assert!(agents.input.is_empty() && agents.attached.is_empty());
+        agents.stop();
+        agents.new_chat();
+        let (plugin, actions) = agents.take_actions().unwrap();
+        assert_eq!(plugin, "coiman.agents");
+        let names: Vec<&str> = actions.iter().map(|a| a.action.as_str()).collect();
+        assert_eq!(names, ["send", "models", "stop", "new"]);
+        assert_eq!(
+            (actions[0].argument.as_str(), actions[0].attachments.clone()),
+            ("hello", vec!["src/a.rs".to_owned()])
         );
+        assert!(agents.take_actions().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_untrusted_folder_sends_nothing() {
+        let mut agents = filled();
+        agents.input = "hello".to_owned();
+        agents.send(None);
+        assert!(agents.take_actions().is_none());
+        assert!(agents.status.as_deref().unwrap_or_default().contains("restricted"));
+    }
+
+    #[test]
+    fn stop_clears_the_queue() {
+        let mut agents = AgentsUi { queue: vec!["a queued message".to_owned()], running: true, ..filled() };
+        agents.stop();
+        assert!(agents.queue.is_empty(), "a stopped run drops its queue");
+        assert!(!agents.running);
+    }
+
+    #[test]
+    fn run_end_drains_one_queued_message() {
+        let mut agents = filled();
+        let mut running = view(0, vec![said(true, "q")]);
+        running.running = true;
+        agents.apply("coiman.agents", running);
+        agents.queue = vec!["one".to_owned(), "two".to_owned()];
+        // No folder: the send stops at trust, and the text waits in the box.
+        agents.apply("coiman.agents", view(1, vec![said(false, "done")]));
+        assert_eq!(agents.input, "one", "the first queued message moves to the box");
+        assert_eq!(agents.queue.len(), 1, "the rest wait for the next run");
+        assert!(agents.focus_input);
+    }
+
+    #[test]
+    fn without_the_extension_the_view_says_so() {
+        let ctx = egui::Context::default();
+        let mut agents = AgentsUi::default();
+        panel_frame(&ctx, &mut agents);
+        assert!(agents.composer_rect.is_none(), "no box to type in");
+        let mut missing = filled();
+        missing.missing = Some("npm install -g opencode-ai".to_owned());
+        panel_frame(&ctx, &mut missing);
+        assert!(missing.composer_rect.is_none());
     }
 
     #[test]
@@ -3315,12 +2674,6 @@ mod tests {
         assert_eq!(shell_input("echo hi").0, "echo hi");
         let plain = coiman_core::terminal::strip_colors("\u{1b}[31mhi\u{1b}[0m\n");
         assert_eq!(plain, "hi\n");
-    }
-
-    #[test]
-    fn empty_export_gives_no_messages() {
-        assert!(parse_export(&None).is_empty());
-        assert!(parse_export(&serde_json::from_str::<Value>("{}").ok()).is_empty());
     }
 
     #[test]
@@ -3385,7 +2738,7 @@ mod tests {
 
     #[test]
     fn session_time_labels() {
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let now = std::time::SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
         assert_eq!(session_time_label(now), "now");
         assert_eq!(session_time_label(now - 90 * 1000), "1m ago");
         assert_eq!(session_time_label(now - 3 * 3600 * 1000), "3h ago");
@@ -3430,85 +2783,10 @@ mod tests {
         box_rect
     }
 
-    #[cfg(unix)]
-    fn fake_opencode(dir: &Path) -> PathBuf {
-        use std::os::unix::fs::PermissionsExt;
-
-        let script = dir.join("opencode");
-        std::fs::write(
-            &script,
-            format!(
-                "#!/bin/sh\nfor a in \"$@\"; do if [ \"$a\" = \"--help\" ]; then echo --standalone; exit 0; fi; done\nprintf '%s\\n' \"$@\" >> {}/args\ncat >> {}/stdin\n",
-                dir.display(),
-                dir.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
-        script
-    }
-
-    #[cfg(unix)]
-    fn fake_run(dir: &Path, mode: &str, input: &str) -> String {
-        let script = fake_opencode(dir);
-        let agents = AgentsUi { mode: mode.to_owned(), ..Default::default() };
-        let (mut command, via_stdin) = agents.run_command(&script, dir, "ses_coiman_test", input, &[]);
-        let mut child = command.spawn().expect("the fake opencode runs");
-        if via_stdin && let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(input.as_bytes()).unwrap();
-        }
-        let _ = child.wait();
-        std::fs::read_to_string(dir.join("args")).unwrap_or_default()
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn the_prompt_reaches_opencode_on_stdin_once() {
-        let dir = std::env::temp_dir().join(format!("coiman-agent-prompt-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let script = fake_opencode(&dir);
-        let agents = AgentsUi::default();
-        let (mut command, via_stdin) = agents.run_command(&script, &dir, "ses_coiman_test", "hello world", &[]);
-        assert!(via_stdin);
-        let mut child = command.spawn().expect("the fake opencode runs");
-        if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(b"hello world").unwrap();
-        }
-        let _ = child.wait();
-        assert_eq!(std::fs::read_to_string(dir.join("stdin")).unwrap_or_default(), "hello world");
-        let args = std::fs::read_to_string(dir.join("args")).unwrap_or_default();
-        assert!(
-            !args.lines().any(|arg| arg == "hello" || arg == "world" || arg == "--"),
-            "the prompt must not be added as quoted arguments: {args}"
-        );
-        let words: Vec<&str> = args.lines().collect();
-        assert!(words.windows(2).any(|w| w == ["--agent", "build"]), "{args}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn switching_between_plan_and_agent_passes_the_agent_each_time() {
-        let dir = std::env::temp_dir().join(format!("coiman-agent-mode-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let plan = fake_run(&dir, "plan", "think");
-        let words: Vec<&str> = plan.lines().collect();
-        assert!(words.windows(2).any(|w| w == ["--agent", "plan"]), "{plan}");
-
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let build = fake_run(&dir, "build", "edit");
-        let words: Vec<&str> = build.lines().collect();
-        assert!(words.windows(2).any(|w| w == ["--agent", "build"]), "{build}");
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
     #[test]
     fn composer_typing_needs_focus_and_enter_sends() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
+        let mut agents = filled();
         let none = egui::Modifiers::default();
 
         let box_rect = composer_frame(&ctx, &mut agents, false, none, vec![]);
@@ -3573,7 +2851,7 @@ mod tests {
     fn focus_request_lands_in_the_box() {
         let ctx = egui::Context::default();
         // toggle() / focus_chat() / attach() set this flag.
-        let mut agents = AgentsUi { focus_input: true, ..Default::default() };
+        let mut agents = AgentsUi { focus_input: true, ..filled() };
         composer_frame(&ctx, &mut agents, false, egui::Modifiers::default(), vec![]);
         assert!(agents.input_focused, "focus_input focuses the box");
     }
@@ -3590,9 +2868,6 @@ mod tests {
     /// Runs the panel like `mod.rs` does — inside a right `Panel` — and returns
     /// the panel's rect, so the width ratchet can be measured.
     fn panel_with_chrome(ctx: &egui::Context, agents: &mut AgentsUi, screen: egui::Vec2) -> egui::Rect {
-        // As if opencode were installed (it isn't on CI): otherwise the panel only says so.
-        agents.checked_opencode = true;
-        agents.opencode.get_or_insert_with(|| PathBuf::from("opencode"));
         let raw = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), screen)),
             ..Default::default()
@@ -3618,7 +2893,7 @@ mod tests {
     #[test]
     fn panel_width_stays_put_when_sessions_open() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
+        let mut agents = filled();
         agents.messages = vec![
             Message { role: Role::User, parts: vec![Part::Text("Build a thing".to_owned())] },
             Message { role: Role::Agent, parts: vec![Part::Text("Sure.".to_owned())] },
@@ -3627,8 +2902,7 @@ mod tests {
         let closed = panel_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
         // Opening the sessions column must not inflate the panel.
         agents.history_open = true;
-        agents.history =
-            vec![SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1, directory: None }];
+        agents.history = vec![SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1 }];
         let mut open = panel_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
         for _ in 0..8 {
             open = panel_with_chrome(&ctx, &mut agents, egui::vec2(1400.0, 900.0));
@@ -3638,10 +2912,7 @@ mod tests {
     }
 
     fn panel_wide_with_chrome(ctx: &egui::Context, agents: &mut AgentsUi, screen: egui::Vec2) -> egui::Rect {
-        agents.checked_opencode = true;
-        agents.opencode.get_or_insert_with(|| PathBuf::from("opencode"));
-        agents.history =
-            vec![SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1, directory: None }];
+        agents.history = vec![SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1 }];
         agents.history_loaded = true;
         let raw = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), screen)),
@@ -3669,7 +2940,7 @@ mod tests {
     #[test]
     fn chat_composer_keeps_a_compact_height() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi { history_open: false, ..Default::default() };
+        let mut agents = AgentsUi { history_open: false, ..filled() };
         agents.messages = vec![
             Message { role: Role::User, parts: vec![Part::Text("hello".to_owned())] },
             Message { role: Role::Agent, parts: vec![Part::Text("hi".to_owned())] },
@@ -3685,7 +2956,7 @@ mod tests {
         let mut agents = AgentsUi {
             history_open: true,
             last_changed_files: vec!["crates/coiman-ide/src/app/agents.rs".to_owned()],
-            ..Default::default()
+            ..filled()
         };
         agents.messages = vec![
             Message { role: Role::User, parts: vec![Part::Text("Fix the UI".to_owned())] },
@@ -3733,8 +3004,8 @@ mod tests {
                 Box::new(|a: &mut AgentsUi| {
                     a.history_open = true;
                     a.history = vec![
-                        SessionInfo { id: "ses_1".to_owned(), title: "One".to_owned(), updated: 3, directory: None },
-                        SessionInfo { id: "ses_2".to_owned(), title: "Two".to_owned(), updated: 2, directory: None },
+                        SessionInfo { id: "ses_1".to_owned(), title: "One".to_owned(), updated: 3 },
+                        SessionInfo { id: "ses_2".to_owned(), title: "Two".to_owned(), updated: 2 },
                     ];
                     a.session_search_open = true;
                 }),
@@ -3770,8 +3041,7 @@ mod tests {
             (
                 "running",
                 Box::new(|a: &mut AgentsUi| {
-                    let (_tx, rx) = mpsc::channel();
-                    a.running = Some(rx);
+                    a.running = true;
                     a.queue = vec!["a queued message".to_owned()];
                     a.last_changed_files = vec!["src/main.rs".to_owned()];
                 }),
@@ -3781,8 +3051,8 @@ mod tests {
                 Box::new(|a: &mut AgentsUi| {
                     a.history_open = true;
                     a.history = vec![
-                        SessionInfo { id: "ses_1".to_owned(), title: "One".to_owned(), updated: 3, directory: None },
-                        SessionInfo { id: "ses_2".to_owned(), title: "Two".to_owned(), updated: 2, directory: None },
+                        SessionInfo { id: "ses_1".to_owned(), title: "One".to_owned(), updated: 3 },
+                        SessionInfo { id: "ses_2".to_owned(), title: "Two".to_owned(), updated: 2 },
                     ];
                     a.session_search_open = true;
                     a.session_search = "on".to_owned();
@@ -3790,7 +3060,7 @@ mod tests {
             ),
         ];
         for (name, setup) in &states {
-            let mut agents = AgentsUi::default();
+            let mut agents = filled();
             agents.messages = vec![
                 Message { role: Role::User, parts: vec![Part::Text("Build a thing".to_owned())] },
                 Message { role: Role::Agent, parts: vec![Part::Text("Working on it.".to_owned())] },
@@ -3819,7 +3089,7 @@ mod tests {
         }
         // A narrow window: the panel gives way but must not jitter.
         for (name, setup) in &states {
-            let mut agents = AgentsUi::default();
+            let mut agents = filled();
             agents.messages = vec![
                 Message { role: Role::User, parts: vec![Part::Text("Build a thing".to_owned())] },
                 Message { role: Role::Agent, parts: vec![Part::Text("Working on it.".to_owned())] },
@@ -3859,65 +3129,10 @@ mod tests {
     }
 
     #[test]
-    fn stop_clears_the_queue() {
-        let mut agents = AgentsUi { queue: vec!["a queued message".to_owned()], ..Default::default() };
-        // A pid that does not exist: stop() must not touch a real process.
-        agents.child_pid = Some(999_999);
-        agents.stop();
-        assert!(agents.queue.is_empty(), "a stopped run drops its queue");
-        assert_eq!(agents.status.as_deref(), Some("Stopped"));
-    }
-
-    #[test]
-    fn run_end_drains_one_queued_message() {
-        let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
-        // No OpenCode program: send() returns early, so no process is spawned.
-        agents.checked_opencode = true;
-        agents.opencode = None;
-        let (tx, rx) = mpsc::channel();
-        tx.send(AgentMsg::End(Some(0))).unwrap();
-        agents.running = Some(rx);
-        agents.queue = vec!["one".to_owned(), "two".to_owned()];
-        agents.poll(&ctx);
-        assert_eq!(agents.input, "one", "the first queued message moves to the box");
-        assert_eq!(agents.queue.len(), 1, "the rest wait for the next run");
-        assert!(agents.running.is_none(), "the run ended");
-    }
-
-    #[test]
     fn opening_a_session_returns_to_chat() {
-        let mut agents = AgentsUi {
-            checked_opencode: true,
-            opencode: Some(PathBuf::from("opencode")),
-            history_open: true,
-            ..Default::default()
-        };
-        agents.open_session(SessionInfo {
-            id: "ses_1".to_owned(),
-            title: "One".to_owned(),
-            updated: 1,
-            directory: None,
-        });
+        let mut agents = AgentsUi { history_open: true, ..filled() };
+        agents.open_session(SessionInfo { id: "ses_1".to_owned(), title: "One".to_owned(), updated: 1 });
         assert!(!agents.history_open, "selecting a session returns to the chat");
-    }
-
-    #[test]
-    fn resumed_session_loads_through_poll() {
-        let mut agents = AgentsUi {
-            messages: vec![Message { role: Role::Agent, parts: vec![Part::Text("old".to_owned())] }],
-            ..Default::default()
-        };
-        agents.session_loading = true;
-        let (tx, rx) = mpsc::channel();
-        tx.send(AgentMsg::Session(vec![Message { role: Role::User, parts: vec![Part::Text("resumed".to_owned())] }]))
-            .unwrap();
-        agents.running_session = Some(rx);
-        agents.poll_session();
-        assert_eq!(agents.messages.len(), 1);
-        assert_eq!(message_text(&agents.messages[0]), "resumed");
-        assert!(!agents.session_loading);
-        assert!(agents.focus_input, "the box regains focus after a resume");
     }
 
     #[test]
@@ -3943,57 +3158,9 @@ mod tests {
     }
 
     #[test]
-    fn turned_down_permissions_read_plainly() {
-        let line = "\x1b[93m\x1b[1m! \x1b[0mpermission requested: edit (C:\\p\\note.txt); auto-rejecting";
-        assert_eq!(
-            stderr_line(line),
-            "Not allowed in Manual: edit (C:\\p\\note.txt). Switch to Auto to let the agent do this."
-        );
-        assert_eq!(stderr_line("\x1b[91mError: \x1b[0mSession not found"), "Error: Session not found");
-    }
-
-    #[test]
-    fn an_older_opencode_session() {
-        let start = r#"{"type":"step_start","sessionID":"ses_abc","part":{"type":"step-start"}}"#;
-        assert!(matches!(parse_event(start), Some(AgentMsg::SessionId(id)) if id == "ses_abc"));
-        let export = serde_json::json!({"info": {}, "messages": [
-            {"info": {"role": "user"}, "parts": [{"type": "text", "text": "hi"}]},
-            {"info": {"role": "assistant"}, "parts": [
-                {"type": "step-start"},
-                {"type": "tool", "tool": "tiny_hello", "id": "t1",
-                 "state": {"status": "completed", "input": {}, "output": "hello from tiny"}},
-                {"type": "text", "text": "done"}
-            ]}
-        ]});
-        let messages = parse_export(&Some(export));
-        assert_eq!(messages.len(), 2);
-        assert!(matches!(&messages[0].parts[..], [Part::Text(t)] if t == "hi"));
-        match &messages[1].parts[..] {
-            [Part::Tool(tool), Part::Text(t)] => {
-                assert_eq!((tool.name.as_str(), tool.output.as_str()), ("tiny_hello", "hello from tiny"));
-                assert_eq!(t, "done");
-            }
-            _ => panic!("assistant parts"),
-        }
-    }
-
-    #[test]
-    fn error_events_are_one_line() {
-        let line =
-            r#"{"type":"error","error":{"type":"provider.no-route","message":"Model unavailable: kilo/claude"}}"#;
-        match parse_event(line) {
-            Some(AgentMsg::Text(text)) => {
-                assert_eq!(text, "Error: Model unavailable: kilo/claude");
-                assert!(!text.contains('{'), "no raw JSON: {text:?}");
-            }
-            _ => panic!("error event not parsed"),
-        }
-    }
-
-    #[test]
     fn thinking_headers_do_not_clash() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
+        let mut agents = filled();
         agents.messages = vec![
             Message { role: Role::User, parts: vec![Part::Text("hi".to_owned())] },
             Message {
@@ -4022,7 +3189,7 @@ mod tests {
     #[test]
     fn long_code_lines_do_not_widen_the_panel() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
+        let mut agents = filled();
         // A 400-char code line: the block must truncate, not widen the panel.
         let long_line = "let x = \"".to_owned() + &"y".repeat(390) + "\";";
         agents.messages = vec![
@@ -4034,62 +3201,29 @@ mod tests {
     }
 
     #[test]
-    fn failed_runs_show_clean_errors() {
-        let export = r#"{
-          "info": {},
-          "messages": [
-            {"type": "user", "text": "hi"},
-            {"type": "idle", "outcome": "failed", "error": {"type": "provider.no-route", "message": "Model unavailable: kilo/claude-opus-latest"}},
-            {"type": "user", "text": "hi again"},
-            {"type": "idle", "outcome": "failed", "error": {"type": "provider.no-route", "message": "Model unavailable: kilo/claude-opus-latest"}}
-          ]
-        }"#;
-        let value: Value = serde_json::from_str(export).unwrap();
-        let messages = parse_export(&Some(value));
-        // Two user prompts and two failed runs; the failures become one-line
-        // error texts, not raw JSON blocks.
-        assert_eq!(messages.len(), 4);
-        let errors: Vec<&str> = messages
-            .iter()
-            .filter(|m| m.role == Role::Agent)
-            .filter_map(|m| {
-                m.parts.iter().find_map(|p| match p {
-                    Part::Text(t) if t.starts_with("Error:") => Some(t.as_str()),
-                    _ => None,
-                })
-            })
-            .collect();
-        assert_eq!(errors.len(), 2);
-        for error in &errors {
-            assert!(error.contains("Model unavailable"), "one-line message: {error:?}");
-            assert!(!error.contains('{'), "no raw JSON: {error:?}");
-        }
-    }
-
-    #[test]
     fn resumed_session_renders_sane() {
         let ctx = egui::Context::default();
-        // The shape of `opencode session export`: user texts, assistant content
-        // with text/tool parts, idle markers.
-        let export = r#"{
-          "info": {},
-          "messages": [
-            {"type": "user", "text": "hi hi"},
-            {"type": "assistant", "content": [{"type": "text", "text": "Hi! How can I help you today?"}]},
-            {"type": "idle"},
-            {"type": "user", "text": "What can you see?"},
-            {"type": "assistant", "content": [
-                {"type": "tool", "id": "call_1", "name": "shell", "state": {"status": "completed", "input": {"command": "pwd"}, "content": [{"type": "text", "text": "/home/mostafa\n"}]}},
-                {"type": "text", "text": "I can see the project files."}
-            ]},
-            {"type": "user", "text": "Show me the entry point."},
-            {"type": "assistant", "content": [{"type": "text", "text": "Here it is:\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```"}]}
-          ]
-        }"#;
-        let value: Value = serde_json::from_str(export).unwrap();
-        let messages = parse_export(&Some(value));
-        assert_eq!(messages.len(), 6, "idle markers are skipped (3 user + 3 assistant)");
-        let mut agents = AgentsUi { messages, ..Default::default() };
+        // A resumed session: three prompts and their replies, one with a tool.
+        let text = |t: &str| Part::Text(t.to_owned());
+        let user = |t: &str| Message { role: Role::User, parts: vec![text(t)] };
+        let agent = |parts: Vec<Part>| Message { role: Role::Agent, parts };
+        let shell = Part::Tool(ToolPart {
+            id: "call_1".to_owned(),
+            name: "shell".to_owned(),
+            title: "shell".to_owned(),
+            input: "{\"command\": \"pwd\"}".to_owned(),
+            output: "/home/mostafa\n".to_owned(),
+            status: "completed".to_owned(),
+        });
+        let messages = vec![
+            user("hi hi"),
+            agent(vec![text("Hi! How can I help you today?")]),
+            user("What can you see?"),
+            agent(vec![shell, text("I can see the project files.")]),
+            user("Show me the entry point."),
+            agent(vec![text("Here it is:\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```")]),
+        ];
+        let mut agents = AgentsUi { messages, ..filled() };
         agents.session_title = Some("Greeting".to_owned());
         agents.last_changed_files = files_touched(&agents.messages);
         agents.last_turn_tools = tools_in_last_turn(&agents.messages);
@@ -4110,9 +3244,7 @@ mod tests {
     #[test]
     fn edit_tool_renders_a_line_diff() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
-        agents.checked_opencode = true;
-        agents.opencode = Some(PathBuf::from("opencode"));
+        let mut agents = filled();
         agents.history_loaded = true;
         agents.messages = vec![Message {
             role: Role::Agent,
@@ -4137,7 +3269,7 @@ mod tests {
     #[test]
     fn panel_renders_every_section() {
         let ctx = egui::Context::default();
-        let mut agents = AgentsUi::default();
+        let mut agents = filled();
         agents.messages = vec![
             Message { role: Role::User, parts: vec![Part::Text("Build a thing".to_owned())] },
             Message {
@@ -4159,8 +3291,8 @@ mod tests {
         agents.last_changed_files = files_touched(&agents.messages);
         agents.last_turn_tools = tools_in_last_turn(&agents.messages);
         agents.history = vec![
-            SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1, directory: None },
-            SessionInfo { id: "ses_2".to_owned(), title: "Another".to_owned(), updated: 2, directory: None },
+            SessionInfo { id: "ses_1".to_owned(), title: "A session".to_owned(), updated: 1 },
+            SessionInfo { id: "ses_2".to_owned(), title: "Another".to_owned(), updated: 2 },
         ];
         agents.history_open = true;
         agents.input = "a draft".to_owned();
@@ -4171,13 +3303,12 @@ mod tests {
         // And with a run in flight (spinner, stop button, queue row).
         agents.delete_pending = None;
         agents.queue.push("queued".to_owned());
-        let (_tx, rx) = mpsc::channel();
-        agents.running = Some(rx);
+        agents.running = true;
         panel_frame(&ctx, &mut agents);
-        agents.running = None;
+        agents.running = false;
 
         // Narrow windows must not panic (the negative-size crash class).
-        let mut narrow = AgentsUi { history_open: true, ..Default::default() };
+        let mut narrow = AgentsUi { history_open: true, ..filled() };
         narrow.messages = agents.messages.clone();
         let raw = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(240.0, 400.0))),
@@ -4189,10 +3320,10 @@ mod tests {
 
     #[test]
     fn session_search_matches_titles_and_ids() {
-        let mut agents = AgentsUi::default();
+        let mut agents = filled();
         agents.history = vec![
-            SessionInfo { id: "ses_alpha".to_owned(), title: "Alpha plan".to_owned(), updated: 1, directory: None },
-            SessionInfo { id: "ses_beta".to_owned(), title: "Beta work".to_owned(), updated: 2, directory: None },
+            SessionInfo { id: "ses_alpha".to_owned(), title: "Alpha plan".to_owned(), updated: 1 },
+            SessionInfo { id: "ses_beta".to_owned(), title: "Beta work".to_owned(), updated: 2 },
         ];
         agents.session_search = "alp".to_owned();
         let matched = agents.matching_sessions();
@@ -4206,23 +3337,19 @@ mod tests {
 
     #[test]
     fn duplicate_consecutive_prompt_is_not_pushed_twice() {
-        let ctx = egui::Context::default();
         let mut agents = AgentsUi {
-            checked_opencode: true,
-            opencode: Some(PathBuf::from("true")),
             input: "hello".to_owned(),
             messages: vec![Message { role: Role::User, parts: vec![Part::Text("hello".to_owned())] }],
-            ..Default::default()
+            ..filled()
         };
-        agents.send(&ctx, Some(std::env::temp_dir().as_path()));
+        agents.send(Some(std::env::temp_dir().as_path()));
         assert_eq!(agents.messages.len(), 1, "the duplicate prompt must not be appended");
         assert!(agents.input.is_empty(), "the duplicate prompt is consumed");
     }
 
     #[test]
     fn model_search_is_loose_and_labels_are_clean() {
-        let mut agents =
-            AgentsUi { models: vec!["google/antigravity-gemini-3.8-flash-high".to_owned()], ..Default::default() };
+        let mut agents = AgentsUi { models: vec!["google/antigravity-gemini-3.8-flash-high".to_owned()], ..filled() };
         agents.model_search = "Gemini 3.8 flash".to_owned();
         assert_eq!(agents.matching_models().len(), 1, "loose search ignores punctuation/case");
         assert_eq!(model_label("google/antigravity-gemini-3.8-flash-high"), "Antigravity Gemini 3.8 Flash High");
@@ -4230,37 +3357,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_live_delta_events() {
-        let text = r#"{"type":"session.text.delta","data":{"delta":"Hel"}}"#;
-        assert!(matches!(parse_event(text), Some(AgentMsg::Text(t)) if t == "Hel"));
-        let thinking = r#"{"type":"session.reasoning.delta","data":{"delta":"hmm"}}"#;
-        assert!(matches!(parse_event(thinking), Some(AgentMsg::Thinking(t)) if t == "hmm"));
-        let called =
-            r#"{"type":"session.tool.called","data":{"id":"call_1","name":"read","input":{"path":"src/main.rs"}}}"#;
-        match parse_event(called) {
-            Some(AgentMsg::Tool(tool)) => {
-                assert_eq!(tool.name, "read");
-                assert_eq!(tool.status, "running");
-                assert!(tool.input.contains("src/main.rs"));
-            }
-            _ => panic!("tool start event not parsed"),
-        }
-        let done = r#"{"type":"session.tool.success","data":{"id":"call_1","content":[{"type":"text","text":"ok"}]}}"#;
-        match parse_event(done) {
-            Some(AgentMsg::Tool(tool)) => {
-                assert_eq!(tool.status, "completed");
-                assert_eq!(tool.output, "ok");
-            }
-            _ => panic!("tool completion event not parsed"),
-        }
-    }
-
-    #[test]
     fn model_search_filters_the_list() {
-        let mut agents = AgentsUi {
-            models: vec!["google/gemini-3.5-flash".to_owned(), "kilo/claude".to_owned()],
-            ..Default::default()
-        };
+        let mut agents =
+            AgentsUi { models: vec!["google/gemini-3.5-flash".to_owned(), "kilo/claude".to_owned()], ..filled() };
         agents.model_search = "gem".to_owned();
         assert_eq!(agents.matching_models(), vec!["google/gemini-3.5-flash".to_owned()]);
         agents.model_search.clear();
@@ -4294,8 +3393,7 @@ mod tests {
 
     #[test]
     fn attached_context_prefixes_the_prompt() {
-        let mut agents =
-            AgentsUi { attached: vec!["/tmp/a.rs".to_owned(), "/tmp/b.rs".to_owned()], ..Default::default() };
+        let mut agents = AgentsUi { attached: vec!["/tmp/a.rs".to_owned(), "/tmp/b.rs".to_owned()], ..filled() };
         assert_eq!(agents.with_attachments("hi"), "@/tmp/a.rs @/tmp/b.rs\nhi");
         agents.attached.clear();
         assert_eq!(agents.with_attachments("hi"), "hi");

@@ -40,6 +40,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   Its built-in window and code left the program. **Install APK…** offers the APKs built in
   the project (`build/outputs/apk`) or a path in the open folder; logcat runs until **Stop
   logcat**, and shows the newest 10,000 matching lines.
+- The Agents panel is now filled by the Agents extension of the Agents pack: running
+  `opencode`, reading what it prints as it comes, its sessions, models and choices left the
+  program. The editor keeps the panel itself (the conversation, the box you type in), as a chat
+  view any extension can fill. Plan or Agent, Manual or Auto and the model are kept by the
+  extension, so they're asked for again once.
 - Shader problems while typing and Preview: Shader are now the Shaders extension of the
   Graphics pack; the preview is a panel. The editor keeps only what needs its OpenGL:
   compiling a GLSL shader for the extension, and drawing its `shader` block. naga (WGSL) left
@@ -51,10 +56,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
   its color and a file it links to), `plot` blocks and `shader` blocks (a GLSL program drawn
   live, with time and mouse); `compile-shader` has the graphics driver compile a GLSL shader
   (`shader-compiled` brings its log); `memory = <MB>` in `plugin.toml` for
-  a plugin that needs more than 64 MB. Plugins built for 0.6 need rebuilding.
+  a plugin that needs more than 64 MB; `set-chat`, the `chat-action` event and
+  `start-job-lines-with` for the chat view. Plugins built for 0.6 need rebuilding.
 
 ### Fixed
 
+- The Agents panel's model list was empty until something was typed in its search box.
+- A note opencode writes (a permission it turned down) starts on a line of its own, not run on
+  from the reply.
 - An extension's panel comes to the front when one of its commands runs, not each time it
   changes: a log that keeps coming (logcat, a serial port) no longer takes the bottom panel
   back from the Terminal or another tab.

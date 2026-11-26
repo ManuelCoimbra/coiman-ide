@@ -13,6 +13,9 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- The Agents panel moved out of the program into an extension (Agents pack); the editor keeps a
+  chat view for it. MCP Servers stays built in: it edits opencode's settings in your home
+  folder, which plugins can't reach.
 - SQL databases moved out of the program into an extension (Databases pack).
 - Remote debugging moved out of the program into an extension; the Containers pack is all extensions.
 - Remote folders and SSH terminals moved out of the program into an extension (Containers pack).
@@ -77,7 +80,7 @@ program itself gets smaller too:
    Databases: done (SQL Databases, Redis, MongoDB; notebooks stay built in). Embedded: done
    (Serial Monitor, Binary Size; the debugger's Memory and Disassembly views stay built in).
    Mobile: done (Android). Graphics: done (Shaders; the editor keeps an OpenGL service for it).
-5. Agents last: the agents panel needs the most from the host.
+5. Agents: done (the Agents extension; the editor keeps the chat view, and MCP Servers).
 
 ## Next, nothing to download
 

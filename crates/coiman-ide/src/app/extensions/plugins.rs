@@ -500,6 +500,7 @@ impl CodeApp {
     }
 
     fn remove_contributions(&mut self, id: &str) {
+        self.agents.detach(id);
         let keys: Vec<PathBuf> =
             self.plugins.decorations.keys().filter(|(p, _)| p == id).map(|(_, k)| k.clone()).collect();
         self.plugins.decorations.retain(|(p, _), _| p != id);
@@ -540,6 +541,12 @@ impl CodeApp {
         if self.plugins.workspace != self.explorer.root {
             self.plugins.workspace = self.explorer.root.clone();
             host.set_workspace(self.explorer.root.clone());
+        }
+        // What was done in the chat view goes to the extension that fills it.
+        if let Some((plugin, actions)) = self.agents.take_actions() {
+            for action in actions {
+                host.deliver(&plugin, Event::ChatAction(action));
+            }
         }
         let updates = host.poll();
         for u in updates {
@@ -655,6 +662,7 @@ impl CodeApp {
                     }
                 }
             }
+            Update::Chat { plugin, view } => self.agents.apply(&plugin, view),
             Update::Log { plugin, line } => {
                 if let Some(info) = self.plugins.infos.iter_mut().find(|i| i.id == plugin) {
                     info.log.push(line);

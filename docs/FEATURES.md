@@ -621,7 +621,9 @@ downloaded unless you click **Download**.
 ## Agents (opencode)
 
 The **Agents** panel chats with the `opencode` program installed on this computer
-(`npm install -g opencode-ai`); Coiman itself opens no connection. It keeps opencode's sessions,
+(`npm install -g opencode-ai`); Coiman itself opens no connection. It comes with the **Agents**
+extension of the Agents pack, which runs `opencode` (an approved program) in the open folder
+and fills the panel; nothing runs until the panel is opened. It keeps opencode's sessions,
 picks the model, adds the open file or the selection as context, and shows the files the agent
 changed. By default the agent asks before it edits a file or runs a command (**Manual**);
 where opencode has no one to ask, it is turned down and the panel says so. **Auto** lets it
@@ -753,6 +755,13 @@ Plugins are WebAssembly components written against `crates/coiman-core/wit/plugi
   have the editor's OpenGL draw a GLSL program live (time, size and mouse as Shadertoy and
   The Book of Shaders name them; a new `id` links it again), and **`compile-shader`** has the
   graphics driver compile a shader, its log coming back as `shader-compiled`.
+- **The chat view** (API 0.7): **`set-chat`** fills the editor's Agents panel (a transcript
+  of messages with text, thinking and tool cards, sessions, models and choices; a message from
+  an index on replaces the rest, so a growing reply goes alone), and what is done there comes
+  back as **`chat-action`** events (send, with attachments; stop, new, open, delete,
+  continue, the lists, the choices). The editor keeps the box you type in, its history, queue
+  and attachments. **`start-job-lines-with`** is `start-job-lines` with environment variables.
+  Programs a plugin starts don't get the variables of an opencode session Coiman runs in.
 - **Commit graphs** (`commit-graph` blocks): commits with the lanes their lines run in, drawn
   by the editor with branch and tag chips, a click and a right-click menu that run plugin
   commands. **`open-compare-diff`** shows how a file differs between two revisions;

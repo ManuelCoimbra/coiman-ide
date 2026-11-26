@@ -40,7 +40,7 @@ frame loop. Each file under `app/` adds methods to `CodeApp` for one feature, gr
 | `language` | language servers and their features, C and C++, Python environments, the Doctor |
 | `launch` | Cargo, Maven, the debugger, the Testing view, coverage, live sessions, REPLs, prints, stack traces |
 | `project` | Git, and getting it set up |
-| `extensions` | plugins and their panels, packs, the Open VSX marketplace, the VS Code extension host and its webviews, VS Code import |
+| `extensions` | plugins and their panels, packs, the Open VSX marketplace, the VS Code extension host and its webviews, VS Code import, MCP servers for opencode |
 
 Each file is also reachable as `crate::app::<file>`, so moving one between areas changes no
 callers. `ui/` holds the widgets the workbench is built from: the editor view, the Explorer, the
@@ -62,7 +62,8 @@ installed only when asked for, like any plugin: in the sandbox, with the permiss
 programs the user approved.
 
 A plugin draws through blocks the editor renders (forms, rows, tables, logs, plots, graphs,
-shaders) and asks the editor for what the sandbox can't do: start approved programs (jobs),
+shaders) or fills the editor's chat view (the Agents panel), and asks the editor for what
+the sandbox can't do: start approved programs (jobs),
 read files a piece at a time, open serial ports, have the graphics driver compile a shader,
 show a pick list or a graph. Long work goes in steps (`continue-later`), since each call has
 a time limit.
@@ -75,7 +76,9 @@ powershell -File scripts/build-plugins.ps1
 ```
 
 A few features stay in the program because they are the editor itself or need it closely:
-notebooks, the debugger's memory and disassembly views, and some code analysis views.
+notebooks, the debugger's memory and disassembly views, some code analysis views, the chat
+view the Agents extension fills (`app/agents.rs`), and MCP Servers (it edits opencode's
+settings in the home folder).
 
 ## Privacy
 

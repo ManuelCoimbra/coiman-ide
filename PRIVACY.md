@@ -18,8 +18,8 @@ The live session panel connects only when you press Connect, to an address on th
   crate (HTTP clients, TLS, async network runtimes) enters the dependency tree.
   Nothing connects when Coiman starts.
 - **No account.** Nothing requires signing in.
-- **No built-in AI.** The optional Agents panel talks to the `opencode` program,
-  if you installed it; Coiman itself sends nothing. opencode uses the provider and
+- **No built-in AI.** The optional Agents panel (the Agents extension) talks to the
+  `opencode` program, if you installed it; Coiman itself sends nothing. opencode uses the provider and
   key you set up in it. By default the agent asks before it edits a file or runs a
   command, and `workbench.agents_enabled = false` hides the panel.
 

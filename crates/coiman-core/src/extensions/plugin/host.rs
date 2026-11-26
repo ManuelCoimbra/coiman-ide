@@ -31,11 +31,12 @@ wasmtime::component::bindgen!({
 });
 
 pub use coiman::plugin::types::{
-    Block, Button, Clock, CodeLens, CommitGraph, CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind,
-    FileLink, Form, FormField, FormValues, FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult,
-    JobSpec, LogLine, LogView, MenuItem, Parity, Pick, PickAction, PickChoice, PickItem, PickQuery, PlotSeries,
-    Problem, RemoteAttach, Row, SerialClosed, SerialData, SerialOpened, SerialPort, SerialSettings, ServerResponse,
-    Severity, ShaderCompiled, ShaderStage, ShaderView, Span, Table, TerminalLine, TreeItem,
+    Block, Button, ChatAction, ChatMessage, ChatPart, ChatSession, ChatTool, ChatView, Clock, CodeLens, CommitGraph,
+    CommitRow, Decoration, DirEntry, Document, EdgeKind, FieldKind, FileLink, Form, FormField, FormValues,
+    FunctionInfo, Graph, GraphEdge, GraphNode, GraphRef, JobLine, JobResult, JobSpec, LogLine, LogView, MenuItem,
+    Parity, Pick, PickAction, PickChoice, PickItem, PickQuery, PlotSeries, Problem, RemoteAttach, Row, SerialClosed,
+    SerialData, SerialOpened, SerialPort, SerialSettings, ServerResponse, Severity, ShaderCompiled, ShaderStage,
+    ShaderView, Span, Table, TerminalLine, TreeItem,
 };
 
 /// How often the time-limit clock ticks, and how many ticks a call may take.
@@ -189,6 +190,11 @@ pub enum Update {
         id: u64,
         stage: ShaderStage,
         source: String,
+    },
+    /// What the chat view (the Agents panel) shows, from the plugin that fills it.
+    Chat {
+        plugin: String,
+        view: ChatView,
     },
     /// A program (already found and approved) to run in a terminal tab, in the open folder.
     RunInTerminal {
@@ -403,6 +409,16 @@ impl Drop for State {
     }
 }
 
+/// Coiman may itself run inside an agent's session (opencode's): its variables would make a
+/// program a plugin starts join that session and its folder instead of the one open here.
+fn without_agent_session(command: &mut std::process::Command) {
+    for key in
+        ["OPENCODE", "OPENCODE_SESSION_ID", "OPENCODE_TERMINAL", "OPENCODE_SERVER", "OPENCODE_PORT", "OPENCODE_HOST"]
+    {
+        command.env_remove(key);
+    }
+}
+
 /// Keeps what a program prints, up to the limit, and goes on reading the rest so
 /// it never blocks on a full pipe.
 fn read_output(mut from: impl Read + Send + 'static) -> JoinHandle<String> {
@@ -603,7 +619,9 @@ impl State {
             return Err(format!("this plugin already has {MAX_JOBS} programs running"));
         }
         let exe = self.program(&program)?;
-        let mut child = quiet_command(&exe)
+        let mut command = quiet_command(&exe);
+        without_agent_session(&mut command);
+        let mut child = command
             .args(&args)
             // Nothing a job runs can wait on a prompt or an editor nobody sees.
             .env("GIT_TERMINAL_PROMPT", "0")
@@ -684,11 +702,14 @@ impl State {
             return Err(format!("this plugin already has {MAX_JOBS} programs running"));
         }
         let exe = self.program(&program)?;
-        let mut child = quiet_command(&exe)
+        let mut command = quiet_command(&exe);
+        without_agent_session(&mut command);
+        let mut child = command
             .args(&args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_EDITOR", "true")
             .env_remove("GIT_SEQUENCE_EDITOR")
+            .envs(self.env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .current_dir(&root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -759,6 +780,22 @@ impl State {
         let dir = super::store::plugins_dir().ok_or("no config folder")?.join("data").join(&self.plugin);
         std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
         Ok(dir)
+    }
+
+    /// Environment variables a plugin may set for a program: none that would change which
+    /// programs run or where home is.
+    fn check_env(env: &[(String, String)]) -> Result<(), String> {
+        for (name, _) in env {
+            let upper = name.to_ascii_uppercase();
+            let risky = ["PATH", "PATHEXT", "COMSPEC", "SHELL", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR"]
+                .contains(&upper.as_str())
+                || upper.starts_with("LD_")
+                || upper.starts_with("DYLD_");
+            if name.is_empty() || name.contains('=') || risky {
+                return Err(format!("{name} can't be set for a program"));
+            }
+        }
+        Ok(())
     }
 
     /// `rel` inside this plugin's own folder: plain names only, no `..` or absolute paths.
@@ -964,20 +1001,26 @@ impl coiman::plugin::host::Host for State {
     }
 
     fn start_job_with(&mut self, spec: JobSpec) -> Result<u64, String> {
-        for (name, _) in &spec.env {
-            let upper = name.to_ascii_uppercase();
-            let risky = ["PATH", "PATHEXT", "COMSPEC", "SHELL", "HOME", "USERPROFILE", "SYSTEMROOT", "WINDIR"]
-                .contains(&upper.as_str())
-                || upper.starts_with("LD_")
-                || upper.starts_with("DYLD_");
-            if name.is_empty() || name.contains('=') || risky {
-                return Err(format!("{name} can't be set for a program"));
-            }
-        }
+        Self::check_env(&spec.env)?;
         self.env = spec.env;
         let result = self.job(spec.program, spec.args, spec.stdin, None, spec.in_own_folder);
         self.env = Vec::new();
         result
+    }
+
+    fn start_job_lines_with(&mut self, spec: JobSpec) -> Result<u64, String> {
+        Self::check_env(&spec.env)?;
+        if spec.in_own_folder {
+            return Err("start-job-lines-with runs in the open folder".to_owned());
+        }
+        self.env = spec.env;
+        let result = self.job_lines(spec.program, spec.args, spec.stdin);
+        self.env = Vec::new();
+        result
+    }
+
+    fn set_chat(&mut self, view: ChatView) {
+        self.send(Update::Chat { plugin: self.plugin.clone(), view });
     }
 
     fn debug_console(&mut self, text: String) {
