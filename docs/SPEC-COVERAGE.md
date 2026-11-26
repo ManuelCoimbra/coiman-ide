@@ -9,13 +9,13 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 174, partial 131, missing 173,
+**Summary:** 504 items. Done 175, partial 131, missing 172,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
 |---|---|---|---|---|---|
 | 1. Code intelligence and static analysis | 5 | 7 | 4 |  |  |
-| 2. Architecture and dependency analysis | 18 | 5 | 6 |  |  |
+| 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
 | 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
 | 5. Build systems and dependency management | 13 | 17 | 8 | 1 | 3 |
@@ -102,7 +102,7 @@ network 13, rules that hold 13.
 | Identify highly coupled modules | Done | Most used, fan-in and fan-out |
 | Identify isolated modules | Done | Unused tab |
 | Analyse dependency direction | Done | Layered graph |
-| Detect architectural violations | Missing | No rules to check against |
+| Detect architectural violations | Done | Architecture: Check Rules, against layers and rules in `.coiman/architecture.toml` |
 | Track dependency changes between commits | Done | Code Health, Dependencies: Changes since a commit, tag or branch, from each lockfile through git |
 | Identify unused dependencies | Done | Code Health, Dependencies: crates (Cargo.toml) and npm packages (package.json) the code never uses |
 | Show transitive dependency trees | Partial | Maven dependency tree; Cargo crates in the project tree |

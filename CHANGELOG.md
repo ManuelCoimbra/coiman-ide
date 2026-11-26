@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Architecture 1.1: **Architecture: Check Rules**: the imports that break the project's own
+  rules in `.coiman/architecture.toml`: layers from the top down (none may import one above
+  it) and rules naming what a part may not import, each with why.
+
 - Code Health 1.4: in the Dependencies tab, **Changes since** a commit, tag or branch: the
   packages each lockfile added, removed or moved to another version since then.
 - Code Health 1.3: dependencies the code never uses, in its Dependencies tab: crates a

@@ -1045,6 +1045,22 @@ from outside the project are left out.
 - **Architecture: Impact of Current File**: the files a change to the file in front reaches,
   each with how many steps away, and the tests among them, in the panel; the graph shows just
   them.
+- **Architecture: Check Rules** (and every file graph's report): the imports that break the
+  project's own rules, in `.coiman/architecture.toml`, each opening the import's line and
+  saying which rule:
+
+  ```toml
+  # From the top down: a file may import its own layer and those below, never one above.
+  layers = ["src/ui/**", "src/app/**", "src/domain/**", "src/infra/**"]
+
+  [[rule]]
+  from = "src/ui/**"
+  not = ["src/db/**"]
+  why = "the UI goes through the services"
+  ```
+
+  Paths are globs (`**` any folders, `*` part of a name); one without `*` is a file or
+  everything under a folder. A file in no layer has no layer rule.
 - **Export SVG...**, **Copy Mermaid** (a flowchart, one subgraph per folder, colours kept),
   **Copy PlantUML** and **Preview Mermaid**.
 

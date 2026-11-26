@@ -19,12 +19,13 @@ wit_bindgen::generate!({
 
 mod arch;
 mod deps;
+mod rules;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use coiman::plugin::host;
-use coiman::plugin::types::{Block, EdgeKind, Graph as Shown, GraphEdge, GraphNode, Table};
+use coiman::plugin::types::{Block, EdgeKind, FileLink, Graph as Shown, GraphEdge, GraphNode, Table};
 use deps::{Graph, Lang};
 
 /// Source files looked at, at most.
@@ -219,6 +220,9 @@ fn report(graph: &Graph, folders: bool) {
             .collect();
         blocks.push(table(&["File", "Used by", "Uses"], rows));
     }
+    if !folders {
+        rules_report(graph, &mut blocks);
+    }
     let unused = arch::isolated(graph);
     if !unused.is_empty() && !folders {
         blocks.push(Block::Heading(format!("Unused ({})", unused.len())));
@@ -226,6 +230,50 @@ fn report(graph: &Graph, folders: bool) {
         blocks.push(Block::Bullets(unused.iter().take(ROWS * 2).map(|&i| name(i)).collect()));
     }
     host::set_panel("report", &blocks);
+}
+
+/// The imports that break the project's rules (`.coiman/architecture.toml`).
+fn rules_report(graph: &Graph, blocks: &mut Vec<Block>) {
+    let Ok(text) = host::read_file(rules::FILE) else {
+        blocks.push(Block::Heading("Rules".into()));
+        blocks.push(Block::Text(format!(
+            "No rules for this project. Put them in {}: `layers`, from the top down (a file may not \
+             import a layer above its own), and `[[rule]]`s with `from`, `not` and `why`.",
+            rules::FILE
+        )));
+        return;
+    };
+    match rules::parse(&text) {
+        Err(e) => {
+            blocks.push(Block::Heading("Rules".into()));
+            blocks.push(Block::Text(format!("{}: {e}", rules::FILE)));
+        }
+        Ok(r) => {
+            let found = rules::check(graph, &r);
+            blocks.push(Block::Heading(format!("Rules broken ({})", found.len())));
+            if found.is_empty() {
+                blocks.push(Block::Text(format!(
+                    "Every import keeps the rules in {} ({} layers, {} rules).",
+                    rules::FILE,
+                    r.layers.len(),
+                    r.rules.len()
+                )));
+                return;
+            }
+            blocks.push(Block::Text(format!("Imports that break the rules in {}:", rules::FILE)));
+            blocks.push(Block::Links(
+                found
+                    .iter()
+                    .map(|v| FileLink {
+                        text: format!("{}:{} → {}", v.from, v.line, v.to),
+                        detail: v.why.clone(),
+                        path: v.from.clone(),
+                        line: v.line as u32,
+                    })
+                    .collect(),
+            ));
+        }
+    }
 }
 
 /// What a change to `file` reaches.
@@ -323,6 +371,8 @@ impl Guest for Plugin {
         match id.as_str() {
             "files" => start(Want::Files),
             "folders" => start(Want::Folders),
+            // The file graph's report has the rules.
+            "rules" => start(Want::Files),
             "impact" => {
                 let doc = host::active_document()?.ok_or("Open a file first")?;
                 if doc.path.is_empty() {

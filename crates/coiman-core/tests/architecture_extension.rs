@@ -67,6 +67,11 @@ fn texts(blocks: &[Block]) -> String {
                     out.push_str(&format!("{}\n", row.join(" | ")));
                 }
             }
+            Block::Links(links) => {
+                for l in links {
+                    out.push_str(&format!("{} ({}) -> {}:{}\n", l.text, l.detail, l.path, l.line));
+                }
+            }
             _ => {}
         }
     }
@@ -118,6 +123,25 @@ fn architecture_extension() {
         "{report}"
     );
     assert!(report.contains("src/lonely.rs"), "{report}");
+    assert!(report.contains("No rules for this project."), "{report}");
+
+    // The project's rules: util stays at the bottom, so its import of parser breaks one.
+    w(
+        ".coiman/architecture.toml",
+        "[[rule]]\nfrom = \"src/util.rs\"\nnot = [\"src/parser.rs\"]\nwhy = \"util stays at the bottom\"\n",
+    );
+    host.run_command(ID, "rules", "");
+    let (_, panel) = graph_and_panel(&host);
+    let report = texts(&panel);
+    assert!(report.contains("Rules broken (1)"), "{report}");
+    assert!(report.contains("src/util.rs:1 → src/parser.rs (util stays at the bottom) -> src/util.rs:1"), "{report}");
+    // Layers, top down: main may use parser, but parser may not import main's layer.
+    w(".coiman/architecture.toml", "layers = [\"src/main.rs\", \"src/*.rs\"]\n");
+    host.run_command(ID, "rules", "");
+    let (_, panel) = graph_and_panel(&host);
+    let report = texts(&panel);
+    assert!(report.contains("Rules broken (0)") && report.contains("(2 layers, 0 rules)"), "{report}");
+    std::fs::remove_file(ws.join(".coiman/architecture.toml")).unwrap();
 
     host.run_command(ID, "folders", "");
     let (g, _) = graph_and_panel(&host);
