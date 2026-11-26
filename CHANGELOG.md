@@ -5,6 +5,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-26
+
 ### Added
 
 - Code Health 1.1: a **Security** tab with code an attacker could use, each place with why:
