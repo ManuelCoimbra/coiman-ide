@@ -822,8 +822,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Architecture** (`workspace-read`, `editor-read`): the dependency graph, its cycles and
   what a change reaches; see [Architecture](#architecture).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
-  secrets, complexity, duplicates, docs, dependencies, licences, audits and the project
-  overview; see [Code health](#code-health).
+  secrets, security, complexity, duplicates, docs, dependencies, licences, audits and the
+  project overview; see [Code health](#code-health).
 - **SQL Databases** (`workspace-read`, `editor-read`; programs `sqlite3`, `psql`, `mariadb`,
   `mysql`, `sqlcmd`, `SqlLocalDB`): SQLite files and SQL servers; see Databases.
 - **Redis** (programs `redis-cli`, `valkey-cli`, `memurai-cli`): a Redis server's keys,
@@ -1232,6 +1232,24 @@ buttons at its top, each with how many it found; **Scan again**). A click on a p
 file there. The package managers (`cargo`, `npm`, `python`, `poetry`, `uv`) and `git` run only
 as far as they were approved at install, in trusted folders.
 
+- **Security:** code an attacker could use, in four groups, each place with why it's there
+  and the group with what to do about it. Lines are read one at a time, so these are places
+  to look at, not proof; a line with `nosec` or `coiman:allow` in it is left out, and so are
+  comments.
+  - **SQL built from strings** (injection), in Python, JavaScript and TypeScript, Java,
+    Kotlin, C#, Go, PHP, Ruby and Rust: SQL text joined with a value (`+`, `%`, `.format`),
+    a value put in with `f"…{x}"`, `` `…${x}` `` or `$"…{x}"`, and SQL made by `format!`,
+    `fmt.Sprintf`, `String.format` or `sprintf`. Parameters (`?`, `$1`) aren't reported.
+  - **HTML made from data** (cross-site scripting): `innerHTML`, `outerHTML`,
+    `insertAdjacentHTML` and `document.write` given a value, React's
+    `dangerouslySetInnerHTML`, Vue's `v-html`, Svelte's `{@html}`, Angular's
+    `bypassSecurityTrust…`, Django's `mark_safe` and `Markup` and Flask's
+    `render_template_string` given a value, Jinja's `|safe`, and PHP echoing `$_GET` and the
+    like.
+  - **C and C++ calls that can write past a buffer:** `gets`, `strcpy`, `strcat`, `sprintf`,
+    `vsprintf` (and their wide forms), and `scanf` with a `%s` that has no width.
+  - **Rust unsafe code:** each `unsafe` block, function, impl, trait and extern block, saying
+    whether a `// SAFETY:` comment (or a `# Safety` doc section) explains why it's sound.
 - **Secrets:** keys and tokens by their shape: private keys, AWS, GitHub, GitLab, Slack,
   Stripe, Google, npm, OpenAI-style keys, JSON Web Tokens and passwords in URLs. It also
   finds quoted passwords and keys assigned in code that look random enough to be real, and

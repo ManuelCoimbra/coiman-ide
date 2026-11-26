@@ -105,6 +105,32 @@ fn code_health_extension() {
         "version = 3\n\n[[package]]\nname = \"demo\"\nversion = \"0.1.0\"\ndependencies = [\"serde\"]\n\n\
          [[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+x\"\n",
     );
+    // Code an attacker could use, one of each kind.
+    w(
+        "app.py",
+        "cur.execute(f\"SELECT * FROM users WHERE id = {uid}\")
+cur.execute(\"SELECT 1 FROM t WHERE id = ?\", (uid,))
+",
+    );
+    w(
+        "web/page.js",
+        "el.innerHTML = userText;
+el.textContent = userText;
+",
+    );
+    w(
+        "native/copy.c",
+        "#include <string.h>
+void copy(char *d, const char *s) { strcpy(d, s); }
+",
+    );
+    w(
+        "src/raw.rs",
+        "fn raw(p: *const u8) -> u8 {
+    unsafe { *p }
+}
+",
+    );
     w("node_modules/left-pad/package.json", r#"{"name":"left-pad","version":"1.3.0","license":"WTFPL"}"#);
 
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/extensions/code-health");
@@ -142,6 +168,18 @@ fn code_health_extension() {
     // cargo isn't approved: said, and npm's are still listed.
     assert!(lic.contains("program not approved: cargo"), "{lic}");
 
+    host.run_command(ID, "tab", "security");
+    let sec = panel(&host, "Rust unsafe code");
+    assert!(sec.contains("[▸ Security  4 tab security]"), "{sec}");
+    assert!(sec.contains("app.py:1  cur.execute(f\"SELECT * FROM users WHERE id = {uid}\") a value put into SQL text with {…} -> app.py:1"), "{sec}");
+    assert!(!sec.contains("app.py:2"), "a parameter is fine: {sec}");
+    assert!(sec.contains("web/page.js:1  el.innerHTML = userText; innerHTML set from a value"), "{sec}");
+    assert!(sec.contains("native/copy.c:2") && sec.contains("strcpy doesn't know how big its target is"), "{sec}");
+    assert!(sec.contains("src/raw.rs:2  unsafe { *p } unsafe block with no SAFETY note"), "{sec}");
+    // Grouped, with what to do about each.
+    assert!(sec.find("SQL built from strings").unwrap() < sec.find("HTML made from data").unwrap(), "{sec}");
+    assert!(sec.contains("Pass it as a parameter"), "{sec}");
+
     // Updating runs only an approved program.
     host.run_command(ID, "update", "Cargo|serde");
     match wait(&host, |u| matches!(u, Update::Message { text, .. } if text.contains("approved"))) {
@@ -154,7 +192,7 @@ fn code_health_extension() {
         Update::Markdown { title, text, .. } => {
             assert!(title.ends_with(": overview"), "{title}");
             assert!(text.contains("**Demo**: A small project."), "{text}");
-            assert!(text.contains("| Rust | 2 |") && text.contains("Cargo (`Cargo.toml`)"), "{text}");
+            assert!(text.contains("| Rust | 3 |") && text.contains("Cargo (`Cargo.toml`)"), "{text}");
             assert!(!text.contains("## Git"), "git isn't approved: {text}");
         }
         _ => unreachable!(),

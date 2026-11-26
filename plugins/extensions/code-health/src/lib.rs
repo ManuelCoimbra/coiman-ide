@@ -1,4 +1,5 @@
-//! Code Health: secrets left in files, the most complex functions, code written twice, public
+//! Code Health: secrets left in files, code an attacker could use (SQL and HTML made from
+//! strings, unsafe C calls, Rust unsafe), the most complex functions, code written twice, public
 //! items with no docs, the dependencies (versions pinned twice, what's out of date, a tree),
 //! their licences, and known vulnerabilities from `cargo audit` and `npm audit`, in a panel.
 //! And Project: Generate Overview, a page about the project.
@@ -20,6 +21,7 @@ mod lockfiles;
 mod overview;
 mod packages;
 mod secrets;
+mod security;
 mod undocumented;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -48,6 +50,7 @@ const PARSED: [&str; 13] = ["rs", "py", "js", "jsx", "mjs", "ts", "tsx", "java",
 enum Tab {
     #[default]
     Secrets,
+    Security,
     Complexity,
     Duplicates,
     Undocumented,
@@ -56,8 +59,9 @@ enum Tab {
     Audits,
 }
 
-const TABS: [(Tab, &str, &str); 7] = [
+const TABS: [(Tab, &str, &str); 8] = [
     (Tab::Secrets, "secrets", "Secrets"),
+    (Tab::Security, "security", "Security"),
     (Tab::Complexity, "complexity", "Complexity"),
     (Tab::Duplicates, "duplicates", "Duplicates"),
     (Tab::Undocumented, "undocumented", "Undocumented"),
@@ -92,6 +96,7 @@ struct Health {
     sources: Vec<(String, String)>,
     // What was found.
     secrets: Vec<secrets::Finding>,
+    security: Vec<security::Finding>,
     functions: Vec<Function>,
     duplicates: Vec<duplicates::Duplicate>,
     undocumented: Vec<undocumented::Item>,
@@ -182,6 +187,9 @@ fn step() {
                 h.secrets.extend(secrets::scan_text(&path, &text));
             }
             let ext = overview::extension(&path);
+            if size <= security::MAX_BYTES {
+                h.security.extend(security::scan_text(&path, &ext, &text));
+            }
             if PARSED.contains(&ext.as_str())
                 && let Ok(found) = host::syntax_functions(&path)
             {
@@ -215,6 +223,7 @@ fn step() {
         h.duplicates = duplicates::find(&h.sources);
         h.sources = Vec::new();
         h.secrets.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
+        h.security.sort_by(|a, b| (a.category, &a.path, a.line).cmp(&(b.category, &b.path, b.line)));
         h.undocumented.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
         h.functions.sort_by(|a, b| b.complexity.cmp(&a.complexity).then(b.lines.cmp(&a.lines)));
         h.functions.truncate(TOP_FUNCTIONS);
@@ -397,6 +406,7 @@ fn finished(job: JobResult) {
 fn count(h: &Health, tab: Tab) -> usize {
     match tab {
         Tab::Secrets => h.secrets.len(),
+        Tab::Security => h.security.len(),
         Tab::Complexity => h.functions.iter().filter(|f| f.complexity > 10).count(),
         Tab::Duplicates => h.duplicates.len(),
         Tab::Undocumented => h.undocumented.len(),
@@ -427,6 +437,7 @@ fn render() {
         }
         match h.tab {
             Tab::Secrets => secrets_tab(h, &mut blocks),
+            Tab::Security => security_tab(h, &mut blocks),
             Tab::Complexity => complexity_tab(h, &mut blocks),
             Tab::Duplicates => duplicates_tab(h, &mut blocks),
             Tab::Undocumented => undocumented_tab(h, &mut blocks),
@@ -454,6 +465,36 @@ fn secrets_tab(h: &Health, b: &mut Vec<Block>) {
         .iter()
         .map(|f| link(format!("{}:{}", f.path, f.line), format!("{}  {}", f.kind, f.masked), &f.path, f.line));
     b.push(Block::Links(links.collect()));
+}
+
+fn security_tab(h: &Health, b: &mut Vec<Block>) {
+    if h.security.is_empty() {
+        b.push(Block::Text(
+            "Nothing found: no SQL put together from strings, no HTML made from data, no C calls that \
+             can write past a buffer, no Rust unsafe."
+                .into(),
+        ));
+        return;
+    }
+    b.push(Block::Text(
+        "Read a line at a time, so these are places to look at, not proof. A line with nosec or \
+         coiman:allow in it is left out."
+            .into(),
+    ));
+    for category in security::Category::ALL {
+        let found: Vec<&security::Finding> = h.security.iter().filter(|f| f.category == category).collect();
+        if found.is_empty() {
+            continue;
+        }
+        b.push(Block::Spans(vec![
+            Span { text: category.title().into(), color: None, bold: true, monospace: false },
+            span(format!("  {}", found.len()), Some(DIM)),
+        ]));
+        b.push(Block::Text(category.advice().into()));
+        let links =
+            found.iter().map(|f| link(format!("{}:{}  {}", f.path, f.line, f.code), f.why.clone(), &f.path, f.line));
+        b.push(Block::Links(links.collect()));
+    }
 }
 
 fn complexity_tab(h: &Health, b: &mut Vec<Block>) {

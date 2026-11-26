@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Health 1.1: a **Security** tab with code an attacker could use, each place with why:
+  SQL put together from strings (injection), HTML made from data (cross-site scripting), C
+  and C++ calls that can write past a buffer (`gets`, `strcpy`, `sprintf`…), and Rust's
+  `unsafe`, saying which have a `SAFETY:` note.
 - SQL Databases 1.1: **Compare…** lists what differs between the open database's tables and
   another's (a SQLite file, or a connection used before) and writes the SQL that makes the open
   one like it, in its dialect (SQLite tables are made again with their rows copied where

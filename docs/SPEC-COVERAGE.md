@@ -9,12 +9,12 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 167, partial 130, missing 181,
+**Summary:** 504 items. Done 171, partial 131, missing 176,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
 |---|---|---|---|---|---|
-| 1. Code intelligence and static analysis | 4 | 8 | 4 |  |  |
+| 1. Code intelligence and static analysis | 5 | 7 | 4 |  |  |
 | 2. Architecture and dependency analysis | 16 | 5 | 8 |  |  |
 | 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
@@ -29,7 +29,7 @@ network 13, rules that hold 13.
 | 13. Mobile development | 4 | 5 | 6 |  |  |
 | 14. DevOps, containers and cloud development | 5 | 4 | 13 | 2 | 1 |
 | 15. Testing and quality assurance | 6 | 6 | 9 |  |  |
-| 16. Security and code quality | 5 | 5 | 9 |  |  |
+| 16. Security and code quality | 8 | 7 | 4 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 8 | 8 | 5 |  | 2 |
@@ -60,7 +60,7 @@ network 13, rules that hold 13.
 | Detect code smells using configurable rules | Partial | Search by syntax tree keeps rules that flag what a pattern matches; no smell catalogue |
 | Analyse project complexity and dependency health | Done | Code Health: complexity, licences, `cargo audit`/`npm audit`, outdated dependencies |
 | Identify potential performance bottlenecks through static analysis | Missing |  |
-| Identify common security weaknesses using local rule sets | Partial | Secrets, `cargo audit`, `npm audit`; no rules for code patterns yet |
+| Identify common security weaknesses using local rule sets | Done | Code Health: Security (injection, XSS, unsafe C calls, Rust unsafe), Secrets, `cargo audit`, `npm audit` |
 | Explain each finding through source locations, rules and evidence | Partial | Each finding links to its place and says what it found; rules aren't shown for every kind |
 | Suppress, configure and review findings at project level | Missing | Findings can't be suppressed or configured per project yet |
 
@@ -570,11 +570,11 @@ network 13, rules that hold 13.
 | Hardcoded credential detection | Done | Same |
 | Licence compliance | Partial | Licence report; no policy to check against |
 | Security-focused code review | Missing |  |
-| Common vulnerability pattern detection | Missing |  |
-| SQL injection detection | Missing |  |
-| Cross-site scripting detection | Missing |  |
-| Unsafe memory operation detection | Missing |  |
-| Buffer overflow detection | Missing |  |
+| Common vulnerability pattern detection | Partial | Code Health, Security: injection, XSS, unsafe C calls, Rust unsafe, line by line |
+| SQL injection detection | Done | Code Health, Security: SQL put together from strings, in 10 languages |
+| Cross-site scripting detection | Done | Code Health, Security: HTML made from data (DOM, React, Vue, Svelte, Angular, Django, Flask, Jinja, PHP) |
+| Unsafe memory operation detection | Done | Code Health, Security: `gets`, `strcpy`, `strcat`, `sprintf`, `scanf("%s")`; Rust `unsafe` without a SAFETY note |
+| Buffer overflow detection | Partial | The C calls that can write past a buffer; no analysis of sizes |
 | Race condition detection | Missing |  |
 | Security audit reports | Partial | Code Health |
 | Code quality dashboards | Partial | Code Health |
