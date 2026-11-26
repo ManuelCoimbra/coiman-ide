@@ -18,6 +18,7 @@ wit_bindgen::generate!({
 });
 
 mod arch;
+mod changes;
 mod deps;
 mod rules;
 
