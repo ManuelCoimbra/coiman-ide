@@ -4,7 +4,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 
@@ -209,19 +209,18 @@ impl Host {
         let node = crate::language::lsp::servers::which("node").ok_or("Node.js is needed for VS Code extensions")?;
         let script = script_path().ok_or("Couldn't write the extension host script")?;
         let node_path = script.parent().map(|p| p.join("node_modules")).unwrap_or_default();
-        let mut cmd = Command::new(node);
+        // No console window of its own on Windows.
+        let mut cmd = crate::language::lsp::discovery::quiet_command(&node);
         cmd.arg(&script).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         if !node_path.as_os_str().is_empty() {
-            let env_node_path = match std::env::var_os("NODE_PATH") {
-                Some(existing) => {
-                    let mut p = std::ffi::OsString::from(&node_path);
-                    p.push(":");
-                    p.push(existing);
-                    p
-                }
-                None => node_path.into_os_string(),
-            };
-            cmd.env("NODE_PATH", env_node_path);
+            // The platform's own separator (`;` on Windows, `:` elsewhere).
+            let mut dirs = vec![node_path];
+            if let Some(existing) = std::env::var_os("NODE_PATH") {
+                dirs.extend(std::env::split_paths(&existing));
+            }
+            if let Ok(joined) = std::env::join_paths(dirs) {
+                cmd.env("NODE_PATH", joined);
+            }
         }
         let mut child = cmd.spawn().map_err(|e| format!("Couldn't start the extension host: {e}"))?;
         let stdin = child.stdin.take().ok_or("No extension host stdin")?;
