@@ -52,7 +52,7 @@ pub fn scan_text(path: &str, text: &str) -> Vec<Note> {
             continue;
         }
         let Some((kind, end)) = mark_at(line) else { continue };
-        let rest = line[end..].trim_start_matches(['(', ')', ':', '!', '-', ' ', '\t']);
+        let rest = line[end..].trim_start_matches([':', '!', '-', ' ', '\t']);
         // An owner in brackets stays: TODO(ann): …
         let rest = rest.trim_end_matches("*/").trim_end_matches("-->").trim();
         let text: String = rest.chars().take(140).collect();
@@ -160,7 +160,7 @@ mod tests {
             found,
             [
                 (1, "TODO", "split this".to_owned()),
-                (3, "FIXME", "ann) breaks on Windows".to_owned()),
+                (3, "FIXME", "(ann) breaks on Windows".to_owned()),
                 (4, "HACK", "until the API has it".to_owned()),
                 (6, "XXX", "remove".to_owned()),
             ]
