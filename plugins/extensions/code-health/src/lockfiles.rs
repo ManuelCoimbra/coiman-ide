@@ -103,6 +103,43 @@ pub const LOCKFILES: [(&str, Ecosystem); 4] = [
     ("uv.lock", Ecosystem::Uv),
 ];
 
+/// A package whose pinned versions differ between two lockfiles: added (`from` empty),
+/// removed (`to` empty) or moved.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VersionChange {
+    pub name: String,
+    pub from: Vec<String>,
+    pub to: Vec<String>,
+}
+
+/// What changed from `old` to `new`, by package name; the project's own packages left out.
+pub fn changes(old: &Lock, new: &Lock) -> Vec<VersionChange> {
+    let versions = |lock: &Lock| {
+        let own: HashSet<usize> = lock.roots.iter().copied().collect();
+        let mut map: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+        for (i, p) in lock.packages.iter().enumerate() {
+            if !own.contains(&i) {
+                map.entry(p.name.clone()).or_default().push(p.version.clone());
+            }
+        }
+        for v in map.values_mut() {
+            v.sort_by(|a, b| compare_versions(a, b));
+            v.dedup();
+        }
+        map
+    };
+    let (before, after) = (versions(old), versions(new));
+    let names: std::collections::BTreeSet<&String> = before.keys().chain(after.keys()).collect();
+    names
+        .into_iter()
+        .filter_map(|name| {
+            let from = before.get(name).cloned().unwrap_or_default();
+            let to = after.get(name).cloned().unwrap_or_default();
+            (from != to).then(|| VersionChange { name: name.clone(), from, to })
+        })
+        .collect()
+}
+
 /// A lockfile's text, read.
 pub fn read_lock(file: &str, eco: Ecosystem, text: &str) -> Result<Lock, String> {
     let (packages, roots) = match eco {
@@ -587,5 +624,41 @@ version = "3.7"
         assert!(roots.contains(&"coiman-ide") && roots.contains(&"coiman-core"), "{roots:?}");
         let ide = cargo.packages.iter().find(|p| p.name == "coiman-ide").unwrap();
         assert!(ide.deps.iter().any(|&d| cargo.packages[d].name == "eframe"));
+    }
+}
+
+#[cfg(test)]
+mod changes_tests {
+    use super::*;
+
+    fn lock(text: &str) -> Lock {
+        read_lock("Cargo.lock", Ecosystem::Cargo, text).unwrap()
+    }
+
+    #[test]
+    fn what_changed_between_two_lockfiles() {
+        let old = lock(
+            "version = 3\n[[package]]\nname = \"app\"\nversion = \"0.1.0\"\ndependencies = [\"serde\", \"log\"]\n\n\
+             [[package]]\nname = \"serde\"\nversion = \"1.0.100\"\nsource = \"registry+x\"\n\n\
+             [[package]]\nname = \"log\"\nversion = \"0.4.0\"\nsource = \"registry+x\"\n",
+        );
+        let new = lock(
+            "version = 3\n[[package]]\nname = \"app\"\nversion = \"0.2.0\"\ndependencies = [\"serde\", \"regex\"]\n\n\
+             [[package]]\nname = \"serde\"\nversion = \"1.0.200\"\nsource = \"registry+x\"\n\n\
+             [[package]]\nname = \"regex\"\nversion = \"1.10.0\"\nsource = \"registry+x\"\n",
+        );
+        let got: Vec<(String, Vec<String>, Vec<String>)> =
+            changes(&old, &new).into_iter().map(|c| (c.name, c.from, c.to)).collect();
+        let v = |s: &[&str]| s.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+        assert_eq!(
+            got,
+            [
+                ("log".to_owned(), v(&["0.4.0"]), v(&[])),
+                ("regex".to_owned(), v(&[]), v(&["1.10.0"])),
+                ("serde".to_owned(), v(&["1.0.100"]), v(&["1.0.200"])),
+            ],
+            "the project's own package isn't listed"
+        );
+        assert!(changes(&new, &new).is_empty());
     }
 }

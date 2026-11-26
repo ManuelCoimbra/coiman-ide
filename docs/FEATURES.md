@@ -1339,6 +1339,10 @@ as far as they were approved at install, in trusted folders.
   settings file (`.eslintrc`, `*.config.*`, `tsconfig.json`) names. Ones a feature switches on
   aren't counted, nor `@types/…`. Each says what was looked for, and **Open** opens its
   manifest.
+- **Changes since** a commit, tag or branch (`HEAD~1` at first; **Compare**): each lockfile
+  as it was there, read through `git show`, against now: the packages added, removed and
+  moved to another version (with whether it's a major, minor or patch step), the project's
+  own left out. It needs `git` approved at install.
 - **Dependencies:** each lockfile in the folder (`Cargo.lock`, `package-lock.json`,
   `poetry.lock`, `uv.lock`) as a tree under **Dependencies** in the Explorer, from the
   project's own packages down, a level opened per click; and the packages pinned at more than

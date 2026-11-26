@@ -7,6 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Health 1.4: in the Dependencies tab, **Changes since** a commit, tag or branch: the
+  packages each lockfile added, removed or moved to another version since then.
 - Code Health 1.3: dependencies the code never uses, in its Dependencies tab: crates a
   `Cargo.toml` names that no Rust file under it uses, and packages a `package.json` names that
   nothing imports and no script or tool's settings names.

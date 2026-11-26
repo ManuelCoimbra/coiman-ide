@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use coiman_core::extensions::plugin::{Block, Permission, PluginHost, Update, registry};
+use coiman_core::extensions::plugin::{Block, Event, Permission, PluginHost, Update, registry};
 
 const ID: &str = "coiman.code-health";
 
@@ -147,6 +147,18 @@ fn code_health_extension() {
     // log is named but nothing uses it.
     assert!(deps.contains("Not used by the code: 1"), "{deps}");
     assert!(deps.contains("Cargo.toml | dependencies | log | no `use log`"), "{deps}");
+    // Comparing with another revision reads the lockfile through git, not approved here.
+    let values = vec![("since".to_owned(), "HEAD~1".to_owned())];
+    host.deliver(
+        ID,
+        Event::FormSubmitted(coiman_core::extensions::plugin::FormValues {
+            form: "since".into(),
+            button: "Compare".into(),
+            values,
+        }),
+    );
+    let since = panel(&host, "Cargo.lock: git: program not approved: git");
+    assert!(since.contains("Not used by the code: 1"), "{since}");
 
     host.run_command(ID, "tab", "licences");
     let lic = panel(&host, "left-pad 1.3.0");

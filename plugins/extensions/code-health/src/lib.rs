@@ -31,8 +31,10 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use coiman::plugin::host;
-use coiman::plugin::types::{Block, Button, FileLink, JobResult, Row, Span, TreeItem};
-use lockfiles::{Ecosystem, Lock, Outdated};
+use coiman::plugin::types::{
+    Block, Button, FieldKind, FileLink, Form, FormField, FormValues, JobResult, Row, Span, TreeItem,
+};
+use lockfiles::{Ecosystem, Lock, Outdated, VersionChange};
 use packages::{Advisory, Kind, Licensed};
 
 /// Files looked at, at most; text read per step; functions listed.
@@ -91,6 +93,8 @@ enum Job {
     Git(usize),
     /// `git blame` of `debt_files[i]`.
     Blame(usize),
+    /// `git show <since>:<lockfile>` of `locks[i]`.
+    Show(usize),
 }
 
 #[derive(Default)]
@@ -106,6 +110,9 @@ struct Health {
     debt: Vec<debt::Note>,
     /// Dependencies the code never uses.
     unused: Vec<unused::Unused>,
+    /// The revision lockfiles are compared with, and what changed in each since.
+    since: String,
+    since_changes: Vec<(String, Result<Vec<VersionChange>, String>)>,
     /// Files with notes, blamed one at a time for their ages.
     debt_files: Vec<String>,
     /// Why the notes have no ages, when they don't.
@@ -438,6 +445,21 @@ fn finished(job: JobResult) {
             overview_git(which, job);
             return;
         }
+        Job::Show(i) => with(|h| {
+            let Some(lock) = h.locks.get(i) else { return };
+            let file = lock.file.to_string_lossy().replace('\\', "/");
+            let result = if job.exit_code == Some(0) {
+                lockfiles::read_lock(&file, lock.ecosystem, &job.stdout).map(|old| lockfiles::changes(&old, lock))
+            } else {
+                let err = last_line(&job.stderr);
+                Err(if err.contains("exists on disk, but not in") || err.contains("does not exist in") {
+                    format!("{file} wasn't there at {}", h.since)
+                } else {
+                    err
+                })
+            };
+            h.since_changes.push((file, result));
+        }),
         Job::Blame(i) => {
             with(|h| {
                 h.blamed = i + 1;
@@ -741,6 +763,104 @@ fn undocumented_tab(h: &Health, b: &mut Vec<Block>) {
     b.push(Block::Links(links.collect()));
 }
 
+/// What each lockfile's packages were at another revision, compared with now.
+fn since_ui(h: &Health, b: &mut Vec<Block>) {
+    if h.locks.is_empty() {
+        return;
+    }
+    let since = if h.since.is_empty() { "HEAD~1" } else { h.since.as_str() };
+    b.push(Block::Form(Form {
+        id: "since".into(),
+        fields: vec![FormField {
+            id: "since".into(),
+            label: "Changes since".into(),
+            kind: FieldKind::Text,
+            value: since.into(),
+            options: vec![],
+            hint: "a commit, tag or branch".into(),
+        }],
+        buttons: vec!["Compare".into()],
+    }));
+    let comparing = h.jobs.values().any(|j| matches!(j, Job::Show(_)));
+    if comparing {
+        b.push(Block::Spans(vec![span(format!("Reading the lockfiles at {since}…"), Some(DIM))]));
+    }
+    for (file, result) in &h.since_changes {
+        match result {
+            Err(e) => b.push(Block::Spans(vec![span(format!("{file}: {e}"), Some(AMBER))])),
+            Ok(list) if list.is_empty() => {
+                b.push(Block::Spans(vec![span(format!("{file}: no package changed since {since}"), Some(DIM))]))
+            }
+            Ok(list) => {
+                let (added, removed) = (
+                    list.iter().filter(|c| c.from.is_empty()).count(),
+                    list.iter().filter(|c| c.to.is_empty()).count(),
+                );
+                b.push(Block::Heading(format!(
+                    "{file} since {since}: {} added, {} removed, {} changed",
+                    added,
+                    removed,
+                    list.len() - added - removed
+                )));
+                let rows = list
+                    .iter()
+                    .map(|c| {
+                        let (mark, color) = if c.from.is_empty() {
+                            ("+", 0x3FB950)
+                        } else if c.to.is_empty() {
+                            ("−", RED)
+                        } else {
+                            ("~", AMBER)
+                        };
+                        let what = match (c.from.is_empty(), c.to.is_empty()) {
+                            (true, _) => c.to.join(", "),
+                            (_, true) => c.from.join(", "),
+                            _ => format!("{} → {}", c.from.join(", "), c.to.join(", ")),
+                        };
+                        let size = match (c.from.last(), c.to.last()) {
+                            (Some(a), Some(b)) if !c.from.is_empty() && !c.to.is_empty() => lockfiles::bump(a, b),
+                            _ => "",
+                        };
+                        Row {
+                            cells: vec![
+                                span(mark, Some(color)),
+                                span(&c.name, None),
+                                span(what, Some(DIM)),
+                                span(size, Some(DIM)),
+                            ],
+                            buttons: vec![],
+                        }
+                    })
+                    .collect();
+                b.push(Block::Rows(rows));
+            }
+        }
+    }
+}
+
+/// Reads each lockfile at `since` (through git) to compare it with now.
+fn compare_since(since: String) {
+    let since = since.trim().to_owned();
+    if since.is_empty() {
+        return;
+    }
+    let files: Vec<(usize, String)> = with(|h| {
+        h.since = since.clone();
+        h.since_changes.clear();
+        h.locks.iter().enumerate().map(|(i, l)| (i, l.file.to_string_lossy().replace('\\', "/"))).collect()
+    });
+    for (i, file) in files {
+        let args = ["show".to_owned(), format!("{since}:{file}")];
+        match host::start_job("git", &args, "") {
+            Ok(id) => with(|h| {
+                h.jobs.insert(id, Job::Show(i));
+            }),
+            Err(e) => with(|h| h.since_changes.push((file, Err(format!("git: {e}"))))),
+        }
+    }
+    render();
+}
+
 fn dependencies_tab(h: &Health, b: &mut Vec<Block>) {
     for note in &h.lock_notes {
         b.push(Block::Spans(vec![span(note, Some(AMBER))]));
@@ -767,6 +887,7 @@ fn dependencies_tab(h: &Health, b: &mut Vec<Block>) {
             .collect();
         b.push(Block::Rows(rows));
     }
+    since_ui(h, b);
     let asking = h.jobs.values().any(|j| matches!(j, Job::Outdated(_)));
     b.push(bar(vec![button(if asking { "Checking…" } else { "Check for updates" }, "updates", "")]));
     b.push(Block::Text(
@@ -1158,6 +1279,10 @@ impl Guest for Plugin {
             Event::Resumed(token) if token == "scan" => step(),
             Event::Resumed(token) if token == "overview" => overview_step(),
             Event::JobFinished(job) => finished(job),
+            Event::FormSubmitted(FormValues { form, values, .. }) if form == "since" => {
+                let since = values.into_iter().find(|(k, _)| k == "since").map(|(_, v)| v).unwrap_or_default();
+                compare_since(since);
+            }
             _ => {}
         }
     }
