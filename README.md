@@ -87,6 +87,7 @@ crates/
   coiman-plugin/ the plugin publisher's tool: keys, components, signing, registries
 plugins/
   built-in/      plugins shipped inside the app (WebAssembly)
+  extensions/    the extensions that come with Coiman, one per feature, installed by pack
   examples/      example plugins
 assets/icon/     the icon: coiman.svg and what is made from it
 docs/            features, architecture, the audit

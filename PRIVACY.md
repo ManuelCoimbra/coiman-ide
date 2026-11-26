@@ -43,7 +43,8 @@ from where:
   lists popular extensions, and a search or an extension's page asks open-vsx.org, through
   your system's `curl`, over HTTPS only; an extension's icon and README pictures come the
   same way and are kept in `<config>/cache/open-vsx`, so each is fetched once. Nothing is
-  fetched until you open the tab, and `plugins.marketplace = false` removes it. An extension
+  fetched until you open the tab and, the first time, choose **Use Open VSX** after it says
+  what it contacts; **Hide this tab** (or `plugins.marketplace = false`) removes it. An extension
   is downloaded only when you click **Install**, and checked against the SHA-256 Open VSX
   publishes.
 - **VS Code extensions' own code** (`plugins.vscode_extensions = true`, off by default). It

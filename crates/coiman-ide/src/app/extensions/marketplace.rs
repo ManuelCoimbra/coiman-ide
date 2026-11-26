@@ -812,7 +812,7 @@ impl CodeApp {
         ui.painter().hline(footer.x_range(), footer.top(), egui::Stroke::new(1.0, pal.border));
         ui.horizontal(|ui| {
             ui.add_space(12.0);
-            ui.label(RichText::new("Visual Studio Marketplace").small().color(pal.text_dim));
+            ui.label(RichText::new("Open VSX").small().color(pal.text_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(12.0);
                 ui.label(RichText::new("⋯").small().color(pal.text_dim));

@@ -489,6 +489,9 @@ pub struct PluginSettings {
     /// The Open VSX tab in the Extensions view: open-vsx.org is reached (through `curl`) only
     /// when you search or browse there.
     pub marketplace: bool,
+    /// You were told what the Open VSX tab contacts and chose to use it. Asked the first time
+    /// the tab is opened, before anything is sent.
+    pub marketplace_ok: bool,
 }
 
 impl Default for PluginSettings {
@@ -499,6 +502,7 @@ impl Default for PluginSettings {
             vscode_extensions_ok: false,
             registry: String::new(),
             marketplace: true,
+            marketplace_ok: false,
         }
     }
 }

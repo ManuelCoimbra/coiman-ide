@@ -1108,6 +1108,48 @@ impl CodeApp {
 
     // ----- views ------------------------------------------------------------------------
 
+    /// Said once, before the Open VSX tab first connects: what it contacts and what it sends.
+    fn open_vsx_notice(&mut self, ui: &mut egui::Ui) {
+        let ctx = ui.ctx().clone();
+        let mut answer = None;
+        ui.add_space(8.0);
+        ui.horizontal(|ui| {
+            ui.add_space(12.0);
+            ui.vertical(|ui| {
+                ui.set_max_width(ui.available_width() - 12.0);
+                ui.label(RichText::new("This tab connects to open-vsx.org").strong());
+                ui.add_space(4.0);
+                ui.label(
+                    "It lists popular extensions from there, and asks open-vsx.org again \
+                     when you search (sending what you typed), open an extension or install \
+                     one. It goes through curl, over HTTPS. Pictures of the extensions in view \
+                     come the same way and are kept in Coiman's config folder (cache/open-vsx). \
+                     Nothing is sent until you choose to use the tab.",
+                );
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Use Open VSX").clicked() {
+                        answer = Some(true);
+                    }
+                    if ui.button("Hide this tab").clicked() {
+                        answer = Some(false);
+                    }
+                });
+            });
+        });
+        let result = match answer {
+            Some(true) => self.change_setting(&ctx, false, "plugins", "marketplace_ok", Some("true")),
+            Some(false) => {
+                self.plugins.open_vsx = false;
+                self.change_setting(&ctx, false, "plugins", "marketplace", Some("false"))
+            }
+            None => Ok(()),
+        };
+        if let Err(e) = result {
+            self.status = Some(e);
+        }
+    }
+
     /// The Extensions view: consent prompt, installed plugins, updates, registry.
     pub(crate) fn extensions_view(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
@@ -1133,7 +1175,11 @@ impl CodeApp {
                 }
             });
             if self.plugins.open_vsx {
-                self.marketplace_sidebar(ui);
+                if self.settings.plugins.marketplace_ok {
+                    self.marketplace_sidebar(ui);
+                } else {
+                    self.open_vsx_notice(ui);
+                }
                 return;
             }
         }

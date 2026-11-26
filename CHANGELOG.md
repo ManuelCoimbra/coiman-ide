@@ -14,7 +14,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
   - **The Open VSX marketplace**, a tab of the Extensions view beside Coiman's own extensions
     and packs: search, filters, and a page for each extension with its details,
     contributions, changelog and runtime status. open-vsx.org is reached through `curl`, only
-    when the tab is used; pictures are kept on disk. `plugins.marketplace = false` removes it.
+    when the tab is used, and the first time the tab says what it contacts before anything is
+    sent; pictures are kept on disk. `plugins.marketplace = false` removes it.
   - **VS Code extensions' code**, in a Node.js extension host with a `vscode` API shim
     (`plugins.vscode_extensions`, off by default). The first time, Coiman says what it means
     and asks; it runs for trusted folders only. Webviews open in your browser, served from

@@ -1,142 +1,184 @@
 # Coverage of the IDE Feature Specification
 
-Each item of `IDE Feature Specification.md`, checked against the code as of 2026-11-16 (v0.5.0).
-Status:
+Each item of the revised `Coiman IDE Feature Specification`, checked against the code as of
+2026-11-26 (after v0.7.0). Status:
 
 - **Done**: works and is documented in `docs/FEATURES.md`.
 - **Partial**: some of it exists; the note says what.
 - **Missing**: nothing yet.
-- **Network**: needs network access in the app itself, which Coiman doesn't open (it can be
-  built only where a tool on the computer does the networking).
-- **No AI**: left out by the decision to have no AI features.
+- **Network**: would need a service on the network.
+- **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 484 items checked, besides the 36 AI items of section 1. Done 162, partial 121,
-missing 186, network 14, no AI 1. The "already implemented" table at the end of the
-specification is right: every row in it exists.
+**Summary:** 504 items. Done 166, partial 128, missing 184,
+network 13, rules that hold 13.
 
-| Area | Done | Partial | Missing | Network |
-|---|---|---|---|---|
-| 1 AI (analysis items only) | 4 | 5 | 2 | |
-| 2 Architecture | 16 | 5 | 8 | |
-| 3 Debugging and performance | 14 | 3 | 21 | |
-| 4 Git and collaboration | 13 | 2 | 3 | 9 |
-| 5 Build and dependencies | 13 | 17 | 8 | 1 |
-| 6 Terminal | 12 | 4 | 2 | |
-| 7 Documentation | 4 | 6 | 9 | |
-| 8 Web | 9 | 4 | 11 | |
-| 9 Database | 16 | 4 | 3 | |
-| 10 Data science | 5 | 3 | 14 | |
-| 11 Systems and embedded | 3 | 5 | 16 | |
-| 12 Game | 1 | 6 | 14 | |
-| 13 Mobile | 4 | 5 | 6 | |
-| 14 DevOps | 5 | 4 | 13 | 2 |
-| 15 Testing | 6 | 6 | 9 | |
-| 16 Security and quality | 5 | 5 | 9 | |
-| 17 Accessibility and UX | 9 | 7 | 4 | |
-| 18 Remote | 4 | 4 | 6 | 1 |
-| 19 Plugins | 6 | 4 | 9 | 1 |
-| 20 Workspace | 3 | 10 | 4 | |
-| 21 Experimental | 10 | 12 | 15 | |
+| Area | Done | Partial | Missing | Network | Holds |
+|---|---|---|---|---|---|
+| 1. Code intelligence and static analysis | 4 | 8 | 4 |  |  |
+| 2. Architecture and dependency analysis | 16 | 5 | 8 |  |  |
+| 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
+| 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
+| 5. Build systems and dependency management | 13 | 17 | 8 | 1 | 3 |
+| 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
+| 7. Documentation and developer knowledge | 4 | 6 | 9 |  |  |
+| 8. Web development | 9 | 4 | 13 |  |  |
+| 9. Database development | 16 | 4 | 3 |  |  |
+| 10. Data science and machine learning | 5 | 3 | 14 |  |  |
+| 11. Systems programming and embedded development | 5 | 5 | 14 |  |  |
+| 12. Game development | 1 | 6 | 14 |  |  |
+| 13. Mobile development | 4 | 5 | 6 |  |  |
+| 14. DevOps, containers and cloud development | 5 | 4 | 13 | 2 | 1 |
+| 15. Testing and quality assurance | 6 | 6 | 9 |  |  |
+| 16. Security and code quality | 5 | 5 | 9 |  |  |
+| 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
+| 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
+| 19. Plugin ecosystem | 8 | 8 | 5 |  | 2 |
+| 20. Workspace and project management | 3 | 10 | 4 |  |  |
+| 21. Experimental and differentiating features | 10 | 12 | 15 |  |  |
 
-## 1. AI integration and project intelligence
+## 0. Principles
 
-The AI items (the assistant, chat, code generation, AI editing, models and providers) were left
-out until the Agents panel arrived: it drives the `opencode` program (chat, sessions, models,
-edits it asks before making), and `Agents: MCP Servers...` sets the tools it gets. Coiman itself
-still opens no connection; those items aren't recounted here yet. The analysis items work without AI:
+| Requirement | Status | Note |
+|---|---|---|
+| 0.1 Privacy by default | Holds | No telemetry, account or crash reports sent; logs stay in the config folder; nothing connects at start |
+| 0.2 Local-first operation | Holds | Editing, navigation, Git, run, debug and tests work offline |
+| 0.3 Explicit network consent | Holds | Installs, downloads and Git say what they contact and run on a click; the Open VSX tab says what it contacts and asks the first time, before anything is sent |
+| 0.4 Transparency and control | Holds | Permissions shown and revocable; programs approved and logged; agent edits reviewable; PRIVACY.md says what is kept |
+| 0.5 Security boundaries | Holds | Plugins sandboxed apart from the programs they may start; trusted folders; downloads checked against hashes; VS Code extensions said to run with your rights |
+| 0.6 Feature review checklist | Partial | FEATURES and PRIVACY say what each feature contacts and starts; not as a checklist per feature |
+
+## 1. Code intelligence and static analysis
+
+### Code quality analysis
 
 | Item | Status | Note |
 |---|---|---|
-| Automatic project structure analysis | Done | Architecture extension |
-| Identify architectural patterns | Missing | |
-| Detect duplicated code | Done | Code Health, Duplicates |
-| Identify potentially unused code | Partial | Files nothing imports (Architecture, Unused); not functions |
-| Detect suspicious dependencies | Partial | Code Health licences and audits |
-| Explain relationships between classes and modules | Partial | Module graph; type and call hierarchies through LSP |
-| Identify potential performance bottlenecks | Missing | |
-| Identify security vulnerabilities | Partial | Secrets, `cargo audit`, `npm audit` |
-| Analyse project complexity | Done | Code Health, Complexity |
-| Generate architecture documentation | Partial | SVG and Mermaid export of the graph |
-| Generate diagrams from existing source code | Done | Dependency graph, Mermaid |
+| Detect duplicated code across a project | Done | Code Health extension, Duplicates |
+| Identify potentially unused code and unreachable paths | Partial | Files nothing imports (Architecture, Unused); not functions or unreachable paths |
+| Detect suspicious or circular dependencies | Partial | Circular dependencies: Architecture; suspicious ones: Code Health licences and audits |
+| Identify overly complex functions and modules | Done | Code Health extension, Complexity, by function and by file |
+| Detect code smells using configurable rules | Partial | Search by syntax tree keeps rules that flag what a pattern matches; no smell catalogue |
+| Analyse project complexity and dependency health | Done | Code Health: complexity, licences, `cargo audit`/`npm audit`, outdated dependencies |
+| Identify potential performance bottlenecks through static analysis | Missing |  |
+| Identify common security weaknesses using local rule sets | Partial | Secrets, `cargo audit`, `npm audit`; no rules for code patterns yet |
+| Explain each finding through source locations, rules and evidence | Partial | Each finding links to its place and says what it found; rules aren't shown for every kind |
+| Suppress, configure and review findings at project level | Missing | Findings can't be suppressed or configured per project yet |
+
+### Project structure analysis
+
+| Item | Status | Note |
+|---|---|---|
+| Detect architectural patterns from source structure and dependencies | Missing |  |
+| Explain relationships between classes, modules and packages | Partial | Module graph; type and call hierarchies through LSP |
+| Generate architecture documentation from source code and project metadata | Partial | SVG, Mermaid and PlantUML export of the graphs |
+| Generate diagrams from detected symbols and dependencies | Done | Architecture and Class Diagram extensions |
+| Track architecture changes between revisions | Missing |  |
+| Show the impact of changing a symbol, module or public interface | Partial | Affected tests and modules (Impact), references through LSP |
 
 ## 2. Architecture and dependency analysis
+
+### Visual architecture
 
 | Item | Status | Note |
 |---|---|---|
 | Interactive class diagrams | Done | Class Diagram extension: the project or the file in front; zoom, find, pick, open |
 | UML class diagrams | Done | Class Diagram extension: from the code of 13 languages, exported as SVG, Mermaid or PlantUML |
 | UML sequence diagrams | Missing | Previewed when written in Mermaid |
-| UML activity diagrams | Missing | |
-| UML component diagrams | Missing | |
+| UML activity diagrams | Missing |  |
+| UML component diagrams | Missing |  |
 | Package dependency diagrams | Done | Architecture, Folders |
 | Module dependency graphs | Done | 8 languages |
-| Project architecture visualisation | Done | |
+| Project architecture visualisation | Done |  |
 | Automatic diagram generation from source code | Done | Dependency graphs |
 | Export diagrams to SVG and PNG | Partial | SVG and Mermaid; no PNG |
 | Navigate from diagram elements to source code | Done | Double click opens the file |
-| Visualise dependencies between modules | Done | |
+
+### Dependency analysis
+
+| Item | Status | Note |
+|---|---|---|
+| Visualise dependencies between modules | Done |  |
 | Detect circular dependencies | Done | Cycles tab |
 | Identify highly coupled modules | Done | Most used, fan-in and fan-out |
 | Identify isolated modules | Done | Unused tab |
 | Analyse dependency direction | Done | Layered graph |
 | Detect architectural violations | Missing | No rules to check against |
-| Track dependency changes between commits | Missing | |
+| Track dependency changes between commits | Missing |  |
 | Identify unused dependencies | Missing | Packages declared but not used |
 | Show transitive dependency trees | Partial | Maven dependency tree; Cargo crates in the project tree |
 | Compare dependency versions | Partial | The version locked and the newest, side by side in Code Health's Dependencies |
 | Detect outdated dependencies | Done | Code Health, Dependencies: Check for updates (`cargo update --dry-run`, `npm outdated`, `pip list --outdated`) |
-| Files depending on a selected class or function | Partial | Per file (Impact); per symbol through LSP references |
-| Identify potential breaking changes | Missing | |
+
+### Code impact analysis
+
+| Item | Status | Note |
+|---|---|---|
+| Identify which files depend on a selected class or function | Partial | Per file (Impact); per symbol through LSP references |
+| Identify potential breaking changes | Missing |  |
 | Show affected tests after a modification | Done | Impact |
 | Show affected modules after an API change | Done | Impact |
 | Analyse call chains | Done | Call hierarchy (LSP) |
-| Visualise execution paths | Missing | |
+| Visualise execution paths | Missing |  |
 | Estimate the impact of removing a symbol | Partial | References |
 
 ## 3. Advanced debugging and performance analysis
 
+### Advanced debugging
+
 | Item | Status | Note |
 |---|---|---|
-| Conditional breakpoints with advanced expressions | Done | Conditions and hit counts |
-| Logpoints | Done | |
+| Conditional breakpoints with more advanced expressions | Done | Conditions and hit counts |
+| Logpoints | Done |  |
 | Data breakpoints | Done | `dataBreakpoint` or gdb's `watch -location` |
-| Function breakpoints | Done | |
+| Function breakpoints | Done |  |
 | Exception breakpoints | Done | Adapter's filters |
 | Breakpoint groups | Done | Line and function breakpoints; a group turned on or off at once; kept and exported |
-| Breakpoint import and export | Done | |
-| Reverse debugging | Missing | |
-| Execution recording and replay | Missing | |
-| Timeline of executed functions | Missing | |
+| Breakpoint import and export | Done |  |
+| Reverse debugging where supported | Missing |  |
+| Execution recording and replay | Missing |  |
+| Timeline of executed functions | Missing |  |
 | Visualisation of call stacks | Done | Call stack view |
 | Thread activity visualisation | Partial | Thread list |
 | Better multi-threaded debugging | Partial | Threads, pause and step per thread |
 | Remote debugging | Done | Remote Debugging extension: gdb with gdbserver, started over ssh (scp copy optional) or already running |
-| Attach to running processes | Done | |
-| Debug multiple processes simultaneously | Missing | |
-| Heap visualisation | Missing | |
-| Allocation tracking | Missing | |
-| Memory usage over time | Missing | |
-| Memory leak detection | Missing | |
-| Object lifetime analysis | Missing | |
+| Attach to running processes | Done |  |
+| Debug multiple processes simultaneously | Missing |  |
+
+### Memory analysis
+
+| Item | Status | Note |
+|---|---|---|
+| Heap visualisation | Missing |  |
+| Allocation tracking | Missing |  |
+| Memory usage over time | Missing |  |
+| Memory leak detection | Missing |  |
+| Object lifetime analysis | Missing |  |
 | Stack memory visualisation | Partial | Memory view (hex) |
-| Memory snapshots | Missing | |
-| Compare memory snapshots | Missing | |
-| Memory ownership analysis | Missing | |
-| Reference cycle detection | Missing | |
-| Detect excessive allocations | Missing | |
+| Memory snapshots | Missing |  |
+| Compare memory snapshots | Missing |  |
+| Memory ownership analysis | Missing |  |
+| Reference cycle detection | Missing |  |
+| Detect excessive allocations | Missing |  |
+
+### Performance analysis
+
+| Item | Status | Note |
+|---|---|---|
 | CPU profiler | Done | py-spy (Python), perf (Linux); profiles from elsewhere too |
 | Flame graphs | Done | PROFILE panel: zoom, hottest functions, jump to code |
 | Function execution times | Done | The profiler: share and time per function, sampled |
 | Function call frequency | Missing | The profiler samples time; it doesn't count calls |
-| Allocation profiling | Missing | |
-| Thread performance analysis | Missing | |
-| I/O performance analysis | Missing | |
+| Allocation profiling | Missing |  |
+| Thread performance analysis | Missing |  |
+| I/O performance analysis | Missing |  |
 | Performance comparison between executions | Done | PROFILE panel: Compare with the profile before |
-| Benchmark history | Missing | |
-| Performance regression detection | Missing | |
-| Performance changes between commits | Missing | |
+| Benchmark history | Missing |  |
+| Performance regression detection | Missing |  |
+| Visualise performance changes between commits | Missing |  |
 
 ## 4. Git and collaboration
+
+### Advanced Git
 
 | Item | Status | Note |
 |---|---|---|
@@ -144,7 +186,7 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Cherry-pick interface | Done | Git Graph extension, with revert |
 | Merge conflict resolution editor | Done | Merge Conflicts window, per conflict |
 | Three-way merge visualisation | Done | Both sides, the base (diff3), and a result to edit |
-| Interactive staging by lines and sections | Done | Line staging |
+| Interactive staging by individual lines and sections | Done | Line staging |
 | Commit graph visualisation | Done | Git Graph extension, every branch |
 | Branch comparison | Done | Git Graph extension: commits each way, files changed |
 | Visualise repository history | Done | Git Graph, file history, blame |
@@ -153,37 +195,52 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Git worktree management | Done | Git Graph extension: list, add, open, remove, prune |
 | Submodule management | Done | Git Tools extension: state, fetch, newest commit, add, remove |
 | Git hooks management | Done | Git Tools extension: create, edit, turn off and on, run now |
-| Git LFS integration | Missing | |
+| Git LFS integration | Missing |  |
 | Advanced `.gitignore` editor | Done | Git Tools extension: what each rule hides, why a path is ignored, a rule tried before it's added |
-| Live collaborative editing | Network | |
-| Shared cursors | Network | |
-| Shared selections | Network | |
-| Follow another developer's cursor | Network | |
-| Collaborative debugging | Network | |
-| Shared terminals | Network | |
-| Shared development sessions | Network | |
-| Inline comments on code | Missing | |
-| Code review interface | Missing | |
+
+### Collaboration
+
+| Item | Status | Note |
+|---|---|---|
+| Live collaborative editing | Network |  |
+| Collaboration disabled by default, with explicit session creation and invitations | Holds | No collaboration feature, so nothing is shared |
+| Clearly show the server or peer endpoint and information shared with participants | Holds | Same |
+| Prefer self-hosted and local-network options where practical | Holds | Same |
+| Shared cursors | Network |  |
+| Shared selections | Network |  |
+| Follow another developer's cursor | Network |  |
+| Collaborative debugging | Network |  |
+| Shared terminals | Network |  |
+| Shared development sessions | Network |  |
+| Inline comments on code | Missing |  |
+| Code review interface | Missing |  |
 | Review requests and approvals | Network | Possible through `gh` |
 | Integration with GitHub and GitLab | Partial | GitHub through `gh`: publish, Actions runs, logs and re-runs; no GitLab |
-| Conflict detection during collaborative editing | Network | |
+| Conflict detection during collaborative editing | Network |  |
 
 ## 5. Build systems and dependency management
+
+### Build management
 
 | Item | Status | Note |
 |---|---|---|
 | Unified build configuration interface | Partial | Run configurations (`launch.toml`) and the Run picker |
-| Visual build task editor | Missing | |
+| Visual build task editor | Missing |  |
 | Build profiles | Partial | Run configurations |
 | Debug and release configurations | Partial | Run configurations |
-| Custom build pipelines | Missing | |
-| Build dependency graphs | Missing | |
-| Parallel build monitoring | Missing | |
+| Custom build pipelines | Missing |  |
+| Build dependency graphs | Missing |  |
+| Parallel build monitoring | Missing |  |
 | Build output filtering | Partial | Output panel, problem matchers |
 | Build history | Done | Run History, Builds (B4) |
 | Build failure analysis | Partial | First error, problem matchers, Problems |
-| Incremental build information | Missing | |
-| Build cache management | Missing | |
+| Incremental build information | Missing |  |
+| Build cache management | Missing |  |
+
+### Dependency management
+
+| Item | Status | Note |
+|---|---|---|
 | Unified dependency manager | Partial | Code Health, Dependencies: Cargo, npm, Poetry, uv, pip together |
 | Dependency installation interface | Partial | Maven: search Maven Central and add |
 | Dependency removal interface | Done | Remove, through the package manager |
@@ -193,19 +250,27 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Dependency conflict detection | Done | Packages pinned at more than one version, and by whom |
 | Dependency version comparison | Done | Now, what an update gets, newest; major, minor or patch |
 | Lockfile visualisation | Done | Cargo.lock, package-lock.json, poetry.lock, uv.lock as trees |
-| Offline dependency management | Missing | |
-| Private package registries | Network | |
-| CMake | Done | |
-| Make | Done | |
-| Ninja | Done | |
+| Offline dependency management | Missing |  |
+| Private package registries | Network |  |
+| Show package source and require user-initiated or explicitly approved downloads | Holds | Every install says the command and where it downloads from, and runs on a click |
+| Do not run package installation scripts without making execution clear | Holds | Installs run in a terminal you see |
+| Preserve offline dependency workflows where supported | Holds | Nothing in Coiman needs the network to build or run |
+
+### Build system support
+
+| Item | Status | Note |
+|---|---|---|
+| CMake | Done |  |
+| Make | Done |  |
+| Ninja | Done |  |
 | Meson | Partial | Run only |
 | Gradle | Partial | Run only |
-| Maven | Done | |
+| Maven | Done |  |
 | MSBuild | Partial | Its errors are read; no build view |
-| Bazel | Missing | |
+| Bazel | Missing |  |
 | Webpack | Partial | Through npm scripts |
 | Vite | Partial | npm scripts, dev server address found |
-| npm | Done | |
+| npm | Done |  |
 | pnpm | Partial | Run only |
 | Yarn | Partial | Run only |
 | Poetry | Partial | poetry.lock read; update and remove through it |
@@ -213,6 +278,8 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Pip | Partial | Environments; debugpy install offer |
 
 ## 6. Terminal and command-line environment
+
+### Improvements
 
 | Item | Status | Note |
 |---|---|---|
@@ -222,67 +289,76 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Persistent terminal sessions | Partial | Shells start again in their folders; running programs don't survive |
 | Terminal session restoration | Done | Shells, the active one and the split |
 | Split terminal panes | Done | Two side by side |
-| Terminal tabs | Done | |
+| Terminal tabs | Done |  |
 | Terminal command history | Done | Terminal Commands extension: the commands run in Coiman's shells, and the shells' own history files |
 | Command autocomplete | Done | Terminal Commands extension, Ctrl+Space in a shell: commands run before, the project's, and paths |
-| Command syntax highlighting | Missing | |
-| Command suggestions from project context | Done | Terminal Commands extension: `package.json` scripts, Makefile targets, `justfile` recipes, Taskfile and Deno tasks, Cargo |
+| Command syntax highlighting | Missing |  |
+| Command suggestions based on project context | Done | Terminal Commands extension: `package.json` scripts, Makefile targets, `justfile` recipes, Taskfile and Deno tasks, Cargo |
 | Environment variable editor | Done | Settings > Terminal: add, change, take away; yours or the project's |
 | Environment profile management | Partial | `[env]` for the user and per project, with an editor in Settings; no named profiles |
 | SSH terminal integration | Partial | Terminal: New SSH Terminal..., hosts from `~/.ssh/config` |
-| Remote shell support | Missing | |
+| Remote shell support | Missing |  |
 | Task automation through terminal commands | Partial | Run configurations |
 | Terminal output linked to source locations | Done | Ctrl+click `file:line[:col]`; errors also go to Problems |
-| Detect compiler errors in terminal output | Done | Problem matchers |
+| Automatic detection of compiler errors in terminal output | Done | Problem matchers |
 
 ## 7. Documentation and developer knowledge
 
 | Item | Status | Note |
 |---|---|---|
-| Documentation browser | Missing | |
+| Documentation browser | Missing |  |
 | Documentation search | Done | Find in Files' Doc switch: doc files and doc comments |
 | Documentation generation | Partial | Doc comment templates |
-| API documentation generation | Missing | |
-| Automatic documentation updates | Missing | |
-| Project documentation index | Missing | |
-| Documentation relationship graphs | Missing | |
+| API documentation generation | Missing |  |
+| Automatic documentation updates | Missing |  |
+| Project documentation index | Missing |  |
+| Documentation relationship graphs | Missing |  |
 | Documentation coverage analysis | Partial | What lacks a doc comment is listed, not given as a share |
-| Detect outdated documentation | Missing | |
+| Detect outdated documentation | Missing |  |
 | Detect undocumented public APIs | Done | Code Health, Undocumented: Rust, Go, Python, JavaScript, TypeScript |
-| Preview documentation in different formats | Partial | Markdown, SVG, Mermaid |
+| Preview documentation for different formats | Partial | Markdown, SVG, Mermaid |
 | Markdown documentation workspace | Partial | Preview, outline |
-| Mermaid diagram preview | Done | |
+| Mermaid diagram preview | Done |  |
 | PlantUML integration | Done | Markdown blocks and .puml files, drawn by the user's PlantUML |
-| LaTeX preview and editing | Missing | |
+| LaTeX preview and editing | Missing |  |
 | Documentation templates | Partial | Doc comment templates |
-| Generate documentation from code comments | Missing | |
-| Generate dependency documentation | Missing | |
+| Generate documentation from code comments | Missing |  |
+| Generate dependency documentation | Missing |  |
 | Generate architecture reports | Partial | SVG and Mermaid export |
 
 ## 8. Web development
 
+### Frontend
+
 | Item | Status | Note |
 |---|---|---|
 | Integrated browser developer tools | Partial | Page console |
-| DOM inspector | Missing | |
-| CSS inspector | Missing | |
+| DOM inspector | Missing |  |
+| CSS inspector | Missing |  |
 | Live CSS editing | Partial | Live preview reloads on edit |
 | Responsive design preview | Partial | Device sizes in the preview |
-| Device viewport presets | Partial | |
-| Network request inspector | Missing | |
+| Device viewport presets | Partial |  |
+| Network request inspector | Missing |  |
 | Browser console | Done | Page console |
-| JavaScript performance profiling | Missing | |
-| Accessibility inspection | Missing | |
-| Visual component tree | Missing | |
-| React, Angular component inspection | Missing | |
-| Hot module replacement management | Missing | |
+| JavaScript performance profiling | Missing |  |
+| Accessibility inspection | Missing |  |
+| Visual component tree | Missing |  |
+| React component inspection | Missing |  |
+| Vue component inspection | Missing |  |
+| Angular component inspection | Missing |  |
+| Hot module replacement management | Missing |  |
+
+### Backend
+
+| Item | Status | Note |
+|---|---|---|
 | HTTP request client | Done | HTTP Client extension: `.http` files sent through curl |
 | REST API testing environment | Done | `.http` files, environments, history |
-| GraphQL explorer | Missing | |
-| WebSocket client | Missing | |
+| GraphQL explorer | Missing |  |
+| WebSocket client | Missing |  |
 | API endpoint explorer | Done | Endpoints by tag, each opening as a `.http` request |
 | OpenAPI specification viewer | Done | OpenAPI extension: endpoints, models, examples |
-| API documentation generation | Missing | |
+| API documentation generation | Missing |  |
 | Request history | Done | The last 30 responses of each `.http` file |
 | Environment-based API configurations | Done | http-client.env.json and private, VS Code's settings |
 | Authentication token management | Done | Named responses' values (`{{login.response.body.$.token}}`) |
@@ -295,8 +371,8 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Database connection manager | Done | SQLite files; Connect for PostgreSQL and MySQL, with recent connections |
 | SQL editor | Done | `.sql` files run from the editor |
 | SQL syntax highlighting and completion | Partial | Highlighting; no completion |
-| Query execution | Done | |
-| Query result viewer | Done | |
+| Query execution | Done |  |
+| Query result viewer | Done |  |
 | Table data editor | Partial | Through SQL statements |
 | Database schema visualisation | Done | Tables, views, columns, keys |
 | ER diagrams | Done | SQL Databases extension: the tables in the graph window; SVG, Mermaid and PlantUML export |
@@ -304,16 +380,16 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Index inspection | Done | Each table's indexes, unique and partial marked |
 | Query execution plans | Done | Explain: `EXPLAIN QUERY PLAN` as a tree |
 | Query performance analysis | Partial | Time per statement; full scans and temporary sorts flagged |
-| Database migration management | Missing | |
-| Schema comparison | Missing | |
-| Database backup and restore | Missing | |
+| Database migration management | Missing |  |
+| Schema comparison | Missing |  |
+| Database backup and restore | Missing |  |
 | Multiple database connections | Partial | Named connections kept (SQLite files, PostgreSQL, MySQL); one open per window |
 | Connection profiles | Done | Recent connections with names of their own (no passwords) |
-| SQLite | Done | SQL Databases extension, through `sqlite3` |
-| PostgreSQL | Done | Through `psql` |
-| MySQL and MariaDB | Done | Through the `mariadb` or `mysql` client |
-| Microsoft SQL Server | Done | Through sqlcmd; LocalDB by name |
-| MongoDB | Done | MongoDB extension, through mongosh: collections, documents, scripts |
+| Support for SQLite | Done | SQL Databases extension |
+| Support for PostgreSQL | Done | SQL Databases extension, through psql |
+| Support for MySQL and MariaDB | Done | Through the `mariadb` or `mysql` client |
+| Support for Microsoft SQL Server | Done | Through sqlcmd; LocalDB by name |
+| Support for MongoDB | Done | MongoDB extension, through mongosh |
 | Redis browser | Done | Redis extension, through redis-cli: keys, values, TTL, console |
 
 ## 10. Data science and machine learning
@@ -326,94 +402,100 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | R notebook support | Missing | R REPL |
 | Julia notebook support | Missing | Julia REPL |
 | Interactive variable explorer | Partial | Debugger variables |
-| DataFrame viewer | Missing | |
-| Matrix viewer | Missing | |
-| Interactive plots | Missing | |
-| Plot history | Missing | |
+| DataFrame viewer | Missing |  |
+| Matrix viewer | Missing |  |
+| Interactive plots | Missing |  |
+| Plot history | Missing |  |
 | Dataset preview | Done | CSV and TSV tables |
 | CSV data analysis | Partial | Table view, column colours |
 | SQL data exploration | Done | SQLite |
 | Environment and package management | Partial | Python environments |
-| Virtual environment comparison | Missing | |
-| GPU monitoring | Missing | |
-| CUDA debugging | Missing | |
-| Machine learning experiment tracking | Missing | |
-| Model visualisation | Missing | |
-| Tensor inspection | Missing | |
-| Training metrics dashboard | Missing | |
-| Model performance comparison | Missing | |
+| Virtual environment comparison | Missing |  |
+| GPU monitoring | Missing |  |
+| CUDA debugging | Missing |  |
+| Machine learning experiment tracking | Missing |  |
+| Model visualisation | Missing |  |
+| Tensor inspection | Missing |  |
+| Training metrics dashboard | Missing |  |
+| Model performance comparison | Missing |  |
 
 ## 11. Systems programming and embedded development
 
+### New features
+
 | Item | Status | Note |
 |---|---|---|
-| Embedded development profiles | Missing | |
-| Cross-compilation configuration | Missing | |
+| Embedded development profiles | Missing |  |
+| Cross-compilation configuration | Missing |  |
 | Toolchain manager | Partial | MinGW and build tools found, installs offered |
 | Compiler configuration interface | Partial | Compile databases |
-| Linker configuration | Missing | |
-| Assembly language support | Partial | Disassembly view |
+| Linker configuration | Missing |  |
+| Assembly language support improvements | Partial | Disassembly view |
 | Assembly-level debugging | Partial | Disassembly while debugging |
 | Register visualisation | Partial | Registers in the debugger |
-| Peripheral register inspection | Missing | |
-| Hardware debugging integration | Missing | |
-| GDB integration | Done | |
-| OpenOCD integration | Missing | |
+| Peripheral register inspection | Missing |  |
+| Hardware debugging integration | Missing |  |
+| GDB integration | Done |  |
+| OpenOCD integration | Missing |  |
 | Serial monitor | Done | Serial Monitor extension: text, hex, plot, send, log |
-| UART communication tools | Missing | |
-| I2C inspection | Missing | |
-| SPI inspection | Missing | |
-| Firmware flashing interface | Missing | |
-| Microcontroller project templates | Missing | |
-| PlatformIO integration | Missing | |
-| Arduino development support | Missing | |
-| ESP-IDF integration | Missing | |
+| UART communication tools | Missing |  |
+| I2C inspection | Missing |  |
+| SPI inspection | Missing |  |
+| Firmware flashing interface | Missing |  |
+| Microcontroller project templates | Missing |  |
+| PlatformIO integration | Missing |  |
+| Arduino development support | Missing |  |
+| ESP-IDF integration | Missing |  |
 | Memory map visualisation | Done | Binary Size extension, Memory: regions from memory.x, a linker script or a GNU map, and what sits in each |
 | Binary size analysis | Done | Binary Size extension: groups, symbols, sections, flash and RAM, changes |
 | Firmware section analysis | Done | Binary Size extension, Memory: each section's run and load addresses, size and kind |
 
 ## 12. Game development
 
+### New features
+
 | Item | Status | Note |
 |---|---|---|
-| Game project templates | Missing | |
+| Game project templates | Missing |  |
 | Game asset browser | Partial | File Manager and image viewer |
 | Sprite viewer | Partial | Image viewer |
 | Texture viewer | Partial | Image viewer |
 | Animation preview | Partial | Animated GIF and WebP |
-| Audio asset preview | Missing | |
+| Audio asset preview | Missing |  |
 | Shader editor | Done | GLSL, HLSL and WGSL colored; Shaders extension: Preview: Shader draws fragment shaders live |
 | Shader compilation and diagnostics | Partial | Shaders extension: GLSL by the graphics driver and WGSL by naga while typing; HLSL needs dxc |
-| GPU debugging integration | Missing | |
-| Scene file inspection | Missing | |
-| Game resource dependency analysis | Missing | |
-| Physics debugging visualisation | Missing | |
-| Game performance profiling | Missing | |
-| Frame time analysis | Missing | |
-| FPS monitoring | Missing | |
-| Engine integration | Missing | |
+| GPU debugging integration | Missing |  |
+| Scene file inspection | Missing |  |
+| Game resource dependency analysis | Missing |  |
+| Physics debugging visualisation | Missing |  |
+| Game performance profiling | Missing |  |
+| Frame time analysis | Missing |  |
+| FPS monitoring | Missing |  |
+| Engine integration | Missing |  |
 | Godot integration | Partial | Godot language server |
 | Unity project support | Missing | C# editing only |
 | Unreal Engine project support | Missing | C++ editing only |
-| OpenGL development tools | Missing | |
-| Vulkan development tools | Missing | |
+| OpenGL development tools | Missing |  |
+| Vulkan development tools | Missing |  |
 
 ## 13. Mobile development
+
+### New features
 
 | Item | Status | Note |
 |---|---|---|
 | Android project support | Partial | Android folders in the project tree |
-| Android SDK management | Missing | |
-| Android emulator integration | Missing | |
+| Android SDK management | Missing |  |
+| Android emulator integration | Missing |  |
 | Android device manager | Partial | Android extension: devices listed with their state; no emulators started |
 | ADB terminal integration | Done | adb shell per device, in a terminal |
-| APK inspection | Missing | |
-| APK build and signing | Missing | |
+| APK inspection | Missing |  |
+| APK build and signing | Missing |  |
 | Android logcat viewer | Done | Android extension: live, by level, text and app; project frames as links |
-| Gradle Android integration | Missing | |
+| Gradle Android integration | Missing |  |
 | Flutter development support | Done | Run, stack traces |
-| Dart language tools | Done | |
-| iOS project support | Missing | |
+| Dart language tools | Done |  |
+| iOS project support where the host platform allows it | Missing |  |
 | Mobile device preview | Partial | Device sizes in the web preview |
 | Responsive layout inspection | Partial | Same |
 | Mobile application debugging | Partial | Flutter run |
@@ -428,26 +510,29 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Dockerfile editor and diagnostics | Partial | Editing and run; no diagnostics |
 | Docker Compose management | Done | Services with status and ports; up, down, build, logs |
 | Container terminal | Done | Shell into a running container, in a terminal |
-| Container debugging | Missing | |
-| Kubernetes integration | Missing | |
-| Kubernetes resource explorer | Missing | |
+| Container debugging | Missing |  |
+| Kubernetes integration | Missing |  |
+| Kubernetes resource explorer | Missing |  |
 | YAML validation for Kubernetes | Missing | YAML tree only |
-| Helm chart support | Missing | |
-| Terraform integration | Missing | |
-| Infrastructure dependency graphs | Missing | |
-| Ansible support | Missing | |
-| CI/CD pipeline editor | Missing | |
+| Helm chart support | Missing |  |
+| Terraform integration | Missing |  |
+| Infrastructure dependency graphs | Missing |  |
+| Ansible support | Missing |  |
+| CI/CD pipeline editor | Missing |  |
 | GitHub Actions integration | Done | GitHub Actions extension through `gh`: runs, jobs, failed log, re-run, step in its workflow |
-| GitLab CI integration | Missing | |
+| GitLab CI integration | Missing |  |
 | Pipeline execution history | Partial | GitHub Actions runs, jobs and failed logs through `gh` |
-| Deployment configuration | Missing | |
-| Cloud resource explorer | Network | |
-| Remote development environments | Missing | |
+| Deployment configuration | Missing |  |
+| Cloud resource explorer | Network |  |
+| Remote development environments | Missing |  |
 | SSH project access | Partial | Remote over SSH extension: a mirror; saves, deletes and renames go back |
-| Development containers | Missing | |
-| Cloud workspace management | Network | |
+| Development containers | Missing |  |
+| Cloud workspace management | Network |  |
+| Cloud workspace features are optional and require explicit connection and data-transfer consent | Holds | No cloud workspaces |
 
 ## 15. Testing and quality assurance
+
+### Improvements
 
 | Item | Status | Note |
 |---|---|---|
@@ -460,20 +545,22 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Test dependency visualisation | Partial | Impact lists the tests a file reaches |
 | Test coverage heatmaps | Partial | Coverage in the gutter |
 | Branch coverage | Partial | Read, not shown |
-| Mutation testing | Missing | |
-| Property-based testing integration | Missing | |
-| Fuzz testing integration | Missing | |
+| Mutation testing | Missing |  |
+| Property-based testing integration | Missing |  |
+| Fuzz testing integration | Missing |  |
 | Snapshot testing | Partial | insta reviewed in the app; Jest and Vitest updated with `-u` |
-| Visual regression testing | Missing | |
-| API testing | Missing | |
-| Load testing | Missing | |
-| Stress testing | Missing | |
-| Security testing | Missing | |
-| Test environment profiles | Missing | |
+| Visual regression testing | Missing |  |
+| API testing | Missing |  |
+| Load testing | Missing |  |
+| Stress testing | Missing |  |
+| Security testing | Missing |  |
+| Test environment profiles | Missing |  |
 | Parallel test execution management | Done | At once, for every runner that can be told; Cargo through RUST_TEST_THREADS / NEXTEST_TEST_THREADS |
 | Test failure analysis | Partial | Failure place, message, Problems, failing streaks |
 
 ## 16. Security and code quality
+
+### A more complete security environment could include
 
 | Item | Status | Note |
 |---|---|---|
@@ -482,93 +569,107 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Secret detection | Done | Code Health, Secrets |
 | Hardcoded credential detection | Done | Same |
 | Licence compliance | Partial | Licence report; no policy to check against |
-| Security-focused code review | Missing | |
-| Common vulnerability pattern detection | Missing | |
-| SQL injection detection | Missing | |
-| Cross-site scripting detection | Missing | |
-| Unsafe memory operation detection | Missing | |
-| Buffer overflow detection | Missing | |
-| Race condition detection | Missing | |
+| Security-focused code review | Missing |  |
+| Common vulnerability pattern detection | Missing |  |
+| SQL injection detection | Missing |  |
+| Cross-site scripting detection | Missing |  |
+| Unsafe memory operation detection | Missing |  |
+| Buffer overflow detection | Missing |  |
+| Race condition detection | Missing |  |
 | Security audit reports | Partial | Code Health |
 | Code quality dashboards | Partial | Code Health |
-| Technical debt tracking | Missing | |
+| Technical debt tracking | Missing |  |
 | Complexity analysis | Done | Code Health, Complexity |
 | Maintainability analysis | Partial | Complexity, duplicates |
 | Code duplication analysis | Done | Code Health, Duplicates |
-| Configurable quality gates | Missing | |
+| Configurable quality gates | Missing |  |
 
 ## 17. Accessibility and user experience
+
+### Improvements
 
 | Item | Status | Note |
 |---|---|---|
 | Full screen reader support | Partial | AccessKit is wired in; not checked with a reader |
 | Keyboard-only navigation | Partial | Commands and shortcuts for most things |
-| Accessibility audit of all components | Missing | |
+| Accessibility audit of all interface components | Missing |  |
 | High contrast themes | Done | Coiman High Contrast (dark and light), GitHub's |
 | Custom colour palettes | Done | Themes, VS Code themes |
-| Light or dark theme as the system is set | Done | Coiman Light or Coiman Dark until a theme is chosen; follows a change while running |
-| Per-language editor layouts | Missing | |
+| Per-language editor layouts | Missing |  |
 | Per-project interface profiles | Partial | Folder settings |
 | Custom panel layouts | Done | Panel bottom, right or in a window; side bar left or right |
 | Save and restore workspace layouts | Done | Kept per project; Reset Layout |
-| Customisable toolbars | Missing | |
+| Customisable toolbars | Missing |  |
 | Command palette extensions | Done | Plugin commands |
-| Advanced keybinding editor | Done | |
+| Advanced keybinding editor | Done |  |
 | Context-sensitive shortcuts | Done | Editor-only and Explorer-only keys |
-| Mouse gesture support | Missing | |
-| Custom editor rulers | Done | |
+| Mouse gesture support | Missing |  |
+| Custom editor rulers | Done |  |
 | Customisable minimap | Partial | `editor.minimap`, on or off, in syntax colors |
-| Better font rendering | Partial | |
+| Better font rendering | Partial |  |
 | Ligature configuration | Done | On or off, and ligatures left out (`editor.font_ligatures_off`) |
 | Font fallback configuration | Partial | Fallback fonts exist; not configurable |
 | Multi-monitor workspace support | Partial | Terminal in its own window |
 
 ## 18. Remote development and distributed workflows
 
+### New features
+
 | Item | Status | Note |
 |---|---|---|
 | SSH remote development | Partial | A remote folder mirrored here, saves sent back, an ssh terminal; builds run here |
+| Remote connections require explicit configuration and approval | Holds | Remote folders and terminals start from Open Remote Folder or an SSH host you choose |
+| Display the destination host and explain which files or commands are accessed remotely | Holds | The host is in the title and the status bar; commands are logged |
+| Never silently synchronise project files or credentials | Holds | A remote folder's mirror sends only what you save in it; credentials stay with ssh |
 | Remote project explorer | Done | The mirror in the Explorer; saves, deletes and renames go there |
 | Remote terminal | Done | Remote: Open Terminal There, in the remote folder; ssh terminals to `~/.ssh/config` hosts |
 | Remote LSP execution | Partial | Language servers run here, on the copy; not on the remote machine |
 | Remote debugging | Done | See Debugging: gdbserver over ssh |
 | Remote build execution | Done | Remote: Run Command There; its errors go to Problems on the files here |
-| Remote test execution | Missing | |
+| Remote test execution | Missing |  |
 | Remote file synchronisation | Partial | Saves go up; Download Folder Again comes down |
-| Remote workspace profiles | Missing | |
-| Remote environment configuration | Missing | |
-| Container-based development environments | Missing | |
-| Cloud development workspaces | Network | |
+| Remote workspace profiles | Missing |  |
+| Remote environment configuration | Missing |  |
+| Container-based development environments | Missing |  |
+| Cloud development workspaces | Network |  |
+| Remote sessions must be started explicitly and show the remote destination and data flow | Holds | Same |
 | Connection management | Partial | Hosts read from `~/.ssh/config`; no editor |
-| Remote session recovery | Missing | |
-| Remote performance monitoring | Missing | |
+| Remote session recovery | Missing |  |
+| Remote performance monitoring | Missing |  |
 
 ## 19. Plugin ecosystem
+
+### Improvements
 
 | Item | Status | Note |
 |---|---|---|
 | Public plugin SDK | Done | `coiman-plugin` |
 | Plugin development templates | Done | Plugins: New Plugin..., three templates that build as they are |
-| Plugin documentation generator | Missing | |
-| Plugin API versioning | Done | API v2; older plugins are stopped with the reason |
+| Plugin documentation generator | Missing |  |
+| Plugin API versioning | Done | Plugin API 0.7; a plugin built for an older one is stopped with the reason, and one that comes with Coiman offers Update… |
 | Plugin compatibility checker | Done | Same |
 | Plugin dependency management | Partial | Lockfile |
-| Plugin debugging tools | Missing | |
-| Plugin profiling | Missing | |
+| Plugin debugging tools | Missing |  |
+| Plugin profiling | Missing |  |
 | Plugin sandbox inspection | Partial | Permissions shown |
-| Plugin test framework | Missing | |
-| Plugin marketplace interface | Partial | Registries, Extensions view |
-| Plugin ratings and reviews | Network | |
-| Plugin categories and tags | Missing | |
+| Plugin test framework | Missing |  |
+| Plugin marketplace interface | Done | Extensions view: Coiman's extensions and packs, registries, and the Open VSX tab (search, filters, a page per extension) |
+| Marketplace access only on explicit user action, with no automatic refresh or update checks | Holds | The Open VSX tab and registries are reached only when used; nothing checks by itself (see 0.3) |
+| Show publisher, requested permissions and external processes before installation | Partial | Coiman's extensions: publisher, signature, permissions and programs before installing; a VS Code extension shows its publisher |
+| Do not grant plugins network access by default | Holds | WebAssembly plugins have no network; programs are approved one by one; VS Code extensions run only when turned on, saying so |
+| Plugin ratings and reviews | Partial | Open VSX ratings and downloads shown, read only |
+| Plugin categories and tags | Partial | Open VSX categories and sort orders; Coiman's own extensions grouped by pack |
 | Plugin update notifications | Done | Check for plugin updates |
-| Plugin changelogs | Missing | |
-| Plugin rollback | Missing | |
-| Plugin installation profiles | Missing | |
-| Workspace-specific plugin configurations | Missing | |
+| Plugin changelogs | Partial | Open VSX extensions: their Changelog page |
+| Plugin rollback | Missing |  |
+| Plugin installation profiles | Done | Packs install a kind of work's extensions together |
+| Workspace-specific plugin configurations | Partial | A project's `.coiman/settings.toml` sets its own packs |
 | Plugin discovery through the command palette | Partial | Plugin commands are in the palette; installing isn't |
 | Plugin development mode with automatic reload | Done | Plugins: Start Dev Mode: build, load, rebuild on save |
 
 ## 20. Workspace and project management
+
+### Potential additions
 
 | Item | Status | Note |
 |---|---|---|
@@ -582,16 +683,17 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Workspace task management | Partial | Run configurations |
 | Workspace dependency overview | Partial | Code Health, Licences |
 | Workspace health dashboard | Partial | Code Health |
-| Project metadata editor | Missing | |
-| Project migration tools | Missing | |
+| Project metadata editor | Missing |  |
+| Project migration tools | Missing |  |
 | Project backup and restore | Partial | Local history, per file |
-| Project snapshots | Missing | |
-| Project comparison | Missing | |
+| Project snapshots | Missing |  |
+| Project comparison | Missing |  |
 | Project-specific keybindings | Done | `.coiman/keybindings.toml` over the user's |
 | Project-specific themes | Partial | Folder settings |
-| Project-specific AI instructions | No AI | |
 
 ## 21. Experimental and differentiating features
+
+### Developer Workspace Intelligence
 
 | Item | Status | Note |
 |---|---|---|
@@ -599,36 +701,51 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | Identify the tools required by the project | Done | Language Doctor |
 | Recommend missing development tools | Done | Install offers |
 | Detect incorrect project configurations | Partial | Settings and `launch.toml` problems |
-| Identify outdated project conventions | Missing | |
-| Suggest improvements to project structure | Missing | |
+| Identify outdated project conventions | Missing |  |
+| Suggest improvements to project structure | Missing |  |
 | Monitor project health | Partial | Code Health |
 | Generate a project overview | Done | Project: Generate Overview (Markdown with its preview) |
-| Unified project status dashboard | Missing | |
+| Provide a unified project status dashboard | Missing |  |
+
+### Code visualisation
+
+| Item | Status | Note |
+|---|---|---|
 | Execution flow visualisation | Partial | A function's flowchart (ifs, loops, returns) from its code; not from a run |
-| Memory layout visualisation | Missing | |
-| Object relationship visualisation | Missing | |
-| Data flow diagrams | Missing | |
+| Memory layout visualisation | Missing |  |
+| Object relationship visualisation | Missing |  |
+| Data flow diagrams | Missing |  |
 | Function call graphs | Partial | Call hierarchy |
-| Real-time variable visualisation | Missing | |
-| Algorithm visualisation | Missing | |
-| Interactive recursion visualisation | Missing | |
-| Concurrency visualisation | Missing | |
-| Structural code editing | Done | |
+| Real-time variable visualisation | Missing |  |
+| Algorithm visualisation | Missing |  |
+| Interactive recursion visualisation | Missing |  |
+| Concurrency visualisation | Missing |  |
+
+### Advanced editor concepts
+
+| Item | Status | Note |
+|---|---|---|
+| Structural code editing | Done |  |
 | Semantic navigation across languages | Partial | LSP, per language |
-| Cross-language symbol references | Missing | |
+| Cross-language symbol references | Missing |  |
 | Intelligent code transformations | Partial | Code actions, refactorings through LSP |
-| Visual refactoring | Missing | |
+| Visual refactoring | Missing |  |
 | Interactive AST explorer | Partial | Find by Syntax Tree |
 | Query editor for syntax trees | Done | Find by Syntax Tree |
 | Custom language grammar support | Partial | Language profiles and registry |
 | Custom language server profiles | Done | Server paths, extension servers |
+
+### Development productivity
+
+| Item | Status | Note |
+|---|---|---|
 | Personal productivity dashboard | Partial | The session statistics page; no charts |
 | Coding session statistics stored locally | Done | Project: Show Session Statistics; `activity.json` |
 | Project activity timeline | Partial | Local history timeline, per file |
 | Time spent per project | Done | Active time per project and day |
-| Task and issue integration | Missing | |
+| Task and issue integration | Missing |  |
 | Personal snippets library | Done | Snippets |
 | Reusable project workflows | Partial | Run configurations |
 | Automated project setup | Partial | Tool install offers |
-| Command sequences | Missing | |
-| Custom development routines | Missing | |
+| Command sequences | Missing |  |
+| Custom development routines | Missing |  |

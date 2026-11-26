@@ -42,8 +42,16 @@ dependencies built, so the next build only recompiles our crates. `-All` removes
   crate only draws and wires. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) lists the areas.
 - A new feature in the app is a file under `crates/coiman-ide/src/app/<area>/` adding methods to
   `CodeApp`, declared in that area's `mod.rs` and in the `use` list in `app/mod.rs`.
-- Built-in plugins are WebAssembly, in `plugins/built-in/`; rebuild them with
-  `scripts/build-plugins.ps1`.
+- Anything beyond editing is an extension: a WebAssembly plugin in
+  `plugins/extensions/<name>/`, in a pack (`crates/coiman-core/src/packs.rs`). If the plugin
+  API can't do what it needs yet, grow the API (`crates/coiman-core/wit/plugin.wit`) rather
+  than building the feature into the program.
+- Plugins are rebuilt with `scripts/build-plugins.ps1`, and their `plugin.wasm` is committed.
+  An extension's own tests run in its folder
+  (`cargo test --lib`, with `CARGO_TARGET_DIR=../../../target/plugins`); its tests in the real
+  plugin host are in `crates/coiman-core/tests/`.
+- A feature that connects anywhere does it through a program on the computer and only when the
+  user asks, saying first what it contacts (see [PRIVACY.md](PRIVACY.md)).
 
 ## Style
 
