@@ -91,6 +91,9 @@ pub struct Report {
     /// Set when the file has no symbols (stripped, or kept in a separate `.pdb`).
     pub no_symbols: Option<&'static str>,
     pub memory: Option<Memory>,
+    /// An ELF file's sections as they sit in memory (where they run and are loaded from), for
+    /// the memory map; empty for other formats.
+    pub placed: Vec<crate::memory::Placed>,
 }
 
 impl Report {
@@ -263,6 +266,7 @@ pub struct Scan {
     pe: bool,
     elf_program: bool,
     sections: Vec<Section>,
+    placed: Vec<crate::memory::Placed>,
     /// By section index: name, start, length, part.
     places: HashMap<usize, (String, u64, u64, Part)>,
     found: Vec<Found>,
@@ -305,6 +309,7 @@ impl Scan {
             pe: file.format() == object::BinaryFormat::Pe,
             elf_program: file.format() == object::BinaryFormat::Elf && file.kind() == object::ObjectKind::Executable,
             sections,
+            placed: elf_placed(data),
             places,
             found: Vec::new(),
             next: 0,
@@ -349,7 +354,7 @@ impl Scan {
     }
 
     pub fn finish(self) -> Report {
-        let Scan { path, format, file_size, pe, elf_program, sections, places, mut found, .. } = self;
+        let Scan { path, format, file_size, pe, elf_program, sections, placed, places, mut found, .. } = self;
         // One per address (aliases share one), the biggest kept.
         found.sort_by(|a, b| (a.section, a.address).cmp(&(b.section, b.address)).then(b.size.cmp(&a.size)));
         found.dedup_by(|b, a| a.section == b.section && a.address == b.address);
@@ -383,8 +388,46 @@ impl Scan {
             let sum = |parts: &[Part]| sections.iter().filter(|s| parts.contains(&s.part)).map(|s| s.size).sum();
             Memory { flash: sum(&[Part::Code, Part::ReadOnly, Part::Data]), ram: sum(&[Part::Data, Part::Zeroed]) }
         });
-        Report { path, format, file_size, sections, symbols, no_symbols, memory }
+        Report { path, format, file_size, sections, symbols, no_symbols, memory, placed }
     }
+}
+
+/// An ELF file's allocated sections with where they run and where they're loaded from (a
+/// load segment whose physical address differs: `.data` copied from flash).
+fn elf_placed<'d, R: ReadRef<'d>>(data: R) -> Vec<crate::memory::Placed> {
+    use object::read::elf::{ElfFile32, ElfFile64};
+    match object::FileKind::parse(data) {
+        Ok(object::FileKind::Elf32) => ElfFile32::<object::Endianness, R>::parse(data).map(|f| placed_of(&f)),
+        Ok(object::FileKind::Elf64) => ElfFile64::<object::Endianness, R>::parse(data).map(|f| placed_of(&f)),
+        _ => return Vec::new(),
+    }
+    .unwrap_or_default()
+}
+
+fn placed_of<'d, Elf: object::read::elf::FileHeader, R: ReadRef<'d>>(
+    file: &object::read::elf::ElfFile<'d, Elf, R>,
+) -> Vec<crate::memory::Placed> {
+    use object::read::elf::{ProgramHeader, SectionHeader};
+    let e = file.endian();
+    let loads: Vec<(u64, u64, u64)> = file
+        .elf_program_headers()
+        .iter()
+        .filter(|p| p.p_type(e) == object::elf::PT_LOAD)
+        .map(|p| (p.p_vaddr(e).into(), p.p_paddr(e).into(), p.p_memsz(e).into()))
+        .collect();
+    let table = file.elf_section_table();
+    let mut out = Vec::new();
+    for s in table.iter() {
+        if s.sh_flags(e).0 & object::elf::SHF_ALLOC.0 == 0 {
+            continue;
+        }
+        let (vma, size): (u64, u64) = (s.sh_addr(e).into(), s.sh_size(e).into());
+        let lma = loads.iter().find(|(v, _, m)| vma >= *v && vma - v < *m).map_or(vma, |(v, p, _)| p + (vma - v));
+        let name = table.section_name(e, s).map(|n| String::from_utf8_lossy(n).into_owned()).unwrap_or_default();
+        let contents = s.sh_type(e) != object::elf::SHT_NOBITS;
+        out.push(crate::memory::Placed { name, vma, lma, size, contents });
+    }
+    out
 }
 
 /// Reads a whole file held in memory, for tests and small files.
@@ -515,6 +558,81 @@ mod tests {
             assert_eq!(changes[0].1 - changes[0].2, big.unwrap());
         }
         assert!(made >= 1);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A real firmware image: rustc's object file linked by `rust-lld` (which comes with
+    /// rustup) into flash and RAM regions, `.data` running in RAM and loaded from flash.
+    pub(crate) fn firmware(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+        let sysroot = std::process::Command::new("rustc").args(["--print", "sysroot"]).output().ok()?;
+        let sysroot = std::path::PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim());
+        let host = std::process::Command::new("rustc").args(["-vV"]).output().ok()?;
+        let host = String::from_utf8_lossy(&host.stdout).lines().find_map(|l| l.strip_prefix("host: ").map(str::to_owned))?;
+        let lld = sysroot.join("lib/rustlib").join(host).join("bin").join(if cfg!(windows) { "rust-lld.exe" } else { "rust-lld" });
+        std::fs::create_dir_all(dir).ok()?;
+        std::fs::write(
+            dir.join("fw.rs"),
+            "#![no_std]\n#![no_main]\n\
+             #[no_mangle] pub static TABLE: [u32; 256] = [7; 256];\n\
+             #[no_mangle] pub static mut COUNTER: u32 = 5;\n\
+             #[no_mangle] pub static mut BUFFER: [u8; 1024] = [0; 1024];\n\
+             #[no_mangle] pub extern \"C\" fn _start() -> ! { unsafe { loop { COUNTER = COUNTER.wrapping_add(TABLE[(COUNTER as usize) % 256]); BUFFER[(COUNTER as usize) % 1024] = 1; } } }\n\
+             #[panic_handler] fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }\n",
+        )
+        .ok()?;
+        std::fs::write(
+            dir.join("memory.x"),
+            "MEMORY\n{\n  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 64K\n  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 20K\n}\n\
+             SECTIONS\n{\n  .text : { *(.text .text.*) } > FLASH\n  .rodata : { *(.rodata .rodata.*) } > FLASH\n\
+             .data : { *(.data .data.*) } > RAM AT > FLASH\n  .bss (NOLOAD) : { *(.bss .bss.*) } > RAM\n}\n",
+        )
+        .ok()?;
+        // Any installed target that rustc can make an object file for; aarch64 is one rustup
+        // users often have for Android, and this computer's own works with lld too.
+        let made = ["aarch64-linux-android", "thumbv7em-none-eabihf", "x86_64-unknown-linux-gnu"].iter().any(|t| {
+            std::process::Command::new("rustc")
+                .args(["--target", t, "--crate-type", "bin", "--emit", "obj", "-C", "opt-level=1", "-C", "panic=abort", "-o"])
+                .arg(dir.join("fw.o"))
+                .arg(dir.join("fw.rs"))
+                .output()
+                .is_ok_and(|o| o.status.success())
+        });
+        if !made {
+            return None;
+        }
+        let linked = std::process::Command::new(lld)
+            .args(["-flavor", "gnu", "-T"])
+            .arg(dir.join("memory.x"))
+            .arg("-o")
+            .arg(dir.join("fw.elf"))
+            .arg(dir.join("fw.o"))
+            .output()
+            .ok()?;
+        linked.status.success().then(|| dir.join("fw.elf"))
+    }
+
+    #[test]
+    fn a_firmware_in_flash_and_ram() {
+        let dir = std::env::temp_dir().join(format!("coiman-fw-{}", std::process::id()));
+        let Some(elf) = firmware(&dir) else {
+            eprintln!("no target to build a firmware image for: skipped");
+            return;
+        };
+        let data = std::fs::read(&elf).unwrap();
+        let report = analyze("fw.elf", &data).unwrap();
+        let data_section = report.placed.iter().find(|p| p.name == ".data").unwrap();
+        assert_eq!(data_section.vma, 0x2000_0000);
+        assert!((0x0800_0000..0x0801_0000).contains(&data_section.lma), "{data_section:?}");
+        let bss = report.placed.iter().find(|p| p.name == ".bss").unwrap();
+        assert!(!bss.contents && bss.size == 1024);
+        let regions = crate::memory::regions_from(&std::fs::read_to_string(dir.join("memory.x")).unwrap());
+        let (uses, _) = crate::memory::place(&regions, &report.placed);
+        let (flash, ram) = (&uses[0], &uses[1]);
+        assert!(flash.used >= 1024 + 4, "{flash:?}");
+        assert!(ram.used >= 1024 + 4, "{ram:?}");
+        assert!(flash.sections.contains(&(".data".to_owned(), 4, crate::memory::How::Loaded)));
+        // The biggest things in RAM are the buffer, then the counter.
+        assert!(report.symbols.iter().any(|s| s.name == "BUFFER" && s.section == ".bss"));
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

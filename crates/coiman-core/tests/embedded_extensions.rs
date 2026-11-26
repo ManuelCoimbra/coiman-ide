@@ -171,8 +171,104 @@ fn binary_size_extension() {
     // One outside the folder isn't read.
     submit(&host, "coiman.binary-size", "file", "Analyze", &[("path", "../elsewhere.o")]);
     panel(&host, "isn't a path inside the open folder");
+
+    // A firmware image: its memory map from the project's memory.x.
+    if firmware(&root) {
+        submit(&host, "coiman.binary-size", "file", "Analyze", &[("path", "target/fw.elf")]);
+        let (shown, _) = panel(&host, "[Memory tab memory]");
+        assert!(shown.contains("ELF program"), "{shown}");
+        host.run_command("coiman.binary-size", "tab", "memory");
+        let (shown, blocks) = panel(&host, "FLASH |");
+        assert!(shown.contains("of 64.0 KiB") && shown.contains("RAM |") && shown.contains("of 20.0 KiB"), "{shown}");
+        assert!(shown.contains(".data | 4 B") && shown.contains("start values, copied out at start"), "{shown}");
+        assert!(shown.contains("Biggest: BUFFER 1.0 KiB"), "{shown}");
+        assert!(shown.contains("form layout (layout)"), "{shown}");
+        let Some(Block::Form(form)) = blocks.iter().find(|b| matches!(b, Block::Form(f) if f.id == "layout")) else {
+            panic!("{shown}")
+        };
+        assert_eq!(form.fields[0].value, "memory.x");
+        let Some(Block::Table(sections)) = blocks.iter().find(|b| matches!(b, Block::Table(_))) else {
+            panic!("{shown}")
+        };
+        let data = sections.rows.iter().find(|r| r[0] == ".data").unwrap();
+        assert!(data[1].starts_with("0x20000000 RAM") && data[2].ends_with("FLASH"), "{data:?}");
+        // Another layout given by hand: a GNU map with other regions.
+        std::fs::write(
+            root.join("fw.map"),
+            "Memory Configuration\n\nName Origin Length Attributes\nROM 0x08000000 0x00100000 xr\nSRAM 0x20000000 0x00040000 xrw\n\nLinker script and memory map\n",
+        )
+        .unwrap();
+        submit(&host, "coiman.binary-size", "layout", "Use", &[("layout", "fw.map")]);
+        let (shown, _) = panel(&host, "ROM |");
+        assert!(shown.contains("of 1.00 MiB") && shown.contains("SRAM |"), "{shown}");
+    } else {
+        eprintln!("no target to build a firmware image for: the memory map wasn't checked");
+    }
     drop(host);
     std::fs::remove_dir_all(&root).unwrap();
+}
+
+/// A real firmware image at `target/fw.elf` and its `memory.x`: rustc's object file linked by
+/// the `rust-lld` that comes with rustup, `.data` running in RAM and loaded from flash.
+fn firmware(root: &Path) -> bool {
+    let run = |args: &[&str]| std::process::Command::new("rustc").args(args).output().ok();
+    let Some(sysroot) = run(&["--print", "sysroot"]) else { return false };
+    let Some(info) = run(&["-vV"]) else { return false };
+    let sysroot = PathBuf::from(String::from_utf8_lossy(&sysroot.stdout).trim());
+    let info = String::from_utf8_lossy(&info.stdout).to_string();
+    let Some(host) = info.lines().find_map(|l| l.strip_prefix("host: ")) else { return false };
+    let lld = sysroot.join("lib/rustlib").join(host).join("bin").join(if cfg!(windows) {
+        "rust-lld.exe"
+    } else {
+        "rust-lld"
+    });
+    let dir = root.join("target");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(
+        dir.join("fw.rs"),
+        "#![no_std]\n#![no_main]\n\
+         #[no_mangle] pub static TABLE: [u32; 256] = [7; 256];\n\
+         #[no_mangle] pub static mut COUNTER: u32 = 5;\n\
+         #[no_mangle] pub static mut BUFFER: [u8; 1024] = [0; 1024];\n\
+         #[no_mangle] pub extern \"C\" fn _start() -> ! { unsafe { loop { COUNTER = COUNTER.wrapping_add(TABLE[(COUNTER as usize) % 256]); BUFFER[(COUNTER as usize) % 1024] = 1; } } }\n\
+         #[panic_handler] fn panic(_: &core::panic::PanicInfo) -> ! { loop {} }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("memory.x"),
+        "MEMORY\n{\n  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 64K\n  RAM (rwx) : ORIGIN = 0x20000000, LENGTH = 20K\n}\n\
+         SECTIONS\n{\n  .text : { *(.text .text.*) } > FLASH\n  .rodata : { *(.rodata .rodata.*) } > FLASH\n\
+         .data : { *(.data .data.*) } > RAM AT > FLASH\n  .bss (NOLOAD) : { *(.bss .bss.*) } > RAM\n}\n",
+    )
+    .unwrap();
+    let made = ["aarch64-linux-android", "thumbv7em-none-eabihf", "x86_64-unknown-linux-gnu"].iter().any(|t| {
+        let o = dir.join("fw.o");
+        let src = dir.join("fw.rs");
+        run(&[
+            "--target",
+            t,
+            "--crate-type",
+            "bin",
+            "--emit",
+            "obj",
+            "-C",
+            "opt-level=1",
+            "-C",
+            "panic=abort",
+            "-o",
+            &o.to_string_lossy(),
+            &src.to_string_lossy(),
+        ])
+        .is_some_and(|o| o.status.success())
+    });
+    made && std::process::Command::new(lld)
+        .args(["-flavor", "gnu", "-T"])
+        .arg(root.join("memory.x"))
+        .arg("-o")
+        .arg(dir.join("fw.elf"))
+        .arg(dir.join("fw.o"))
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 /// This repository's own release build (hundreds of MB, about 200 000 symbols) read in steps,

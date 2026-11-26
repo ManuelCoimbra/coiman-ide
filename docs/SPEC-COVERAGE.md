@@ -368,9 +368,9 @@ still opens no connection; those items aren't recounted here yet. The analysis i
 | PlatformIO integration | Missing | |
 | Arduino development support | Missing | |
 | ESP-IDF integration | Missing | |
-| Memory map visualisation | Missing | |
+| Memory map visualisation | Done | Binary Size extension, Memory: regions from memory.x, a linker script or a GNU map, and what sits in each |
 | Binary size analysis | Done | Binary Size extension: groups, symbols, sections, flash and RAM, changes |
-| Firmware section analysis | Missing | |
+| Firmware section analysis | Done | Binary Size extension, Memory: each section's run and load addresses, size and kind |
 
 ## 12. Game development
 

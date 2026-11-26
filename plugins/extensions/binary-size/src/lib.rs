@@ -11,6 +11,7 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
+pub mod memory;
 pub mod pages;
 pub mod size;
 
@@ -19,7 +20,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::sync::Mutex;
 
 use coiman::plugin::host;
-use coiman::plugin::types::{Block, Button, FieldKind, Form, FormField, FormValues, Row, Span};
+use coiman::plugin::types::{Block, Button, FieldKind, Form, FormField, FormValues, Row, Span, Table as Grid};
 use pages::Pages;
 use size::{Report, Scan, Summary, human, human_change};
 
@@ -84,6 +85,8 @@ enum Tab {
     Groups,
     Symbols,
     Sections,
+    /// A firmware's memory map: regions and what sits in them.
+    Memory,
 }
 
 #[derive(Default)]
@@ -99,6 +102,8 @@ struct State {
     earlier: HashMap<String, Summary>,
     tab: Tab,
     filter: String,
+    /// The memory layout: the file it came from (relative path) and its regions.
+    layout: Option<(String, Vec<memory::Region>)>,
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -207,11 +212,22 @@ fn step() {
     });
     match done {
         None => host::continue_later("scan"),
-        Some(result) => with(|s| {
-            if let Some(r) = s.running.take() {
-                s.report = Some(result.map(|()| r.scan.finish()));
+        Some(result) => {
+            let elf = with(|s| {
+                let r = s.running.take()?;
+                let report = result.map(|()| r.scan.finish());
+                let elf = report.as_ref().ok().filter(|r| !r.placed.is_empty()).map(|r| r.path.clone());
+                s.report = Some(report);
+                elf
+            });
+            // Its memory layout, unless one was chosen already.
+            if let Some(path) = elf
+                && with(|s| s.layout.is_none())
+            {
+                let found = find_layout(&path);
+                with(|s| s.layout = found);
             }
-        }),
+        }
     }
     render();
 }
@@ -253,6 +269,147 @@ fn bar(part: u64, whole: u64) -> Span {
 
 fn percent(n: u64, whole: u64) -> String {
     format!("{:.1}%", n as f64 * 100.0 / whole.max(1) as f64)
+}
+
+/// Where a firmware's memory layout may be: a GNU map beside the program (`app.map`,
+/// `app.elf.map`), then `memory.x` or a linker script (`*.ld`) in the project, near the top.
+fn find_layout(program: &str) -> Option<(String, Vec<memory::Region>)> {
+    let read = |path: &str| -> Option<(String, Vec<memory::Region>)> {
+        let regions = memory::regions_from(&host::read_file(path).ok()?);
+        (!regions.is_empty()).then(|| (path.to_owned(), regions))
+    };
+    let stem = program.rsplit_once('.').map_or(program, |(s, _)| s);
+    for map in [format!("{program}.map"), format!("{stem}.map")] {
+        if let Some(found) = read(&map) {
+            return Some(found);
+        }
+    }
+    fn walk(dir: &str, depth: usize, out: &mut Vec<String>) {
+        let Ok(entries) = host::read_dir(dir) else { return };
+        let path = |name: &str| if dir.is_empty() { name.to_owned() } else { format!("{dir}/{name}") };
+        for e in &entries {
+            let lower = e.name.to_ascii_lowercase();
+            if !e.is_dir && (lower == "memory.x" || lower.ends_with(".ld")) {
+                out.push(path(&e.name));
+            }
+        }
+        for e in entries.iter().filter(|e| e.is_dir) {
+            let skip = e.name.starts_with('.') || matches!(e.name.as_str(), "target" | "node_modules" | "build");
+            if depth < 2 && !skip {
+                walk(&path(&e.name), depth + 1, out);
+            }
+        }
+    }
+    let mut scripts = Vec::new();
+    walk("", 0, &mut scripts);
+    // memory.x first (the usual one in Rust), the shallowest first.
+    scripts.sort_by_key(|p| (!p.to_ascii_lowercase().ends_with("memory.x"), p.matches('/').count()));
+    scripts.iter().find_map(|p| read(p))
+}
+
+fn hex(n: u64) -> String {
+    format!("0x{n:08X}")
+}
+
+/// The Memory tab: each region with how full it is and what's in it, then the sections with
+/// where they run and are loaded from.
+fn memory_ui(s: &State, report: &Report, b: &mut Vec<Block>) {
+    let (from, regions) = s.layout.clone().unwrap_or_default();
+    let fields = vec![field(
+        "layout",
+        "Memory layout",
+        FieldKind::Text,
+        &from,
+        Vec::new(),
+        "memory.x, a linker script or a GNU map",
+    )];
+    b.push(Block::Form(Form { id: "layout".into(), fields, buttons: vec!["Use".into()] }));
+    if regions.is_empty() {
+        let why = "No memory regions found: give a linker script with MEMORY (memory.x), or a map GNU ld wrote (-Map).";
+        b.push(Block::Spans(vec![span(why, Some(DIM))]));
+    } else {
+        let (uses, outside) = memory::place(&regions, &report.placed);
+        for u in &uses {
+            let r = &u.region;
+            let full = if u.used > r.length { Some(RED) } else { None };
+            b.push(Block::Rows(vec![Row {
+                cells: vec![
+                    bold(&r.name),
+                    span(format!("{} of {}", human(u.used), human(r.length)), full),
+                    bar(u.used, r.length),
+                    span(percent(u.used, r.length), full.or(Some(DIM))),
+                    mono(format!("{} – {}", hex(r.origin), hex(r.origin + r.length)), Some(DIM)),
+                ],
+                buttons: Vec::new(),
+            }]));
+            if u.sections.is_empty() {
+                continue;
+            }
+            let rows = u
+                .sections
+                .iter()
+                .map(|(name, size, how)| {
+                    let what = match how {
+                        memory::How::Runs => "runs here".to_owned(),
+                        memory::How::Loaded => "start values, copied out at start".to_owned(),
+                    };
+                    Row {
+                        cells: vec![
+                            mono(format!("  {name}"), None),
+                            span(human(*size), None),
+                            bar(*size, r.length),
+                            span(what, Some(DIM)),
+                        ],
+                        buttons: Vec::new(),
+                    }
+                })
+                .collect();
+            b.push(Block::Rows(rows));
+            // The biggest symbols that run in this region.
+            let here: Vec<&str> =
+                u.sections.iter().filter(|(_, _, how)| *how == memory::How::Runs).map(|(n, _, _)| n.as_str()).collect();
+            let biggest: Vec<String> = report
+                .symbols
+                .iter()
+                .filter(|x| here.contains(&x.section.as_str()))
+                .take(5)
+                .map(|x| format!("{} {}", x.name, human(x.size)))
+                .collect();
+            if !biggest.is_empty() {
+                b.push(Block::Spans(vec![span(format!("  Biggest: {}", biggest.join(", ")), Some(DIM))]));
+            }
+        }
+        if !outside.is_empty() {
+            let names: Vec<String> = outside.iter().map(|p| format!("{} ({})", p.name, hex(p.vma))).collect();
+            b.push(Block::Spans(vec![span(format!("Outside every region: {}", names.join(", ")), Some(ORANGE))]));
+        }
+    }
+    b.push(Block::Separator);
+    let rows = report
+        .placed
+        .iter()
+        .filter(|p| p.size > 0)
+        .map(|p| {
+            let at = |a: u64| regions.iter().find(|r| a >= r.origin && a - r.origin < r.length).map(|r| r.name.clone());
+            let runs = at(p.vma).map_or_else(|| hex(p.vma), |r| format!("{} {r}", hex(p.vma)));
+            let loads = if p.lma != p.vma && p.contents {
+                at(p.lma).map_or_else(|| hex(p.lma), |r| format!("{} {r}", hex(p.lma)))
+            } else {
+                "".to_owned()
+            };
+            vec![
+                p.name.clone(),
+                runs,
+                loads,
+                human(p.size),
+                (if p.contents { "contents" } else { "zero-filled" }).to_owned(),
+            ]
+        })
+        .collect();
+    b.push(Block::Table(Grid {
+        headers: ["Section", "Runs at", "Loaded from", "Size", "Kind"].map(str::to_owned).to_vec(),
+        rows,
+    }));
 }
 
 fn render() {
@@ -328,9 +485,12 @@ fn report_ui(s: &State, report: &Report, b: &mut Vec<Block>) {
         (Tab::Groups, "groups", format!("Groups {}", groups.len())),
         (Tab::Symbols, "symbols", format!("Symbols {}", report.symbols.len())),
         (Tab::Sections, "sections", format!("Sections {}", report.sections.len())),
+        (Tab::Memory, "memory", "Memory".to_owned()),
     ];
+    // The memory map is for a program whose sections sit at addresses (ELF).
     let buttons = tabs
         .iter()
+        .filter(|(tab, ..)| *tab != Tab::Memory || !report.placed.is_empty())
         .map(|(tab, id, label)| {
             let label = if *tab == s.tab { format!("● {label}") } else { label.clone() };
             button(&label, "tab", id)
@@ -422,6 +582,7 @@ fn report_ui(s: &State, report: &Report, b: &mut Vec<Block>) {
                 b.push(Block::Spans(vec![span(more, Some(DIM))]));
             }
         }
+        Tab::Memory => memory_ui(s, report, b),
         Tab::Sections => {
             let rows = report
                 .sections
@@ -456,6 +617,7 @@ fn command(id: &str, arg: &str) -> Result<(), String> {
             s.tab = match arg {
                 "symbols" => Tab::Symbols,
                 "sections" => Tab::Sections,
+                "memory" => Tab::Memory,
                 _ => Tab::Groups,
             }
         }),
@@ -489,6 +651,20 @@ fn submitted(f: FormValues) {
         }
         "filter" => {
             with(|s| s.filter = if f.button == "Clear" { String::new() } else { value("filter") });
+            render();
+        }
+        "layout" => {
+            let path = value("layout").replace('\\', "/");
+            match host::read_file(&path) {
+                Ok(text) => {
+                    let regions = memory::regions_from(&text);
+                    if regions.is_empty() {
+                        host::show_message(&format!("{path} declares no memory regions (MEMORY {{ … }})"));
+                    }
+                    with(|s| s.layout = Some((path, regions)));
+                }
+                Err(e) => host::show_message(&e),
+            }
             render();
         }
         _ => {}

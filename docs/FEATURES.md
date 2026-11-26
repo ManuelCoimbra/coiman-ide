@@ -1162,6 +1162,14 @@ it got.
 - **Symbols** lists them biggest first, with a filter. Where the file gives no sizes (PE,
   COFF, Mach-O), a symbol runs to the next one.
 - **Sections** lists `.text`, `.rodata`, `.data`, `.bss`, debug info and the rest.
+- **Memory**, for an ELF program (firmware): its memory map. The regions come from the
+  project's `memory.x` or another linker script's `MEMORY { … }` (sizes like `256K` and
+  `64 * 1024` are read), or from the "Memory Configuration" of a map GNU ld wrote (`-Map`),
+  found beside the program or in the project, or named by hand. Each region shows how full it
+  is and what sits in it, with its biggest symbols; `.data` counts twice, where it runs (RAM)
+  and where its start values are kept (flash). Below, every section with where it runs, where
+  it's loaded from, its size and whether it has contents or is zero-filled. A section outside
+  every region is pointed out.
 - **Analyze again** after a build shows the change: in total, and for each group (bigger in
   red, smaller in green).
 - A program built with Visual C++ (or Rust's MSVC toolchain) keeps its symbols in a `.pdb`

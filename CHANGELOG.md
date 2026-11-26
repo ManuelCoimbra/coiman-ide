@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Binary Size has a **Memory** tab for firmware (ELF programs): the memory regions from the
+  project's `memory.x`, a linker script or a GNU linker map, how full each is and what sits in
+  it, and each section with where it runs and where it's loaded from.
 - Work by [MostafaXS1](https://github.com/MostafaXS1):
   - **The Open VSX marketplace**, a tab of the Extensions view beside Coiman's own extensions
     and packs: search, filters, and a page for each extension with its details,

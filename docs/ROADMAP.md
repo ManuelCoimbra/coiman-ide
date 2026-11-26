@@ -84,15 +84,13 @@ program itself gets smaller too:
 From the items `docs/SPEC-COVERAGE.md` still has as missing, in order: each one covers
 several of them, and none needs a download (the network goes through `curl` and `git`).
 
-1. Embedded: a memory map from the ELF and the linker map (what sits where in flash and RAM,
-   by section and symbol), and firmware section analysis beside Binary Size.
-2. Databases: compare two schemas (tables, columns, keys, indexes) and write the SQL that
+1. Databases: compare two schemas (tables, columns, keys, indexes) and write the SQL that
    turns one into the other; migrations (sqlx, Diesel, Alembic, Flyway folders) listed with
    which have run.
-3. Security checks in Code Health: SQL built from strings (injection), HTML from user input
+2. Security checks in Code Health: SQL built from strings (injection), HTML from user input
    (XSS), unsafe memory calls in C and C++ (`strcpy`, `gets`, `sprintf`), and `unsafe`
    blocks in Rust, each with where and why.
-4. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
+3. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
 
 ## Later, each needing a download first
 
