@@ -822,7 +822,7 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
 - **Architecture** (`workspace-read`, `editor-read`): the dependency graph, its cycles and
   what a change reaches; see [Architecture](#architecture).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
-  secrets, security, complexity, duplicates, docs, dependencies, licences, audits and the
+  secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
 - **SQL Databases** (`workspace-read`, `editor-read`; programs `sqlite3`, `psql`, `mariadb`,
   `mysql`, `sqlcmd`, `SqlLocalDB`): SQLite files and SQL servers; see Databases.
@@ -1250,6 +1250,12 @@ as far as they were approved at install, in trusted folders.
     `vsprintf` (and their wide forms), and `scanf` with a `%s` that has no width.
   - **Rust unsafe code:** each `unsafe` block, function, impl, trait and extern block, saying
     whether a `// SAFETY:` comment (or a `# Safety` doc section) explains why it's sound.
+- **Debt:** the `TODO`, `FIXME`, `HACK` and `XXX` notes in comments (in capitals, as a word):
+  how many of each, by area (the project's top folders; `src/…` and `crates/…` one level
+  deeper), by age (under a month to over two years) and the months the ones still here were
+  written, then the notes themselves, oldest first, each opening its file at the line. Their
+  ages come from `git blame`, one file at a time, when `git` was approved at install; without
+  it the notes are listed and the tab says why they have no ages.
 - **Secrets:** keys and tokens by their shape: private keys, AWS, GitHub, GitLab, Slack,
   Stripe, Google, npm, OpenAI-style keys, JSON Web Tokens and passwords in URLs. It also
   finds quoted passwords and keys assigned in code that look random enough to be real, and

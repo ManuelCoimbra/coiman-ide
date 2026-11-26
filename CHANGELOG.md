@@ -5,6 +5,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Code Health 1.2: a **Debt** tab with the `TODO`, `FIXME`, `HACK` and `XXX` notes in
+  comments, by area and by age (from `git blame`), the months the ones still here were
+  written, and each note, oldest first.
+
 ### Fixed
 
 - Installing a pack offers its extensions one after the other; **Cancel** on one now goes on

@@ -181,6 +181,23 @@ mod tests {
         assert_eq!(t.get(&3), Some(&1_760_000_000));
     }
 
+    /// What the real git prints reads the same (this file's own Cargo.toml, when git is here).
+    #[test]
+    fn a_real_blame() {
+        let Ok(out) = std::process::Command::new("git").args(["blame", "--line-porcelain", "-w", "--", "Cargo.toml"]).output()
+        else {
+            return;
+        };
+        if !out.status.success() {
+            return;
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let lines = text.lines().filter(|l| l.starts_with('\t')).count();
+        let times = blame_times(&text);
+        assert_eq!(times.len(), lines, "every line has its time");
+        assert!(times.values().all(|t| *t > 1_600_000_000), "{times:?}");
+    }
+
     #[test]
     fn ages_areas_and_months() {
         let now = 1_764_000_000;

@@ -53,6 +53,7 @@ enum Tab {
     Secrets,
     Security,
     Complexity,
+    Debt,
     Duplicates,
     Undocumented,
     Dependencies,
@@ -60,10 +61,11 @@ enum Tab {
     Audits,
 }
 
-const TABS: [(Tab, &str, &str); 8] = [
+const TABS: [(Tab, &str, &str); 9] = [
     (Tab::Secrets, "secrets", "Secrets"),
     (Tab::Security, "security", "Security"),
     (Tab::Complexity, "complexity", "Complexity"),
+    (Tab::Debt, "debt", "Debt"),
     (Tab::Duplicates, "duplicates", "Duplicates"),
     (Tab::Undocumented, "undocumented", "Undocumented"),
     (Tab::Dependencies, "dependencies", "Dependencies"),
@@ -86,6 +88,8 @@ enum Job {
     Outdated(Ecosystem),
     Audit(&'static str),
     Git(usize),
+    /// `git blame` of `debt_files[i]`.
+    Blame(usize),
 }
 
 #[derive(Default)]
@@ -98,6 +102,13 @@ struct Health {
     // What was found.
     secrets: Vec<secrets::Finding>,
     security: Vec<security::Finding>,
+    debt: Vec<debt::Note>,
+    /// Files with notes, blamed one at a time for their ages.
+    debt_files: Vec<String>,
+    /// Why the notes have no ages, when they don't.
+    debt_note: Option<String>,
+    /// Blamed so far.
+    blamed: usize,
     functions: Vec<Function>,
     duplicates: Vec<duplicates::Duplicate>,
     undocumented: Vec<undocumented::Item>,
@@ -191,6 +202,9 @@ fn step() {
             if size <= security::MAX_BYTES {
                 h.security.extend(security::scan_text(&path, &ext, &text));
             }
+            if size <= debt::MAX_BYTES && secrets::worth_reading(Path::new(&path)) {
+                h.debt.extend(debt::scan_text(&path, &text));
+            }
             if PARSED.contains(&ext.as_str())
                 && let Ok(found) = host::syntax_functions(&path)
             {
@@ -246,7 +260,11 @@ fn step() {
             }
         }
         h.reading = false;
+        let mut files: Vec<String> = h.debt.iter().map(|n| n.path.clone()).collect();
+        files.dedup();
+        h.debt_files = files;
     });
+    blame_next();
     render_tree();
     host::show_message("Checked");
     render();
@@ -398,8 +416,34 @@ fn finished(job: JobResult) {
             overview_git(which, job);
             return;
         }
+        Job::Blame(i) => {
+            with(|h| {
+                h.blamed = i + 1;
+                if job.exit_code == Some(0) {
+                    let times = debt::blame_times(&job.stdout);
+                    let path = h.debt_files.get(i).cloned().unwrap_or_default();
+                    for n in h.debt.iter_mut().filter(|n| n.path == path) {
+                        n.written = times.get(&n.line).copied();
+                    }
+                }
+            });
+            blame_next();
+        }
     }
     render();
+}
+
+/// The next file with notes, blamed for when its lines were written (git, if approved).
+fn blame_next() {
+    let (next, path) = with(|h| (h.blamed, h.debt_files.get(h.blamed).cloned()));
+    let Some(path) = path else { return };
+    let args = ["blame", "--line-porcelain", "-w", "--", &path].map(str::to_owned);
+    match host::start_job("git", &args, "") {
+        Ok(id) => with(|h| {
+            h.jobs.insert(id, Job::Blame(next));
+        }),
+        Err(e) => with(|h| h.debt_note = Some(format!("Their ages come from git blame: {e}"))),
+    }
 }
 
 // ----- the panel -----------------------------------------------------------------------
@@ -408,6 +452,7 @@ fn count(h: &Health, tab: Tab) -> usize {
     match tab {
         Tab::Secrets => h.secrets.len(),
         Tab::Security => h.security.len(),
+        Tab::Debt => h.debt.len(),
         Tab::Complexity => h.functions.iter().filter(|f| f.complexity > 10).count(),
         Tab::Duplicates => h.duplicates.len(),
         Tab::Undocumented => h.undocumented.len(),
@@ -439,6 +484,7 @@ fn render() {
         match h.tab {
             Tab::Secrets => secrets_tab(h, &mut blocks),
             Tab::Security => security_tab(h, &mut blocks),
+            Tab::Debt => debt_tab(h, &mut blocks),
             Tab::Complexity => complexity_tab(h, &mut blocks),
             Tab::Duplicates => duplicates_tab(h, &mut blocks),
             Tab::Undocumented => undocumented_tab(h, &mut blocks),
@@ -496,6 +542,96 @@ fn security_tab(h: &Health, b: &mut Vec<Block>) {
             found.iter().map(|f| link(format!("{}:{}  {}", f.path, f.line, f.code), f.why.clone(), &f.path, f.line));
         b.push(Block::Links(links.collect()));
     }
+}
+
+fn debt_tab(h: &Health, b: &mut Vec<Block>) {
+    if h.debt.is_empty() {
+        b.push(Block::Text("No TODO, FIXME, HACK or XXX notes in the project's comments.".into()));
+        return;
+    }
+    let mut kinds: Vec<String> = Vec::new();
+    for kind in debt::KINDS {
+        let n = h.debt.iter().filter(|d| d.kind == kind).count();
+        if n > 0 {
+            kinds.push(format!("{n} {kind}"));
+        }
+    }
+    b.push(Block::Text(format!("{} in comments: {}.", plural(h.debt.len(), "note"), kinds.join(", "))));
+    if h.blamed < h.debt_files.len() && h.debt_note.is_none() {
+        b.push(Block::Spans(vec![span(
+            format!("Finding their ages: {} of {} files…", h.blamed, h.debt_files.len()),
+            Some(DIM),
+        )]));
+    }
+    if let Some(note) = &h.debt_note {
+        b.push(Block::Spans(vec![span(note, Some(DIM))]));
+    }
+    let now = host::now().unix_millis / 1000;
+    let dated: Vec<&debt::Note> = h.debt.iter().filter(|d| d.written.is_some()).collect();
+    let row = |cells: Vec<Span>| Row { cells, buttons: Vec::new() };
+    let bar_of = |n: usize, most: usize| "▇".repeat((n * 30).div_ceil(most.max(1)));
+    if !dated.is_empty() {
+        b.push(Block::Spans(vec![Span { text: "By age".into(), color: None, bold: true, monospace: false }]));
+        let counts: Vec<(&str, usize)> = debt::AGES
+            .iter()
+            .map(|(name, _)| {
+                (*name, dated.iter().filter(|d| debt::age_bucket(d.written.unwrap_or(0), now) == *name).count())
+            })
+            .collect();
+        let most = counts.iter().map(|c| c.1).max().unwrap_or(1);
+        b.push(Block::Rows(
+            counts
+                .iter()
+                .map(|(name, n)| {
+                    let color = if name.starts_with("over") || name.starts_with("1–2") { AMBER } else { DIM };
+                    row(vec![span(*name, None), span(n.to_string(), None), span(bar_of(*n, most), Some(color))])
+                })
+                .collect(),
+        ));
+        b.push(Block::Spans(vec![Span {
+            text: "When the ones still here were written".into(),
+            color: None,
+            bold: true,
+            monospace: false,
+        }]));
+        let months = debt::by_month(&h.debt);
+        let most = months.iter().map(|m| m.1).max().unwrap_or(1);
+        b.push(Block::Rows(
+            months
+                .iter()
+                .map(|(m, n)| row(vec![span(m, None), span(n.to_string(), None), span(bar_of(*n, most), Some(DIM))]))
+                .collect(),
+        ));
+    }
+    b.push(Block::Spans(vec![Span { text: "By area".into(), color: None, bold: true, monospace: false }]));
+    b.push(Block::Rows(
+        debt::by_area(&h.debt)
+            .into_iter()
+            .map(|(area, n, kinds)| {
+                let detail = kinds.iter().map(|(k, c)| format!("{c} {k}")).collect::<Vec<_>>().join(", ");
+                row(vec![span(area, None), span(n.to_string(), None), span(detail, Some(DIM))])
+            })
+            .collect(),
+    ));
+    // Oldest first: those have waited longest.
+    let mut list: Vec<&debt::Note> = h.debt.iter().collect();
+    list.sort_by_key(|d| (d.written.unwrap_or(i64::MAX), d.path.clone(), d.line));
+    b.push(Block::Spans(vec![Span {
+        text: "The notes, oldest first".into(),
+        color: None,
+        bold: true,
+        monospace: false,
+    }]));
+    let links = list.iter().map(|d| {
+        let when = d.written.map(|t| format!("{} · ", debt::month(t))).unwrap_or_default();
+        link(
+            format!("{}:{}  {} {}", d.path, d.line, d.kind, d.text),
+            format!("{when}{}", debt::area(&d.path)),
+            &d.path,
+            d.line,
+        )
+    });
+    b.push(Block::Links(links.collect()));
 }
 
 fn complexity_tab(h: &Health, b: &mut Vec<Block>) {

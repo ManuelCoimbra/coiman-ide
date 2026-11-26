@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 171, partial 131, missing 176,
+**Summary:** 504 items. Done 172, partial 131, missing 175,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -29,7 +29,7 @@ network 13, rules that hold 13.
 | 13. Mobile development | 4 | 5 | 6 |  |  |
 | 14. DevOps, containers and cloud development | 5 | 4 | 13 | 2 | 1 |
 | 15. Testing and quality assurance | 6 | 6 | 9 |  |  |
-| 16. Security and code quality | 8 | 7 | 4 |  |  |
+| 16. Security and code quality | 9 | 7 | 3 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 8 | 8 | 5 |  | 2 |
@@ -578,7 +578,7 @@ network 13, rules that hold 13.
 | Race condition detection | Missing |  |
 | Security audit reports | Partial | Code Health |
 | Code quality dashboards | Partial | Code Health |
-| Technical debt tracking | Missing |  |
+| Technical debt tracking | Done | Code Health, Debt: TODO, FIXME, HACK and XXX notes by area and age (git blame), and when they were written |
 | Complexity analysis | Done | Code Health, Complexity |
 | Maintainability analysis | Partial | Complexity, duplicates |
 | Code duplication analysis | Done | Code Health, Duplicates |

@@ -105,32 +105,14 @@ fn code_health_extension() {
         "version = 3\n\n[[package]]\nname = \"demo\"\nversion = \"0.1.0\"\ndependencies = [\"serde\"]\n\n\
          [[package]]\nname = \"serde\"\nversion = \"1.0.0\"\nsource = \"registry+x\"\n",
     );
-    // Code an attacker could use, one of each kind.
+    // Code an attacker could use, one of each kind; and a note left for later.
     w(
         "app.py",
-        "cur.execute(f\"SELECT * FROM users WHERE id = {uid}\")
-cur.execute(\"SELECT 1 FROM t WHERE id = ?\", (uid,))
-",
+        "cur.execute(f\"SELECT * FROM users WHERE id = {uid}\")\ncur.execute(\"SELECT 1 FROM t WHERE id = ?\", (uid,))\n",
     );
-    w(
-        "web/page.js",
-        "el.innerHTML = userText;
-el.textContent = userText;
-",
-    );
-    w(
-        "native/copy.c",
-        "#include <string.h>
-void copy(char *d, const char *s) { strcpy(d, s); }
-",
-    );
-    w(
-        "src/raw.rs",
-        "fn raw(p: *const u8) -> u8 {
-    unsafe { *p }
-}
-",
-    );
+    w("web/page.js", "el.innerHTML = userText;\nel.textContent = userText;\n// FIXME: escape it first\n");
+    w("native/copy.c", "#include <string.h>\nvoid copy(char *d, const char *s) { strcpy(d, s); }\n");
+    w("src/raw.rs", "fn raw(p: *const u8) -> u8 {\n    unsafe { *p }\n}\n");
     w("node_modules/left-pad/package.json", r#"{"name":"left-pad","version":"1.3.0","license":"WTFPL"}"#);
 
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/extensions/code-health");
@@ -179,6 +161,14 @@ void copy(char *d, const char *s) { strcpy(d, s); }
     // Grouped, with what to do about each.
     assert!(sec.find("SQL built from strings").unwrap() < sec.find("HTML made from data").unwrap(), "{sec}");
     assert!(sec.contains("Pass it as a parameter"), "{sec}");
+
+    host.run_command(ID, "tab", "debt");
+    let debt = panel(&host, "The notes, oldest first");
+    assert!(debt.contains("1 note in comments: 1 FIXME."), "{debt}");
+    assert!(debt.contains("web | 1 | 1 FIXME"), "{debt}");
+    assert!(debt.contains("web/page.js:3  FIXME escape it first web -> web/page.js:3"), "{debt}");
+    // git isn't approved: no ages, and it says why.
+    assert!(debt.contains("Their ages come from git blame: program not approved: git"), "{debt}");
 
     // Updating runs only an approved program.
     host.run_command(ID, "update", "Cargo|serde");

@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Technical debt in Code Health: notes by area and age, and the months they were written.
 - Security checks in Code Health: SQL and HTML made from strings, unsafe C calls, Rust unsafe.
 - Databases: compare two schemas, with the SQL that turns one into the other; the project's
   migrations (sqlx, Diesel, Alembic, Flyway) with which have run.
@@ -90,7 +91,7 @@ program itself gets smaller too:
 From the items `docs/SPEC-COVERAGE.md` still has as missing, in order: each one covers
 several of them, and none needs a download (the network goes through `curl` and `git`).
 
-1. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
+- Nothing left here for now: the next items come from `docs/SPEC-COVERAGE.md`'s missing ones.
 
 ## Later, each needing a download first
 
