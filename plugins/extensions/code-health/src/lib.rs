@@ -16,6 +16,7 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
+mod debt;
 mod duplicates;
 mod lockfiles;
 mod overview;
