@@ -184,7 +184,8 @@ mod tests {
     /// What the real git prints reads the same (this file's own Cargo.toml, when git is here).
     #[test]
     fn a_real_blame() {
-        let Ok(out) = std::process::Command::new("git").args(["blame", "--line-porcelain", "-w", "--", "Cargo.toml"]).output()
+        let Ok(out) =
+            std::process::Command::new("git").args(["blame", "--line-porcelain", "-w", "--", "Cargo.toml"]).output()
         else {
             return;
         };

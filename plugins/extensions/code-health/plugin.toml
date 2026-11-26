@@ -1,7 +1,7 @@
 id = "coiman.code-health"
 name = "Code Health"
-version = "1.2.0"
-description = "Secrets left in files, code an attacker could use (SQL and HTML put together from strings, C calls that can write past a buffer, Rust unsafe), TODO, FIXME and HACK notes by age and area, the most complex functions, code written twice, public items with no docs, the dependencies (versions pinned twice, what's out of date, a tree), their licences and known vulnerabilities; and a page about the project."
+version = "1.3.0"
+description = "Secrets left in files, code an attacker could use (SQL and HTML put together from strings, C calls that can write past a buffer, Rust unsafe), TODO, FIXME and HACK notes by age and area, the most complex functions, code written twice, public items with no docs, the dependencies (ones the code never uses, versions pinned twice, what's out of date, a tree), their licences and known vulnerabilities; and a page about the project."
 permissions = ["workspace-read"]
 programs = ["cargo", "npm", "python", "poetry", "uv", "git"]
 

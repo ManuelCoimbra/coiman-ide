@@ -24,6 +24,7 @@ mod packages;
 mod secrets;
 mod security;
 mod undocumented;
+mod unused;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
@@ -103,6 +104,8 @@ struct Health {
     secrets: Vec<secrets::Finding>,
     security: Vec<security::Finding>,
     debt: Vec<debt::Note>,
+    /// Dependencies the code never uses.
+    unused: Vec<unused::Unused>,
     /// Files with notes, blamed one at a time for their ages.
     debt_files: Vec<String>,
     /// Why the notes have no ages, when they don't.
@@ -236,6 +239,25 @@ fn step() {
     // Code written twice, then the dependencies: a step of their own.
     with(|h| {
         h.duplicates = duplicates::find(&h.sources);
+        // The manifests and tools' settings, with the code, for the dependencies nothing uses.
+        let mut texts: std::collections::BTreeMap<String, String> = h.sources.iter().cloned().collect();
+        for f in &h.files {
+            let name = f.rsplit('/').next().unwrap_or(f);
+            let wanted = name == "Cargo.toml"
+                || name == "package.json"
+                || ((name.starts_with('.')
+                    || name.contains(".config.")
+                    || name.ends_with("rc.json")
+                    || name == "tsconfig.json")
+                    && !f.contains("node_modules/"));
+            if wanted
+                && !texts.contains_key(f)
+                && let Ok(t) = host::read_file(f)
+            {
+                texts.insert(f.clone(), t);
+            }
+        }
+        h.unused = unused::find(&texts);
         h.sources = Vec::new();
         h.secrets.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
         h.security.sort_by(|a, b| (a.category, &a.path, a.line).cmp(&(b.category, &b.path, b.line)));
@@ -457,7 +479,9 @@ fn count(h: &Health, tab: Tab) -> usize {
         Tab::Duplicates => h.duplicates.len(),
         Tab::Undocumented => h.undocumented.len(),
         Tab::Dependencies => {
-            h.locks.iter().map(|l| l.conflicts().len()).sum::<usize>() + h.updates.as_ref().map_or(0, |u| u.0.len())
+            h.locks.iter().map(|l| l.conflicts().len()).sum::<usize>()
+                + h.updates.as_ref().map_or(0, |u| u.0.len())
+                + h.unused.len()
         }
         Tab::Licences => h.licences.iter().filter(|l| packages::kind(&l.license) != Kind::Permissive).count(),
         Tab::Audits => h.audit.as_ref().map_or(0, |a| a.0.len()),
@@ -720,6 +744,28 @@ fn undocumented_tab(h: &Health, b: &mut Vec<Block>) {
 fn dependencies_tab(h: &Health, b: &mut Vec<Block>) {
     for note in &h.lock_notes {
         b.push(Block::Spans(vec![span(note, Some(AMBER))]));
+    }
+    if !h.unused.is_empty() {
+        b.push(Block::Heading(format!("Not used by the code: {}", h.unused.len())));
+        b.push(Block::Text(
+            "Named in a manifest, but nothing in the code imports them. Read from the text: one used \
+             another way (a macro's own crate, a plugin a tool loads by name) can show here too."
+                .into(),
+        ));
+        let rows = h
+            .unused
+            .iter()
+            .map(|u| Row {
+                cells: vec![
+                    span(&u.manifest, Some(DIM)),
+                    span(&u.section, Some(DIM)),
+                    span(&u.name, Some(AMBER)),
+                    span(&u.why, Some(DIM)),
+                ],
+                buttons: vec![button("Open", "open", &format!("{}:1", u.manifest))],
+            })
+            .collect();
+        b.push(Block::Rows(rows));
     }
     let asking = h.jobs.values().any(|j| matches!(j, Job::Outdated(_)));
     b.push(bar(vec![button(if asking { "Checking…" } else { "Check for updates" }, "updates", "")]));

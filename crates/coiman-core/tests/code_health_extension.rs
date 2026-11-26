@@ -95,7 +95,7 @@ fn code_health_extension() {
     let stripe = ["sk", "live", "abcdefghijklmnopqrstuvwx"].join("_");
     w(".env", &format!("STRIPE={stripe}\n"));
     w("README.md", "# Demo\n\nA small project.\n");
-    w("Cargo.toml", "[package]\nname = \"demo\"\n");
+    w("Cargo.toml", "[package]\nname = \"demo\"\n[dependencies]\nlog = \"0.4\"\n");
     let busy = "pub fn busy(x: i32) -> i32 {\n    if x > 1 { 1 } else if x > 2 { 2 } else { 3 }\n}\n";
     let block = "    let a = 1;\n    let b = a + 2;\n    let c = b * 3;\n    let d = c - 4;\n    let e = d / 5;\n    let f = e % 6;\n    let g = f + 7;\n";
     w("src/lib.rs", &format!("/// Said.\npub fn said() {{}}\n\n{busy}\nfn one() {{\n{block}}}\n"));
@@ -144,6 +144,9 @@ fn code_health_extension() {
     host.run_command(ID, "tab", "dependencies");
     let deps = panel(&host, "Cargo.lock: 2 packages");
     assert!(deps.contains("[Check for updates updates ]"), "{deps}");
+    // log is named but nothing uses it.
+    assert!(deps.contains("Not used by the code: 1"), "{deps}");
+    assert!(deps.contains("Cargo.toml | dependencies | log | no `use log`"), "{deps}");
 
     host.run_command(ID, "tab", "licences");
     let lic = panel(&host, "left-pad 1.3.0");

@@ -1332,6 +1332,13 @@ as far as they were approved at install, in trusted folders.
 - **Duplicates:** code written twice: runs of 6 lines or more that appear again, in another
   file or the same one, whitespace aside. Blank lines, comments, imports and lines of only
   brackets don't count.
+- **Dependencies not used by the code:** crates a `Cargo.toml` names (each crate of a
+  workspace on its own; `build.rs` for build dependencies; renamed ones by their key) that no
+  `.rs` file under it uses (`use name`, `name::`, `extern crate name`), and packages a
+  `package.json` names that nothing under it imports or requires, and no script or tool's
+  settings file (`.eslintrc`, `*.config.*`, `tsconfig.json`) names. Ones a feature switches on
+  aren't counted, nor `@types/…`. Each says what was looked for, and **Open** opens its
+  manifest.
 - **Dependencies:** each lockfile in the folder (`Cargo.lock`, `package-lock.json`,
   `poetry.lock`, `uv.lock`) as a tree under **Dependencies** in the Explorer, from the
   project's own packages down, a level opened per click; and the packages pinned at more than

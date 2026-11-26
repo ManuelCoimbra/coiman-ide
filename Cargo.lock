@@ -840,7 +840,6 @@ dependencies = [
  "tree-sitter-typescript",
  "tree-sitter-yaml",
  "unicode-width",
- "url",
  "wasmtime",
  "windows-sys 0.61.2",
  "wit-component",

@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Health 1.3: dependencies the code never uses, in its Dependencies tab: crates a
+  `Cargo.toml` names that no Rust file under it uses, and packages a `package.json` names that
+  nothing imports and no script or tool's settings names.
+
 - Code Health 1.2: a **Debt** tab with the `TODO`, `FIXME`, `HACK` and `XXX` notes in
   comments, by area and by age (from `git blame`), the months the ones still here were
   written, and each note, oldest first.
