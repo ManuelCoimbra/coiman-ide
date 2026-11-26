@@ -1354,6 +1354,25 @@ folder's `.db`, `.sqlite` and `.sqlite3` files).
 - **Diagram**: the tables as boxes with their columns (`#` for the primary key) and a line
   from each foreign key to the table it points to, in the graph window (zoom, filter, export
   to SVG, Mermaid or PlantUML).
+- **Compare…** (**Database: Compare Schema With...**) compares the open database's tables
+  with another's: a SQLite file of the folder, or a connection used before (on the same
+  server, the open one's password is used for it). It lists what differs (tables, columns
+  with their type and `not null`, primary keys, foreign keys, indexes; `+` what only the
+  other has, `−` what only the open one has, `~` what changed) and writes the SQL that makes
+  the open database like the other, in its own dialect: tables made in the order their keys
+  need, changed columns (`ALTER COLUMN`, `MODIFY COLUMN`), indexes dropped and made again,
+  tables dropped last. SQLite can't alter a column or a key, so such a table is made again and
+  its rows copied over, in one transaction. What can't be written is said in a comment (a
+  key's name that isn't read, a NOT NULL column the rows need a value for, a view). The SQL
+  opens as text or goes in the SQL box; nothing runs by itself. **Compare again** reads both
+  again. Migration tools' own tables (`_sqlx_migrations`, `flyway_schema_history`,
+  `alembic_version`…) are left out.
+- **Migrations** (**Database: Show Migrations**) lists the open folder's migrations: sqlx
+  (`migrations/<version>_<name>.sql`), Diesel (`migrations/<version>_<name>/up.sql`), Alembic
+  (`versions/*.py`, in the order of their `down_revision`) and Flyway (`V<version>__<name>.sql`).
+  With a database open, each says whether it **ran**, is **not run** or **failed**, from the
+  table the tool keeps there (Alembic's head and every revision before it ran); **Open** opens
+  its file.
 - **Database: Run SQL (Selection or File)** runs the selection, or the whole `.sql` file in
   front, against the open database. **Database: Explain Query Plan (Selection or File)**
   explains it instead, and **Database: Show Tables Diagram (ER)** opens the diagram.

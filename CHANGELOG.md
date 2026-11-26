@@ -7,6 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- SQL Databases 1.1: **Compare…** lists what differs between the open database's tables and
+  another's (a SQLite file, or a connection used before) and writes the SQL that makes the open
+  one like it, in its dialect (SQLite tables are made again with their rows copied where
+  `ALTER TABLE` can't). **Migrations** lists the project's sqlx, Diesel, Alembic and Flyway
+  migrations and, with a database open, which have run or failed.
 - Binary Size has a **Memory** tab for firmware (ELF programs): the memory regions from the
   project's `memory.x`, a linker script or a GNU linker map, how full each is and what sits in
   it, and each section with where it runs and where it's loaded from.

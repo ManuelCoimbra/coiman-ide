@@ -1,7 +1,9 @@
 //! SQL Databases: a SQLite file (through `sqlite3`) or a PostgreSQL, MySQL/MariaDB or SQL Server
 //! database (through `psql`, `mariadb`/`mysql`, `sqlcmd`), in a panel: its tables and views with
 //! their columns, keys and indexes, SQL run with each result as a table, plans, and the tables
-//! as a diagram. The clients run as approved programs; a password goes to them in their
+//! as a diagram; two databases' tables compared, with the SQL that makes one like the other; and
+//! the project's migrations (sqlx, Diesel, Alembic, Flyway) with which have run. The clients
+//! run as approved programs; a password goes to them in their
 //! environment for that run only and is never saved.
 
 // The bindings wit-bindgen writes.
@@ -12,6 +14,8 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
+pub mod compare;
+pub mod migrations;
 pub mod server;
 pub mod sqlite;
 
@@ -23,6 +27,8 @@ use coiman::plugin::types::{
     Block, Button, EdgeKind, FieldKind, Form, FormField, FormValues, Graph, GraphEdge, GraphNode, JobResult, JobSpec,
     Pick, PickChoice, PickItem, Row, Span, Table as Grid,
 };
+use compare::{Change, Dialect};
+use migrations::{Migration, Status, Tool};
 use server::{Kind, Server};
 use sqlite::{Outcome, Plan, Table};
 
@@ -70,6 +76,7 @@ impl Out {
 const RED: u32 = 0xE5484D;
 const AMBER: u32 = 0xE09A3E;
 const DIM: u32 = 0x8B949E;
+const GREEN: u32 = 0x3FB950;
 
 /// Statements kept in the history.
 const HISTORY: usize = 20;
@@ -99,6 +106,17 @@ impl Target {
             Target::Server(s) => s.kind.quote_name(name),
         }
     }
+
+    fn dialect(&self) -> Dialect {
+        match self {
+            Target::Sqlite(_) => Dialect::Sqlite,
+            Target::Server(s) => match s.kind {
+                Kind::Postgres => Dialect::Postgres,
+                Kind::MySql => Dialect::MySql,
+                Kind::SqlServer => Dialect::SqlServer,
+            },
+        }
+    }
 }
 
 /// What a running client is for.
@@ -120,6 +138,10 @@ enum Then {
     /// LocalDB started; its pipe is asked for next.
     LocalDbStarted(Server, String),
     LocalDbInfo(Server, String),
+    /// The tables of the database compared with the open one.
+    OtherSchema(Target),
+    /// What a migration tool's table says ran.
+    History(Tool),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -127,6 +149,8 @@ enum View {
     #[default]
     Results,
     Plan,
+    Compare,
+    Migrations,
 }
 
 #[derive(Default)]
@@ -147,6 +171,13 @@ struct State {
     saved: Vec<Server>,
     /// Scripts written for `sqlcmd`, to number the next.
     scripts: u64,
+    /// What Compare… offers, by the text shown.
+    compare_choices: Vec<(String, Target)>,
+    /// The database compared with, its tables, and what differs.
+    other: Option<(Target, Vec<Table>)>,
+    changes: Vec<Change>,
+    compare_sql: String,
+    migrations: Option<Vec<Migration>>,
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -158,9 +189,14 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
 
 // ----- running the clients ------------------------------------------------------------------
 
-/// Starts a call; for a server, the first of its client programs that's here.
+/// Starts a call on the open database; for a server, the first of its client programs here.
 fn start(call: Call, then: Then, busy: &str) -> Result<(), String> {
-    let names: Vec<String> = match with(|s| s.target.clone()) {
+    start_on(with(|s| s.target.clone()), call, then, busy)
+}
+
+/// Starts a call on `target`.
+fn start_on(target: Option<Target>, call: Call, then: Then, busy: &str) -> Result<(), String> {
+    let names: Vec<String> = match target.clone() {
         Some(Target::Server(s)) if call.program != "SqlLocalDB" => {
             server::programs(s.kind).iter().map(|p| (*p).to_owned()).collect()
         }
@@ -193,7 +229,7 @@ fn start(call: Call, then: Then, busy: &str) -> Result<(), String> {
             Err(e) => return Err(e),
         }
     }
-    match with(|s| s.target.clone()) {
+    match target {
         Some(Target::Server(s)) if call.program != "SqlLocalDB" => Err(server::missing_client(s.kind)),
         Some(Target::Sqlite(_)) => Err("The sqlite3 program isn't on this computer. Install SQLite's command-line \
              shell (sqlite.org, your package manager, or MSYS2's sqlite3) and try again."
@@ -323,7 +359,16 @@ fn finished(job: JobResult) {
                 Target::Sqlite(_) => sqlite::schema_read(&out),
                 Target::Server(s) => s.schema_read(&out),
             };
-            tables.map(|t| with(|s| s.tables = Some(t)))
+            tables.map(|tables| {
+                let other = with(|s| {
+                    s.tables = Some(tables);
+                    s.other.clone().filter(|_| s.view == View::Compare)
+                });
+                // Read again while compared: what differs, again.
+                if let Some((other, theirs)) = other {
+                    compared(&t, other, theirs);
+                }
+            })
         }
         (Then::SqliteExplain { statements, starts }, _) => {
             sqlite::explain_read(&out, statements, &starts).map(|p| with(|s| s.plans = Some(p)))
@@ -337,6 +382,26 @@ fn finished(job: JobResult) {
             }
             Err(e) => Err(e),
         },
+        (Then::OtherSchema(other), Some(t)) => {
+            let tables = match &other {
+                Target::Sqlite(_) => sqlite::schema_read(&out),
+                Target::Server(s) => s.schema_read(&out),
+            };
+            tables.map(|theirs| compared(&t, other, theirs))
+        }
+        (Then::History(tool), Some(t)) => {
+            let outcome = match &t {
+                Target::Sqlite(_) => sqlite::run_read(&out),
+                Target::Server(s) => s.run_read(&out, &[0]),
+            };
+            outcome.map(|o| {
+                with(|s| {
+                    if let Some(m) = &mut s.migrations {
+                        migrations::mark(m, tool, o.sets.first());
+                    }
+                })
+            })
+        }
         (Then::LocalDbStarted(s, instance), _) => {
             let call = Call::new("SqlLocalDB", vec!["info".into(), instance.clone()], String::new(), Vec::new());
             start(call, Then::LocalDbInfo(s, instance), "Starting LocalDB…")
@@ -383,8 +448,13 @@ fn render() {
         let mut b = Vec::new();
         let mut top = vec![button("Open SQLite file…", "open-sqlite", ""), button("Connect…", "connect", "")];
         if s.target.is_some() {
-            top.extend([button("Refresh", "refresh", ""), button("Diagram", "diagram", "")]);
+            top.extend([
+                button("Refresh", "refresh", ""),
+                button("Diagram", "diagram", ""),
+                button("Compare…", "compare", ""),
+            ]);
         }
+        top.push(button("Migrations", "migrations", ""));
         match &s.target {
             Some(t) => b.push(Block::Spans(vec![Span { text: t.title(), color: None, bold: true, monospace: false }])),
             None => b.push(Block::Spans(vec![span("No database open.", Some(DIM))])),
@@ -400,6 +470,13 @@ fn render() {
             connect_ui(s, &mut b);
         }
         if s.target.is_none() {
+            if s.view == View::Migrations {
+                migrations_ui(s, &mut b);
+            }
+            return b;
+        }
+        if s.view == View::Compare {
+            compare_ui(s, &mut b);
             return b;
         }
         tables_ui(s, &mut b);
@@ -430,6 +507,8 @@ fn render() {
         match s.view {
             View::Results => results_ui(s, &mut b),
             View::Plan => plan_ui(s, &mut b),
+            View::Migrations => migrations_ui(s, &mut b),
+            View::Compare => {}
         }
         b
     });
@@ -586,6 +665,204 @@ fn plan_ui(s: &State, b: &mut Vec<Block>) {
     }
 }
 
+fn compare_ui(s: &State, b: &mut Vec<Block>) {
+    let Some((other, _)) = &s.other else { return };
+    let this = s.target.as_ref().map(Target::title).unwrap_or_default();
+    b.push(Block::Spans(vec![
+        span("Compared with ", Some(DIM)),
+        Span { text: other.title(), color: None, bold: true, monospace: false },
+        span(format!(": {} differences", s.changes.len()), Some(DIM)),
+    ]));
+    b.push(bar(vec![
+        button("Compare again", "compare-again", ""),
+        button("Compare with…", "compare", ""),
+        button("Back to the tables", "compare-close", ""),
+    ]));
+    if s.changes.is_empty() {
+        b.push(Block::Spans(vec![span("Same tables, columns, keys and indexes.", Some(GREEN))]));
+        return;
+    }
+    let rows = s
+        .changes
+        .iter()
+        .map(|c| {
+            let color = match c.sign() {
+                "+" => GREEN,
+                "−" => RED,
+                _ => AMBER,
+            };
+            Row { cells: vec![mono(c.sign(), Some(color)), mono(c.describe(), None)], buttons: vec![] }
+        })
+        .collect();
+    b.push(Block::Rows(rows));
+    b.push(Block::Spans(vec![span(format!("The SQL that makes {this} like {}:", other.title()), Some(DIM))]));
+    b.push(Block::Code(s.compare_sql.clone()));
+    b.push(bar(vec![button("Open as SQL", "compare-open", ""), button("Put in the SQL box", "compare-box", "")]));
+}
+
+fn migrations_ui(s: &State, b: &mut Vec<Block>) {
+    let Some(list) = &s.migrations else { return };
+    for tool in Tool::ALL {
+        let mine: Vec<&Migration> = list.iter().filter(|m| m.tool == tool).collect();
+        if mine.is_empty() {
+            continue;
+        }
+        let count = |st: Status| mine.iter().filter(|m| m.status == st).count();
+        let summary = if mine.iter().all(|m| m.status == Status::Unknown) {
+            "open the database to see which have run".to_owned()
+        } else {
+            let mut parts = vec![format!("{} ran", count(Status::Ran)), format!("{} not run", count(Status::NotRun))];
+            if count(Status::Failed) > 0 {
+                parts.push(format!("{} failed", count(Status::Failed)));
+            }
+            parts.join(", ")
+        };
+        b.push(Block::Spans(vec![
+            Span { text: tool.label().into(), color: None, bold: true, monospace: false },
+            span(format!("  {} · {summary}", tool.table()), Some(DIM)),
+        ]));
+        let rows = mine
+            .iter()
+            .map(|m| {
+                let (status, color) = match m.status {
+                    Status::Ran => ("ran", GREEN),
+                    Status::NotRun => ("not run", AMBER),
+                    Status::Failed => ("failed", RED),
+                    Status::Unknown => ("?", DIM),
+                };
+                Row {
+                    cells: vec![mono(&m.version, Some(DIM)), span(&m.name, None), span(status, Some(color))],
+                    buttons: vec![button("Open", "open-file", &m.path)],
+                }
+            })
+            .collect();
+        b.push(Block::Rows(rows));
+    }
+}
+
+/// What differs between the open database and `other`, and the SQL that makes it like `other`.
+fn compared(this: &Target, other: Target, theirs: Vec<Table>) {
+    with(|s| {
+        let mine = s.tables.clone().unwrap_or_default();
+        s.changes = compare::diff(&mine, &theirs);
+        s.compare_sql = compare::script(&s.changes, &mine, &theirs, this.dialect());
+        s.other = Some((other, theirs));
+        s.view = View::Compare;
+    });
+}
+
+/// Offers the SQLite files of the folder and the saved connections to compare with.
+fn compare_pick() -> Result<(), String> {
+    let (target, saved) = with(|s| {
+        s.saved = server::saved(&host::storage_read());
+        (s.target.clone(), s.saved.clone())
+    });
+    let target = target.ok_or("Open a database first")?;
+    if with(|s| s.tables.is_none()) {
+        return Err("The open database's tables aren't read yet".into());
+    }
+    let root = host::workspace_path().unwrap_or_default();
+    let mut choices: Vec<(String, String, Target)> = Vec::new();
+    for ext in ["db", "sqlite", "sqlite3", "db3", "s3db", "sl3"] {
+        for f in host::list_files(&format!(".{ext}"), 200).unwrap_or_default() {
+            let path = format!("{}/{}", root.trim_end_matches(['/', '\\']), f);
+            if matches!(&target, Target::Sqlite(open) if open.replace('\\', "/") == path.replace('\\', "/")) {
+                continue;
+            }
+            choices.push((f, "SQLite".into(), Target::Sqlite(path)));
+        }
+    }
+    for v in saved {
+        if matches!(&target, Target::Server(open) if open.label() == v.label()) {
+            continue;
+        }
+        choices.push((v.title(), v.kind.label().into(), Target::Server(v)));
+    }
+    if choices.is_empty() {
+        return Err("Nothing to compare with: open another SQLite file in the folder, or connect to another \
+             database once so it's kept"
+            .into());
+    }
+    let items = choices
+        .iter()
+        .map(|(text, kind, _)| PickItem {
+            text: text.clone(),
+            kind: kind.clone(),
+            detail: String::new(),
+            can_forget: false,
+        })
+        .collect();
+    with(|s| s.compare_choices = choices.into_iter().map(|(t, _, target)| (t, target)).collect());
+    host::show_pick(&Pick {
+        id: "compare".into(),
+        title: "Compare the open database with…".into(),
+        query: String::new(),
+        items,
+        at_terminal_cursor: false,
+        run_first: true,
+        filter: true,
+    });
+    Ok(())
+}
+
+/// Reads `other`'s tables to compare them with the open database's.
+fn compare_with(mut other: Target) -> Result<(), String> {
+    let open = with(|s| s.target.clone()).ok_or("Open a database first")?;
+    if let (Target::Server(o), Target::Server(this)) = (&mut other, &open) {
+        // The same server: its password and address (LocalDB's pipe) serve both.
+        if o.kind == this.kind && o.host == this.host && o.port == this.port && o.user == this.user {
+            o.password = this.password.clone();
+            o.address = this.address.clone();
+        }
+        if o.address.is_none() {
+            if o.kind == Kind::SqlServer && o.localdb_instance().is_some() {
+                return Err("Connect to that LocalDB database once first, then compare".into());
+            }
+            o.address = Some(o.plain_address());
+        }
+    }
+    let call = match &other {
+        Target::Sqlite(db) => sqlite::schema_call(db),
+        Target::Server(o) => server_call(o, &o.schema_script()),
+    };
+    start_on(Some(other.clone()), call, Then::OtherSchema(other), "Reading the other database's tables…")
+}
+
+/// Finds the project's migrations, then asks the open database which have run.
+fn show_migrations() -> Result<(), String> {
+    let mut paths = host::list_files(".sql", 10_000).unwrap_or_default();
+    paths.extend(host::list_files(".py", 10_000).unwrap_or_default());
+    let found = migrations::find(&paths, |p| host::read_file(p).ok());
+    if found.is_empty() {
+        with(|s| s.migrations = None);
+        return Err("No migrations in the open folder (sqlx, Diesel, Alembic or Flyway)".into());
+    }
+    let tools: Vec<Tool> = Tool::ALL.into_iter().filter(|t| found.iter().any(|m| m.tool == *t)).collect();
+    let (target, tables) = with(|s| {
+        s.migrations = Some(found);
+        s.view = View::Migrations;
+        (s.target.clone(), s.tables.clone())
+    });
+    let (Some(target), Some(tables)) = (target, tables) else { return Ok(()) };
+    for tool in tools {
+        if !tables.iter().any(|t| t.name.eq_ignore_ascii_case(tool.table())) {
+            // No table yet: nothing of it ran here.
+            with(|s| {
+                if let Some(m) = &mut s.migrations {
+                    migrations::mark(m, tool, None);
+                }
+            });
+            continue;
+        }
+        let call = match &target {
+            Target::Sqlite(db) => sqlite::run_call(db, &tool.query()),
+            Target::Server(s) => server_call(s, &s.run_script(&tool.query()).0),
+        };
+        start(call, Then::History(tool), "Asking which migrations ran…")?;
+    }
+    Ok(())
+}
+
 fn diagram() -> Result<(), String> {
     let (title, tables) = with(|s| (s.target.as_ref().map(Target::title), s.tables.clone()));
     let tables = tables.ok_or("Open a database first")?;
@@ -688,6 +965,31 @@ fn command(id: &str, arg: &str) -> Result<(), String> {
             Ok(())
         }
         "refresh" => read_schema(),
+        "compare" => compare_pick(),
+        "compare-again" => match with(|s| s.other.clone()) {
+            Some((other, _)) => {
+                // Both read again: the open one first.
+                read_schema().and_then(|()| compare_with(other))
+            }
+            None => compare_pick(),
+        },
+        "compare-close" => {
+            with(|s| s.view = View::Results);
+            Ok(())
+        }
+        "compare-open" => {
+            host::open_text(&with(|s| s.compare_sql.clone()));
+            Ok(())
+        }
+        "compare-box" => {
+            with(|s| {
+                s.sql = s.compare_sql.clone();
+                s.view = View::Results;
+            });
+            Ok(())
+        }
+        "migrations" => show_migrations(),
+        "open-file" => host::open_location(arg, 1),
         "diagram" => diagram(),
         "run" | "explain" => {
             let doc = host::active_document()?.ok_or("Open a .sql file, or type the SQL in the panel")?;
@@ -795,6 +1097,14 @@ fn submitted(f: FormValues) {
 }
 
 fn picked(c: PickChoice) {
+    if c.pick == "compare" {
+        let choice = with(|s| s.compare_choices.iter().find(|(t, _)| *t == c.text).map(|(_, t)| t.clone()));
+        if let Some(Err(e)) = choice.map(compare_with) {
+            with(|s| s.error = Some(e));
+        }
+        render();
+        return;
+    }
     if c.pick == "sqlite" {
         let root = host::workspace_path().unwrap_or_default();
         let path = format!("{}/{}", root.trim_end_matches(['/', '\\']), c.text);

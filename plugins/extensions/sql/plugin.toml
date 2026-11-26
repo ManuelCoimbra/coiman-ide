@@ -1,7 +1,7 @@
 id = "coiman.sql"
 name = "SQL Databases"
-version = "1.0.0"
-description = "SQLite files and PostgreSQL, MySQL/MariaDB and SQL Server databases through their own clients: tables, columns and keys, SQL run with each result as a table, plans, and a diagram of the tables."
+version = "1.1.0"
+description = "SQLite files and PostgreSQL, MySQL/MariaDB and SQL Server databases through their own clients: tables, columns and keys, SQL run with each result as a table, plans, a diagram of the tables, two databases compared with the SQL that makes one like the other, and the project's migrations (sqlx, Diesel, Alembic, Flyway) with which have run."
 permissions = ["workspace-read", "editor-read"]
 programs = ["sqlite3", "psql", "mariadb", "mysql", "sqlcmd", "SqlLocalDB"]
 
@@ -28,6 +28,14 @@ title = "Database: Explain Query Plan (Selection or File)"
 [[commands]]
 id = "diagram"
 title = "Database: Show Tables Diagram (ER)"
+
+[[commands]]
+id = "compare"
+title = "Database: Compare Schema With..."
+
+[[commands]]
+id = "migrations"
+title = "Database: Show Migrations"
 
 [[panels]]
 id = "sql"

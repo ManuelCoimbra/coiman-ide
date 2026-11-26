@@ -13,6 +13,8 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Databases: compare two schemas, with the SQL that turns one into the other; the project's
+  migrations (sqlx, Diesel, Alembic, Flyway) with which have run.
 - The Agents panel moved out of the program into an extension (Agents pack); the editor keeps a
   chat view for it. MCP Servers stays built in: it edits opencode's settings in your home
   folder, which plugins can't reach.
@@ -87,13 +89,10 @@ program itself gets smaller too:
 From the items `docs/SPEC-COVERAGE.md` still has as missing, in order: each one covers
 several of them, and none needs a download (the network goes through `curl` and `git`).
 
-1. Databases: compare two schemas (tables, columns, keys, indexes) and write the SQL that
-   turns one into the other; migrations (sqlx, Diesel, Alembic, Flyway folders) listed with
-   which have run.
-2. Security checks in Code Health: SQL built from strings (injection), HTML from user input
+1. Security checks in Code Health: SQL built from strings (injection), HTML from user input
    (XSS), unsafe memory calls in C and C++ (`strcpy`, `gets`, `sprintf`), and `unsafe`
    blocks in Rust, each with where and why.
-3. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
+2. Technical debt: `TODO`, `FIXME` and `HACK` over time (from history), by area and age.
 
 ## Later, each needing a download first
 

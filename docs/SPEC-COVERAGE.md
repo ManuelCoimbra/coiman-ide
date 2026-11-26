@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 166, partial 128, missing 184,
+**Summary:** 504 items. Done 167, partial 130, missing 181,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -22,7 +22,7 @@ network 13, rules that hold 13.
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
 | 7. Documentation and developer knowledge | 4 | 6 | 9 |  |  |
 | 8. Web development | 9 | 4 | 13 |  |  |
-| 9. Database development | 16 | 4 | 3 |  |  |
+| 9. Database development | 17 | 5 | 1 |  |  |
 | 10. Data science and machine learning | 5 | 3 | 14 |  |  |
 | 11. Systems programming and embedded development | 5 | 5 | 14 |  |  |
 | 12. Game development | 1 | 6 | 14 |  |  |
@@ -33,7 +33,7 @@ network 13, rules that hold 13.
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 8 | 8 | 5 |  | 2 |
-| 20. Workspace and project management | 3 | 10 | 4 |  |  |
+| 20. Workspace and project management | 3 | 11 | 3 |  |  |
 | 21. Experimental and differentiating features | 10 | 12 | 15 |  |  |
 
 ## 0. Principles
@@ -380,8 +380,8 @@ network 13, rules that hold 13.
 | Index inspection | Done | Each table's indexes, unique and partial marked |
 | Query execution plans | Done | Explain: `EXPLAIN QUERY PLAN` as a tree |
 | Query performance analysis | Partial | Time per statement; full scans and temporary sorts flagged |
-| Database migration management | Missing |  |
-| Schema comparison | Missing |  |
+| Database migration management | Partial | SQL Databases, Migrations: sqlx, Diesel, Alembic and Flyway migrations, with which ran or failed; running them is the tool's |
+| Schema comparison | Done | SQL Databases, Compare…: tables, columns, keys and indexes, with the SQL that makes one like the other |
 | Database backup and restore | Missing |  |
 | Multiple database connections | Partial | Named connections kept (SQLite files, PostgreSQL, MySQL); one open per window |
 | Connection profiles | Done | Recent connections with names of their own (no passwords) |
@@ -684,7 +684,7 @@ network 13, rules that hold 13.
 | Workspace dependency overview | Partial | Code Health, Licences |
 | Workspace health dashboard | Partial | Code Health |
 | Project metadata editor | Missing |  |
-| Project migration tools | Missing |  |
+| Project migration tools | Partial | Database migrations listed with which ran (SQL Databases) |
 | Project backup and restore | Partial | Local history, per file |
 | Project snapshots | Missing |  |
 | Project comparison | Missing |  |
