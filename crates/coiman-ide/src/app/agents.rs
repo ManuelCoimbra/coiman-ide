@@ -596,6 +596,11 @@ impl AgentsUi {
                     );
                 });
             });
+            // The notice takes the column's whole height, so the panel is as tall as with a chat.
+            let rest = ui.available_height();
+            if rest > 0.0 {
+                ui.add_space(rest);
+            }
             return;
         }
 

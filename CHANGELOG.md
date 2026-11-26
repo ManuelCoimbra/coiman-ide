@@ -5,6 +5,14 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Installing a pack offers its extensions one after the other; **Cancel** on one now goes on
+  to the next instead of skipping the rest. Updating an extension no longer offers the ones
+  of its pack you left out.
+- With the Agents extension missing, the Agents panel's edge reaches the bottom like the side
+  bar's.
+
 ## [0.8.0] - 2026-11-26
 
 ### Added

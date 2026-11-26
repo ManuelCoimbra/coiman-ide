@@ -2421,6 +2421,12 @@ mod tests {
 
     #[test]
     fn panel_separator_lengths_match() {
+        // With the Agents extension filling the panel, and with none (its notice instead).
+        separator_lengths(true);
+        separator_lengths(false);
+    }
+
+    fn separator_lengths(filled: bool) {
         let ctx = egui::Context::default();
         let mut app = CodeApp::new(None, &ctx);
         // The classic layout, set after the app applies its own settings.
@@ -2430,7 +2436,9 @@ mod tests {
         app.welcome_sidebar = true;
         app.sidebar_view = SidebarView::Explorer;
         app.agents.open = true;
-        app.agents.filled_for_test();
+        if filled {
+            app.agents.filled_for_test();
+        }
         app.settings.workbench.agents_enabled = true;
         app.panel_visible = true;
         let raw = egui::RawInput {
@@ -2470,7 +2478,7 @@ mod tests {
         // Within a pixel (rounding).
         assert!(
             (side - agents).abs() <= 1.0,
-            "Agents separator length must match file explorer separator length: {agents} vs {side}"
+            "Agents separator length must match file explorer separator length (filled: {filled}): {agents} vs {side}"
         );
     }
 }

@@ -1081,6 +1081,8 @@ impl CodeApp {
         let Some(dir) = self.plugins.dir.clone().or_else(store::plugins_dir) else { return };
         self.plugins.dir = Some(dir.clone());
         let id = c.pkg.manifest.id.clone();
+        // An update of one already here doesn't offer the rest of its pack again.
+        let new = self.plugins.lock.get(&id).is_none();
         self.unload_plugin(&id);
         if let Err(e) = store::install(&dir, &mut self.plugins.lock, &c.pkg, &c.source, &c.key, c.granted, c.programs) {
             self.status = Some(format!("Could not install {}: {e}", c.pkg.manifest.name));
@@ -1094,11 +1096,30 @@ impl CodeApp {
         self.refresh_infos();
         self.load_plugin(ctx, &id);
         self.status = Some(format!("Installed {} {}", c.pkg.manifest.name, c.pkg.manifest.version));
-        // The pack's next extension, if it has more to install.
-        if let Some(pack) = coiman_core::packs::pack_of_extension(&id)
-            && self.settings.pack_on(pack.id)
-            && let Some(next) = pack.extensions.iter().find(|e| self.plugins.lock.get(e).is_none())
-        {
+        if new {
+            self.offer_next_in_pack(&id);
+        }
+    }
+
+    /// The install prompt closed without installing: a pack's next extension is offered (an
+    /// update cancelled offers nothing).
+    fn cancel_consent(&mut self) {
+        let Some(c) = self.plugins.consent.take() else { return };
+        let id = c.pkg.manifest.id.clone();
+        if c.source.starts_with(SHIPPED_SOURCE) && self.plugins.lock.get(&id).is_none() {
+            self.offer_next_in_pack(&id);
+        }
+    }
+
+    /// The pack's next extension after `id` that isn't installed, offered in turn: accepting
+    /// or cancelling one goes on to the next, until the pack has none left to offer.
+    fn offer_next_in_pack(&mut self, id: &str) {
+        let Some(pack) = coiman_core::packs::pack_of_extension(id) else { return };
+        if !self.settings.pack_on(pack.id) {
+            return;
+        }
+        let after = pack.extensions.iter().position(|e| *e == id).map_or(0, |i| i + 1);
+        if let Some(next) = pack.extensions[after..].iter().find(|e| self.plugins.lock.get(e).is_none()) {
             self.offer_shipped(next);
         }
     }
@@ -1329,7 +1350,7 @@ impl CodeApp {
             self.accept_consent(&ctx);
         }
         if cancel {
-            self.plugins.consent = None;
+            self.cancel_consent();
         }
 
         // A floating bar would cover each plugin's uninstall button when it widens.
@@ -2347,5 +2368,39 @@ fn tree_rows(
         if open && has_children {
             tree_rows(ui, items, expanded, &item.id, depth + 1, clicked);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Cancelling one extension a pack offers goes on to the next, not stopping the rest.
+    #[test]
+    fn cancel_offers_the_packs_next() {
+        let ctx = egui::Context::default();
+        let mut app = CodeApp::new(None, &ctx);
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../plugins/extensions");
+        app.plugins.shipped = Some(
+            ["sql", "redis", "mongodb"]
+                .iter()
+                .map(|n| {
+                    let folder = root.join(n);
+                    let text = std::fs::read_to_string(folder.join("plugin.toml")).unwrap();
+                    (folder, coiman_core::extensions::plugin::manifest::parse(&text).unwrap())
+                })
+                .collect(),
+        );
+        app.plugins.lock = Default::default();
+        app.settings.packs.installed = vec![coiman_core::packs::DATA.to_owned()];
+        let offered = |app: &CodeApp| app.plugins.consent.as_ref().map(|c| c.pkg.manifest.id.clone());
+        app.offer_shipped("coiman.sql");
+        assert_eq!(offered(&app).as_deref(), Some("coiman.sql"));
+        app.cancel_consent();
+        assert_eq!(offered(&app).as_deref(), Some("coiman.redis"));
+        app.cancel_consent();
+        assert_eq!(offered(&app).as_deref(), Some("coiman.mongodb"));
+        app.cancel_consent();
+        assert_eq!(offered(&app), None, "the last one: nothing more");
     }
 }
