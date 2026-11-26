@@ -9,12 +9,12 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 175, partial 131, missing 172,
+**Summary:** 504 items. Done 176, partial 131, missing 171,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
 |---|---|---|---|---|---|
-| 1. Code intelligence and static analysis | 5 | 7 | 4 |  |  |
+| 1. Code intelligence and static analysis | 6 | 7 | 3 |  |  |
 | 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
 | 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
@@ -72,7 +72,7 @@ network 13, rules that hold 13.
 | Explain relationships between classes, modules and packages | Partial | Module graph; type and call hierarchies through LSP |
 | Generate architecture documentation from source code and project metadata | Partial | SVG, Mermaid and PlantUML export of the graphs |
 | Generate diagrams from detected symbols and dependencies | Done | Architecture and Class Diagram extensions |
-| Track architecture changes between revisions | Missing |  |
+| Track architecture changes between revisions | Done | Architecture: Changes Since: imports, cycles and files, through git |
 | Show the impact of changing a symbol, module or public interface | Partial | Affected tests and modules (Impact), references through LSP |
 
 ## 2. Architecture and dependency analysis

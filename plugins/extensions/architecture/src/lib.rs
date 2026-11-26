@@ -26,7 +26,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use coiman::plugin::host;
-use coiman::plugin::types::{Block, EdgeKind, FileLink, Graph as Shown, GraphEdge, GraphNode, Table};
+use coiman::plugin::types::{
+    Block, EdgeKind, FieldKind, FileLink, Form, FormField, FormValues, Graph as Shown, GraphEdge, GraphNode, JobResult,
+    Table,
+};
 use deps::{Graph, Lang};
 
 /// Source files looked at, at most.
@@ -49,7 +52,31 @@ enum Want {
     Files,
     Folders,
     Impact(String),
+    /// How the graph changed since this revision.
+    Since(String),
 }
+
+/// The graph as it was at another revision, made while it's asked for.
+struct Since {
+    rev: String,
+    now: Graph,
+    files: Vec<(PathBuf, Lang)>,
+    texts: Vec<String>,
+    /// `git diff --name-status` running, then each changed file's `git show`, one at a time.
+    job: Option<u64>,
+    queue: Vec<String>,
+    showing: Option<String>,
+    added: Vec<String>,
+    deleted: Vec<String>,
+    old: std::collections::HashMap<String, String>,
+    /// The old graph's files and texts, and its imports made a part at a time.
+    old_files: Vec<(PathBuf, Lang)>,
+    old_texts: Vec<String>,
+    old_edges: Vec<deps::Edge>,
+    resolved: usize,
+}
+
+static SINCE: Mutex<Option<Since>> = Mutex::new(None);
 
 struct Scan {
     want: Want,
@@ -134,7 +161,195 @@ fn step() {
         Want::Files => show(&graph, false),
         Want::Folders => show(&arch::by_folder(&graph), true),
         Want::Impact(file) => impact(&graph, &file),
+        Want::Since(rev) => since_start(graph, scan.files, scan.texts, rev),
     }
+}
+
+/// The form asking which revision to compare with.
+fn since_form(note: Option<String>) {
+    let mut blocks = vec![
+        Block::Heading("Changes since".into()),
+        Block::Text(
+            "How the imports changed since a commit, tag or branch: the files git says changed are read as \
+             they were there."
+                .into(),
+        ),
+        Block::Form(Form {
+            id: "since".into(),
+            fields: vec![FormField {
+                id: "rev".into(),
+                label: "Since".into(),
+                kind: FieldKind::Text,
+                value: "HEAD~1".into(),
+                options: vec![],
+                hint: "a commit, tag or branch".into(),
+            }],
+            buttons: vec!["Compare".into()],
+        }),
+    ];
+    if let Some(n) = note {
+        blocks.push(Block::Text(n));
+    }
+    host::set_panel("report", &blocks);
+}
+
+fn since_start(now: Graph, files: Vec<(PathBuf, Lang)>, texts: Vec<String>, rev: String) {
+    let args = ["diff", "--name-status", "--no-renames", rev.as_str(), "--"].map(str::to_owned);
+    match host::start_job("git", &args, "") {
+        Ok(id) => {
+            host::show_message(&format!("Asking git what changed since {rev}…"));
+            *SINCE.lock().unwrap_or_else(|e| e.into_inner()) = Some(Since {
+                rev,
+                now,
+                files,
+                texts,
+                job: Some(id),
+                queue: Vec::new(),
+                showing: None,
+                added: Vec::new(),
+                deleted: Vec::new(),
+                old: Default::default(),
+                old_files: Vec::new(),
+                old_texts: Vec::new(),
+                old_edges: Vec::new(),
+                resolved: 0,
+            });
+        }
+        Err(e) => since_form(Some(format!("git: {e}"))),
+    }
+}
+
+/// The next changed file's text at the revision, or, with none left, the old graph is made.
+fn since_next(s: &mut Since) {
+    while let Some(path) = s.queue.pop() {
+        let args = ["show".to_owned(), format!("{}:{path}", s.rev)];
+        match host::start_job("git", &args, "") {
+            Ok(id) => {
+                s.job = Some(id);
+                s.showing = Some(path);
+                return;
+            }
+            Err(_) => continue,
+        }
+    }
+    // Every file as it was: the changed ones from git, the rest as they are now; the added
+    // ones weren't there, the deleted ones were.
+    let mut files: Vec<(PathBuf, Lang, String)> = Vec::new();
+    for ((p, lang), text) in s.files.iter().zip(&s.texts) {
+        let rel = p.to_string_lossy().trim_start_matches('/').to_owned();
+        if s.added.contains(&rel) {
+            continue;
+        }
+        let text = s.old.get(&rel).cloned().unwrap_or_else(|| text.clone());
+        files.push((p.clone(), *lang, text));
+    }
+    for rel in &s.deleted {
+        let p = under_root(rel);
+        if let (Some(lang), Some(text)) = (Lang::of(&p), s.old.get(rel)) {
+            files.push((p, lang, text.clone()));
+        }
+    }
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    s.old_files = files.iter().map(|(p, l, _)| (p.clone(), *l)).collect();
+    s.old_texts = files.into_iter().map(|(_, _, t)| t).collect();
+    host::continue_later("since");
+}
+
+fn since_finished(job: JobResult) {
+    let mut guard = SINCE.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(s) = guard.as_mut() else { return };
+    if s.job != Some(job.id) {
+        return;
+    }
+    s.job = None;
+    match s.showing.take() {
+        None => {
+            if job.exit_code != Some(0) {
+                let err = job.stderr.lines().find(|l| !l.trim().is_empty()).unwrap_or("git diff failed").to_owned();
+                *guard = None;
+                drop(guard);
+                since_form(Some(err));
+                return;
+            }
+            let d = changes::parse_name_status(&job.stdout);
+            let source = |p: &String| Lang::of(&under_root(p)).is_some();
+            s.added = d.added.into_iter().filter(source).collect();
+            s.deleted = d.deleted.iter().filter(|p| source(p)).cloned().collect();
+            s.queue = d.modified.into_iter().chain(d.deleted).filter(source).collect();
+            host::show_message(&format!("Reading {} changed files as they were…", s.queue.len()));
+        }
+        Some(path) => {
+            if job.exit_code == Some(0) {
+                s.old.insert(path, job.stdout);
+            }
+        }
+    }
+    since_next(s);
+}
+
+/// Makes the old graph's imports a part at a time, then compares.
+fn since_step() {
+    let mut guard = SINCE.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(s) = guard.as_mut() else { return };
+    if s.resolved < s.old_files.len() {
+        let end = (s.resolved + RESOLVE_STEP).min(s.old_files.len());
+        let found = deps::edges(Path::new("/"), &s.old_files, &s.old_texts, &read, s.resolved..end);
+        s.old_edges.extend(found);
+        s.resolved = end;
+        host::show_message(&format!("Making the graph at {}: {} of {} files", s.rev, s.resolved, s.old_files.len()));
+        host::continue_later("since");
+        return;
+    }
+    let Some(s) = guard.take() else { return };
+    drop(guard);
+    let mut old = deps::nodes(Path::new("/"), &s.old_files, &s.old_texts);
+    old.edges = s.old_edges;
+    since_report(&s.rev, &changes::compare(&old, &s.now));
+}
+
+fn since_report(rev: &str, c: &changes::Changes) {
+    let mut blocks = vec![Block::Heading(format!("Changes since {rev}"))];
+    if c.is_empty() {
+        blocks.push(Block::Text("The imports are the same as there.".into()));
+    } else {
+        blocks.push(Block::Text(format!(
+            "{} imports added, {} removed; {} new cycles, {} gone; {} files added, {} removed.",
+            c.imports_added.len(),
+            c.imports_removed.len(),
+            c.cycles_new.len(),
+            c.cycles_gone.len(),
+            c.files_added.len(),
+            c.files_removed.len()
+        )));
+    }
+    let pairs =
+        |list: &[(String, String)]| list.iter().take(ROWS * 4).map(|(a, b)| vec![a.clone(), b.clone()]).collect();
+    if !c.cycles_new.is_empty() {
+        blocks.push(Block::Heading(format!("New cycles ({})", c.cycles_new.len())));
+        blocks.push(Block::Bullets(c.cycles_new.iter().map(|v| v.join(" ⇄ ")).collect()));
+    }
+    if !c.imports_added.is_empty() {
+        blocks.push(Block::Heading(format!("Imports added ({})", c.imports_added.len())));
+        blocks.push(table(&["File", "Now imports"], pairs(&c.imports_added)));
+    }
+    if !c.imports_removed.is_empty() {
+        blocks.push(Block::Heading(format!("Imports removed ({})", c.imports_removed.len())));
+        blocks.push(table(&["File", "No longer imports"], pairs(&c.imports_removed)));
+    }
+    if !c.cycles_gone.is_empty() {
+        blocks.push(Block::Heading(format!("Cycles gone ({})", c.cycles_gone.len())));
+        blocks.push(Block::Bullets(c.cycles_gone.iter().map(|v| v.join(" ⇄ ")).collect()));
+    }
+    if !c.files_added.is_empty() {
+        blocks.push(Block::Heading(format!("Files added ({})", c.files_added.len())));
+        blocks.push(Block::Bullets(c.files_added.iter().take(ROWS * 2).cloned().collect()));
+    }
+    if !c.files_removed.is_empty() {
+        blocks.push(Block::Heading(format!("Files removed ({})", c.files_removed.len())));
+        blocks.push(Block::Bullets(c.files_removed.iter().take(ROWS * 2).cloned().collect()));
+    }
+    host::set_panel("report", &blocks);
+    host::show_message(&format!("Compared with {rev}"));
 }
 
 /// The graph in the editor's window, and the report in the panel.
@@ -374,6 +589,10 @@ impl Guest for Plugin {
             "folders" => start(Want::Folders),
             // The file graph's report has the rules.
             "rules" => start(Want::Files),
+            "since" => {
+                since_form(None);
+                Ok(())
+            }
             "impact" => {
                 let doc = host::active_document()?.ok_or("Open a file first")?;
                 if doc.path.is_empty() {
@@ -386,10 +605,20 @@ impl Guest for Plugin {
     }
 
     fn on_event(event: Event) {
-        if let Event::Resumed(token) = event
-            && token == "scan"
-        {
-            step();
+        match event {
+            Event::Resumed(token) if token == "scan" => step(),
+            Event::Resumed(token) if token == "since" => since_step(),
+            Event::JobFinished(job) => since_finished(job),
+            Event::FormSubmitted(FormValues { form, values, .. }) if form == "since" => {
+                let rev =
+                    values.into_iter().find(|(k, _)| k == "rev").map(|(_, v)| v.trim().to_owned()).unwrap_or_default();
+                if !rev.is_empty()
+                    && let Err(e) = start(Want::Since(rev))
+                {
+                    since_form(Some(e));
+                }
+            }
+            _ => {}
         }
     }
 }

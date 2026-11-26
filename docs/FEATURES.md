@@ -1061,6 +1061,10 @@ from outside the project are left out.
 
   Paths are globs (`**` any folders, `*` part of a name); one without `*` is a file or
   everything under a folder. A file in no layer has no layer rule.
+- **Architecture: Changes Since...**: how the imports changed since a commit, tag or branch
+  (`HEAD~1` at first). `git diff` says which source files changed; those are read as they
+  were (`git show`), the graph is made again from them, and the two are compared: new cycles,
+  imports added and removed, cycles gone, files added and removed. It needs `git` approved.
 - **Export SVG...**, **Copy Mermaid** (a flowchart, one subgraph per folder, colours kept),
   **Copy PlantUML** and **Preview Mermaid**.
 

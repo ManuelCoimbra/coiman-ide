@@ -7,6 +7,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Architecture 1.2: **Architecture: Changes Since...**: how the imports changed since a commit,
+  tag or branch (new cycles, imports and files added and removed), through `git`.
 - Architecture 1.1: **Architecture: Check Rules**: the imports that break the project's own
   rules in `.coiman/architecture.toml`: layers from the top down (none may import one above
   it) and rules naming what a part may not import, each with why.
