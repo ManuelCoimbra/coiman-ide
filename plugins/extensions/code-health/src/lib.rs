@@ -18,6 +18,7 @@ wit_bindgen::generate!({
 
 mod debt;
 mod duplicates;
+mod health;
 mod lockfiles;
 mod overview;
 mod packages;
@@ -62,9 +63,10 @@ enum Tab {
     Dependencies,
     Licences,
     Audits,
+    Gates,
 }
 
-const TABS: [(Tab, &str, &str); 9] = [
+const TABS: [(Tab, &str, &str); 10] = [
     (Tab::Secrets, "secrets", "Secrets"),
     (Tab::Security, "security", "Security"),
     (Tab::Complexity, "complexity", "Complexity"),
@@ -74,6 +76,7 @@ const TABS: [(Tab, &str, &str); 9] = [
     (Tab::Dependencies, "dependencies", "Dependencies"),
     (Tab::Licences, "licences", "Licences"),
     (Tab::Audits, "audits", "Audits"),
+    (Tab::Gates, "gates", "Gates"),
 ];
 
 struct Function {
@@ -108,6 +111,10 @@ struct Health {
     secrets: Vec<secrets::Finding>,
     security: Vec<security::Finding>,
     debt: Vec<debt::Note>,
+    /// The project's `.coiman/health.toml`: None when it has none.
+    settings: Option<Result<health::Settings, String>>,
+    /// Findings the settings allow, left out of the tabs.
+    allowed: Vec<health::Allowed>,
     /// Dependencies the code never uses.
     unused: Vec<unused::Unused>,
     /// The revision lockfiles are compared with, and what changed in each since.
@@ -184,10 +191,14 @@ fn last_line(text: &str) -> String {
 // ----- reading the project ---------------------------------------------------------------
 
 fn check() -> Result<(), String> {
-    let files = host::list_files("", MAX_FILES)?;
+    let settings = host::read_file(health::FILE).ok().map(|t| health::parse(&t));
+    let mut files = host::list_files("", MAX_FILES)?;
+    if let Some(Ok(s)) = &settings {
+        files.retain(|f| !s.ignored(f));
+    }
     with(|h| {
         let (tab, flagged_only) = (h.tab, h.flagged_only);
-        *h = Health { files, reading: true, tab, flagged_only, ..Default::default() };
+        *h = Health { files, reading: true, tab, flagged_only, settings, ..Default::default() };
     });
     host::show_message("Reading the project's files…");
     render();
@@ -265,6 +276,7 @@ fn step() {
             }
         }
         h.unused = unused::find(&texts);
+        allow_findings(h);
         h.sources = Vec::new();
         h.secrets.sort_by(|a, b| a.path.cmp(&b.path).then(a.line.cmp(&b.line)));
         h.security.sort_by(|a, b| (a.category, &a.path, a.line).cmp(&(b.category, &b.path, b.line)));
@@ -295,7 +307,15 @@ fn step() {
     });
     blame_next();
     render_tree();
-    host::show_message("Checked");
+    let gates = with(|h| gates_of(h));
+    let failing = gates.iter().filter(|g| !g.passes()).count();
+    host::show_message(&if gates.is_empty() {
+        "Checked".to_owned()
+    } else if failing == 0 {
+        format!("Checked: all {} gates pass", gates.len())
+    } else {
+        format!("Checked: {failing} of {} gates fail", gates.len())
+    });
     render();
 }
 
@@ -492,6 +512,112 @@ fn blame_next() {
 
 // ----- the panel -----------------------------------------------------------------------
 
+/// Moves the findings the project's settings allow out of the tabs, into `allowed`.
+fn allow_findings(h: &mut Health) {
+    let Some(Ok(s)) = h.settings.clone() else { return };
+    let mut out = Vec::new();
+    let mut keep = |check: &str, path: &str, line: usize, text: String| match s.allowed(check, path, &text) {
+        Some(why) => {
+            out.push(health::Allowed { check: check.into(), path: path.into(), line, text, why: why.into() });
+            false
+        }
+        None => true,
+    };
+    h.secrets.retain(|f| keep("secrets", &f.path, f.line, f.kind.to_owned()));
+    h.security.retain(|f| keep("security", &f.path, f.line, format!("{}  {}", f.why, f.code)));
+    h.debt.retain(|n| keep("debt", &n.path, n.line, format!("{} {}", n.kind, n.text)));
+    h.undocumented.retain(|u| keep("undocumented", &u.path, u.line, format!("{} {}", u.kind, u.name)));
+    h.unused.retain(|u| keep("unused", &u.manifest, 1, u.name.clone()));
+    h.functions.retain(|f| keep("complexity", &f.path, f.line, f.name.clone()));
+    h.duplicates.retain(|d| {
+        let (path, line, _) = d.places.first().cloned().unwrap_or_default();
+        keep("duplicates", &path, line, format!("{} lines", d.lines))
+    });
+    h.allowed = out;
+}
+
+/// Each check's number, as gates count it.
+fn gate_count(h: &Health, check: &str) -> usize {
+    match check {
+        "secrets" => h.secrets.len(),
+        "security" => h.security.len(),
+        "complexity" => h.functions.iter().map(|f| f.complexity).max().unwrap_or(0),
+        "debt" => h.debt.len(),
+        "duplicates" => h.duplicates.len(),
+        "undocumented" => h.undocumented.len(),
+        "unused" => h.unused.len(),
+        _ => 0,
+    }
+}
+
+fn gates_of(h: &Health) -> Vec<health::Gate> {
+    match &h.settings {
+        Some(Ok(s)) => s.gates(|c| gate_count(h, c)),
+        _ => Vec::new(),
+    }
+}
+
+fn gates_tab(h: &Health, b: &mut Vec<Block>) {
+    match &h.settings {
+        None => {
+            b.push(Block::Text(format!(
+                "No settings for this project. In {} you can leave paths out (`ignore`), allow a finding on \
+                 purpose (`[[allow]]` with `check`, `path`, `rule` and `why`), and set quality gates: the most \
+                 of each check the project accepts.",
+                health::FILE
+            )));
+            b.push(Block::Code(
+                "ignore = [\"vendor/**\"]\n\n[[allow]]\ncheck = \"security\"\npath = \"src/ffi/**\"\nrule = \"unsafe\"\n\
+                 why = \"the FFI layer needs unsafe\"\n\n[gates]\nsecrets = 0\nsecurity = 0\ncomplexity = 15\ndebt = 50\n"
+                    .into(),
+            ));
+            return;
+        }
+        Some(Err(e)) => {
+            b.push(Block::Spans(vec![span(format!("{}: {e}", health::FILE), Some(RED))]));
+            return;
+        }
+        Some(Ok(_)) => {}
+    }
+    let gates = gates_of(h);
+    if gates.is_empty() {
+        b.push(Block::Text(format!("No gates set in {} ([gates]).", health::FILE)));
+    } else {
+        let failing = gates.iter().filter(|g| !g.passes()).count();
+        b.push(Block::Heading(if failing == 0 {
+            format!("All {} gates pass", gates.len())
+        } else {
+            format!("{failing} of {} gates fail", gates.len())
+        }));
+        let rows = gates
+            .iter()
+            .map(|g| {
+                let what = health::CHECKS.iter().find(|(k, _)| *k == g.check).map_or("", |(_, w)| *w);
+                let (mark, color) = if g.passes() { ("pass", 0x3FB950) } else { ("fail", RED) };
+                Row {
+                    cells: vec![
+                        span(mark, Some(color)),
+                        span(&g.check, None),
+                        span(format!("{} (at most {})", g.actual, g.limit), None),
+                        span(what, Some(DIM)),
+                    ],
+                    buttons: vec![],
+                }
+            })
+            .collect();
+        b.push(Block::Rows(rows));
+    }
+    if !h.allowed.is_empty() {
+        b.push(Block::Heading(format!("Allowed on purpose ({})", h.allowed.len())));
+        b.push(Block::Links(
+            h.allowed
+                .iter()
+                .map(|a| link(format!("{} {}:{}  {}", a.check, a.path, a.line, a.text), a.why.clone(), &a.path, a.line))
+                .collect(),
+        ));
+    }
+}
+
 fn count(h: &Health, tab: Tab) -> usize {
     match tab {
         Tab::Secrets => h.secrets.len(),
@@ -507,6 +633,7 @@ fn count(h: &Health, tab: Tab) -> usize {
         }
         Tab::Licences => h.licences.iter().filter(|l| packages::kind(&l.license) != Kind::Permissive).count(),
         Tab::Audits => h.audit.as_ref().map_or(0, |a| a.0.len()),
+        Tab::Gates => gates_of(h).iter().filter(|g| !g.passes()).count(),
     }
 }
 
@@ -531,6 +658,7 @@ fn render() {
             Tab::Secrets => secrets_tab(h, &mut blocks),
             Tab::Security => security_tab(h, &mut blocks),
             Tab::Debt => debt_tab(h, &mut blocks),
+            Tab::Gates => gates_tab(h, &mut blocks),
             Tab::Complexity => complexity_tab(h, &mut blocks),
             Tab::Duplicates => duplicates_tab(h, &mut blocks),
             Tab::Undocumented => undocumented_tab(h, &mut blocks),
