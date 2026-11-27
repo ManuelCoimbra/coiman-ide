@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 186, partial 132, missing 160,
+**Summary:** 504 items. Done 189, partial 133, missing 156,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -32,7 +32,7 @@ network 13, rules that hold 13.
 | 16. Security and code quality | 10 | 7 | 2 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
-| 19. Plugin ecosystem | 9 | 8 | 4 |  | 2 |
+| 19. Plugin ecosystem | 12 | 9 |  |  | 2 |
 | 20. Workspace and project management | 3 | 11 | 3 |  |  |
 | 21. Experimental and differentiating features | 12 | 12 | 13 |  |  |
 
@@ -645,14 +645,14 @@ network 13, rules that hold 13.
 |---|---|---|
 | Public plugin SDK | Done | `coiman-plugin` |
 | Plugin development templates | Done | Plugins: New Plugin..., three templates that build as they are |
-| Plugin documentation generator | Missing |  |
+| Plugin documentation generator | Done | `coiman-plugin docs`, from plugin.toml |
 | Plugin API versioning | Done | Plugin API 0.7; a plugin built for an older one is stopped with the reason, and one that comes with Coiman offers Update… |
 | Plugin compatibility checker | Done | Same |
 | Plugin dependency management | Partial | Lockfile |
-| Plugin debugging tools | Missing |  |
-| Plugin profiling | Missing |  |
+| Plugin debugging tools | Partial | Dev mode, each plugin's log, `coiman-plugin test` saying what was shown instead; no stepping |
+| Plugin profiling | Done | Extensions view: each plugin's calls, average and slowest time |
 | Plugin sandbox inspection | Partial | Permissions shown |
-| Plugin test framework | Missing |  |
+| Plugin test framework | Done | `coiman-plugin test`: tests.toml run in a plugin host with no window |
 | Plugin marketplace interface | Done | Extensions view: Coiman's extensions and packs, registries, and the Open VSX tab (search, filters, a page per extension) |
 | Marketplace access only on explicit user action, with no automatic refresh or update checks | Holds | The Open VSX tab and registries are reached only when used; nothing checks by itself (see 0.3) |
 | Show publisher, requested permissions and external processes before installation | Partial | Coiman's extensions: publisher, signature, permissions and programs before installing; a VS Code extension shows its publisher |

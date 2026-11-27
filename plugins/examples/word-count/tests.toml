@@ -1,0 +1,23 @@
+# Run with: coiman-plugin test plugins/examples/word-count
+
+[[test]]
+name = "the report counts the file in front"
+document = { path = "notes.txt", text = "Hello hello world\nworld again\n" }
+
+[[test.step]]
+command = "report"
+
+[[test.step]]
+panel = "5 words, 2 lines"
+
+[[test.step]]
+panel = "hello: 2"
+
+[[test]]
+name = "with no file in front it says so"
+
+[[test.step]]
+command = "report"
+
+[[test.step]]
+message = "Open a file to count its words"

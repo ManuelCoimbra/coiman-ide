@@ -7,6 +7,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- For plugin authors: `coiman-plugin docs` writes a plugin's documentation from its
+  `plugin.toml`, `coiman-plugin test` runs its `tests.toml` (commands, then what its panels,
+  messages and status bar must say) with no window, and the Extensions view shows each
+  plugin's call times.
+
 - Architecture 1.3: **Architecture: Show Build Graph**: the project's own Cargo, npm, Gradle and
   Maven packages and how they depend on each other, with cycles.
 

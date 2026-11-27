@@ -4,7 +4,12 @@
 //! coiman-plugin keygen <secret-key-file>
 //! coiman-plugin componentize <module.wasm> <plugin.wasm>
 //! coiman-plugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]
+//! coiman-plugin docs <plugin-folder>
+//! coiman-plugin test <plugin-folder>
 //! ```
+//!
+//! `docs` writes the plugin's documentation (Markdown) from its `plugin.toml`; `test` runs the
+//! tests in its `tests.toml` in a plugin host with no window.
 //!
 //! A plugin is built for `wasm32-unknown-unknown` with `wit-bindgen`;
 //! `componentize` turns that module into the component Coiman IDE loads.
@@ -23,6 +28,8 @@ fn main() -> ExitCode {
         Some("keygen") if args.len() == 2 => keygen(Path::new(&args[1])),
         Some("componentize") if args.len() == 3 => componentize(Path::new(&args[1]), Path::new(&args[2])),
         Some("publish") if args.len() >= 3 => publish(&args),
+        Some("docs") if args.len() == 2 => docs(Path::new(&args[1])),
+        Some("test") if args.len() == 2 => test(Path::new(&args[1])),
         _ => Err(USAGE.to_owned()),
     };
     match result {
@@ -37,7 +44,35 @@ fn main() -> ExitCode {
 const USAGE: &str = "usage:
   coiman-plugin keygen <secret-key-file>
   coiman-plugin componentize <module.wasm> <plugin.wasm>
-  coiman-plugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]";
+  coiman-plugin publish <plugin-folder> <registry-folder> --key <secret-key-file> [--changelog <text>]
+  coiman-plugin docs <plugin-folder>        its documentation, from plugin.toml
+  coiman-plugin test <plugin-folder>        runs its tests.toml";
+
+fn docs(folder: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(folder.join("plugin.toml")).map_err(|e| format!("plugin.toml: {e}"))?;
+    let manifest = coiman_core::extensions::plugin::manifest::parse(&text)?;
+    print!("{}", coiman_core::extensions::plugin::testing::docs(&manifest));
+    Ok(())
+}
+
+fn test(folder: &Path) -> Result<(), String> {
+    let outcomes = coiman_core::extensions::plugin::testing::run(folder)?;
+    let failed = outcomes.iter().filter(|o| o.failure.is_some()).count();
+    for o in &outcomes {
+        match &o.failure {
+            None => println!("ok     {} ({} ms)", o.name, o.millis),
+            Some(why) => println!(
+                "FAILED {} ({} ms)
+       {}",
+                o.name,
+                o.millis,
+                why.replace('\n', "\n       ")
+            ),
+        }
+    }
+    println!("{} passed, {failed} failed", outcomes.len() - failed);
+    if failed > 0 { Err(format!("{failed} failed")) } else { Ok(()) }
+}
 
 fn keygen(path: &Path) -> Result<(), String> {
     if path.exists() {

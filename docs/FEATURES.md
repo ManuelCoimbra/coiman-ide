@@ -922,6 +922,19 @@ coiman-plugin keygen my.key
 coiman-plugin publish plugins/examples/word-count <registry-folder> --key my.key --changelog "..."
 ```
 
+- **`coiman-plugin docs <folder>`** writes a plugin's documentation as Markdown from its
+  `plugin.toml`: what it does, the permissions and programs it asks for (each said in words),
+  its commands, panels, Explorer sections and status bar items, the events it hears and the
+  files it opens.
+- **`coiman-plugin test <folder>`** runs the tests in its `tests.toml` in a plugin host with no
+  window: each `[[test]]` gets a copy of its `fixture` folder as the open folder, the file in
+  front (`document`), the programs it approves, and its steps: a `command` to run, then what a
+  `panel`, a `message` or the `status` bar must come to say (within `timeout` seconds). A
+  failure says which step and what was there instead. `plugins/examples/word-count/tests.toml`
+  is an example.
+- The Extensions view shows each running plugin's **call times**: how many calls, their
+  average and the slowest (in amber from 200 ms), so a plugin that slows the editor is seen.
+
 ## Language servers
 
 Opening a file starts its language server for the file's project. Each server is found on

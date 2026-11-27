@@ -1523,6 +1523,7 @@ impl CodeApp {
         let mut actions = Vec::new();
         let ids: Vec<String> = self.plugins.infos.iter().map(|i| i.id.clone()).collect();
         let changed: Vec<String> = ids.into_iter().filter(|id| self.shipped_differs(id)).collect();
+        let timings = self.plugins.host.as_ref().map(|h| h.timings()).unwrap_or_default();
         for info in &mut self.plugins.infos {
             let Some(locked) = self.plugins.lock.get(&info.id) else { continue };
             ui.separator();
@@ -1556,6 +1557,20 @@ impl CodeApp {
                 (None, false, true) => RichText::new("starting…").color(pal.text_dim),
             };
             ui.label(state.small());
+            // How long its calls take: a slow one makes typing and scrolling wait.
+            if let Some(t) = timings.get(&info.id).filter(|t| t.calls > 0) {
+                let ms = |d: std::time::Duration| d.as_secs_f64() * 1000.0;
+                let text = format!(
+                    "{} {} · {:.1} ms on average · slowest {:.1} ms",
+                    t.calls,
+                    if t.calls == 1 { "call" } else { "calls" },
+                    ms(t.total) / t.calls as f64,
+                    ms(t.slowest)
+                );
+                let color = if t.slowest.as_millis() >= 200 { WARNING } else { pal.text_dim };
+                ui.label(RichText::new(text).small().color(color))
+                    .on_hover_text("Time spent in the plugin's own code since it was loaded");
+            }
             let origin = if locked.source == BUILT_IN_SOURCE {
                 "built in".to_owned()
             } else if locked.source.starts_with(SHIPPED_SOURCE) {

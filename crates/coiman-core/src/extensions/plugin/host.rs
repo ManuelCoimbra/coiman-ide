@@ -251,7 +251,18 @@ pub struct PluginHost {
     tx: Sender<Msg>,
     updates: Receiver<Update>,
     context: Arc<Mutex<Context>>,
+    timings: Timings,
 }
+
+/// How long a plugin's calls took (activation, commands, events), since it was loaded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CallStats {
+    pub calls: u64,
+    pub total: Duration,
+    pub slowest: Duration,
+}
+
+type Timings = Arc<Mutex<HashMap<String, CallStats>>>;
 
 impl PluginHost {
     /// Starts the worker; `wake` is called whenever an update is waiting.
@@ -262,7 +273,9 @@ impl PluginHost {
         let (tx, rx) = mpsc::channel();
         let (update_tx, updates) = mpsc::channel();
         let context = Arc::new(Mutex::new(Context::default()));
+        let timings: Timings = Arc::default();
         let worker = Worker {
+            timings: timings.clone(),
             engine: engine.clone(),
             plugins: HashMap::new(),
             updates: update_tx,
@@ -282,7 +295,12 @@ impl PluginHost {
             worker.run(rx);
             running.store(false, Ordering::Relaxed);
         });
-        Ok(Self { tx, updates, context })
+        Ok(Self { tx, updates, context, timings })
+    }
+
+    /// Each running plugin's call times so far.
+    pub fn timings(&self) -> HashMap<String, CallStats> {
+        self.timings.lock().map(|t| t.clone()).unwrap_or_default()
     }
 
     pub fn load(&self, manifest: Manifest, wasm: Vec<u8>, granted: BTreeSet<Permission>) {
@@ -436,6 +454,7 @@ struct Loaded {
 }
 
 struct Worker {
+    timings: Timings,
     engine: Engine,
     plugins: HashMap<String, Loaded>,
     updates: Sender<Update>,
@@ -543,7 +562,16 @@ impl Worker {
     ) -> bool {
         let Some(p) = self.plugins.get_mut(id) else { return false };
         p.store.set_epoch_deadline(CALL_TICKS);
-        match f(&p.bindings, &mut p.store) {
+        let started = std::time::Instant::now();
+        let result = f(&p.bindings, &mut p.store);
+        let took = started.elapsed();
+        if let Ok(mut t) = self.timings.lock() {
+            let s = t.entry(id.to_owned()).or_default();
+            s.calls += 1;
+            s.total += took;
+            s.slowest = s.slowest.max(took);
+        }
+        match result {
             Ok(None) => true,
             Ok(Some(err)) => {
                 self.send(Update::Message { plugin: id.to_owned(), text: err });

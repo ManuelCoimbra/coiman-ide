@@ -7,6 +7,7 @@ pub mod host;
 pub mod manifest;
 pub mod registry;
 pub mod store;
+pub mod testing;
 pub mod uml;
 
 pub use host::{
