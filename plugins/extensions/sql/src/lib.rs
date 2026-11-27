@@ -14,6 +14,7 @@ wit_bindgen::generate!({
     world: "plugin",
 });
 
+pub mod backup;
 pub mod compare;
 pub mod migrations;
 pub mod server;
@@ -142,6 +143,9 @@ enum Then {
     OtherSchema(Target),
     /// What a migration tool's table says ran.
     History(Tool),
+    /// A backup to this file; the other calls to try when a program isn't here.
+    Backup(String, Vec<Call>),
+    Restore(String, Vec<Call>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -178,6 +182,10 @@ struct State {
     changes: Vec<Change>,
     compare_sql: String,
     migrations: Option<Vec<Migration>>,
+    /// Backups made since the panel opened: when, and the file.
+    backups: Vec<(String, String)>,
+    /// A restore waiting to be confirmed: the file.
+    restore_asked: Option<String>,
 }
 
 static STATE: Mutex<Option<State>> = Mutex::new(None);
@@ -389,6 +397,30 @@ fn finished(job: JobResult) {
             };
             tables.map(|theirs| compared(&t, other, theirs))
         }
+        (Then::Backup(path, rest), _) => {
+            if out.ok() {
+                with(|s| {
+                    let when = host::now();
+                    s.backups.insert(0, (backup::stamp(when.unix_millis, when.utc_offset_minutes), path.clone()));
+                });
+                host::show_message(&format!("Backed up to {path}"));
+                Ok(())
+            } else if let Some(next) = rest.first().cloned() {
+                try_calls(next, rest[1..].to_vec(), |_, r| Then::Backup(path.clone(), r), "Backing up…")
+            } else {
+                Err(format!("The backup failed: {}", first_error(&out)))
+            }
+        }
+        (Then::Restore(path, rest), _) => {
+            if out.ok() {
+                host::show_message(&format!("Restored from {path}"));
+                read_schema()
+            } else if let Some(next) = rest.first().cloned() {
+                try_calls(next, rest[1..].to_vec(), |_, r| Then::Restore(path.clone(), r), "Restoring…")
+            } else {
+                Err(format!("The restore failed: {}", first_error(&out)))
+            }
+        }
         (Then::History(tool), Some(t)) => {
             let outcome = match &t {
                 Target::Sqlite(_) => sqlite::run_read(&out),
@@ -491,6 +523,7 @@ fn render() {
             )],
             buttons: vec!["Run".into(), "Explain".into()],
         }));
+        backups_ui(s, &mut b);
         if !s.history.is_empty() {
             let rows = s
                 .history
@@ -863,6 +896,104 @@ fn show_migrations() -> Result<(), String> {
     Ok(())
 }
 
+/// The first line of what a failed program said.
+fn first_error(out: &Out) -> String {
+    let text = if out.stderr.trim().is_empty() { &out.stdout } else { &out.stderr };
+    text.lines()
+        .find(|l| !l.trim().is_empty())
+        .map(str::trim)
+        .map(str::to_owned)
+        .unwrap_or_else(|| out.stopped("the program"))
+}
+
+/// Starts `call`; when its program isn't on this computer, the next of `rest`.
+fn try_calls(call: Call, rest: Vec<Call>, then: impl Fn(&Call, Vec<Call>) -> Then, busy: &str) -> Result<(), String> {
+    let mut call = call;
+    let mut rest = rest;
+    loop {
+        match start_on(None, call.clone(), then(&call, rest.clone()), busy) {
+            Err(e) if e.contains("isn't on PATH") && !rest.is_empty() => call = rest.remove(0),
+            other => return other,
+        }
+    }
+}
+
+/// Backs up the open database into the extension's own folder.
+fn make_backup() -> Result<(), String> {
+    let target = with(|s| s.target.clone()).ok_or("Open a database first")?;
+    let dir = host::data_folder("backups")?;
+    let when = host::now();
+    let kind = match &target {
+        Target::Sqlite(_) => None,
+        Target::Server(s) => Some(s.kind),
+    };
+    let name = match &target {
+        Target::Sqlite(p) => {
+            let file = p.rsplit(['/', '\\']).next().unwrap_or(p);
+            file.rsplit_once('.').map_or(file, |(n, _)| n).to_owned()
+        }
+        Target::Server(s) => s.database.clone(),
+    };
+    let path = format!(
+        "{}/{}-{}.{}",
+        dir.trim_end_matches(['/', '\\']),
+        backup::safe_name(&name),
+        backup::stamp(when.unix_millis, when.utc_offset_minutes),
+        backup::extension(kind)
+    );
+    let mut calls = match &target {
+        Target::Sqlite(db) => vec![backup::sqlite_backup(db, &path)],
+        Target::Server(s) => {
+            if s.database.trim().is_empty() {
+                return Err("Name the database in Connect… to back it up".into());
+            }
+            backup::server_backup(s, &path, &format!("scripts/backup-{}.sql", when.unix_millis))
+        }
+    };
+    let first = calls.remove(0);
+    try_calls(first, calls, |_, r| Then::Backup(path.clone(), r), "Backing up…")
+}
+
+/// Puts a backup back over the open database (once confirmed).
+fn restore_backup(path: &str) -> Result<(), String> {
+    let target = with(|s| s.target.clone()).ok_or("Open a database first")?;
+    let when = host::now();
+    let mut calls = match &target {
+        Target::Sqlite(db) => vec![backup::sqlite_restore(db, path)],
+        Target::Server(s) => backup::server_restore(s, path, &format!("scripts/restore-{}.sql", when.unix_millis)),
+    };
+    let first = calls.remove(0);
+    try_calls(first, calls, |_, r| Then::Restore(path.to_owned(), r), "Restoring…")
+}
+
+fn backups_ui(s: &State, b: &mut Vec<Block>) {
+    let Some(t) = &s.target else { return };
+    b.push(bar(vec![button("Back up", "backup", "")]));
+    if let Some(path) = &s.restore_asked {
+        b.push(Block::Spans(vec![span(
+            format!("Replace {} with {path}? What changed in it since that backup is lost.", t.title()),
+            Some(AMBER),
+        )]));
+        b.push(bar(vec![button("Restore", "restore", ""), button("Cancel", "restore-cancel", "")]));
+    }
+    if !s.backups.is_empty() {
+        let rows = s
+            .backups
+            .iter()
+            .map(|(when, path)| Row {
+                cells: vec![mono(when, Some(DIM)), mono(path, None)],
+                buttons: vec![button("Restore…", "restore-ask", path)],
+            })
+            .collect();
+        b.push(Block::Rows(rows));
+    }
+    b.push(Block::Form(Form {
+        id: "restore-path".into(),
+        fields: vec![field("path", "Restore from", FieldKind::Text, "", "a backup file's full path")],
+        buttons: vec!["Restore…".into()],
+    }));
+}
+
 fn diagram() -> Result<(), String> {
     let (title, tables) = with(|s| (s.target.as_ref().map(Target::title), s.tables.clone()));
     let tables = tables.ok_or("Open a database first")?;
@@ -989,6 +1120,19 @@ fn command(id: &str, arg: &str) -> Result<(), String> {
             Ok(())
         }
         "migrations" => show_migrations(),
+        "backup" => make_backup(),
+        "restore-ask" => {
+            with(|s| s.restore_asked = s.backups.iter().find(|(_, p)| p == arg).map(|(_, p)| p.clone()));
+            Ok(())
+        }
+        "restore-cancel" => {
+            with(|s| s.restore_asked = None);
+            Ok(())
+        }
+        "restore" => {
+            let path = with(|s| s.restore_asked.take()).ok_or("Choose a backup first")?;
+            restore_backup(&path)
+        }
         "open-file" => host::open_location(arg, 1),
         "diagram" => diagram(),
         "run" | "explain" => {
@@ -1059,6 +1203,15 @@ fn submitted(f: FormValues) {
     let get = |id: &str| f.values.iter().find(|(k, _)| k == id).map(|(_, v)| v.clone()).unwrap_or_default();
     let result = match (f.form.as_str(), f.button.as_str()) {
         ("sql", button) => run_sql(get("sql"), button == "Explain"),
+        ("restore-path", _) => {
+            let path = get("path").trim().trim_matches('"').to_owned();
+            if path.is_empty() {
+                Ok(())
+            } else {
+                with(|s| s.restore_asked = Some(path));
+                Ok(())
+            }
+        }
         ("connect", "Cancel") => {
             with(|s| s.connecting = false);
             Ok(())

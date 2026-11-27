@@ -1,9 +1,9 @@
 id = "coiman.sql"
 name = "SQL Databases"
-version = "1.1.0"
-description = "SQLite files and PostgreSQL, MySQL/MariaDB and SQL Server databases through their own clients: tables, columns and keys, SQL run with each result as a table, plans, a diagram of the tables, two databases compared with the SQL that makes one like the other, and the project's migrations (sqlx, Diesel, Alembic, Flyway) with which have run."
+version = "1.2.0"
+description = "SQLite files and PostgreSQL, MySQL/MariaDB and SQL Server databases through their own clients: tables, columns and keys, SQL run with each result as a table, plans, a diagram of the tables, two databases compared with the SQL that makes one like the other, the project's migrations (sqlx, Diesel, Alembic, Flyway) with which have run, and backups of a database, restored with a click."
 permissions = ["workspace-read", "editor-read"]
-programs = ["sqlite3", "psql", "mariadb", "mysql", "sqlcmd", "SqlLocalDB"]
+programs = ["sqlite3", "psql", "mariadb", "mysql", "sqlcmd", "SqlLocalDB", "pg_dump", "mariadb-dump", "mysqldump"]
 
 [[commands]]
 id = "show"

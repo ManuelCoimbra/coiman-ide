@@ -1476,6 +1476,14 @@ folder's `.db`, `.sqlite` and `.sqlite3` files).
   With a database open, each says whether it **ran**, is **not run** or **failed**, from the
   table the tool keeps there (Alembic's head and every revision before it ran); **Open** opens
   its file.
+- **Back up** copies the open database into the extension's own folder
+  (`<config>\plugins\data\coiman.sql\backups`), named by the database and the time: SQLite's
+  `.backup`, `pg_dump` (with `--clean`, so it restores over the database as it is),
+  `mariadb-dump` or `mysqldump`, and SQL Server's `BACKUP DATABASE` (written by the server,
+  so a remote one writes on its own disk). The backups made are listed with **Restore…**;
+  **Restore from** takes an older one's path. A restore asks first, saying what it replaces,
+  then puts the backup back (`.restore`, `psql -f`, `mysql source`, or `RESTORE DATABASE …
+  WITH REPLACE` from `master`) and reads the tables again.
 - **Database: Run SQL (Selection or File)** runs the selection, or the whole `.sql` file in
   front, against the open database. **Database: Explain Query Plan (Selection or File)**
   explains it instead, and **Database: Show Tables Diagram (ER)** opens the diagram.

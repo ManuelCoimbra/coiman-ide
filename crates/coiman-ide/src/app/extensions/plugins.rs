@@ -1543,14 +1543,6 @@ impl CodeApp {
                     {
                         actions.push(Action::Update(info.id.clone()));
                     }
-                    if let Some(prev) = &locked.previous
-                        && ui
-                            .small_button(format!("Roll back to {}", prev.version))
-                            .on_hover_text("Put back the version this update replaced, with what was granted to it")
-                            .clicked()
-                    {
-                        actions.push(Action::Rollback(info.id.clone()));
-                    }
                     let mut enabled = locked.enabled;
                     if ui.checkbox(&mut enabled, "").on_hover_text("Enabled").changed() {
                         actions.push(Action::Enable(info.id.clone(), enabled));
@@ -1574,6 +1566,15 @@ impl CodeApp {
                 format!("unsigned, {}", locked.source)
             };
             ui.label(RichText::new(origin).small().color(pal.text_dim));
+            // On a line of its own: beside Update… the row has no room for the name.
+            if let Some(prev) = &locked.previous
+                && ui
+                    .small_button(format!("Roll back to {}", prev.version))
+                    .on_hover_text("Put back the version this update replaced, with what was granted to it")
+                    .clicked()
+            {
+                actions.push(Action::Rollback(info.id.clone()));
+            }
             if let Some(m) = &info.manifest {
                 for p in &m.permissions {
                     let mut on = locked.granted.contains(p);

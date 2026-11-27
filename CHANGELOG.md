@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- SQL Databases 1.2: **Back up** the open database (SQLite, PostgreSQL, MySQL/MariaDB, SQL
+  Server, through their own tools) and **Restore** one, after saying what it replaces.
+
 - **Roll back** in the Extensions view: an update keeps the version it replaced, and one click
   puts it back (with what was granted to it), checked against its recorded hashes.
 

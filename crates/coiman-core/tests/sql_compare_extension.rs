@@ -218,5 +218,26 @@ fn sql_compare_and_migrations() {
     let rows = panel(&host, "table name");
     assert!(rows.contains("  ann\n  bob\n"), "{rows}");
 
+    // A backup, a change, and the backup put back.
+    host.run_command(ID, "backup", "");
+    let backed = panel(&host, "[Restore… restore-ask ");
+    let path = backed
+        .lines()
+        .find_map(|l| l.split("[Restore… restore-ask ").nth(1))
+        .map(|p| p.trim_end_matches(']').trim().to_owned())
+        .expect("the backup is listed");
+    assert!(path.ends_with(".db") && path.contains("dev-"), "{path}");
+    assert!(std::path::Path::new(&path).is_file(), "{path}");
+    submit(&host, "sql", "Run", &[("sql", "DELETE FROM users")]);
+    panel(&host, "rows changed");
+    host.run_command(ID, "restore-ask", &path);
+    let ask = panel(&host, "What changed in it since that backup is lost.");
+    assert!(ask.contains("[Restore restore ] [Cancel restore-cancel ]"), "{ask}");
+    host.run_command(ID, "restore", "");
+    panel(&host, "users | 3 columns");
+    submit(&host, "sql", "Run", &[("sql", "SELECT name FROM users ORDER BY id")]);
+    let rows = panel(&host, "table name");
+    assert!(rows.contains("  ann\n  bob\n"), "the rows are back: {rows}");
+
     let _ = std::fs::remove_dir_all(&tmp);
 }

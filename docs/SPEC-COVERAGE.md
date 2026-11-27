@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 182, partial 132, missing 164,
+**Summary:** 504 items. Done 183, partial 132, missing 163,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -22,7 +22,7 @@ network 13, rules that hold 13.
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
 | 7. Documentation and developer knowledge | 7 | 7 | 5 |  |  |
 | 8. Web development | 9 | 4 | 13 |  |  |
-| 9. Database development | 17 | 5 | 1 |  |  |
+| 9. Database development | 18 | 5 |  |  |  |
 | 10. Data science and machine learning | 5 | 3 | 14 |  |  |
 | 11. Systems programming and embedded development | 5 | 5 | 14 |  |  |
 | 12. Game development | 1 | 6 | 14 |  |  |
@@ -382,7 +382,7 @@ network 13, rules that hold 13.
 | Query performance analysis | Partial | Time per statement; full scans and temporary sorts flagged |
 | Database migration management | Partial | SQL Databases, Migrations: sqlx, Diesel, Alembic and Flyway migrations, with which ran or failed; running them is the tool's |
 | Schema comparison | Done | SQL Databases, Compare…: tables, columns, keys and indexes, with the SQL that makes one like the other |
-| Database backup and restore | Missing |  |
+| Database backup and restore | Done | SQL Databases: Back up and Restore, through each database's own tools |
 | Multiple database connections | Partial | Named connections kept (SQLite files, PostgreSQL, MySQL); one open per window |
 | Connection profiles | Done | Recent connections with names of their own (no passwords) |
 | Support for SQLite | Done | SQL Databases extension |
