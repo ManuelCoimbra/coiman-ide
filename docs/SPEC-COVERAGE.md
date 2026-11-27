@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 189, partial 133, missing 156,
+**Summary:** 504 items. Done 192, partial 132, missing 154,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -33,7 +33,7 @@ network 13, rules that hold 13.
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 12 | 9 |  |  | 2 |
-| 20. Workspace and project management | 3 | 11 | 3 |  |  |
+| 20. Workspace and project management | 6 | 10 | 1 |  |  |
 | 21. Experimental and differentiating features | 12 | 12 | 13 |  |  |
 
 ## 0. Principles
@@ -685,9 +685,9 @@ network 13, rules that hold 13.
 | Workspace health dashboard | Partial | Code Health |
 | Project metadata editor | Missing |  |
 | Project migration tools | Partial | Database migrations listed with which ran (SQL Databases) |
-| Project backup and restore | Partial | Local history, per file |
-| Project snapshots | Missing |  |
-| Project comparison | Missing |  |
+| Project backup and restore | Done | Local history (per file); Project Snapshots (the whole folder) |
+| Project snapshots | Done | Project Snapshots extension, kept outside the project |
+| Project comparison | Done | Project Snapshots: now, snapshots or another folder, file by file |
 | Project-specific keybindings | Done | `.coiman/keybindings.toml` over the user's |
 | Project-specific themes | Partial | Folder settings |
 

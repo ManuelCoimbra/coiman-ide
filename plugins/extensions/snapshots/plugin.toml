@@ -1,0 +1,18 @@
+id = "coiman.snapshots"
+name = "Project Snapshots"
+version = "1.0.0"
+description = "Keep the whole open folder as it is now under a name, then compare it with how it is later, with another snapshot or with another folder, and restore it (all of it or a file). Kept by git in a repository of its own in Coiman's data folder, never in the project or its Git repository."
+permissions = ["workspace-read", "workspace-write"]
+programs = ["git"]
+
+[[commands]]
+id = "take"
+title = "Snapshots: Take Snapshot"
+
+[[commands]]
+id = "show"
+title = "Snapshots: Show"
+
+[[panels]]
+id = "snapshots"
+title = "Project Snapshots"

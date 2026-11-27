@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Project Snapshots: the whole folder kept, compared (with now, a snapshot, another folder), restored.
 - Technical debt in Code Health: notes by area and age, and the months they were written.
 - Security checks in Code Health: SQL and HTML made from strings, unsafe C calls, Rust unsafe.
 - Databases: compare two schemas, with the SQL that turns one into the other; the project's

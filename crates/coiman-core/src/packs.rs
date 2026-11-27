@@ -105,8 +105,9 @@ pub const PACKS: [Pack; 10] = [
         features: &[
             "Git Graph: rebase, cherry-pick, compare, worktrees",
             "History search, submodules, hooks, .gitignore rules",
+            "Project snapshots: keep the folder, compare, restore",
         ],
-        extensions: &["coiman.git-graph", "coiman.git-tools"],
+        extensions: &["coiman.git-graph", "coiman.git-tools", "coiman.snapshots"],
     },
     Pack {
         id: AGENTS,

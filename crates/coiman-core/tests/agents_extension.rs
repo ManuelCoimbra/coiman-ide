@@ -187,7 +187,15 @@ fn agents_extension() {
     // reply's lines depends on timing: each is checked, not their order.
     let note = "Not allowed in Manual: edit (a.rs). Switch to Auto to let the agent do this.";
     assert!(transcript.contains(note), "{transcript}");
-    let reply = transcript.replace(note, "").replace("\n\n", "\n");
+    // Without the note and blank lines, wherever they landed.
+    let mut reply: String = transcript
+        .lines()
+        .filter(|l| !l.trim().is_empty() && l.trim() != note)
+        .map(|l| format!("{}\n", l.replace(note, "")))
+        .collect();
+    if !transcript.ends_with('\n') {
+        reply.pop();
+    }
     assert!(
         reply.starts_with("> @src/a.rs\nlook at\nthis\n(thinking: Looking.)\n[bash completed: a.rs]\n"),
         "{transcript}"

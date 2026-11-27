@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Project Snapshots (Git pack): keep the whole open folder under a name, compare it with how it
+  is now, with another snapshot or with another folder, and restore it all or a file. Kept by
+  git in a repository of its own in Coiman's data folder, never in the project.
+
 - For plugin authors: `coiman-plugin docs` writes a plugin's documentation from its
   `plugin.toml`, `coiman-plugin test` runs its `tests.toml` (commands, then what its panels,
   messages and status bar must say) with no window, and the Extensions view shows each

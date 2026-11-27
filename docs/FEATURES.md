@@ -661,7 +661,7 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture and Code Health come with Code analysis, Git Graph and Git Tools with Git, HTTP Client
+Architecture and Code Health come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
@@ -882,6 +882,8 @@ come with Coiman.
   commit; see Git Graph under Git.
 - **Git Tools** (`workspace-read`, `workspace-write`; program `git`): history search,
   submodules, hooks and `.gitignore` rules; see Git Tools under Git.
+- **Project Snapshots** (`workspace-read`, `workspace-write`; program `git`): the whole open
+  folder kept under a name, compared and restored; see [Project snapshots](#project-snapshots).
 - **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,
   enums, structs, records and traits as a UML class diagram, read from the code without a
   compiler: Java, Kotlin, C#, TypeScript and JavaScript, C and C++, Swift, Dart, Scala, PHP,
@@ -1067,6 +1069,28 @@ default; `history.enabled`, `history.max_entries`, `history.max_days`, `history.
 - **Local History: Find Entry to Restore...** picks a version from the palette.
 - Restoring is an unsaved, undoable edit, and the text it replaces is kept as a "Before
   restore" version.
+
+## Project snapshots
+
+The **Project Snapshots** extension (Git pack) keeps the whole open folder as it is now, under a
+name, in the **Project Snapshots** panel (**Snapshots: Show**; **Snapshots: Take Snapshot**
+takes one at once). Where local history keeps each file, a snapshot keeps them all together.
+
+- Snapshots are kept by `git`, in a repository of their own in Coiman's data folder
+  (`<config>\plugins\data\coiman.snapshots`): never in the project, never in its Git
+  repository, and the folder doesn't need to be one. What Git would ignore (the folder's
+  `.gitignore` files), `target/` and `node_modules/` aren't kept. A file in many snapshots is
+  stored once.
+- **Compare with now** lists the files changed, added and removed since, with the lines added
+  and removed; **Diff** shows a file's changes, **Open** opens it, and **Restore file** brings
+  that one file back as the snapshot had it.
+- **Compare** picks any two of the snapshots and now. **Compare with folder** compares the open
+  folder with another one (a copy of the project, a colleague's version): its own `.gitignore`
+  files count, and nothing is written in it.
+- **Restore…** brings every file the snapshot kept back as it was, after asking; files made since
+  stay. What there was before is kept first, as a snapshot named "Before restoring …", so a
+  restore can be undone.
+- **Delete…** removes a snapshot, after asking, and frees what only it kept.
 
 ## Architecture
 
