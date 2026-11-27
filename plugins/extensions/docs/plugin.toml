@@ -1,0 +1,26 @@
+id = "coiman.docs"
+name = "Project Docs"
+version = "1.0.0"
+description = "The project's Markdown documents, read without a build: an index with their titles and headings, the links between them as a graph, broken links and documents nothing links to, and documents older than the code they mention (from git's history)."
+permissions = ["workspace-read"]
+programs = ["git"]
+
+[[commands]]
+id = "index"
+title = "Docs: Show Index"
+
+[[commands]]
+id = "links"
+title = "Docs: Check Links"
+
+[[commands]]
+id = "graph"
+title = "Docs: Show Link Graph"
+
+[[commands]]
+id = "outdated"
+title = "Docs: Find Outdated Documents"
+
+[[panels]]
+id = "docs"
+title = "Project Docs"

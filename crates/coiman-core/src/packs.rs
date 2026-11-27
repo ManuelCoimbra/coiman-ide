@@ -94,8 +94,9 @@ pub const PACKS: [Pack; 10] = [
             "Code health, project overview, session statistics",
             "Profiler, coverage, run history, stack trace analysis",
             "Rules, and search by syntax tree",
+            "Project docs: an index, the links between documents, outdated documents",
         ],
-        extensions: &["coiman.class-diagram", "coiman.architecture", "coiman.code-health"],
+        extensions: &["coiman.class-diagram", "coiman.architecture", "coiman.code-health", "coiman.docs"],
     },
     Pack {
         id: GIT,
