@@ -64,6 +64,10 @@ fn with<R>(f: impl FnOnce(&mut State) -> R) -> R {
     f(guard.get_or_insert_with(State::default))
 }
 
+fn plural(n: usize, one: &str) -> String {
+    if n == 1 { format!("1 {one}") } else { format!("{n} {one}s") }
+}
+
 fn span(text: impl Into<String>, color: Option<u32>) -> Span {
     Span { text: text.into(), color, bold: false, monospace: false }
 }
@@ -215,7 +219,7 @@ fn index(s: &State, b: &mut Vec<Block>) {
                 cells: vec![
                     Span { text: d.title.clone(), color: None, bold: true, monospace: false },
                     span(&d.path, Some(DIM)),
-                    span(format!("{} headings · {} words", d.headings.len(), d.words), Some(DIM)),
+                    span(format!("{} · {}", plural(d.headings.len(), "heading"), plural(d.words, "word")), Some(DIM)),
                     span(changed, Some(DIM)),
                 ],
                 buttons: vec![

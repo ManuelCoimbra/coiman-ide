@@ -102,7 +102,11 @@ fn docs_extension() {
 
     host.run_command(ID, "index", "");
     let index = wait_panel(&host, "4 documents");
-    assert!(index.contains("Guide | docs/guide.md | 2 headings"), "{index}");
+    assert!(
+        index.contains("Guide | docs/guide.md | 2 headings · 12 words")
+            && index.contains("Lonely | docs/lonely.md | 1 heading · 2 words"),
+        "{index}"
+    );
     assert!(index.contains("[Headings docs/guide.md]"), "{index}");
     host.run_command(ID, "doc", "docs/guide.md");
     let heads = wait_panel(&host, "docs/guide.md: headings");
