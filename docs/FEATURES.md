@@ -1090,6 +1090,12 @@ from outside the project are left out.
 
   Paths are globs (`**` any folders, `*` part of a name); one without `*` is a file or
   everything under a folder. A file in no layer has no layer rule.
+- **Architecture: Show Build Graph**: the project's own packages and how they depend on each
+  other, read from the build files without a build: Cargo (`Cargo.toml` with `[package]`; a
+  renamed dependency by its `package`), npm, pnpm and yarn (`package.json` names), Gradle (the
+  settings file's `include`, then `project(':x')` and `projects.x` in each build file) and Maven
+  (`pom.xml` modules by `artifactId`). Dev, build and test dependencies are labelled; packages
+  in a cycle are red. The panel lists each with how many use it and how many it uses.
 - **Architecture: Changes Since...**: how the imports changed since a commit, tag or branch
   (`HEAD~1` at first). `git diff` says which source files changed; those are read as they
   were (`git show`), the graph is made again from them, and the two are compared: new cycles,

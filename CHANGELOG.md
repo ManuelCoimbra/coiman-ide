@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Architecture 1.3: **Architecture: Show Build Graph**: the project's own Cargo, npm, Gradle and
+  Maven packages and how they depend on each other, with cycles.
+
 - Terminal Commands 1.1: **Terminal: Run Routine...** runs the project's routines, named lists
   of commands in `.coiman/routines.toml`, one after the other in a terminal tab, stopping at
   the first that fails; a step `@name` runs another routine.

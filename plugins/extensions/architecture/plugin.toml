@@ -1,7 +1,7 @@
 id = "coiman.architecture"
 name = "Architecture"
-version = "1.2.0"
-description = "Which file imports which (Rust, Python, JavaScript, TypeScript, Java, C#, Go, C, C++), read from the import lines without a build: the graph by file or folder, cycles, the most used and unused files, what a change to a file reaches, and the imports that break the project's own rules (layers, what may not import what), and how the imports changed since a commit."
+version = "1.3.0"
+description = "Which file imports which (Rust, Python, JavaScript, TypeScript, Java, C#, Go, C, C++), read from the import lines without a build: the graph by file or folder, cycles, the most used and unused files, what a change to a file reaches, and the imports that break the project's own rules (layers, what may not import what), how the imports changed since a commit, and the project's own packages (Cargo, npm, Gradle, Maven) and how they depend on each other."
 permissions = ["workspace-read", "editor-read"]
 programs = ["git"]
 
@@ -12,6 +12,10 @@ title = "Architecture: Show Dependency Graph"
 [[commands]]
 id = "folders"
 title = "Architecture: Show Folder Graph"
+
+[[commands]]
+id = "build"
+title = "Architecture: Show Build Graph"
 
 [[commands]]
 id = "rules"

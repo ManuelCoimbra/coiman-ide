@@ -18,6 +18,7 @@ wit_bindgen::generate!({
 });
 
 mod arch;
+mod build;
 mod changes;
 mod deps;
 mod rules;
@@ -492,6 +493,101 @@ fn rules_report(graph: &Graph, blocks: &mut Vec<Block>) {
     }
 }
 
+/// The project's own packages and their dependencies on each other, from the build files.
+fn build_graph() -> Result<(), String> {
+    let mut files = std::collections::BTreeMap::new();
+    for path in host::list_files("", MAX_FILES)?.into_iter().filter(|p| build::is_build_file(p)).take(2000) {
+        if let Ok(text) = host::read_file(&path) {
+            files.insert(path, text);
+        }
+    }
+    let g = build::read(&files);
+    if g.packages.is_empty() {
+        return Err("No workspace here: no Cargo.toml with [package], package.json with a name, Gradle settings file \
+             or pom.xml"
+            .into());
+    }
+    // The same graph as files, for the cycles and counts the file graph has.
+    let as_files = Graph {
+        nodes: g
+            .packages
+            .iter()
+            .map(|p| deps::Node { path: format!("{} ({})", p.name, p.tool), lang: Lang::Rust, test: false })
+            .collect(),
+        edges: g.deps.iter().map(|d| deps::Edge { from: d.from, to: d.to, line: 1 }).collect(),
+        ..Graph::default()
+    };
+    let cycle_edges = arch::cycle_edges(&as_files);
+    let nodes = g
+        .packages
+        .iter()
+        .enumerate()
+        .map(|(i, p)| GraphNode {
+            id: p.manifest.clone(),
+            label: p.name.clone(),
+            kind: p.tool.to_lowercase(),
+            group: p.tool.to_owned(),
+            members: Vec::new(),
+            path: p.manifest.clone(),
+            line: 1,
+            accent: cycle_edges.iter().any(|&(a, b)| a == i || b == i).then_some(RED),
+        })
+        .collect();
+    let edges = g
+        .deps
+        .iter()
+        .map(|d| GraphEdge {
+            source: g.packages[d.from].manifest.clone(),
+            target: g.packages[d.to].manifest.clone(),
+            kind: EdgeKind::Uses,
+            label: d.kind.clone(),
+            accent: cycle_edges.contains(&(d.from, d.to)).then_some(RED),
+        })
+        .collect();
+    let title = format!("Build: {} packages, {} dependencies", g.packages.len(), g.deps.len());
+    host::show_graph(&Shown { id: "build".to_owned(), title, nodes, edges, focus: None });
+
+    let label = |i: usize| format!("{} ({})", g.packages[i].name, g.packages[i].tool);
+    let mut tools: Vec<&str> = g.packages.iter().map(|p| p.tool).collect();
+    tools.dedup();
+    let mut blocks = vec![
+        Block::Heading("Build".into()),
+        Block::Text(format!(
+            "{} packages ({}), {} dependencies between them. Read from the build files; a dependency \
+             on something outside the project isn't shown.",
+            g.packages.len(),
+            tools.join(", "),
+            g.deps.len()
+        )),
+    ];
+    let cycles = arch::cycles(&as_files);
+    if !cycles.is_empty() {
+        blocks.push(Block::Heading(format!("Cycles ({})", cycles.len())));
+        blocks.push(Block::Bullets(
+            cycles.iter().map(|c| c.iter().map(|&i| label(i)).collect::<Vec<_>>().join(" → ")).collect(),
+        ));
+    }
+    let coupling = arch::coupling(&as_files);
+    let mut order: Vec<usize> = (0..g.packages.len()).collect();
+    order.sort_by_key(|&i| (std::cmp::Reverse(coupling[i].fan_in), label(i)));
+    let rows = order
+        .iter()
+        .map(|&i| {
+            vec![
+                g.packages[i].name.clone(),
+                g.packages[i].tool.to_owned(),
+                coupling[i].fan_in.to_string(),
+                coupling[i].fan_out.to_string(),
+                g.packages[i].manifest.clone(),
+            ]
+        })
+        .collect();
+    blocks.push(table(&["Package", "Tool", "Used by", "Uses", "Build file"], rows));
+    host::set_panel("report", &blocks);
+    host::show_message(&format!("{} packages", g.packages.len()));
+    Ok(())
+}
+
 /// What a change to `file` reaches.
 fn impact(graph: &Graph, file: &str) {
     let Some(i) = graph.index_of(file) else {
@@ -587,6 +683,7 @@ impl Guest for Plugin {
         match id.as_str() {
             "files" => start(Want::Files),
             "folders" => start(Want::Folders),
+            "build" => build_graph(),
             // The file graph's report has the rules.
             "rules" => start(Want::Files),
             "since" => {

@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 185, partial 132, missing 161,
+**Summary:** 504 items. Done 186, partial 132, missing 160,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -18,7 +18,7 @@ network 13, rules that hold 13.
 | 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
 | 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
-| 5. Build systems and dependency management | 13 | 17 | 8 | 1 | 3 |
+| 5. Build systems and dependency management | 14 | 17 | 7 | 1 | 3 |
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
 | 7. Documentation and developer knowledge | 7 | 7 | 5 |  |  |
 | 8. Web development | 9 | 4 | 13 |  |  |
@@ -229,7 +229,7 @@ network 13, rules that hold 13.
 | Build profiles | Partial | Run configurations |
 | Debug and release configurations | Partial | Run configurations |
 | Custom build pipelines | Missing |  |
-| Build dependency graphs | Missing |  |
+| Build dependency graphs | Done | Architecture: Show Build Graph (Cargo, npm/pnpm/yarn, Gradle, Maven) |
 | Parallel build monitoring | Missing |  |
 | Build output filtering | Partial | Output panel, problem matchers |
 | Build history | Done | Run History, Builds (B4) |
