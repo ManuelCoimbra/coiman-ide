@@ -36,6 +36,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
   comments, by area and by age (from `git blame`), the months the ones still here were
   written, and each note, oldest first.
 
+### Changed
+
+- Coiman won't be submitted to Flathub for now: its policy rules out AI-written manifests and
+  AI-prepared submissions (`docs/PUBLISHING.md`). The release's Flatpak bundle stays. The docs
+  now also say the signed APT and RPM repository is online.
+
 ### Fixed
 
 - Installing a pack offers its extensions one after the other; **Cancel** on one now goes on

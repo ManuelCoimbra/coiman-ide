@@ -32,8 +32,9 @@ Windows, from the [releases page](https://github.com/ManuelCoimbra/coiman-ide/re
 
 None of these touch your settings (`%APPDATA%\coiman-ide`), and uninstalling keeps them.
 
-winget, a signed APT and RPM repository, Flathub, the Snap Store and the AUR are ready in the
-release workflow and come with a later release ([docs/PUBLISHING.md](docs/PUBLISHING.md)).
+Linux also has a signed APT and RPM repository ([docs/INSTALL-LINUX.md](docs/INSTALL-LINUX.md)).
+winget is waiting for its first review; the Snap Store and the AUR are ready in the release
+workflow but not set up yet ([docs/PUBLISHING.md](docs/PUBLISHING.md)).
 
 Linux: deb, rpm, AppImage (updated by AppImageUpdate), Flatpak, Snap, Arch PKGBUILDs and a
 tar.gz, for x86_64 and ARM64; see

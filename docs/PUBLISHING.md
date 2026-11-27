@@ -41,7 +41,7 @@ fails because a channel isn't set up yet.
 | winget | `WINGET_TOKEN` | first version by hand | automatic pull request, merged by winget's moderators |
 | Snap Store | `SNAPCRAFT_STORE_CREDENTIALS` | register the name, ask for classic | automatic |
 | AUR | `AUR_SSH_KEY` | account and SSH key | automatic |
-| Flathub | none | submission | a pull request by hand, from the release's file |
+| Flathub | none | not possible now | see below |
 
 Secrets are set in the repository's Settings > Secrets and variables > Actions, or with
 `gh secret set <NAME>`. They never go in a file in the repository.
@@ -157,28 +157,24 @@ emails you. A new release clears the flag. To push by hand (from Linux or WSL wi
 `PKGBUILD-coiman-ide-bin` in as `PKGBUILD`, run `makepkg --printsrcinfo > .SRCINFO`, commit
 and push. `packaging/arch/push-aur.sh` does the same.
 
-## Flathub
+## Flathub: not possible now
 
-Flathub builds the app itself, from source and without a network, and serves it to
-`flatpak update` and software centres. The manifest is
-`packaging/flathub/io.github.manuelcoimbra.CoimanIde.yml`; `cargo-sources.json` lists the
-crates it needs. CI builds it on each run, exactly as Flathub would.
+Flathub's [Generative AI policy](https://docs.flathub.org/docs/for-app-authors/requirements#generative-ai-policy)
+rules out this submission as it stands (checked on 2026-11-27):
 
-1. The submission, once, from the newest release's `flathub-<version>.tar.gz`:
-   - fork <https://github.com/flathub/flathub> and make a branch from its `new-pr` branch;
-   - unpack the file into the branch's root (`io.github.manuelcoimbra.CoimanIde.yml`,
-     `cargo-sources.json`, `flathub.json`), commit and push;
-   - open a pull request against `new-pr`, titled `Add io.github.manuelcoimbra.CoimanIde`.
-     Say why it needs `--filesystem=host` (an IDE edits projects anywhere) and
-     `--talk-name=org.freedesktop.Flatpak` (it runs the computer's own tools with
-     `flatpak-spawn --host`).
+- manifests must not contain AI-generated or AI-assisted content, and the manifest here
+  (`packaging/flathub/io.github.manuelcoimbra.CoimanIde.yml`) was written with an AI agent;
+- AI tools or agents must not open or automate the submission pull request, nor write its
+  commit message, description or replies;
+- AI-generated code in the app must be disclosed, with the parts and rough extent, and
+  reviewers may reject it for that; much of Coiman was written with an AI agent;
+- apps that have existed only a short time are generally not accepted.
 
-   Flathub's reviewers comment on the pull request; the app ID `io.github.manuelcoimbra` is
-   verified through the ManuelCoimbra GitHub account. Once merged, you get write access to
-   `github.com/flathub/io.github.manuelcoimbra.CoimanIde`.
-2. Each release: unpack its `flathub-<version>.tar.gz` into that repository over the old
-   files, and open a pull request. Flathub builds it; merging publishes it.
+A submission would need a manifest and pull request written by a person, an honest
+disclosure of the AI-written code, and a longer history. Until then the release's Flatpak
+bundle is the way to install it. The CI job still builds the manifest, which keeps the
+offline source build tested, and each release still attaches `flathub-<version>.tar.gz`.
 
-Flathub also wants screenshots in the metadata. The metainfo
-(`packaging/linux/*.metainfo.xml`) points at `assets/screenshots/main.png` on `main`; replace
-that file when the window changes a lot, and keep names and home-folder paths out of it.
+The metainfo (`packaging/linux/*.metainfo.xml`) has a screenshot,
+`assets/screenshots/main.png` on `main`, which software centres show for the Flatpak bundle
+too; replace it when the window changes a lot, and keep names and home-folder paths out of it.

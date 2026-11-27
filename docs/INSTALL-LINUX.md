@@ -19,14 +19,14 @@ compilers, debuggers, language servers) are the ones you install yourself.
 |---|---|
 | AppImage | AppImageUpdate, or download the newer file |
 | deb, rpm, Flatpak and Snap files, PKGBUILDs, tar.gz | Install the newer release's file the same way |
-| APT or RPM repository (later) | With the system: `apt upgrade`, `dnf upgrade`, `zypper update` |
-| Flathub, Snap Store (later) | With the system: `flatpak update`, snapd on its own |
+| APT or RPM repository | With the system: `apt upgrade`, `dnf upgrade`, `zypper update` |
+| Snap Store (later) | snapd, on its own |
 | AUR (later) | AUR helpers such as `yay` or `paru` |
 
-The repositories, Flathub, the Snap Store and the AUR are ready in the release workflow but
-not online yet; they come with a later release. Their sections below say how they will work.
+The Snap Store and the AUR are ready in the release workflow but not online yet; their
+sections below say how they will work. Coiman isn't on Flathub: use the Flatpak bundle.
 
-## Debian, Ubuntu, Linux Mint: the APT repository (later)
+## Debian, Ubuntu, Linux Mint: the APT repository
 
 Add the repository once; after that, Coiman updates with the rest of the system.
 
@@ -41,7 +41,7 @@ The first line gets the key that signs the repository; apt refuses anything it h
 To stop getting updates from it, delete those two files. Remove Coiman with
 `sudo apt remove coiman-ide`.
 
-## Fedora, RHEL, openSUSE: the RPM repository (later)
+## Fedora, RHEL, openSUSE: the RPM repository
 
 Add the repository once; after that, Coiman updates with the rest of the system.
 
@@ -114,14 +114,8 @@ and `~/.local/share/icons/hicolor/*/apps/io.github.manuelcoimbra.CoimanIde.*`.
 
 ## Flatpak
 
-Once Coiman is on Flathub, install it from there; `flatpak update` (or your software centre)
-then brings each new version:
-
-```
-flatpak install flathub io.github.manuelcoimbra.CoimanIde
-```
-
-Or install the bundle from the release, which doesn't update on its own:
+Coiman isn't on Flathub. Install the bundle from the release; it doesn't update on its own,
+so install each newer release's bundle the same way:
 
 ```
 flatpak install --user ./coiman-ide-<arch>.flatpak

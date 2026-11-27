@@ -1655,9 +1655,11 @@ installing it has its own updater outside the program, used when you ask for it
   newest version, so `scoop update coiman-ide` finds it.
 - **AppImage**: AppImageUpdate downloads only the changed parts, using the `.zsync` file beside
   each release's AppImage.
-- **Later**: winget, a signed APT and RPM repository on GitHub Pages, Flathub, the Snap Store
-  and the AUR. The release workflow has them; each starts once its account and secret are set
-  up (`docs/PUBLISHING.md`).
+- **APT and RPM repository**: signed, on GitHub Pages; `apt upgrade`, `dnf upgrade` or
+  `zypper update` bring each new version (`docs/INSTALL-LINUX.md`).
+- **Later**: winget (waiting for its first review), the Snap Store and the AUR. The release
+  workflow has them; each starts once its account and secret are set up
+  (`docs/PUBLISHING.md`). Coiman isn't on Flathub (see `docs/PUBLISHING.md`).
 - **Zip, tar.gz and the package files**: install the newer file the same way.
 
 Settings stay in `%APPDATA%\coiman-ide` or `~/.config/coiman-ide` through every update and
