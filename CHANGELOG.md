@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The **Project Docs** extension (Code analysis pack): the project's Markdown documents, read
+  without a build: an index with their titles and headings, the links between them as a graph,
+  broken links and documents nothing links to, and documents older than the code they name.
+
 - Code Health 1.5: the project's own settings in `.coiman/health.toml`: paths left out,
   findings allowed on purpose (each with why), and quality gates, shown in a **Gates** tab.
 

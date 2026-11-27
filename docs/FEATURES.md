@@ -655,7 +655,7 @@ appear, and its background work doesn't run.
 | Embedded and systems | Serial monitor, binary size, memory and disassembly views |
 | Mobile | Android |
 | Graphics | Shader problems while typing, shader preview |
-| Code analysis | Class diagrams, architecture, flow, code health, overview, session statistics, profiler, coverage, run history, stack traces, rules, search by syntax tree |
+| Code analysis | Class diagrams, architecture, flow, code health, project docs, overview, session statistics, profiler, coverage, run history, stack traces, rules, search by syntax tree |
 | Git, more of it | Git Graph, history search, submodules, hooks, `.gitignore` rules |
 | Agents | Agents (opencode), MCP servers |
 | Terminal extras | Command history and Ctrl+Space suggestions |
@@ -821,6 +821,8 @@ version, or rebuilt for a newer plugin API), the installed one shows **Update…
     Cargo's build, run (each program and example), test, check, clippy and fmt.
 - **Architecture** (`workspace-read`, `editor-read`): the dependency graph, its cycles and
   what a change reaches; see [Architecture](#architecture).
+- **Project Docs** (`workspace-read`; program `git`): the project's Markdown documents; see
+  [Project docs](#project-docs).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
@@ -1242,6 +1244,24 @@ per project and between sessions (the last 100 of each).
   error, which opens the file there.
 
 Cargo's tests and every Testing runner (pytest, Go, Jest and the others) are recorded.
+
+## Project docs
+
+The **Project Docs** extension (Code analysis pack) reads the open folder's Markdown documents
+(`.md`, `.markdown`, `.mdx`) without a build, and shows them in the **Project Docs** panel:
+
+- **Docs: Show Index**: each document with its title (its front matter's `title:`, else its
+  first heading), path, headings, words and when git last changed it; **Open** opens it and
+  **Headings** lists its headings, each opening its line.
+- **Docs: Check Links**: the links between documents (`[x](path)`, `<a href>`, `[x]: path`),
+  the broken ones (a file that isn't there, or a `#heading` the document hasn't, as GitHub makes
+  the anchors), and the documents no other document links to (READMEs aside). Links to the web
+  are counted, not checked: Coiman opens no connections.
+- **Docs: Show Link Graph**: the documents as boxes with their headings, a line for each link,
+  those with broken links in red, in the graph window (export to SVG, Mermaid or PlantUML).
+- **Docs: Find Outdated Documents**: documents that name a file (in `inline code`, or by a link)
+  that git changed after the document last was, each with both dates, the longest gap first.
+  It reads one `git log` of the project, when `git` was approved at install.
 
 ## Code health
 

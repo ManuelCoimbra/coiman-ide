@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 178, partial 131, missing 169,
+**Summary:** 504 items. Done 181, partial 132, missing 165,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -20,7 +20,7 @@ network 13, rules that hold 13.
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
 | 5. Build systems and dependency management | 13 | 17 | 8 | 1 | 3 |
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
-| 7. Documentation and developer knowledge | 4 | 6 | 9 |  |  |
+| 7. Documentation and developer knowledge | 7 | 7 | 5 |  |  |
 | 8. Web development | 9 | 4 | 13 |  |  |
 | 9. Database development | 17 | 5 | 1 |  |  |
 | 10. Data science and machine learning | 5 | 3 | 14 |  |  |
@@ -306,15 +306,15 @@ network 13, rules that hold 13.
 
 | Item | Status | Note |
 |---|---|---|
-| Documentation browser | Missing |  |
+| Documentation browser | Partial | Project Docs: the project's own documents, with their headings; not library docs |
 | Documentation search | Done | Find in Files' Doc switch: doc files and doc comments |
 | Documentation generation | Partial | Doc comment templates |
 | API documentation generation | Missing |  |
 | Automatic documentation updates | Missing |  |
-| Project documentation index | Missing |  |
-| Documentation relationship graphs | Missing |  |
+| Project documentation index | Done | Project Docs: Show Index |
+| Documentation relationship graphs | Done | Project Docs: Show Link Graph, broken links, documents nothing links to |
 | Documentation coverage analysis | Partial | What lacks a doc comment is listed, not given as a share |
-| Detect outdated documentation | Missing |  |
+| Detect outdated documentation | Done | Project Docs: documents older than the files they name, from git |
 | Detect undocumented public APIs | Done | Code Health, Undocumented: Rust, Go, Python, JavaScript, TypeScript |
 | Preview documentation for different formats | Partial | Markdown, SVG, Mermaid |
 | Markdown documentation workspace | Partial | Preview, outline |
