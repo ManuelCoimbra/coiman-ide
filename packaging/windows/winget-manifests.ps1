@@ -18,7 +18,9 @@ if ($Setup) {
     $hash = (Get-FileHash $Setup -Algorithm SHA256).Hash
 } else {
     # GitHub keeps each file's SHA-256: nothing is downloaded.
-    $digest = gh api "repos/ManuelCoimbra/coiman-ide/releases/tags/v$Version" --jq ".assets[] | select(.name == `"$file`") | .digest"
+    # Filtered here, not with --jq: Windows PowerShell 5.1 drops the quotes inside the filter.
+    $release = gh api "repos/ManuelCoimbra/coiman-ide/releases/tags/v$Version" | ConvertFrom-Json
+    $digest = ($release.assets | Where-Object name -eq $file).digest
     if (-not $digest) { throw "release v$Version has no $file" }
     $hash = $digest -replace '^sha256:', ''
 }
