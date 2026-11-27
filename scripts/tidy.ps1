@@ -3,11 +3,14 @@
 # by gigabytes a day of work. This removes the copies of our own crates and the incremental
 # caches; dependencies stay built, so the next build only recompiles our crates.
 #
-#   powershell -File scripts/tidy.ps1        old copies of our crates, incremental caches
-#   powershell -File scripts/tidy.ps1 -All   everything (cargo clean): the next build is a full one
+#   powershell -File scripts/tidy.ps1           old debug copies of our crates, incremental caches
+#   powershell -File scripts/tidy.ps1 -Release  the release copies of our crates too (the next
+#                                               release build recompiles and links them again)
+#   powershell -File scripts/tidy.ps1 -All      everything (cargo clean): the next build is a full one
 #
-# The release program (target/release/coiman-ide.exe) is kept, so shortcuts to it still work.
-param([switch]$All)
+# The release build is left alone by default: rebuilding it is the heaviest build there is.
+# The release program (target/release/coiman-ide.exe) is always kept, so shortcuts to it work.
+param([switch]$All, [switch]$Release)
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path $PSScriptRoot -Parent)
 
@@ -29,6 +32,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'cargo clean failed' }
     } else {
         foreach ($release in @($false, $true)) {
+            if ($release -and -not $Release) { continue }
             $cargoArgs = @('clean', '-p', 'coiman-core', '-p', 'coiman-ide', '-p', 'coiman-plugin')
             if ($release) { $cargoArgs += '--release' }
             cargo @cargoArgs

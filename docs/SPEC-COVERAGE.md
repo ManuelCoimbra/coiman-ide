@@ -9,12 +9,12 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 176, partial 131, missing 171,
+**Summary:** 504 items. Done 178, partial 131, missing 169,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
 |---|---|---|---|---|---|
-| 1. Code intelligence and static analysis | 6 | 7 | 3 |  |  |
+| 1. Code intelligence and static analysis | 7 | 7 | 2 |  |  |
 | 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
 | 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
@@ -29,7 +29,7 @@ network 13, rules that hold 13.
 | 13. Mobile development | 4 | 5 | 6 |  |  |
 | 14. DevOps, containers and cloud development | 5 | 4 | 13 | 2 | 1 |
 | 15. Testing and quality assurance | 6 | 6 | 9 |  |  |
-| 16. Security and code quality | 9 | 7 | 3 |  |  |
+| 16. Security and code quality | 10 | 7 | 2 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 8 | 8 | 5 |  | 2 |
@@ -62,7 +62,7 @@ network 13, rules that hold 13.
 | Identify potential performance bottlenecks through static analysis | Missing |  |
 | Identify common security weaknesses using local rule sets | Done | Code Health: Security (injection, XSS, unsafe C calls, Rust unsafe), Secrets, `cargo audit`, `npm audit` |
 | Explain each finding through source locations, rules and evidence | Partial | Each finding links to its place and says what it found; rules aren't shown for every kind |
-| Suppress, configure and review findings at project level | Missing | Findings can't be suppressed or configured per project yet |
+| Suppress, configure and review findings at project level | Done | Code Health: `.coiman/health.toml` leaves paths out and allows findings with why; the Gates tab lists them |
 
 ### Project structure analysis
 
@@ -582,7 +582,7 @@ network 13, rules that hold 13.
 | Complexity analysis | Done | Code Health, Complexity |
 | Maintainability analysis | Partial | Complexity, duplicates |
 | Code duplication analysis | Done | Code Health, Duplicates |
-| Configurable quality gates | Missing |  |
+| Configurable quality gates | Done | Code Health, Gates: the most of each check a project accepts, pass or fail |
 
 ## 17. Accessibility and user experience
 

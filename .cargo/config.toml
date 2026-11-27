@@ -1,3 +1,8 @@
 [alias]
 # Lints for the whole workspace, warnings as errors.
 lint = "clippy --workspace --all-targets -- -D warnings"
+
+[build]
+# At most 4 compilers at once: a full release build with 12 (one per core) ran a 14 GB
+# machine out of memory and froze it. Raise it on a bigger machine with CARGO_BUILD_JOBS.
+jobs = 4

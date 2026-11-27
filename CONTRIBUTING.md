@@ -46,6 +46,8 @@ dependencies built, so the next build only recompiles our crates. `-All` removes
   `plugins/extensions/<name>/`, in a pack (`crates/coiman-core/src/packs.rs`). If the plugin
   API can't do what it needs yet, grow the API (`crates/coiman-core/wit/plugin.wit`) rather
   than building the feature into the program.
+- Builds run at most 4 compilers at once (`.cargo/config.toml`): with one per core, a full
+  release build ran a 14 GB machine out of memory. `CARGO_BUILD_JOBS` raises it.
 - Plugins are rebuilt with `scripts/build-plugins.ps1`, and their `plugin.wasm` is committed.
   An extension's own tests run in its folder
   (`cargo test --lib`, with `CARGO_TARGET_DIR=../../../target/plugins`); its tests in the real

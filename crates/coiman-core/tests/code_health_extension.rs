@@ -192,6 +192,36 @@ fn code_health_extension() {
         _ => unreachable!(),
     }
 
+    // Without settings, the Gates tab says how to write them.
+    host.run_command(ID, "tab", "gates");
+    panel(&host, "No settings for this project.");
+
+    // The project's settings: native/ left out, raw.rs's unsafe allowed, two gates.
+    w(
+        ".coiman/health.toml",
+        "ignore = [\"native/**\"]\n\
+         [[allow]]\ncheck = \"security\"\npath = \"src/raw.rs\"\nrule = \"unsafe\"\nwhy = \"reads a pointer it owns\"\n\
+         [gates]\nsecrets = 0\nsecurity = 2\n",
+    );
+    host.run_command(ID, "check", "");
+    let gates = panel(&host, "gates fail");
+    // The .env secret fails one gate; security is down to app.py and page.js: 2, which passes.
+    assert!(gates.contains("1 of 2 gates fail"), "{gates}");
+    assert!(gates.contains("fail | secrets | 1 (at most 0) | secrets"), "{gates}");
+    assert!(gates.contains("pass | security | 2 (at most 2)"), "{gates}");
+    assert!(gates.contains("Allowed on purpose (1)"), "{gates}");
+    assert!(gates.contains("security src/raw.rs:2  unsafe block") && gates.contains("reads a pointer it owns"), "{gates}");
+    assert!(gates.contains("[▸ Gates  1 tab gates]"), "{gates}");
+    host.run_command(ID, "tab", "security");
+    let sec = panel(&host, "[▸ Security  2 tab security]");
+    assert!(!sec.contains("native/copy.c") && !sec.contains("src/raw.rs"), "{sec}");
+    // A mistake in the file is said, not ignored.
+    w(".coiman/health.toml", "[gates]\nspeed = 1\n");
+    host.run_command(ID, "check", "");
+    host.run_command(ID, "tab", "gates");
+    panel(&host, "speed isn't one of");
+    std::fs::remove_file(ws.join(".coiman/health.toml")).unwrap();
+
     host.run_command(ID, "overview", "");
     match wait(&host, |u| matches!(u, Update::Markdown { .. })) {
         Update::Markdown { title, text, .. } => {

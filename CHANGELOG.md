@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Health 1.5: the project's own settings in `.coiman/health.toml`: paths left out,
+  findings allowed on purpose (each with why), and quality gates, shown in a **Gates** tab.
+
 - Architecture 1.2: **Architecture: Changes Since...**: how the imports changed since a commit,
   tag or branch (new cycles, imports and files added and removed), through `git`.
 - Architecture 1.1: **Architecture: Check Rules**: the imports that break the project's own

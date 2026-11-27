@@ -1252,6 +1252,28 @@ buttons at its top, each with how many it found; **Scan again**). A click on a p
 file there. The package managers (`cargo`, `npm`, `python`, `poetry`, `uv`) and `git` run only
 as far as they were approved at install, in trusted folders.
 
+- **Gates** and the project's own settings, in `.coiman/health.toml`:
+
+  ```toml
+  ignore = ["vendor/**", "**/*.generated.rs"]   # paths no check reads
+
+  [[allow]]                 # a finding allowed on purpose
+  check = "security"        # secrets, security, complexity, debt, duplicates, undocumented, unused
+  path = "src/ffi/**"       # optional: everywhere
+  rule = "unsafe"           # optional: words the finding has
+  why = "the FFI layer needs unsafe"
+
+  [gates]                   # the most of each the project accepts
+  secrets = 0
+  security = 0
+  complexity = 15           # the most complex function
+  debt = 50
+  ```
+
+  Allowed findings leave their tab and are listed under **Allowed on purpose**, with why.
+  The **Gates** tab says which gates pass and fail (its button counts the failing ones), and
+  Check Project's message says it too. A mistake in the file (an unknown check, an allowance
+  with no `why`) is shown there.
 - **Security:** code an attacker could use, in four groups, each place with why it's there
   and the group with what to do about it. Lines are read one at a time, so these are places
   to look at, not proof; a line with `nosec` or `coiman:allow` in it is left out, and so are
