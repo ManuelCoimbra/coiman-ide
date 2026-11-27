@@ -217,11 +217,18 @@ fn run_routine(name: &str) -> Result<(), String> {
     for (program, args) in routines::commands(routine, &steps) {
         match host::run_in_terminal(&format!("Routine: {name}"), program, &args) {
             Ok(()) => return Ok(()),
-            Err(e) if e.contains("isn't on PATH") => last = e,
+            // Not here, or not approved: the next shell.
+            Err(e) if e.contains("isn't on PATH") || e.contains("not approved") => last = e,
             Err(e) => return Err(e),
         }
     }
-    Err(last)
+    Err(if last.contains("not approved") {
+        format!(
+            "No shell for routines is approved: allow pwsh, powershell or sh for Terminal Commands in the Extensions view ({last})"
+        )
+    } else {
+        last
+    })
 }
 
 struct Plugin;

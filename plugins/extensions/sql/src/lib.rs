@@ -912,7 +912,9 @@ fn try_calls(call: Call, rest: Vec<Call>, then: impl Fn(&Call, Vec<Call>) -> The
     let mut rest = rest;
     loop {
         match start_on(None, call.clone(), then(&call, rest.clone()), busy) {
-            Err(e) if e.contains("isn't on PATH") && !rest.is_empty() => call = rest.remove(0),
+            Err(e) if (e.contains("isn't on PATH") || e.contains("not approved")) && !rest.is_empty() => {
+                call = rest.remove(0)
+            }
             other => return other,
         }
     }

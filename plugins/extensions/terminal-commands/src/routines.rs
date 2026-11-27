@@ -83,11 +83,14 @@ pub fn expand(all: &[Routine], name: &str) -> Result<Vec<String>, String> {
 /// program's exit code or a command's error).
 pub fn powershell(name: &str, steps: &[String]) -> String {
     let q = |s: &str| format!("'{}'", s.replace('\'', "''"));
-    let mut s = String::from("$ErrorActionPreference = 'Continue'\n");
+    // A command's error stops it; its output goes to the screen at once (`Out-Host`), not after
+    // the next step or never (a table PowerShell formats late is lost at `exit`).
+    let mut s = String::from("$ErrorActionPreference = 'Stop'\n");
     for (i, step) in steps.iter().enumerate() {
         s.push_str(&format!(
-            "Write-Host {} -ForegroundColor Cyan\n$global:LASTEXITCODE = 0\n{step}\n\
-             if (-not $? -or $LASTEXITCODE -ne 0) {{ Write-Host {} -ForegroundColor Red; exit 1 }}\n",
+            "Write-Host {} -ForegroundColor Cyan\n$global:LASTEXITCODE = 0\n$ok = $true\n\
+             try {{ & {{ {step} }} | Out-Host }} catch {{ Write-Host $_ -ForegroundColor Red; $ok = $false }}\n\
+             if (-not $ok -or $LASTEXITCODE -ne 0) {{ Write-Host {} -ForegroundColor Red; exit 1 }}\n",
             q(&format!("> [{}/{}] {step}", i + 1, steps.len())),
             q(&format!("Stopped: step {} of routine {name} failed", i + 1)),
         ));
@@ -185,7 +188,10 @@ mod tests {
         let ps = powershell("ci", &steps);
         assert!(ps.contains("Write-Host '> [2/2] echo it''s' -ForegroundColor Cyan"), "{ps}");
         assert!(
-            ps.contains("if (-not $? -or $LASTEXITCODE -ne 0) { Write-Host 'Stopped: step 1 of routine ci failed'"),
+            ps.contains("try { & { cargo build } | Out-Host }")
+                && ps.contains(
+                    "if (-not $ok -or $LASTEXITCODE -ne 0) { Write-Host 'Stopped: step 1 of routine ci failed'"
+                ),
             "{ps}"
         );
         let s = sh("ci", &steps);
@@ -205,6 +211,19 @@ mod tests {
     #[test]
     fn a_real_shell_stops_at_the_failure() {
         let steps = vec!["echo one".to_owned(), "exit 3".to_owned(), "echo three".to_owned()];
+        // PowerShell: a table's output shows before the failure, and a cmdlet's error stops it.
+        let ps_steps = vec![
+            "Get-ChildItem . | Select-Object -First 1 Name".to_owned(),
+            "Get-Item no-such-file-here".to_owned(),
+            "echo three".to_owned(),
+        ];
+        if let Ok(out) = std::process::Command::new("powershell")
+            .args(["-NoLogo", "-NoProfile", "-EncodedCommand", &encoded(&powershell("t", &ps_steps))])
+            .output()
+        {
+            let text = String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+            assert!(!out.status.success() && text.contains("Name") && !text.contains("three"), "{text}");
+        }
         let tries: [(&str, Vec<String>); 2] = [
             (
                 "powershell",

@@ -119,7 +119,10 @@ pub const PACKS: [Pack; 10] = [
         id: TERMINAL,
         name: "Terminal extras",
         description: "More from the terminal.",
-        features: &["Command history and Ctrl+Space suggestions: history, project commands, paths"],
+        features: &[
+            "Command history and Ctrl+Space suggestions: history, project commands, paths",
+            "Routines: the project's lists of commands, run one after the other",
+        ],
         extensions: &["coiman.terminal-commands"],
     },
 ];

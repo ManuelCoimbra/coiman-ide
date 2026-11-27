@@ -183,12 +183,16 @@ fn agents_extension() {
     act(&host, "send", "look at\nthis", &["src/a.rs"]);
     until(&host, &mut seen, "answered", |s| !s.view().running && s.view().status == "Ready");
     let transcript = seen.transcript();
-    assert_eq!(
-        transcript,
-        "> @src/a.rs\nlook at\nthis\n(thinking: Looking.)\n[bash completed: a.rs]\nHello there\n\
-         Not allowed in Manual: edit (a.rs). Switch to Auto to let the agent do this.\n\n",
+    // stdout and stderr are read apart, so where opencode's note (stderr) lands among the
+    // reply's lines depends on timing: each is checked, not their order.
+    let note = "Not allowed in Manual: edit (a.rs). Switch to Auto to let the agent do this.";
+    assert!(transcript.contains(note), "{transcript}");
+    let reply = transcript.replace(note, "").replace("\n\n", "\n");
+    assert!(
+        reply.starts_with("> @src/a.rs\nlook at\nthis\n(thinking: Looking.)\n[bash completed: a.rs]\n"),
         "{transcript}"
     );
+    assert!(reply.contains("Hello there") || reply.contains("Hello \nthere"), "{transcript}");
     let stdin = std::fs::read_to_string(bin.join("stdin.txt")).unwrap();
     assert_eq!(stdin.replace("\r\n", "\n").trim_end(), "look at\nthis");
     let log = calls(&bin);
