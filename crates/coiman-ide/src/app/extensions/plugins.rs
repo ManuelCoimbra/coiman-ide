@@ -1124,6 +1124,21 @@ impl CodeApp {
         }
     }
 
+    /// Puts back the version an update replaced (see `store::rollback`).
+    fn rollback_plugin(&mut self, ctx: &egui::Context, id: &str) {
+        let Some(dir) = self.plugins.dir.clone().or_else(store::plugins_dir) else { return };
+        self.unload_plugin(id);
+        match store::rollback(&dir, &mut self.plugins.lock, id) {
+            Ok(version) => {
+                self.save_lock();
+                self.status = Some(format!("Rolled {} back to {version}", self.plugin_name(id)));
+            }
+            Err(e) => self.status = Some(format!("Could not roll back: {e}")),
+        }
+        self.refresh_infos();
+        self.load_plugin(ctx, id);
+    }
+
     fn uninstall_plugin(&mut self, id: &str) {
         self.unload_plugin(id);
         if let Some(dir) = self.plugins.dir.clone()
@@ -1503,6 +1518,7 @@ impl CodeApp {
             GrantProgram(String, String, bool),
             Uninstall(String),
             Update(String),
+            Rollback(String),
         }
         let mut actions = Vec::new();
         let ids: Vec<String> = self.plugins.infos.iter().map(|i| i.id.clone()).collect();
@@ -1526,6 +1542,14 @@ impl CodeApp {
                             .clicked()
                     {
                         actions.push(Action::Update(info.id.clone()));
+                    }
+                    if let Some(prev) = &locked.previous
+                        && ui
+                            .small_button(format!("Roll back to {}", prev.version))
+                            .on_hover_text("Put back the version this update replaced, with what was granted to it")
+                            .clicked()
+                    {
+                        actions.push(Action::Rollback(info.id.clone()));
                     }
                     let mut enabled = locked.enabled;
                     if ui.checkbox(&mut enabled, "").on_hover_text("Enabled").changed() {
@@ -1621,6 +1645,7 @@ impl CodeApp {
                 }
                 Action::Uninstall(id) => self.uninstall_plugin(&id),
                 Action::Update(id) => self.offer_shipped(&id),
+                Action::Rollback(id) => self.rollback_plugin(ctx, &id),
             }
         }
     }

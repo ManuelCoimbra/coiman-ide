@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Roll back** in the Extensions view: an update keeps the version it replaced, and one click
+  puts it back (with what was granted to it), checked against its recorded hashes.
+
 - The **Project Docs** extension (Code analysis pack): the project's Markdown documents, read
   without a build: an index with their titles and headings, the links between them as a graph,
   broken links and documents nothing links to, and documents older than the code they name.

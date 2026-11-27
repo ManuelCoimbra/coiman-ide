@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 181, partial 132, missing 165,
+**Summary:** 504 items. Done 182, partial 132, missing 164,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -32,7 +32,7 @@ network 13, rules that hold 13.
 | 16. Security and code quality | 10 | 7 | 2 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
-| 19. Plugin ecosystem | 8 | 8 | 5 |  | 2 |
+| 19. Plugin ecosystem | 9 | 8 | 4 |  | 2 |
 | 20. Workspace and project management | 3 | 11 | 3 |  |  |
 | 21. Experimental and differentiating features | 10 | 12 | 15 |  |  |
 
@@ -661,7 +661,7 @@ network 13, rules that hold 13.
 | Plugin categories and tags | Partial | Open VSX categories and sort orders; Coiman's own extensions grouped by pack |
 | Plugin update notifications | Done | Check for plugin updates |
 | Plugin changelogs | Partial | Open VSX extensions: their Changelog page |
-| Plugin rollback | Missing |  |
+| Plugin rollback | Done | Extensions view, Roll back: the version an update replaced, with its grants, checked against its hashes |
 | Plugin installation profiles | Done | Packs install a kind of work's extensions together |
 | Workspace-specific plugin configurations | Partial | A project's `.coiman/settings.toml` sets its own packs |
 | Plugin discovery through the command palette | Partial | Plugin commands are in the palette; installing isn't |

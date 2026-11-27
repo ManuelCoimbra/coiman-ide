@@ -805,6 +805,12 @@ you install one under **COMES WITH COIMAN** in the Extensions view. Coiman stays
 you keep it; uninstalling one takes it out again. When the copy beside Coiman changes (a new
 version, or rebuilt for a newer plugin API), the installed one shows **Update…**.
 
+An update keeps the version it replaced (in the plugin's `previous` folder): **Roll back to
+<version>** puts it back, with what was granted to it, and keeps the newer one so that can be
+put back the same way. Its files are checked against the hashes recorded when it was
+installed; changed ones aren't put back. Any plugin can be rolled back, not only those that
+come with Coiman.
+
 - **Terminal Commands** (`terminal`, `workspace-read`): keeps each command sent with Enter in
   a shell (the line after the prompt, 1,000 at most, in its storage) and reads the shells' own
   history files (PowerShell, bash, zsh, fish).
