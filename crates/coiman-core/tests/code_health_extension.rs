@@ -210,7 +210,10 @@ fn code_health_extension() {
     assert!(gates.contains("fail | secrets | 1 (at most 0) | secrets"), "{gates}");
     assert!(gates.contains("pass | security | 2 (at most 2)"), "{gates}");
     assert!(gates.contains("Allowed on purpose (1)"), "{gates}");
-    assert!(gates.contains("security src/raw.rs:2  unsafe block") && gates.contains("reads a pointer it owns"), "{gates}");
+    assert!(
+        gates.contains("security src/raw.rs:2  unsafe block") && gates.contains("reads a pointer it owns"),
+        "{gates}"
+    );
     assert!(gates.contains("[▸ Gates  1 tab gates]"), "{gates}");
     host.run_command(ID, "tab", "security");
     let sec = panel(&host, "[▸ Security  2 tab security]");
