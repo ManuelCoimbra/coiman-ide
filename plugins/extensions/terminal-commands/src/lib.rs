@@ -19,6 +19,7 @@ wit_bindgen::generate!({
 
 mod history;
 mod project;
+mod routines;
 
 use std::sync::Mutex;
 
@@ -169,6 +170,60 @@ fn chosen(text: String, action: PickAction) {
     }
 }
 
+/// The project's routines, offered to run.
+fn pick_routine() -> Result<(), String> {
+    let text = host::read_file(routines::FILE).map_err(|_| {
+        format!(
+            "No routines in this project: name lists of commands in {} ([[routine]] with name and steps)",
+            routines::FILE
+        )
+    })?;
+    let all = routines::parse(&text).map_err(|e| format!("{}: {e}", routines::FILE))?;
+    if all.is_empty() {
+        return Err(format!("{} has no [[routine]]", routines::FILE));
+    }
+    let items = all
+        .iter()
+        .map(|r| PickItem {
+            text: r.name.clone(),
+            kind: "routine".into(),
+            detail: if r.description.is_empty() {
+                r.steps.join(" → ")
+            } else {
+                format!("{} · {} steps", r.description, r.steps.len())
+            },
+            can_forget: false,
+        })
+        .collect();
+    host::show_pick(&Pick {
+        id: "routines".into(),
+        title: "Run which routine?".into(),
+        query: String::new(),
+        items,
+        at_terminal_cursor: false,
+        run_first: true,
+        filter: true,
+    });
+    Ok(())
+}
+
+/// Runs a routine in a terminal tab of its own, with the first shell that's here.
+fn run_routine(name: &str) -> Result<(), String> {
+    let text = host::read_file(routines::FILE).map_err(|e| format!("{}: {e}", routines::FILE))?;
+    let all = routines::parse(&text)?;
+    let steps = routines::expand(&all, name)?;
+    let routine = all.iter().find(|r| r.name == name).ok_or("gone")?;
+    let mut last = String::new();
+    for (program, args) in routines::commands(routine, &steps) {
+        match host::run_in_terminal(&format!("Routine: {name}"), program, &args) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.contains("isn't on PATH") => last = e,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last)
+}
+
 struct Plugin;
 
 impl Guest for Plugin {
@@ -177,7 +232,12 @@ impl Guest for Plugin {
         Ok(())
     }
 
-    fn run_command(id: String, _argument: String) -> Result<(), String> {
+    fn run_command(id: String, argument: String) -> Result<(), String> {
+        match id.as_str() {
+            "routine" if argument.is_empty() => return pick_routine(),
+            "routine" => return run_routine(&argument),
+            _ => {}
+        }
         let mode = match id.as_str() {
             "suggest" => Mode::Suggest,
             "history" => Mode::History,
@@ -204,6 +264,11 @@ impl Guest for Plugin {
             }
             Event::TerminalSuggest(line) => open(Mode::Suggest, line),
             Event::Picked(choice) if choice.pick == "commands" => chosen(choice.text, choice.action),
+            Event::Picked(choice) if choice.pick == "routines" => {
+                if let Err(e) = run_routine(&choice.text) {
+                    host::show_message(&e);
+                }
+            }
             Event::PickQueryChanged(q) if q.pick == "commands" => {
                 with(|s| {
                     if let Some(open) = &mut s.open {

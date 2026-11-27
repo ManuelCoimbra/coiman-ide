@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Terminal Commands 1.1: **Terminal: Run Routine...** runs the project's routines, named lists
+  of commands in `.coiman/routines.toml`, one after the other in a terminal tab, stopping at
+  the first that fails; a step `@name` runs another routine.
+
 - SQL Databases 1.2: **Back up** the open database (SQLite, PostgreSQL, MySQL/MariaDB, SQL
   Server, through their own tools) and **Restore** one, after saying what it replaces.
 

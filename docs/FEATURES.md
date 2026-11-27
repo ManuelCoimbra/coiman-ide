@@ -811,7 +811,8 @@ put back the same way. Its files are checked against the hashes recorded when it
 installed; changed ones aren't put back. Any plugin can be rolled back, not only those that
 come with Coiman.
 
-- **Terminal Commands** (`terminal`, `workspace-read`): keeps each command sent with Enter in
+- **Terminal Commands** (`terminal`, `workspace-read`; programs `pwsh`, `powershell`, `sh` for
+  routines): keeps each command sent with Enter in
   a shell (the line after the prompt, 1,000 at most, in its storage) and reads the shells' own
   history files (PowerShell, bash, zsh, fish).
   - **Ctrl+Space** in a shell (**Terminal: Suggest Commands**) lists, for the line being
@@ -825,6 +826,26 @@ come with Coiman.
     `package.json` scripts (with npm, pnpm, yarn or bun, by the lock file), Makefile targets
     (with their `##` comment or first line), `justfile` recipes, Taskfile and Deno tasks, and
     Cargo's build, run (each program and example), test, check, clippy and fmt.
+  - **Terminal: Run Routine...** lists the project's routines, named lists of commands in
+    `.coiman/routines.toml`, and runs the chosen one in a terminal tab of its own: each step
+    is shown before it runs, and the routine stops at the first that fails (an exit code
+    other than 0, or a PowerShell error). A step `@name` runs another routine's steps there
+    (a circle of them is refused).
+
+    ```toml
+    [[routine]]
+    name = "check"
+    description = "What CI runs"
+    steps = ["cargo fmt --check", "cargo clippy -- -D warnings", "@test"]
+
+    [[routine]]
+    name = "test"
+    steps = ["cargo test"]
+    shell = "sh"      # optional: powershell (pwsh, else Windows PowerShell) or sh
+    ```
+
+    Without `shell`, PowerShell is used where it's there, else `sh`. The shells run only as
+    approved at install, in trusted folders.
 - **Architecture** (`workspace-read`, `editor-read`): the dependency graph, its cycles and
   what a change reaches; see [Architecture](#architecture).
 - **Project Docs** (`workspace-read`; program `git`): the project's Markdown documents; see

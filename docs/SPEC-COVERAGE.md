@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 183, partial 132, missing 163,
+**Summary:** 504 items. Done 185, partial 132, missing 161,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -34,7 +34,7 @@ network 13, rules that hold 13.
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 9 | 8 | 4 |  | 2 |
 | 20. Workspace and project management | 3 | 11 | 3 |  |  |
-| 21. Experimental and differentiating features | 10 | 12 | 15 |  |  |
+| 21. Experimental and differentiating features | 12 | 12 | 13 |  |  |
 
 ## 0. Principles
 
@@ -747,5 +747,5 @@ network 13, rules that hold 13.
 | Personal snippets library | Done | Snippets |
 | Reusable project workflows | Partial | Run configurations |
 | Automated project setup | Partial | Tool install offers |
-| Command sequences | Missing |  |
-| Custom development routines | Missing |  |
+| Command sequences | Done | Terminal Commands: routines, steps run in order, stopping at a failure |
+| Custom development routines | Done | Terminal Commands: `.coiman/routines.toml`, routines that call each other |
