@@ -513,11 +513,11 @@ network 13, rules that hold 13.
 | Container debugging | Missing |  |
 | Kubernetes integration | Missing |  |
 | Kubernetes resource explorer | Missing |  |
-| YAML validation for Kubernetes | Missing | YAML tree only |
-| Helm chart support | Missing |  |
-| Terraform integration | Missing |  |
-| Infrastructure dependency graphs | Missing |  |
-| Ansible support | Missing |  |
+| YAML validation for Kubernetes | Done | Infrastructure Files extension, offline while typing: apiVersion and kind against a table of built-in kinds, metadata.name, untagged or :latest images, missing limits (hint), duplicate keys, YAML syntax and indentation, Service selectors matching no workload in the folder. No schema of every field, no custom resources |
+| Helm chart support | Partial | Values the templates use but values.yaml lacks, and values set but unused; Chart.yaml checked; `helm lint` and `helm template` when approved. Templates aren't rendered by Coiman itself; values through `with`/`range` aren't followed |
+| Terraform integration | Partial | `.tf` read per folder: undeclared `var`/`local`/`module`/`data`/resource references, unused variables, unclosed blocks and strings; `terraform fmt -check` and `terraform validate` when approved. No `init`, `plan` or `apply` (they reach the network), no provider schemas |
+| Infrastructure dependency graphs | Done | Kubernetes objects by selectors, ConfigMap/Secret/claim refs, Ingress backends; Terraform resources, data, modules and outputs by references |
+| Ansible support | Partial | Playbooks and roles: unknown play keys, unnamed tasks, includes, imports and roles that aren't there, variables set nowhere in the folder (hint); `ansible-lint` when approved. No running of playbooks, no module argument checks |
 | CI/CD pipeline editor | Missing |  |
 | GitHub Actions integration | Done | GitHub Actions extension through `gh`: runs, jobs, failed log, re-run, step in its workflow |
 | GitLab CI integration | Missing |  |

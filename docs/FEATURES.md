@@ -640,7 +640,7 @@ appear, and its background work doesn't run.
 | --- | --- |
 | Web and APIs | HTTP client, OpenAPI |
 | Databases | SQLite, PostgreSQL, MySQL, SQL Server, Redis, MongoDB; Jupyter notebooks |
-| Containers, remote and CI | Docker, GitHub Actions, remote folders and SSH terminals, remote debugging |
+| Containers, remote and CI | Docker, GitHub Actions, Kubernetes, Helm, Terraform and Ansible files, remote folders and SSH terminals, remote debugging |
 | Embedded and systems | Serial monitor, binary size, memory and disassembly views |
 | Mobile | Android |
 | Graphics | Shader problems while typing, shader preview |
@@ -651,7 +651,7 @@ appear, and its background work doesn't run.
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
 Architecture, Code Health, Project Docs, Project Metadata, Benchmarks and Python Calls and Memory come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
-and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
+and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH, Remote Debugging and Infrastructure Files with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
 with Terminal extras); removing it
@@ -847,6 +847,9 @@ to the earlier <version> build**.
   benchmarks kept with its commit; see [Benchmarks](#benchmarks).
 - **Python Calls and Memory** (`workspace-read`, `editor-read`; program `python`): how often
   each function is called and what holds memory; see the end of [Profiling](#profiling).
+- **Infrastructure Files** (`workspace-read`, `editor-read`; programs `helm`, `terraform`,
+  `ansible-lint`): Kubernetes, Helm, Terraform and Ansible files checked offline while typing;
+  see [Infrastructure files](#infrastructure-files).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
@@ -1363,6 +1366,44 @@ runs, in the **Benchmarks** panel (**Benchmarks: Show History**).
   very different lengths fit together.
 - **Compare** picks any two runs (by commit and time) and shows the same table between them.
 - **Forget runs…** clears this project's history, after asking.
+
+## Infrastructure files
+
+The **Infrastructure Files** extension (Containers, remote and CI pack) checks Kubernetes
+manifests, Helm charts, Terraform and Ansible while you type, offline: no cluster, no cloud
+account and no download. The open folder is read the first time a YAML or `.tf` file opens (or
+with **Infrastructure: Show Files**); the problems go to the Problems panel and are underlined,
+and an edit is checked before it is saved.
+
+- **Kubernetes** (a YAML document with `apiVersion` or `kind`): a missing `apiVersion`, `kind`
+  or `metadata.name`; a built-in kind with the wrong `apiVersion` (`Deployment` in
+  `extensions/v1beta1`; custom resources aren't judged); container images with no tag or with
+  `:latest`; containers with no `resources.limits` (a hint); a key twice in one mapping; what
+  YAML itself rejects, such as bad indentation; and a Service whose selector matches the labels
+  of no workload in its folder.
+- **Helm** (a folder with `Chart.yaml`): the `.Values.x.y` its templates use that
+  `values.yaml` doesn't set, and values set that no template uses (a hint; subcharts' values
+  and `global` are left alone). Values reached through `with` or `range` aren't followed.
+- **Terraform** (each folder of `.tf` files read as one module): references to a `var.`,
+  `local.`, `module.`, `data.` or resource that isn't declared there; variables nothing uses
+  (a hint); blocks, brackets, strings, heredocs and comments that aren't closed.
+- **Ansible** (playbooks, and roles' `tasks/` and `handlers/`): keys a play doesn't have, tasks
+  with no `name`, `import_tasks`, `include_tasks`, `include_vars`, `vars_files`,
+  `import_playbook` and roles that point at nothing, and variables used that no `vars`,
+  defaults, `group_vars`, `host_vars`, inventory, `register` or `set_fact` in the folder sets (a
+  hint: `-e` may still give them).
+- The **Infrastructure Files** panel lists the files found by kind, each with its problems,
+  every one a link to its line. **Check again** reads the folder again.
+- **Graph** (**Infrastructure: Show Dependency Graph**) draws Kubernetes objects linked by
+  Service selectors, ConfigMap, Secret, claim and service account references, Ingress backends
+  and autoscaler targets (an object named but not in the folder is drawn grey), and Terraform
+  resources, data sources, modules and outputs by their references, a local module's outputs
+  under it.
+- **Run tools** (**Infrastructure: Run helm, terraform and ansible-lint**) runs, when approved,
+  `helm lint` and `helm template` for each chart, `terraform fmt -check` and `terraform
+  validate` in each top Terraform folder, and `ansible-lint`, and shows what each printed, with
+  the places it names as links. `terraform init`, `plan` and `helm dependency` are never run:
+  they reach the network. `validate` needs a folder initialised once by you.
 
 ## Project metadata
 
