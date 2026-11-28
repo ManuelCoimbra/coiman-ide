@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use coiman_core::extensions::plugin::registry;
 use coiman_core::packs::{PACKS, Pack};
-use egui::{Align, RichText};
+use egui::RichText;
 
 use super::{Consent, SHIPPED_SOURCE};
 use crate::app::CodeApp;
@@ -132,12 +132,9 @@ impl CodeApp {
         for pack in &PACKS {
             let on = self.settings.pack_on(pack.id);
             ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(pack.name).strong());
-                if on {
-                    ui.label(RichText::new("installed").small().color(pal.text_dim));
-                }
-                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+            Self::ext_item_row(
+                ui,
+                |ui| {
                     if on {
                         if ui.small_button("Remove").clicked() {
                             remove = Some(pack);
@@ -145,8 +142,14 @@ impl CodeApp {
                     } else if ui.small_button("Install").clicked() {
                         install = Some(pack);
                     }
-                });
-            });
+                },
+                |ui| {
+                    ui.add(egui::Label::new(RichText::new(pack.name).strong()).truncate());
+                    if on {
+                        ui.label(RichText::new("installed").small().color(pal.text_dim));
+                    }
+                },
+            );
             ui.label(RichText::new(pack.description).small().color(pal.text_dim));
             for f in pack.features {
                 ui.label(RichText::new(format!("• {f}")).small().color(pal.text_dim));

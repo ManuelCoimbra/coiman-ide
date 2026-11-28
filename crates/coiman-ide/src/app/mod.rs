@@ -16,7 +16,7 @@ use editor::{
     outline, snippets_ui, split, tag_rename, tree_tools, web,
 };
 use extensions::plugins;
-use language::{cpp, doctor, environment, lsp, lsp_companion, lsp_extra, lsp_room};
+use language::{cpp, doctor, environment, lsp, lsp_extra, lsp_room};
 use launch::{cargo, coverage, debug, live, maven, prints, profiler, repl, test_panel, traces};
 use project::{git, git_setup};
 use shell::{
@@ -218,7 +218,7 @@ pub struct CodeApp {
     editor_menu: Option<editor::context_menu::EditorMenu>,
     /// The panel fills the room the editor had (the terminal full size), until restored.
     panel_maximized: bool,
-    open_vsx: extensions::open_vsx::OpenVsxUi,
+    pub(crate) zed: extensions::zed::ZedUi,
     /// A color theme shown for a moment from the theme picker, by label.
     theme_preview: Option<String>,
     merge_conflicts: project::merge_conflicts_ui::MergeConflictsUi,
@@ -262,14 +262,11 @@ pub struct CodeApp {
     /// Git's setup: installed, the author, remotes, clone and publish.
     git_setup: git_setup::GitSetup,
     maven: maven::MavenState,
-    companions: lsp_companion::Companions,
     tag_watch: Option<tag_rename::TagWatch>,
     tour: tour::Tour,
     frames: frames::Frames,
     /// The side panel was asked for while the Welcome page shows (it's hidden there).
     welcome_sidebar: bool,
-    /// The VS Code compatibility report being written: its file and how many extensions.
-    vscode_report: Option<std::sync::mpsc::Receiver<Result<(PathBuf, usize), String>>>,
 
     pending_close: Option<PendingClose>,
     allow_close: bool,
@@ -297,34 +294,10 @@ pub struct CodeApp {
     pub(crate) pending_session: Option<coiman_core::project::session::Session>,
     pub(crate) pending_docs: std::collections::VecDeque<coiman_core::editor::document::Document>,
     pub(crate) pending_active: usize,
-    /// VS Code extension host, started a second after the first frame.
-    pub(crate) ext_host: coiman_core::extensions::host::Host,
-    pub(crate) ext_host_at: Option<std::time::Instant>,
-    /// Diagnostics published by extension-host language features.
-    pub(crate) ext_diagnostics:
-        std::collections::HashMap<std::path::PathBuf, Vec<coiman_core::language::lsp::types::Diagnostic>>,
-    pub(crate) ext_requests: std::collections::HashMap<i64, crate::app::extensions::host::Request>,
-    pub(crate) ext_views: Vec<coiman_core::extensions::host::ViewContainer>,
-    pub(crate) active_ext_view: Option<String>,
-    pub(crate) ext_tree: std::collections::HashMap<String, Vec<(String, String)>>,
-    pub(crate) ext_tree_pending: std::collections::HashSet<String>,
-    pub(crate) ext_icons: std::collections::HashMap<String, egui::TextureHandle>,
-    /// Status bar items contributed by VS Code extensions: (text, tooltip, command).
-    pub(crate) ext_status_bar: std::collections::HashMap<String, (String, String, String)>,
-    /// Terminal tabs created by VS Code extensions: extension terminal ID -> Coiman PTY tab ID.
-    pub(crate) ext_terminals: std::collections::HashMap<String, u64>,
-    /// Webview panels created by VS Code extensions: webview ID -> (title, html content).
-    pub(crate) ext_webviews: std::collections::HashMap<String, (String, String)>,
-    /// Output channels created by VS Code extensions: channel name -> lines of output.
-    pub(crate) ext_outputs: std::collections::HashMap<String, Vec<String>>,
-    /// Decoration styles registered by extensions.
-    pub(crate) ext_decoration_types: std::collections::HashMap<String, crate::app::extensions::host::ExtDecorationType>,
-    /// Active range decorations by (decoration key, document path).
-    pub(crate) ext_decorations:
-        std::collections::HashMap<(String, std::path::PathBuf), crate::app::extensions::host::ExtLineHighlights>,
-    pub(crate) marketplace: crate::app::extensions::marketplace::MarketplaceUi,
     pub(crate) active_view: Option<crate::app::views::view_tabs::ActiveView>,
     pub(crate) agents_pinned: bool,
+    agents_width: f32,
+    right_bar_width: f32,
     /// Background tree-sitter parser, started on the first frame.
     syntax: Option<SyntaxWorker>,
     /// Language servers and the state of their features.
@@ -440,7 +413,6 @@ impl CodeApp {
             log_to_open: None,
             editor_menu: None,
             panel_maximized: false,
-            open_vsx: Default::default(),
             theme_preview: None,
             merge_conflicts: Default::default(),
             terminals_to_restore: None,
@@ -469,12 +441,10 @@ impl CodeApp {
             dialog_dirs: coiman_core::project::dialog_dirs::load(),
             git_setup: git_setup::GitSetup::default(),
             maven: maven::MavenState::default(),
-            companions: lsp_companion::Companions::default(),
             tag_watch: None,
             tour: tour::Tour::default(),
             frames: frames::Frames::default(),
             welcome_sidebar: false,
-            vscode_report: None,
             pending_close: None,
             allow_close: false,
             chord: None,
@@ -492,24 +462,10 @@ impl CodeApp {
             pending_session: None,
             pending_docs: std::collections::VecDeque::new(),
             pending_active: 0,
-            ext_host: Default::default(),
-            ext_host_at: None,
-            ext_diagnostics: std::collections::HashMap::new(),
-            ext_requests: std::collections::HashMap::new(),
-            ext_views: Vec::new(),
-            active_ext_view: None,
-            ext_tree: std::collections::HashMap::new(),
-            ext_tree_pending: std::collections::HashSet::new(),
-            ext_icons: std::collections::HashMap::new(),
-            ext_status_bar: std::collections::HashMap::new(),
-            ext_terminals: std::collections::HashMap::new(),
-            ext_webviews: std::collections::HashMap::new(),
-            ext_outputs: std::collections::HashMap::new(),
-            ext_decoration_types: std::collections::HashMap::new(),
-            ext_decorations: std::collections::HashMap::new(),
-            marketplace: crate::app::extensions::marketplace::MarketplaceUi::default(),
             active_view: None,
             agents_pinned: false,
+            agents_width: 430.0,
+            right_bar_width: 300.0,
             syntax: None,
             lsp: lsp::LspState::default(),
             git: git::GitState::default(),
@@ -523,6 +479,7 @@ impl CodeApp {
             vim_doc: None,
             debug: debug::DebugState::default(),
             plugins: plugins::PluginState::default(),
+            zed: Default::default(),
             trust_prompt_hidden: false,
             refocus_after_palette: false,
             path_target: None,
@@ -606,15 +563,14 @@ impl CodeApp {
         self.pump_syntax(&ctx);
         self.pump_watcher(&ctx);
         self.pump_lsp(&ctx);
-        self.pump_companions(&ctx);
         self.pump_tag_rename();
         self.pump_git(&ctx);
         self.pump_cargo(&ctx);
         self.pump_stale_problems();
         self.pump_maven(&ctx);
-        self.pump_vscode_report();
         self.pump_debug(&ctx);
         self.pump_plugins(&ctx);
+        self.pump_zed(&ctx);
         // The last terminal's shell exited: close the panel, as VS Code does.
         if self.terminal.pump(&ctx) {
             if self.panel_tab == PanelTab::Terminal {
@@ -699,6 +655,7 @@ impl CodeApp {
         }
 
         let classic = !theme::islands();
+        let workbench_bottom = ui.available_rect_before_wrap().bottom();
         let mut islands: Vec<egui::Rect> = trust_island.into_iter().collect();
         let (mut sides, mut panels) = (Vec::new(), Vec::new());
         // The Welcome page stands alone, unless the side panel is asked for there.
@@ -716,8 +673,8 @@ impl CodeApp {
                 .layout
                 .side_panel("side_bar")
                 .default_size(self.layout.side_width())
-                .resizable(true)
-                .show_separator_line(classic)
+                .resizable(false)
+                .show_separator_line(false)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut false, |ui| self.sidebar(ui));
             let place = side.map(|side| side.response.rect - gaps);
@@ -727,25 +684,35 @@ impl CodeApp {
         if left_open && !floating {
             // Never let the side bar take more than half the window, whatever it contains.
             let max_side = (ui.available_width() * 0.5).max(200.0);
+            let side_w = self.layout.side_width().clamp(160.0, max_side);
             let gaps = dock_edges(theme::island_gaps(false, true, false, gap_below), dock, true);
             let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
-            let max_h = ui.available_height();
+            let max_h = (ui.available_height() - (inner.sum().y + gaps.sum().y)).max(1.0);
             let side = self
                 .layout
                 .side_panel("side_bar")
-                .default_size(self.layout.side_width())
-                .size_range(160.0..=max_side)
-                .resizable(true)
-                .show_separator_line(classic)
+                .exact_size(side_w)
+                .resizable(false)
+                .show_separator_line(false)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, inner, gaps))
                 .show_collapsible(ui, &mut true, |ui| {
                     ui.set_max_height(max_h);
                     self.sidebar(ui);
                 });
-            if let Some(side) = &side {
-                self.layout.saw_side(&ctx, side.response.rect.width());
+            let place = side.as_ref().map(|side| side.response.rect - gaps);
+            if let Some(side) = &side
+                && let Some(new_w) = sidebar_resize_handle(
+                    ui,
+                    egui::Id::unique(self.layout.id("side_bar_resize")),
+                    sidebar_handle_rect(side.response.rect, gaps, workbench_bottom),
+                    !self.layout.side_right(),
+                    classic,
+                    side_w,
+                    160.0..=max_side,
+                )
+            {
+                self.layout.saved.side_size = Some(new_w);
             }
-            let place = side.map(|side| side.response.rect - gaps);
             if let Some(place) = place.filter(|_| dock)
                 && self.pin_chip(&ctx, place, true)
             {
@@ -763,24 +730,34 @@ impl CodeApp {
         if agents_right {
             let agents_id = self.layout.id("agents_panel");
             let agents_maximized = self.agents.maximized;
-            let mut agents_panel = egui::Panel::right(agents_id)
-                .default_size(430.0)
-                .size_range(360.0..=980.0)
-                .resizable(!agents_maximized);
-            if agents_maximized {
-                agents_panel = agents_panel.exact_size(ui.available_width().max(200.0));
+            let max_agents = (ui.available_width() * 0.7).clamp(360.0, 980.0);
+            let agents_w = self.agents_width.clamp(360.0, max_agents);
+            let gaps = theme::island_gaps(false, false, false, gap_below);
+            let inner = if classic { egui::Margin::symmetric(8, 6) } else { egui::Margin::symmetric(10, 8) };
+            let max_h = (ui.available_height() - (inner.sum().y + gaps.sum().y)).max(1.0);
+            let frame = theme::island_frame(theme::colors().sidebar_bg, inner, gaps);
+            let agents_resp = egui::Panel::right(agents_id)
+                .exact_size(if agents_maximized { ui.available_width().max(200.0) } else { agents_w })
+                .resizable(false)
+                .show_separator_line(false)
+                .frame(frame)
+                .show(ui, |ui| {
+                    ui.set_max_height(max_h);
+                    self.agents.panel(ui);
+                });
+            if !agents_maximized
+                && let Some(new_w) = sidebar_resize_handle(
+                    ui,
+                    egui::Id::unique(self.layout.id("agents_panel_resize")),
+                    sidebar_handle_rect(agents_resp.response.rect, gaps, workbench_bottom),
+                    false,
+                    classic,
+                    agents_w,
+                    360.0..=max_agents,
+                )
+            {
+                self.agents_width = new_w;
             }
-            let max_h = ui.available_height();
-            let frame = if classic {
-                egui::Frame::new().fill(theme::colors().sidebar_bg).inner_margin(egui::Margin::symmetric(8, 6))
-            } else {
-                let gaps = theme::island_gaps(false, false, false, gap_below);
-                theme::island_frame(theme::colors().sidebar_bg, egui::Margin::symmetric(10, 8), gaps)
-            };
-            agents_panel.show_separator_line(classic).frame(frame).show(ui, |ui| {
-                ui.set_max_height(max_h);
-                self.agents.panel(ui);
-            });
             if let Some(path) = self.agents.open_request.take() {
                 self.open_file(&path);
             }
@@ -803,11 +780,11 @@ impl CodeApp {
         if let Some(view) = self.rails.right_last.filter(|_| !classic && !dock && !agents_right) {
             let gaps = theme::island_gaps(false, false, false, gap_below);
             let max_side = (ui.available_width() * 0.5).max(200.0);
+            let right_w = self.right_bar_width.clamp(160.0, max_side);
             let shown = std::mem::replace(&mut self.sidebar_view, view);
             let side = egui::Panel::right("right_bar")
-                .default_size(300.0)
-                .size_range(160.0..=max_side)
-                .resizable(true)
+                .exact_size(right_w)
+                .resizable(false)
                 .show_separator_line(false)
                 .frame(theme::island_frame(theme::colors().sidebar_bg, egui::Margin::symmetric(10, 8), gaps))
                 .show_collapsible(ui, &mut right_view.is_some(), |ui| self.sidebar(ui));
@@ -815,7 +792,21 @@ impl CodeApp {
             if self.sidebar_view == view {
                 self.sidebar_view = shown;
             }
-            let place = side.map(|side| side.response.rect - gaps);
+            let place = side.as_ref().map(|side| side.response.rect - gaps);
+            if right_view.is_some()
+                && let Some(side) = &side
+                && let Some(new_w) = sidebar_resize_handle(
+                    ui,
+                    egui::Id::unique("right_bar_resize"),
+                    sidebar_handle_rect(side.response.rect, gaps, workbench_bottom),
+                    false,
+                    false,
+                    right_w,
+                    160.0..=max_side,
+                )
+            {
+                self.right_bar_width = new_w;
+            }
             sides.extend(place);
             islands.extend(place);
         }
@@ -921,17 +912,15 @@ impl CodeApp {
             self.tour_spot("editor", r.shrink(8.0));
         }
         let central = egui::CentralPanel::no_frame().frame(frame).show(ui, |ui| {
-            if self.showing_extension_tab() || self.showing_settings_tab() || self.showing_webview_tab().is_some() {
+            if self.showing_zed_extension_tab() || self.showing_settings_tab() {
                 egui::Frame::new().fill(theme::tab_bar_bg()).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     self.tab_bar(ui);
                 });
-                if self.showing_extension_tab() {
-                    self.marketplace_detail_view(ui);
+                if self.showing_zed_extension_tab() {
+                    self.zed_detail_view(ui);
                 } else if self.showing_settings_tab() {
                     self.settings_tab_view(ui);
-                } else if let Some(wv_id) = self.showing_webview_tab() {
-                    self.webview_tab_view(ui, &wv_id);
                 }
                 return;
             }
@@ -1098,7 +1087,6 @@ impl CodeApp {
         self.mcp_window(&ctx);
         self.plugin_pick_window(&ctx);
         self.plugin_graph_window(&ctx);
-        self.open_vsx_window(&ctx);
         self.merge_conflicts_window(&ctx);
         self.doctor_window(&ctx);
         self.settings_window(&ctx);
@@ -1112,7 +1100,6 @@ impl CodeApp {
         self.terminal_window(&ctx);
         self.find_overlay(&ctx);
         self.pump_session();
-        self.pump_ext_host(&ctx);
 
         if self.palette.open {
             self.palette.plugin_commands = self.plugin_commands();
@@ -1211,94 +1198,65 @@ impl CodeApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
+}
 
-    pub(crate) fn showing_webview_tab(&self) -> Option<String> {
-        match &self.active_view {
-            Some(crate::app::views::view_tabs::ActiveView::Webview(id)) => Some(id.clone()),
-            _ => None,
-        }
-    }
+/// Top inset on left/right sidebar resize handles so they start clear of the top bar/corner
+/// while extending down to meet the bottom bar in both classic and islands styles.
+const SIDEBAR_HANDLE_TOP_INSET: f32 = 12.0;
 
-    pub(crate) fn webview_tab_view(&mut self, ui: &mut egui::Ui, view_id: &str) {
-        if !self.settings.vscode_extensions_enabled() {
-            return;
-        }
-        let Some((title, html)) = self.ext_webviews.get(view_id).cloned() else { return };
-        let pal = theme::colors();
-        let server_url = self.ext_host.webview_server().map(|s| s.url_for(view_id));
-        egui::Frame::new().fill(pal.editor_bg).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(14.0);
-                ui.label(egui::RichText::new(&title).strong());
-                if let Some(ref url) = server_url {
-                    ui.label(egui::RichText::new("🟢 Live Webview").small().color(pal.accent));
-                    if ui.button("🌐 Open in Browser").clicked() {
-                        ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                    }
-                    if ui.button("📋 Copy URL").clicked() {
-                        ui.ctx().copy_text(url.clone());
-                    }
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Close").clicked() {
-                        self.close_view_tab(crate::app::views::view_tabs::ViewTab::Webview(view_id.to_owned()));
-                    }
-                });
-            });
-            ui.separator();
-            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(14.0);
-                    ui.vertical(|ui| {
-                        if let Some(ref url) = server_url {
-                            ui.group(|ui| {
-                                ui.label(egui::RichText::new("Interactive Extension Webview").strong());
-                                ui.label(egui::RichText::new(format!("Serving at: {url}")).small().color(pal.text_dim));
-                                ui.label(
-                                    egui::RichText::new("Extension scripts and bidirectional messaging are active.")
-                                        .small()
-                                        .color(pal.text_dim),
-                                );
-                                if ui.link(url).clicked() {
-                                    ui.ctx().open_url(egui::OpenUrl::new_tab(url));
-                                }
-                            });
-                            ui.add_space(8.0);
-                        }
-                        if html.is_empty() {
-                            ui.label(egui::RichText::new("Loading webview content…").color(pal.text_dim));
-                        } else {
-                            let stripped = html
-                                .replace("<br>", "\n")
-                                .replace("<br/>", "\n")
-                                .replace("</p>", "\n\n")
-                                .replace("</div>", "\n")
-                                .replace("</h1>", "\n\n")
-                                .replace("</h2>", "\n\n")
-                                .replace("</h3>", "\n\n");
-                            let mut in_tag = false;
-                            let mut clean = String::new();
-                            for ch in stripped.chars() {
-                                if ch == '<' {
-                                    in_tag = true;
-                                } else if ch == '>' {
-                                    in_tag = false;
-                                } else if !in_tag {
-                                    clean.push(ch);
-                                }
-                            }
-                            let text = clean.trim();
-                            if !text.is_empty() {
-                                ui.label(egui::RichText::new("Content Preview:").small().strong().color(pal.text_dim));
-                                ui.label(egui::RichText::new(text).color(pal.text));
-                            }
-                        }
-                    });
-                });
-            });
-        });
+/// Combines the card's horizontal/top bounds (`full - gaps`) with the outer panel's bottom edge
+/// so sidebar handles track the panel edge horizontally and still reach the bottom bar.
+fn sidebar_handle_rect(full_rect: egui::Rect, gaps: egui::Margin, workbench_bottom: f32) -> egui::Rect {
+    let inner = full_rect - gaps;
+    egui::Rect::from_min_max(inner.min, egui::pos2(inner.max.x, workbench_bottom))
+}
+
+/// Draws a vertical separator / drag-resize handle on a sidebar edge and returns the updated
+/// width when dragged.
+fn sidebar_resize_handle(
+    ui: &mut egui::Ui,
+    id: egui::Id,
+    panel_rect: egui::Rect,
+    on_right_edge: bool,
+    show_line: bool,
+    width: f32,
+    range: std::ops::RangeInclusive<f32>,
+) -> Option<f32> {
+    let top_inset = SIDEBAR_HANDLE_TOP_INSET.min(panel_rect.height() * 0.15);
+    let y_range = (panel_rect.top() + top_inset)..=panel_rect.bottom();
+    if *y_range.start() >= *y_range.end() {
+        return None;
     }
+    let edge_x = if on_right_edge { panel_rect.right() } else { panel_rect.left() };
+    let grab = ui.style().interaction.resize_grab_radius_side.max(4.0);
+    let hit_rect = egui::Rect::from_x_y_ranges((edge_x - grab)..=(edge_x + grab), y_range.clone());
+    let resp = ui.interact(hit_rect, id, egui::Sense::drag());
+    let hovered = resp.hovered();
+    let dragged = resp.dragged();
+    if hovered || dragged {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    let visuals = &ui.style().visuals.widgets;
+    let stroke = if dragged {
+        visuals.active.fg_stroke
+    } else if hovered {
+        visuals.hovered.fg_stroke
+    } else if show_line {
+        visuals.noninteractive.bg_stroke
+    } else {
+        egui::Stroke::NONE
+    };
+    if stroke != egui::Stroke::NONE {
+        let sign = if on_right_edge { -1.0 } else { 1.0 };
+        let x = edge_x + 0.5 * sign * stroke.width;
+        ui.painter().vline(x, y_range, stroke);
+    }
+    if dragged {
+        let delta = resp.drag_delta().x;
+        let next = if on_right_edge { width + delta } else { width - delta };
+        return Some(next.clamp(*range.start(), *range.end()));
+    }
+    None
 }
 
 /// Logs a step of starting that took 50 ms or more, so a slow start shows where.

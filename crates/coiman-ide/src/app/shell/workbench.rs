@@ -735,41 +735,8 @@ impl CodeApp {
             let debugging = side == Some(SidebarView::Debug);
             icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
         }
-        if self.settings.vscode_extensions_enabled() {
-            let extensions = side == Some(SidebarView::Extensions) && self.active_ext_view.is_none();
-            icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
-            if self.ext_views.is_empty() {
-                self.ext_views = self.ext_host.all_view_containers();
-            }
-            for container in self.ext_views.clone() {
-                let active = side == Some(SidebarView::Extensions)
-                    && self.active_ext_view.as_deref() == Some(container.id.as_str());
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(48.0, 44.0), Sense::click());
-                let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
-                if active {
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(rect.min, egui::vec2(2.0, rect.height())),
-                        0.0,
-                        theme::colors().accent,
-                    );
-                }
-                let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(22.0, 22.0));
-                if let Some(texture) = self.ext_icon(ui.ctx(), &container, color) {
-                    egui::Image::from_texture(&texture).paint_at(ui, icon_rect);
-                } else {
-                    icons::paint(ui.painter(), icon_rect, Icon::Extensions, color);
-                }
-                if resp.clicked() {
-                    self.sidebar_visible = true;
-                    self.sidebar_view = SidebarView::Extensions;
-                    self.active_ext_view = Some(container.id.clone());
-                    self.request_ext_tree(ui.ctx(), &container);
-                }
-                resp.on_hover_text(format!("{} (extension view)", container.title));
-            }
-        } else {
-            self.ext_views.clear();
-        }
+        let extensions = side == Some(SidebarView::Extensions);
+        icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
         if self.settings.workbench.agents_enabled {
             let agents = self.agents.is_open();
             icon(ui, Icon::Agent, "Agents", agents, Command::ShowAgents);
@@ -1021,6 +988,11 @@ impl CodeApp {
     }
 
     pub(crate) fn sidebar(&mut self, ui: &mut egui::Ui) {
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        let avail = ui.available_width();
+        if avail > 0.0 {
+            ui.set_max_width(avail);
+        }
         // A picture showing in place of the editor is what the explorer marks.
         let active_path = self
             .shown_image()
@@ -1200,15 +1172,7 @@ impl CodeApp {
             SidebarView::Git => self.source_control_view(ui),
             SidebarView::Testing => self.testing_view(ui),
             SidebarView::Debug => self.debug_view(ui),
-            SidebarView::Extensions => {
-                if self.settings.vscode_extensions_enabled()
-                    && let Some(view) = self.active_ext_view.clone()
-                {
-                    self.extension_tree_view(ui, &view);
-                } else {
-                    self.extensions_view(ui);
-                }
-            }
+            SidebarView::Extensions => self.extensions_view(ui),
             SidebarView::Agents => {}
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
@@ -1822,23 +1786,6 @@ impl CodeApp {
                 }
             }
             self.plugin_status_items(ui, coiman_core::extensions::plugin::manifest::Alignment::Left, size);
-            let mut ext_cmd = None;
-            for (text, tip, cmd) in self.ext_status_bar.values() {
-                if !text.is_empty() {
-                    let mut label = egui::Label::new(white(text.clone())).selectable(false);
-                    if !cmd.is_empty() {
-                        label = label.sense(Sense::click());
-                    }
-                    let resp = ui.add(label);
-                    let resp = if !tip.is_empty() { resp.on_hover_text(tip) } else { resp };
-                    if resp.clicked() && !cmd.is_empty() {
-                        ext_cmd = Some(format!("ext\n{cmd}"));
-                    }
-                }
-            }
-            if let Some(cmd) = ext_cmd {
-                self.run_plugin_command(&cmd);
-            }
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
             }
@@ -2451,26 +2398,83 @@ mod tests {
                         // The side bar's edge is the leftmost tall line past the activity bar, the
                         // Agents panel's the rightmost (wherever the layout puts them).
                         let len = (points[0].y - points[1].y).abs();
+                        let bottom = points[0].y.max(points[1].y);
                         let x = points[0].x;
-                        if len > 100.0 && (100.0..600.0).contains(&x) && side_line.is_none_or(|(at, _)| x < at) {
-                            side_line = Some((x, len));
+                        if len > 100.0 && (100.0..600.0).contains(&x) && side_line.is_none_or(|(at, _, _)| x < at) {
+                            side_line = Some((x, len, bottom));
                         }
-                        if len > 100.0 && x > 600.0 && agents_line.is_none_or(|(at, _)| x > at) {
-                            agents_line = Some((x, len));
+                        if len > 100.0 && x > 600.0 && agents_line.is_none_or(|(at, _, _)| x > at) {
+                            agents_line = Some((x, len, bottom));
                         }
                     }
                 }
             }
             output.textures_delta.clear();
         }
-        let (side_line, agents_line) = (side_line.map(|l| l.1), agents_line.map(|l| l.1));
-        let (Some(side), Some(agents)) = (side_line, agents_line) else {
+        let (Some((_, side, side_bottom)), Some((_, agents, agents_bottom))) = (side_line, agents_line) else {
             panic!("both separators are drawn: {side_line:?}, {agents_line:?}");
         };
-        // Within a pixel (rounding).
+        // Inset slightly from the top while reaching all the way to the bottom bar, matching on both sides.
+        assert!(side < 744.0 && side > 720.0, "sidebar handle should reach bottom bar with a slight top inset, got {side}");
+        assert!(
+            (side_bottom - agents_bottom).abs() <= 1.0,
+            "both handles must align at the bottom bar: side={side_bottom}, agents={agents_bottom}"
+        );
         assert!(
             (side - agents).abs() <= 1.0,
             "Agents separator length must match file explorer separator length: {agents} vs {side}"
+        );
+    }
+
+    #[test]
+    fn extensions_sidebar_keeps_fixed_width_when_opened_or_shrunk() {
+        let ctx = egui::Context::default();
+        let mut app = CodeApp::new(None, &ctx);
+        crate::ui::theme::set_islands(&ctx, false);
+        crate::ui::theme::set_dock(false);
+        app.sidebar_visible = true;
+        app.welcome_sidebar = true;
+        app.sidebar_view = SidebarView::Explorer;
+        app.agents.open = false;
+        app.layout.saved.side_size = None;
+        let raw = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200.0, 800.0))),
+            ..Default::default()
+        };
+        let measure_side_x = |app: &mut CodeApp| -> f32 {
+            let mut side_x = None;
+            for frame in 0..2 {
+                let mut output = ctx.run_ui(raw.clone(), |ui| app.draw_frame(ui));
+                if frame == 1 {
+                    for clipped in &output.shapes {
+                        if let egui::epaint::Shape::LineSegment { points, .. } = &clipped.shape
+                            && (points[0].x - points[1].x).abs() < 0.1
+                            && (points[0].y - points[1].y).abs() > 100.0
+                            && (100.0..600.0).contains(&points[0].x)
+                        {
+                            side_x = Some(side_x.map_or(points[0].x, |prev: f32| prev.min(points[0].x)));
+                        }
+                    }
+                }
+                output.textures_delta.clear();
+            }
+            side_x.expect("side separator line must be drawn")
+        };
+
+        let explorer_x = measure_side_x(&mut app);
+        app.sidebar_view = SidebarView::Extensions;
+        assert!(app.extensions_tab_is_zed(), "Zed tab should be active by default");
+        let extensions_x = measure_side_x(&mut app);
+        assert!(
+            (explorer_x - extensions_x).abs() <= 1.0,
+            "opening Extensions must not resize left sidebar: explorer={explorer_x}, extensions={extensions_x}"
+        );
+
+        app.layout.saved.side_size = Some(160.0);
+        let shrunk_x = measure_side_x(&mut app);
+        assert!(
+            (explorer_x - 100.0 - shrunk_x).abs() <= 1.5,
+            "shrinking Extensions sidebar to 160px failed: explorer={explorer_x}, shrunk={shrunk_x}"
         );
     }
 }

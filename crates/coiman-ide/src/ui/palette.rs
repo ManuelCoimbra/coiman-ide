@@ -88,7 +88,6 @@ pub enum PickerKind {
     /// Which debugger attaches.
     AttachDebugger,
     RunTarget,
-    VsCodeImport,
     MavenGoal,
     MavenFound,
     MavenScope,

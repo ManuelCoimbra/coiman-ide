@@ -7,8 +7,7 @@ use crate::app::CodeApp;
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum ActiveView {
     Settings,
-    Extension(String),
-    Webview(String),
+    ZedExtension(String),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -18,10 +17,8 @@ pub(crate) enum ViewTab {
     Image,
     Files,
     Settings,
-    /// An extension's detail page, open as an editor tab.
-    Extension(String),
-    /// A webview panel opened by an extension.
-    Webview(String),
+    /// A Zed extension's detail page, open as an editor tab.
+    ZedExtension(String),
 }
 
 impl CodeApp {
@@ -35,13 +32,12 @@ impl CodeApp {
         if self.settings_tab_open() {
             tabs.push((ViewTab::Settings, "Settings".to_owned(), self.showing_settings_tab()));
         }
-        if let Some(found) = &self.marketplace.detail_tab {
-            let title = if found.display_name.is_empty() { found.id() } else { found.display_name.clone() };
-            tabs.push((ViewTab::Extension(found.id()), format!("Extension: {title}"), self.showing_extension_tab()));
-        }
-        for (id, (title, _)) in &self.ext_webviews {
-            let shown = matches!(&self.active_view, Some(ActiveView::Webview(open)) if open == id);
-            tabs.push((ViewTab::Webview(id.clone()), title.clone(), shown));
+        if let Some(found) = &self.zed.detail_tab {
+            tabs.push((
+                ViewTab::ZedExtension(found.id().to_owned()),
+                format!("Zed: {}", found.name()),
+                self.showing_zed_extension_tab(),
+            ));
         }
         tabs
     }
@@ -65,13 +61,10 @@ impl CodeApp {
             ViewTab::Image => self.show_image_tab(),
             ViewTab::Files => self.show_file_manager_tab(),
             ViewTab::Settings => self.open_settings_tab(),
-            ViewTab::Extension(id) => {
-                if let Some(found) = self.marketplace.detail_tab.clone().filter(|f| f.id() == id) {
-                    self.show_extension_tab(ctx, found);
+            ViewTab::ZedExtension(id) => {
+                if let Some(found) = self.zed.detail_tab.clone().filter(|f| f.id() == id) {
+                    self.show_zed_extension_tab(ctx, found);
                 }
-            }
-            ViewTab::Webview(id) => {
-                self.active_view = Some(ActiveView::Webview(id));
             }
         }
     }
@@ -83,21 +76,9 @@ impl CodeApp {
             ViewTab::Image => self.close_image_tab(),
             ViewTab::Files => self.close_file_manager_tab(),
             ViewTab::Settings => self.close_settings_tab(),
-            ViewTab::Extension(id) => {
-                self.marketplace.detail_tab = None;
-                if matches!(&self.active_view, Some(ActiveView::Extension(open)) if open.as_str() == id.as_str()) {
-                    self.active_view = None;
-                }
-            }
-            ViewTab::Webview(id) => {
-                self.ext_webviews.remove(&id);
-                // Closed here: the extension hears so, and the server stops with the last one.
-                if let Some(server) = self.ext_host.webview_server().cloned() {
-                    server.remove_panel(&id);
-                }
-                self.ext_host.close_idle_webview_server();
-                self.ext_host.notify("webview/closed", serde_json::json!({ "id": id }));
-                if matches!(&self.active_view, Some(ActiveView::Webview(open)) if open.as_str() == id.as_str()) {
+            ViewTab::ZedExtension(id) => {
+                self.zed.detail_tab = None;
+                if matches!(&self.active_view, Some(ActiveView::ZedExtension(open)) if open.as_str() == id.as_str()) {
                     self.active_view = None;
                 }
             }

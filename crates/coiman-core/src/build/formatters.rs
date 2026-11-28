@@ -113,87 +113,16 @@ pub fn program_for(root: &Path, name: &str, path: &Path) -> Option<(PathBuf, Vec
             if bin.is_file() {
                 return Some((bin, vec!["--stdin-filepath".to_owned(), path.to_string_lossy().into_owned()]));
             }
-            for dir in extension_dirs() {
-                let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-                for entry in entries.filter_map(Result::ok) {
-                    let folder = entry.path();
-                    if !folder
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_lowercase()
-                        .starts_with("esbenp.prettier-vscode-")
-                    {
-                        continue;
-                    }
-                    let script = folder.join("node_modules/prettier/bin/prettier.cjs");
-                    if script.is_file() {
-                        let node = node.clone()?;
-                        return Some((
-                            node,
-                            vec![
-                                script.to_string_lossy().into_owned(),
-                                "--stdin-filepath".to_owned(),
-                                path.to_string_lossy().into_owned(),
-                            ],
-                        ));
-                    }
-                }
-            }
             None
         }
         "Biome" => {
-            let mut candidates = Vec::new();
-            candidates.push(root.join("node_modules/.bin/biome"));
-            for dir in extension_dirs() {
-                let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-                for entry in entries.filter_map(Result::ok) {
-                    let folder = entry.path();
-                    if !folder
-                        .file_name()
-                        .unwrap_or_default()
-                        .to_string_lossy()
-                        .to_lowercase()
-                        .starts_with("biomejs.biome-")
-                    {
-                        continue;
-                    }
-                    if let Ok(inner) = std::fs::read_dir(folder.join("node_modules")) {
-                        for package in inner.filter_map(Result::ok) {
-                            let name = package.file_name().to_string_lossy().to_lowercase();
-                            if name.starts_with("@biomejs")
-                                && package.path().is_dir()
-                                && let Ok(clis) = std::fs::read_dir(package.path())
-                            {
-                                for cli in clis.filter_map(Result::ok) {
-                                    let candidate = cli.path().join("biome");
-                                    if candidate.is_file() {
-                                        candidates.push(candidate);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            let binary = candidates.into_iter().find(|p| p.is_file())?;
-            Some((binary, vec!["format".to_owned(), format!("--stdin-file-path={}", path.to_string_lossy())]))
+            let binary = root.join("node_modules/.bin/biome");
+            binary.is_file().then(|| {
+                (binary, vec!["format".to_owned(), format!("--stdin-file-path={}", path.to_string_lossy())])
+            })
         }
         _ => None,
     }
-}
-
-fn extension_dirs() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
-        let home = PathBuf::from(home);
-        out.push(home.join(".vscode").join("extensions"));
-        out.push(home.join(".vscode-insiders").join("extensions"));
-    }
-    if let Some(dir) = crate::extensions::vscode_import::coiman_extensions_dir() {
-        out.push(dir);
-    }
-    out
 }
 
 /// File types those formatters take care of.

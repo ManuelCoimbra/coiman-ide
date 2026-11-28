@@ -132,7 +132,7 @@ impl CodeApp {
         if !primary.is_empty() || doc.buffer.selections().len() != 1 {
             return false;
         }
-        let Ok(list) = snippets::load() else { return false };
+        let Ok(list) = snippets::load_with_extensions() else { return false };
         if list.is_empty() {
             return false;
         }
@@ -151,7 +151,7 @@ impl CodeApp {
             self.status = Some("Open a file to insert a snippet".to_owned());
             return;
         };
-        let list = match snippets::load() {
+        let list = match snippets::load_with_extensions() {
             Ok(list) => list,
             Err(e) => {
                 self.status = Some(e);

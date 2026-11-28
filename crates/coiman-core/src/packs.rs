@@ -112,7 +112,7 @@ pub const PACKS: [Pack; 10] = [
         name: "Agents",
         description: "AI agents through opencode, and MCP servers.",
         features: &["Agents panel (opencode)", "MCP servers"],
-        extensions: &["coiman.agents"],
+        extensions: &[],
     },
     Pack {
         id: TERMINAL,

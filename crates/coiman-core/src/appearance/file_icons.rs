@@ -368,6 +368,32 @@ pub fn pack_from_vscode(theme: &Path, light_theme: Option<&Path>, label: &str) -
     Ok(lines.join("\n") + "\n")
 }
 
+/// Keeps a packed pack among the user's under an explicit `id`.
+pub fn install_pack_with_id(id: &str, text: &str) -> Result<String, String> {
+    let dir = user_dir().ok_or("No config directory available")?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(format!("{id}.txt")), text).map_err(|e| e.to_string())?;
+    loaded().lock().unwrap_or_else(|e| e.into_inner()).remove(id);
+    Ok(id.to_owned())
+}
+
+/// Removes user icon packs whose id starts with `prefix` and clears them from cache.
+pub fn remove_packs_with_prefix(prefix: &str) {
+    let Some(dir) = user_dir() else { return };
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "txt")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+                && stem.starts_with(prefix)
+            {
+                let _ = std::fs::remove_file(&path);
+                loaded().lock().unwrap_or_else(|e| e.into_inner()).remove(stem);
+            }
+        }
+    }
+}
+
 /// Keeps a packed pack among the user's; returns its id.
 pub fn install_pack(label: &str, text: &str) -> Result<String, String> {
     let dir = user_dir().ok_or("No config directory available")?;

@@ -125,6 +125,12 @@ impl CodeApp {
         self.mcp_load();
     }
 
+    pub(crate) fn mcp_reload_if_open(&mut self) {
+        if self.mcp.open {
+            self.mcp_load();
+        }
+    }
+
     /// `opencode mcp list` in the project's folder: which servers it connects to.
     fn mcp_check(&mut self, ctx: &egui::Context) {
         let Some(program) = coiman_core::language::lsp::servers::which("opencode") else {
@@ -168,6 +174,13 @@ impl CodeApp {
         let mut reload = None;
         let mut check = false;
         let file = self.mcp_file();
+        let configured_servers = self
+            .mcp
+            .config
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(|c| c.servers.clone())
+            .unwrap_or_default();
         egui::Window::new(RichText::new("MCP Servers").size(16.0).strong())
             .id(egui::Id::unique("mcp_window"))
             .open(&mut open)
@@ -369,6 +382,7 @@ impl CodeApp {
                 if let Some(text) = &self.mcp.status_text {
                     ui.add(egui::Label::new(RichText::new(text).monospace().small()).wrap());
                 }
+                self.zed_mcp_section(ui, ctx, &configured_servers);
             });
         self.mcp.open = open;
         if save && let (Some(Ok(c)), Some(f)) = (self.mcp.config.as_ref(), file) {

@@ -178,12 +178,21 @@ impl CodeApp {
         let config = doc.path.as_deref().map(editorconfig::lookup).unwrap_or_default();
         let detected =
             if editor.detect_indentation && !doc.large { editorconfig::detect_indent(&doc.text()) } else { None };
-        let use_tabs = config.use_tabs.or(detected.map(|d| d.0)).unwrap_or(!editor.insert_spaces);
-        let size = config.indent_size.or(detected.map(|d| d.1)).unwrap_or(editor.tab_size.max(1));
+        let zed_langs = self.active_zed_languages();
+        let (zed_size, zed_tabs) =
+            coiman_core::extensions::zed::languages::indent_for(&zed_langs, doc.path.as_deref(), &doc.extension());
+        let use_tabs = config.use_tabs.or(detected.map(|d| d.0)).or(zed_tabs).unwrap_or(!editor.insert_spaces);
+        let size = config.indent_size.or(detected.map(|d| d.1)).or(zed_size).unwrap_or(editor.tab_size.max(1));
         doc.buffer.indent = Indent { use_tabs, size };
         doc.buffer.auto_close = editor.auto_close_brackets;
         doc.buffer.indent_rules = coiman_core::editor::indent_rules::IndentRules::for_extension(&doc.extension());
-        let tags = coiman_core::editor::auto_tags::TagMode::for_extension(&doc.extension());
+        let tags = match coiman_core::editor::auto_tags::TagMode::for_extension(&doc.extension()) {
+            coiman_core::editor::auto_tags::TagMode::Off => {
+                coiman_core::extensions::zed::languages::active_auto_tags(doc.path.as_deref(), &doc.extension())
+                    .unwrap_or(coiman_core::editor::auto_tags::TagMode::Off)
+            }
+            mode => mode,
+        };
         doc.buffer.auto_tags = if editor.auto_close_tags { tags } else { coiman_core::editor::auto_tags::TagMode::Off };
         doc.buffer.auto_quotes = editor.auto_create_quotes;
         // Languages whose doc comments are `/** ... */` with `@param` and `@return`.
@@ -212,7 +221,11 @@ impl CodeApp {
         );
         doc.buffer.doc_comments = editor.doc_comment_templates && javadoc_like;
         // `'` starts Rust lifetimes and is an apostrophe in prose.
-        doc.buffer.pair_single_quote = !matches!(doc.extension().as_str(), "rs" | "md" | "markdown" | "txt");
+        doc.buffer.pair_single_quote = coiman_core::extensions::zed::languages::active_pair_single_quote(
+            doc.path.as_deref(),
+            &doc.extension(),
+        )
+        .unwrap_or_else(|| !matches!(doc.extension().as_str(), "rs" | "md" | "markdown" | "txt"));
         doc.trim_trailing_whitespace = config.trim_trailing_whitespace.unwrap_or(editor.trim_trailing_whitespace);
         doc.insert_final_newline = config.insert_final_newline.unwrap_or(editor.insert_final_newline);
         // Picked from the status bar: stays until the user asks to detect again.
@@ -222,6 +235,7 @@ impl CodeApp {
     }
 
     pub(crate) fn add_doc(&mut self, mut doc: Document) {
+        doc.refresh_language();
         self.apply_file_rules(&mut doc);
         doc.buffer.read_only = doc.path.as_deref().is_some_and(coiman_core::language::lsp::convert::is_virtual_path);
         // Focus the editor when the tab is first shown, so typing goes straight into it.

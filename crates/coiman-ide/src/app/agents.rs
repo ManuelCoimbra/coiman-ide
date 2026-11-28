@@ -181,6 +181,10 @@ pub(crate) struct AgentsUi {
     focus_session_search: bool,
     /// The panel fills the window, like a maximized terminal.
     pub(crate) maximized: bool,
+    /// Slash commands declared by active Zed extensions: `(ext_id, name, desc, requires_arg)`.
+    pub(crate) external_slash_commands: Vec<(String, String, String, bool)>,
+    /// Queued external slash command `(ext_id, name, args)` for the app to run off-thread.
+    pub(crate) pending_external_slash: Option<(String, String, Vec<String>)>,
 }
 
 impl AgentsUi {
@@ -418,7 +422,12 @@ impl AgentsUi {
         true
     }
 
-    fn slash(&mut self, command: &str) {
+    pub(crate) fn push_agent_text(&mut self, text: String) {
+        self.messages.push(Message { role: Role::Agent, parts: vec![Part::Text(text)] });
+        self.jump_to_bottom = true;
+    }
+
+    pub(crate) fn slash(&mut self, command: &str) {
         match command.trim() {
             "clear" | "new" => {
                 self.new_chat();
@@ -429,17 +438,38 @@ impl AgentsUi {
                 self.status = Some("Pick a model with the chip in the composer".to_owned());
             }
             "help" => {
+                let mut help = "Commands: /clear (new chat), /model (choose a model), /help (this text).\nEnter sends; Shift+Enter adds a newline.".to_owned();
+                if !self.external_slash_commands.is_empty() {
+                    help.push_str("\nZed extension commands:");
+                    for (_, name, desc, _) in &self.external_slash_commands {
+                        help.push_str(&format!("\n/{name} — {desc}"));
+                    }
+                }
                 self.messages.push(Message {
                     role: Role::Agent,
-                    parts: vec![Part::Text(
-                        "Commands: /clear (new chat), /model (choose a model), /help (this text).\nEnter sends; Shift+Enter adds a newline.".to_owned(),
-                    )],
+                    parts: vec![Part::Text(help)],
                 });
                 self.input.clear();
             }
             other => {
-                self.status = Some(format!("Unknown command /{other}"));
-                self.input.clear();
+                let mut parts = other.split_whitespace();
+                let cmd_name = parts.next().unwrap_or("");
+                if let Some((ext_id, name, ..)) = self
+                    .external_slash_commands
+                    .iter()
+                    .find(|(_, n, ..)| n.eq_ignore_ascii_case(cmd_name))
+                {
+                    let args: Vec<String> = parts.map(str::to_owned).collect();
+                    self.messages.push(Message {
+                        role: Role::User,
+                        parts: vec![Part::Text(format!("/{other}"))],
+                    });
+                    self.pending_external_slash = Some((ext_id.clone(), name.clone(), args));
+                    self.input.clear();
+                } else {
+                    self.status = Some(format!("Unknown command /{other}"));
+                    self.input.clear();
+                }
             }
         }
     }
@@ -575,8 +605,8 @@ impl AgentsUi {
             let (headline, how) = match &self.missing {
                 Some(how) => (format!("{} isn't installed", self.name), format!("Install it with: {how}")),
                 None => (
-                    "The Agents extension isn't running".to_owned(),
-                    "Install the Agents pack from the Extensions view".to_owned(),
+                    "Agents extension is starting…".to_owned(),
+                    "Ensure Agents window is enabled in Settings".to_owned(),
                 ),
             };
             let height = ui.available_height();

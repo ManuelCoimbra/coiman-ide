@@ -41,7 +41,7 @@ streaming-iterator = "0.1"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 toml = "1.1.8"
 unicode-width = "0.2"
-tree-sitter = "0.27.1"
+tree-sitter = { version = "0.27.1", features = ["wasm"] }
 tree-sitter-bash = "0.25"
 tree-sitter-c = "0.24"
 tree-sitter-c-sharp = "0.23"
@@ -61,6 +61,9 @@ tree-sitter-yaml = "0.7.2"
 url = "2"
 wit-component = "0.261"
 wasmtime = { version = "50", default-features = false, features = ["runtime", "cranelift", "component-model", "std"] }
+wasmtime-wasi = { version = "50", default-features = false, features = ["p2"] }
+tar = "0.4"
+flate2 = "1.1"
 pulldown-cmark = { version = "0.13.6", default-features = false }
 # Binary size: a program's sections and symbols (versions already in the build).
 # Shaders: WGSL checked, and turned into GLSL for the preview (the version already in Cargo.lock).

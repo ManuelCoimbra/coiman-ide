@@ -31,7 +31,7 @@ use crate::ui::theme;
 
 /// Extensions that ship with Coiman IDE: sandboxed plugins like any other, with
 /// no download. They can be turned off in the Extensions view.
-const BUILT_IN: [(&str, &[u8]); 2] = [
+const BUILT_IN: [(&str, &[u8]); 3] = [
     (
         include_str!("../../../../../plugins/built-in/comment-highlights/plugin.toml"),
         include_bytes!("../../../../../plugins/built-in/comment-highlights/plugin.wasm"),
@@ -40,10 +40,17 @@ const BUILT_IN: [(&str, &[u8]); 2] = [
         include_str!("../../../../../plugins/built-in/trailing-spaces/plugin.toml"),
         include_bytes!("../../../../../plugins/built-in/trailing-spaces/plugin.wasm"),
     ),
+    (
+        include_str!("../../../../../plugins/extensions/agents/plugin.toml"),
+        include_bytes!("../../../../../plugins/extensions/agents/plugin.wasm"),
+    ),
 ];
 
+/// Id of the built-in Agents plugin (driven by `workbench.agents_enabled`).
+const AGENTS_ID: &str = "coiman.agents";
+
 /// Ids of those. An extension that used to ship with the app can be uninstalled.
-const BUILT_IN_IDS: [&str; 2] = ["coiman.comment-highlights", "coiman.trailing-spaces"];
+const BUILT_IN_IDS: [&str; 3] = ["coiman.comment-highlights", "coiman.trailing-spaces", AGENTS_ID];
 
 /// Extensions that used to ship with the app and are now part of it: Color Preview is
 /// `editor.color_decorators`. A copy that came with the app goes; one the user
@@ -140,6 +147,13 @@ struct Consent {
     programs: BTreeSet<String>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+enum ExtensionsTab {
+    #[default]
+    Zed,
+    Coiman,
+}
+
 #[derive(Default)]
 pub(crate) struct PluginState {
     started: bool,
@@ -190,8 +204,8 @@ pub(crate) struct PluginState {
     /// A plugin whose command just ran: its next panel comes to the front. Other panel updates
     /// (a log that streams) leave the tab shown alone.
     reveal: Option<String>,
-    /// The Extensions view shows the Open VSX marketplace rather than Coiman's own.
-    open_vsx: bool,
+    /// Which tab in the Extensions view is active (Coiman or Zed).
+    tab: ExtensionsTab,
 }
 
 /// The lens command of a plugin's code lens: its arguments are (plugin, command, argument).
@@ -272,7 +286,9 @@ impl CodeApp {
     /// Loads the lockfile and starts every enabled plugin (once).
     fn plugins_init(&mut self, ctx: &egui::Context) {
         self.plugins.started = true;
-        if !self.settings.plugins.enabled {
+        let plugins_enabled = self.settings.plugins.enabled;
+        let agents_enabled = self.settings.workbench.agents_enabled;
+        if !plugins_enabled && !agents_enabled {
             return;
         }
         let Some(dir) = store::plugins_dir() else { return };
@@ -283,14 +299,60 @@ impl CodeApp {
         self.install_built_ins(&dir);
         self.plugins.dir = Some(dir);
         self.refresh_infos();
-        let ids: Vec<String> = self.plugins.lock.plugins.iter().filter(|p| p.enabled).map(|p| p.id.clone()).collect();
+        let ids: Vec<String> = self
+            .plugins
+            .lock
+            .plugins
+            .iter()
+            .filter(|p| if p.id == AGENTS_ID { agents_enabled } else { plugins_enabled && p.enabled })
+            .map(|p| p.id.clone())
+            .collect();
         for id in ids {
             self.load_plugin(ctx, &id);
         }
     }
 
+    /// Starts or stops the built-in `coiman.agents` plugin to match `workbench.agents_enabled`.
+    pub(crate) fn sync_agents_extension(&mut self, ctx: &egui::Context) {
+        let enabled = self.settings.workbench.agents_enabled;
+        if !enabled {
+            self.agents.open = false;
+            self.unload_plugin(AGENTS_ID);
+            if let Some(l) = self.plugins.lock.get_mut(AGENTS_ID) {
+                l.enabled = false;
+                self.save_lock();
+                self.refresh_infos();
+            }
+            return;
+        }
+        if !self.plugins.started {
+            self.plugins_init(ctx);
+            return;
+        }
+        let Some(dir) = self.plugins.dir.clone().or_else(store::plugins_dir) else { return };
+        if self.plugins.dir.is_none() {
+            if let Ok(lock) = Lockfile::load(&dir) {
+                self.plugins.lock = lock;
+            }
+            self.plugins.dir = Some(dir.clone());
+        }
+        self.install_built_ins(&dir);
+        self.refresh_infos();
+        self.load_plugin(ctx, AGENTS_ID);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn agents_plugin_enabled(&self) -> bool {
+        self.plugins
+            .lock
+            .get(AGENTS_ID)
+            .is_some_and(|l| l.enabled && l.granted_programs.iter().any(|p| p == "opencode"))
+            && self.plugins.host.is_some()
+    }
+
     /// Puts the built-in extensions in the store, new or updated. Each one's
-    /// on/off choice and permissions are kept.
+    /// on/off choice and permissions are kept; `coiman.agents` tracks
+    /// `workbench.agents_enabled` with `opencode` auto-granted.
     fn install_built_ins(&mut self, dir: &Path) {
         let mut changed = false;
         for id in RETIRED {
@@ -312,13 +374,22 @@ impl CodeApp {
                 changed = true;
             }
         }
+        let agents_enabled = self.settings.workbench.agents_enabled;
         for (toml, wasm) in BUILT_IN {
             let Ok(manifest) = coiman_core::extensions::plugin::manifest::parse(toml) else { continue };
+            let is_agents = manifest.id == AGENTS_ID;
             let wasm_hash = registry::sha256_hex(wasm);
             let locked = self.plugins.lock.get(&manifest.id);
-            if locked.is_some_and(|l| {
+            let hash_matches = locked.is_some_and(|l| {
                 l.wasm_sha256 == wasm_hash && l.manifest_sha256 == registry::sha256_hex(toml.as_bytes())
-            }) {
+            });
+            let agents_needs_sync = is_agents
+                && locked.is_some_and(|l| {
+                    l.source != BUILT_IN_SOURCE
+                        || l.enabled != agents_enabled
+                        || manifest.programs.iter().any(|p| !l.granted_programs.contains(p))
+                });
+            if hash_matches && !agents_needs_sync {
                 continue;
             }
             let locked = locked.or_else(|| before_rename.get(manifest.id.as_str()));
@@ -326,10 +397,15 @@ impl CodeApp {
                 Some(l) => l.granted.clone(),
                 None => manifest.permissions.clone(),
             };
-            let enabled = locked.is_none_or(|l| l.enabled);
+            let enabled = if is_agents { agents_enabled } else { locked.is_none_or(|l| l.enabled) };
+            let mut programs = locked.map(|l| l.granted_programs.clone()).unwrap_or_default();
+            if is_agents {
+                for p in &manifest.programs {
+                    programs.insert(p.clone());
+                }
+            }
             let id = manifest.id.clone();
             let pkg = Package { manifest, manifest_bytes: toml.as_bytes().to_vec(), wasm: wasm.to_vec() };
-            let programs = locked.map(|l| l.granted_programs.clone()).unwrap_or_default();
             if store::install(dir, &mut self.plugins.lock, &pkg, BUILT_IN_SOURCE, "", granted, programs).is_ok() {
                 if let Some(l) = self.plugins.lock.get_mut(&id) {
                     l.enabled = enabled;
@@ -343,10 +419,12 @@ impl CodeApp {
     }
 
     /// Plugin coloring for document `i`.
-    /// Tells the editor which languages the enabled plugins add.
-    fn sync_plugin_languages(&self) {
+    /// Tells the editor which languages enabled plugins and Zed extensions add.
+    pub(crate) fn sync_plugin_languages(&self) {
         let enabled = self.plugins.infos.iter().filter(|i| self.plugins.lock.get(&i.id).is_some_and(|l| l.enabled));
-        let decls: Vec<_> = enabled.filter_map(|i| i.manifest.as_ref()).flat_map(|m| m.languages.clone()).collect();
+        let mut decls: Vec<_> = enabled.filter_map(|i| i.manifest.as_ref()).flat_map(|m| m.languages.clone()).collect();
+        let zed_langs = self.active_zed_languages();
+        decls.extend(coiman_core::extensions::zed::languages::to_language_decls(&zed_langs));
         coiman_core::language::languages::set(&decls);
     }
 
@@ -827,19 +905,6 @@ impl CodeApp {
     /// Runs a palette entry from [`plugin_commands`](Self::plugin_commands).
     pub(crate) fn run_plugin_command(&mut self, key: &str) {
         if let Some((plugin, command)) = key.split_once('\n') {
-            if plugin == "ext" {
-                if !self.settings.vscode_extensions_enabled() {
-                    self.status = Some("VS Code extensions are disabled in settings".to_owned());
-                    return;
-                }
-                if self.ext_host.request("command/execute", serde_json::json!({ "id": command, "args": [] })).is_some()
-                {
-                    self.status = Some(format!("Ran extension command {command}"));
-                } else {
-                    self.status = Some("The VS Code extension host isn't running".to_owned());
-                }
-                return;
-            }
             self.run_plugin(plugin, command, "");
         }
     }
@@ -886,20 +951,13 @@ impl CodeApp {
 
     /// Palette entries for running plugins' commands: (title, key).
     pub(crate) fn plugin_commands(&self) -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = self
-            .plugins
+        self.plugins
             .infos
             .iter()
             .filter(|i| i.running)
             .filter_map(|i| i.manifest.as_ref())
             .flat_map(|m| m.commands.iter().map(|c| (c.title.clone(), command_key(&m.id, &c.id))))
-            .collect();
-        if self.settings.vscode_extensions_enabled() {
-            for (title, id) in self.ext_host.commands() {
-                out.push((title, format!("ext\n{id}")));
-            }
-        }
-        out
+            .collect()
     }
 
     // ----- registry and installs ----------------------------------------------------
@@ -955,11 +1013,8 @@ impl CodeApp {
     }
 
     pub(crate) fn show_extensions(&mut self) {
-        // Coiman's own extensions and packs are always here; VS Code's are a tab of it.
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Extensions;
-        self.active_ext_view = None;
-        self.show_marketplace();
     }
 
     /// Plugins: Check for Updates — reads the registry (only when asked).
@@ -1116,100 +1171,67 @@ impl CodeApp {
 
     // ----- views ------------------------------------------------------------------------
 
-    /// Said once, before the Open VSX tab first connects: what it contacts and what it sends.
-    fn open_vsx_notice(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let mut answer = None;
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.add_space(12.0);
-            ui.vertical(|ui| {
-                ui.set_max_width(ui.available_width() - 12.0);
-                ui.label(RichText::new("This tab connects to open-vsx.org").strong());
-                ui.add_space(4.0);
-                ui.label(
-                    "It lists popular extensions from there, and asks open-vsx.org again \
-                     when you search (sending what you typed), open an extension or install \
-                     one. It goes through curl, over HTTPS. Pictures of the extensions in view \
-                     come the same way and are kept in Coiman's config folder (cache/open-vsx). \
-                     Nothing is sent until you choose to use the tab.",
-                );
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Use Open VSX").clicked() {
-                        answer = Some(true);
-                    }
-                    if ui.button("Hide this tab").clicked() {
-                        answer = Some(false);
-                    }
-                });
+    /// Single-line sidebar item row with right-aligned controls (`right`) and
+    /// clipped/truncated left content (`left`) constrained strictly to `available_width()`.
+    pub(super) fn ext_item_row(
+        ui: &mut egui::Ui,
+        right: impl FnOnce(&mut egui::Ui),
+        left: impl FnOnce(&mut egui::Ui),
+    ) {
+        let w = ui.available_width().max(1.0);
+        let h = ui.spacing().interact_size.y;
+        ui.allocate_ui_with_layout(egui::vec2(w, h), egui::Layout::right_to_left(Align::Center), |ui| {
+            right(ui);
+            let rem = ui.available_width().max(1.0);
+            ui.allocate_ui_with_layout(egui::vec2(rem, h), egui::Layout::left_to_right(Align::Center), |ui| {
+                ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
+                left(ui);
             });
         });
-        let result = match answer {
-            Some(true) => self.change_setting(&ctx, false, "plugins", "marketplace_ok", Some("true")),
-            Some(false) => {
-                self.plugins.open_vsx = false;
-                self.change_setting(&ctx, false, "plugins", "marketplace", Some("false"))
-            }
-            None => Ok(()),
-        };
-        if let Err(e) = result {
-            self.status = Some(e);
-        }
     }
 
-    /// The Extensions view: consent prompt, installed plugins, updates, registry.
+    #[cfg(test)]
+    pub(crate) fn extensions_tab_is_zed(&self) -> bool {
+        self.plugins.tab == ExtensionsTab::Zed
+    }
+
+    /// The Extensions view: installed plugins, updates, registry, and Zed extensions.
     pub(crate) fn extensions_view(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let pal = theme::colors();
-        // Coiman's own extensions and packs, or VS Code's from Open VSX (reached only when that
-        // tab is used).
-        if self.settings.plugins.marketplace {
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.plugins.open_vsx, false, "Coiman");
-                ui.selectable_value(&mut self.plugins.open_vsx, true, "Open VSX");
-                if self.plugins.open_vsx {
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        let more = ui.button("⋯").on_hover_text("Filter");
-                        egui::Popup::menu(&more).show(|ui| {
-                            for (label, query) in [("Installed Extensions", "@installed"), ("Updates", "@updates")] {
-                                if ui.button(label).clicked() {
-                                    self.set_marketplace_query(query.to_owned());
-                                    ui.close();
-                                }
-                            }
-                        });
-                    });
-                }
+        ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+        let avail = ui.available_width();
+        if avail > 0.0 {
+            ui.set_max_width(avail);
+        }
+        let show_zed = self.settings.plugins.zed_extensions;
+        if self.plugins.tab == ExtensionsTab::Zed && !show_zed {
+            self.plugins.tab = ExtensionsTab::Coiman;
+        }
+        if show_zed {
+            ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(&mut self.plugins.tab, ExtensionsTab::Zed, "Zed");
+                ui.selectable_value(&mut self.plugins.tab, ExtensionsTab::Coiman, "Coiman");
             });
-            if self.plugins.open_vsx {
-                if self.settings.plugins.marketplace_ok {
-                    self.marketplace_sidebar(ui);
-                } else {
-                    self.open_vsx_notice(ui);
-                }
+            if self.plugins.tab == ExtensionsTab::Zed {
+                self.zed_sidebar(ui);
                 return;
             }
         }
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("EXTENSIONS").small().strong());
-            ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+        Self::ext_item_row(
+            ui,
+            |ui| {
                 if icons::button(ui, Icon::Refresh, "Check the registry for plugins and updates").clicked() {
                     self.check_registry(&ctx);
                 }
                 if icons::button(ui, Icon::FolderOpen, "Install from Folder…").clicked() {
                     self.install_plugin_from_folder(&ctx);
                 }
-                if icons::button(ui, Icon::ArrowDown, "Import from VS Code: themes, snippets, languages").clicked() {
-                    self.import_from_vscode();
-                }
-                if icons::button(ui, Icon::Check, "VS Code Compatibility Report: which extensions work here, and why")
-                    .clicked()
-                {
-                    self.vscode_compatibility(&ctx);
-                }
-            });
-        });
+            },
+            |ui| {
+                ui.add(egui::Label::new(RichText::new("EXTENSIONS").small().strong()).truncate());
+            },
+        );
         if !self.settings.plugins.enabled {
             ui.label(RichText::new("Plugins are turned off (plugins.enabled = false).").color(pal.text_dim));
             return;
@@ -1335,6 +1357,11 @@ impl CodeApp {
         // A floating bar would cover each plugin's uninstall button when it widens.
         ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            let w = ui.available_width();
+            if w > 0.0 {
+                ui.set_max_width(w);
+            }
             self.installed_section(ui, &ctx);
             self.packs_section(ui);
             self.shipped_section(ui);
@@ -1343,14 +1370,17 @@ impl CodeApp {
                 ui.label(RichText::new("UPDATES").small().strong());
                 let mut update = None;
                 for d in &self.plugins.updates {
-                    ui.horizontal(|ui| {
-                        ui.label(format!("{} {} to {}", d.name, d.from, d.to));
-                        ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+                    Self::ext_item_row(
+                        ui,
+                        |ui| {
                             if ui.small_button("Update…").clicked() {
                                 update = Some(d.clone());
                             }
-                        });
-                    });
+                        },
+                        |ui| {
+                            ui.add(egui::Label::new(format!("{} {} to {}", d.name, d.from, d.to)).truncate());
+                        },
+                    );
                     if !d.manifest.added_permissions.is_empty() || !d.manifest.added_programs.is_empty() || d.key_changed {
                         ui.label(RichText::new("Asks for more, review before updating").small().color(WARNING));
                     }
@@ -1380,10 +1410,9 @@ impl CodeApp {
             for e in &self.plugins.available {
                 let installed = self.plugins.lock.get(&e.id).map(|l| l.version.clone());
                 let broken = self.plugins.infos.iter().any(|i| i.id == e.id && i.manifest.is_none());
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(&e.name).strong());
-                    ui.label(RichText::new(&e.version).small().color(pal.text_dim));
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| match &installed {
+                Self::ext_item_row(
+                    ui,
+                    |ui| match &installed {
                         Some(v) if *v == e.version && broken => {
                             if ui.small_button("Reinstall…").clicked() {
                                 install = Some(e.clone());
@@ -1398,8 +1427,12 @@ impl CodeApp {
                                 install = Some(e.clone());
                             }
                         }
-                    });
-                });
+                    },
+                    |ui| {
+                        ui.add(egui::Label::new(RichText::new(&e.name).strong()).truncate());
+                        ui.label(RichText::new(&e.version).small().color(pal.text_dim));
+                    },
+                );
                 if !e.description.is_empty() {
                     ui.label(RichText::new(&e.description).small().color(pal.text_dim));
                 }
@@ -1435,16 +1468,19 @@ impl CodeApp {
         let mut install = None;
         for (folder, m) in offered {
             ui.separator();
-            ui.horizontal(|ui| {
-                ui.label(RichText::new(&m.name).strong());
-                ui.label(RichText::new(&m.version).small().color(pal.text_dim));
-                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+            Self::ext_item_row(
+                ui,
+                |ui| {
                     let verb = if self.plugins.lock.get(&m.id).is_some() { "Update…" } else { "Install…" };
                     if ui.small_button(verb).clicked() {
                         install = Some(folder.clone());
                     }
-                });
-            });
+                },
+                |ui| {
+                    ui.add(egui::Label::new(RichText::new(&m.name).strong()).truncate());
+                    ui.label(RichText::new(&m.version).small().color(pal.text_dim));
+                },
+            );
             if !m.description.is_empty() {
                 ui.label(RichText::new(&m.description).small().color(pal.text_dim));
             }
@@ -1489,11 +1525,9 @@ impl CodeApp {
         for info in &mut self.plugins.infos {
             let Some(locked) = self.plugins.lock.get(&info.id) else { continue };
             ui.separator();
-            ui.horizontal(|ui| {
-                let name = info.manifest.as_ref().map_or(info.id.as_str(), |m| m.name.as_str());
-                ui.label(RichText::new(name).strong());
-                ui.label(RichText::new(&locked.version).small().color(pal.text_dim));
-                ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
+            Self::ext_item_row(
+                ui,
+                |ui| {
                     let removable = locked.source != BUILT_IN_SOURCE || !BUILT_IN_IDS.contains(&info.id.as_str());
                     if removable && icons::button(ui, Icon::Trash, "Uninstall").clicked() {
                         actions.push(Action::Uninstall(info.id.clone()));
@@ -1510,8 +1544,13 @@ impl CodeApp {
                     if ui.checkbox(&mut enabled, "").on_hover_text("Enabled").changed() {
                         actions.push(Action::Enable(info.id.clone(), enabled));
                     }
-                });
-            });
+                },
+                |ui| {
+                    let name = info.manifest.as_ref().map_or(info.id.as_str(), |m| m.name.as_str());
+                    ui.add(egui::Label::new(RichText::new(name).strong()).truncate());
+                    ui.label(RichText::new(&locked.version).small().color(pal.text_dim));
+                },
+            );
             let state = match (&info.problem, info.running, locked.enabled) {
                 (Some(p), _, _) => RichText::new(p).color(ERROR),
                 (None, true, _) => RichText::new("running").color(pal.text_dim),

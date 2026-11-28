@@ -39,6 +39,16 @@ pub fn load() -> Result<Vec<Snippet>, String> {
     parse(&text)
 }
 
+/// Saved snippets merged with snippets from enabled Zed extensions.
+pub fn load_with_extensions() -> Result<Vec<Snippet>, String> {
+    let mut out = load()?;
+    if crate::extensions::zed::is_enabled_global() {
+        let active = crate::extensions::zed::registry::list_active();
+        out.extend(crate::extensions::zed::snippets::collect_snippets(&active));
+    }
+    Ok(out)
+}
+
 fn parse(text: &str) -> Result<Vec<Snippet>, String> {
     toml::from_str::<File>(text).map(|f| f.snippet).map_err(|e| format!("snippets.toml: {}", e.message()))
 }

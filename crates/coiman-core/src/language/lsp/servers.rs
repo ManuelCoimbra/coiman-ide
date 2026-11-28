@@ -276,15 +276,6 @@ fn configured_typescript_libs(path: &Path) -> Vec<PathBuf> {
 }
 
 /// The TypeScript copies inside an editor's extensions folder.
-fn extension_typescript_libs(extensions: &Path) -> Vec<PathBuf> {
-    let Ok(entries) = std::fs::read_dir(extensions) else { return Vec::new() };
-    entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path().join("node_modules/typescript/lib"))
-        .filter(|lib| lib.join("tsserver.js").is_file())
-        .collect()
-}
-
 /// Where `typescript-language-server` can find TypeScript's `tsserver.js`.
 ///
 /// A project's own TypeScript comes first, as in VS Code. Then the Node the
@@ -297,7 +288,6 @@ fn typescript_libs(root: &Path, launch: &Launch) -> Vec<PathBuf> {
     // A project's own TypeScript, nearest folder first.
     for folder in root.ancestors() {
         libs.push(folder.join("node_modules/typescript/lib"));
-        libs.push(folder.join(".vscode/pnpify/typescript/lib"));
         libs.push(folder.join(".yarn/sdks/typescript/lib"));
         libs.push(folder.join(".pnpm/sdks/typescript/lib"));
     }
@@ -322,50 +312,10 @@ fn typescript_libs(root: &Path, launch: &Launch) -> Vec<PathBuf> {
         libs.push(home.join(".local/share/npm/lib/node_modules/typescript/lib"));
         libs.push(home.join(".npm-global/lib/node_modules/typescript/lib"));
         libs.push(home.join("node_modules/typescript/lib"));
-        libs.push(
-            home.join(
-                "Applications/Visual Studio Code.app/Contents/Resources/app/extensions/node_modules/typescript/lib",
-            ),
-        );
-        libs.push(
-            home.join("Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/extensions/node_modules/typescript/lib"),
-        );
     }
     // npm-installed by the system (Fedora's nodejs-typescript, for example).
     libs.push(PathBuf::from("/usr/lib/node_modules/typescript/lib"));
     libs.push(PathBuf::from("/usr/local/lib/node_modules/typescript/lib"));
-    // VS Code's own TypeScript, stable first, then the extensions' copies.
-    libs.extend(
-        [
-            "/usr/share/code/resources/app/extensions/node_modules/typescript/lib",
-            "/usr/lib/code/resources/app/extensions/node_modules/typescript/lib",
-            "/opt/visual-studio-code/resources/app/extensions/node_modules/typescript/lib",
-            "/Applications/Visual Studio Code.app/Contents/Resources/app/extensions/node_modules/typescript/lib",
-            "/Applications/Visual Studio Code - Insiders.app/Contents/Resources/app/extensions/node_modules/typescript/lib",
-            "/usr/share/code-insiders/resources/app/extensions/node_modules/typescript/lib",
-            "/usr/lib/code-insiders/resources/app/extensions/node_modules/typescript/lib",
-            "/opt/visual-studio-code-insiders/resources/app/extensions/node_modules/typescript/lib",
-            "/snap/code/current/usr/share/code/resources/app/extensions/node_modules/typescript/lib",
-        ]
-        .map(PathBuf::from),
-    );
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        let local = PathBuf::from(local);
-        libs.push(local.join("Programs/Microsoft VS Code/resources/app/extensions/node_modules/typescript/lib"));
-        libs.push(
-            local.join("Programs/Microsoft VS Code Insiders/resources/app/extensions/node_modules/typescript/lib"),
-        );
-    }
-    if let Some(programs) = std::env::var_os("ProgramFiles") {
-        let programs = PathBuf::from(programs);
-        libs.push(programs.join("Microsoft VS Code/resources/app/extensions/node_modules/typescript/lib"));
-        libs.push(programs.join("Microsoft VS Code Insiders/resources/app/extensions/node_modules/typescript/lib"));
-    }
-    if let Some(home) = home() {
-        for folder in [".vscode", ".vscode-insiders", ".vscode-server", ".vscode-oss", ".cursor"] {
-            libs.extend(extension_typescript_libs(&home.join(folder).join("extensions")));
-        }
-    }
     libs
 }
 

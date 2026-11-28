@@ -84,8 +84,13 @@ fn text<'a>(node: Node, src: &'a str) -> &'a str {
 }
 
 /// Fold ranges from a syntax tree: bracketed blocks (`{}` `[]` `()`), runs of
-/// comments, Markdown sections, TOML tables.
+/// comments, Markdown sections, TOML tables, and Zed markup/block elements.
 pub fn folds_from_tree(tree: &Tree, lang: Lang) -> Vec<FoldRange> {
+    folds_from_syntax_tree(tree, Some(lang))
+}
+
+/// Fold ranges from either a built-in [`Lang`] tree or a dynamic Zed grammar tree.
+pub fn folds_from_syntax_tree(tree: &Tree, lang: Option<Lang>) -> Vec<FoldRange> {
     let mut out: Vec<FoldRange> = Vec::new();
     let mut cursor = tree.walk();
     let mut comment_run: Option<(usize, usize)> = None;
@@ -110,13 +115,18 @@ pub fn folds_from_tree(tree: &Tree, lang: Lang) -> Vec<FoldRange> {
             let first = node.child(0).map(|c| c.kind());
             let last = n.checked_sub(1).and_then(|i| node.child(i)).map(|c| c.kind());
             let bracketed = n >= 2 && matches!(first, Some("{" | "[" | "(")) && matches!(last, Some("}" | "]" | ")"));
+            let tag_block = n >= 2
+                && first.is_some_and(|k| k.ends_with("start_tag") || k.ends_with("_start"))
+                && last.is_some_and(|k| k.ends_with("end_tag") || k.ends_with("_end"));
             let folding = match lang {
                 // Keep the closing bracket's line visible, like VS Code.
                 _ if bracketed => (end > start + 1).then_some(end - 1),
+                _ if tag_block => (end > start + 1).then_some(end - 1),
                 _ if kind == "block_comment" || kind == "comment" => Some(end),
-                Lang::Markdown if kind == "section" || kind == "fenced_code_block" => Some(end),
-                Lang::Toml if kind == "table" || kind == "table_array_element" => Some(end),
-                Lang::Yaml if kind == "block_mapping_pair" || kind == "block_sequence_item" => Some(end),
+                Some(Lang::Markdown) if kind == "section" || kind == "fenced_code_block" => Some(end),
+                Some(Lang::Toml) if kind == "table" || kind == "table_array_element" => Some(end),
+                Some(Lang::Yaml) if kind == "block_mapping_pair" || kind == "block_sequence_item" => Some(end),
+                None if matches!(kind, "element" | "script_element" | "style_element" | "block") => Some(end),
                 _ => None,
             };
             if let Some(e) = folding.filter(|e| *e > start) {
@@ -204,6 +214,60 @@ pub fn symbols(tree: &Tree, src: &str, lang: Lang) -> Vec<Symbol> {
         Lang::Markdown => markdown_symbols(tree.root_node(), src, &mut out),
         Lang::Toml | Lang::Json | Lang::Yaml => key_symbols(tree.root_node(), src, lang, 0, &mut out),
         _ => tag_symbols(tree, src, lang, &mut out),
+    }
+    out
+}
+
+/// The outline from a Zed extension's `outline.scm` (`@item` + `@name`).
+pub fn zed_symbols(tree: &Tree, src: &str, outline: &tree_sitter::Query) -> Vec<Symbol> {
+    use streaming_iterator::StreamingIterator;
+    let names = outline.capture_names();
+    let mut found: Vec<(Node, Option<Node>)> = Vec::new();
+    let mut cursor = tree_sitter::QueryCursor::new();
+    let mut matches = cursor.matches(outline, tree.root_node(), src.as_bytes());
+    while let Some(m) = matches.next() {
+        let mut item = None;
+        let mut name = None;
+        for c in m.captures() {
+            match names[c.index as usize] {
+                "item" => item = Some(c.node),
+                "name" => name = Some(c.node),
+                _ => {}
+            }
+        }
+        if let Some(node) = item
+            && !found.iter().any(|(n, _)| n.id() == node.id())
+        {
+            found.push((node, name));
+        }
+    }
+    found.sort_by_key(|(n, _)| (n.start_byte(), std::cmp::Reverse(n.end_byte())));
+    let mut out = Vec::new();
+    let mut open: Vec<usize> = Vec::new();
+    for (node, name_node) in found {
+        while open.last().is_some_and(|&end| end <= node.start_byte()) {
+            open.pop();
+        }
+        let label = name_node
+            .map(|n| text(n, src).trim().lines().next().unwrap_or("").trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| node.kind().to_owned());
+        let k = node.kind();
+        let kind = if k.contains("class") || k.contains("struct") {
+            SymbolKind::Class
+        } else if k.contains("interface") {
+            SymbolKind::Interface
+        } else if k.contains("method") {
+            SymbolKind::Method
+        } else if k.contains("module") {
+            SymbolKind::Module
+        } else if k.contains("element") {
+            SymbolKind::Key
+        } else {
+            SymbolKind::Function
+        };
+        push(&mut out, node, label, kind, open.len(), name_node);
+        open.push(node.end_byte());
     }
     out
 }

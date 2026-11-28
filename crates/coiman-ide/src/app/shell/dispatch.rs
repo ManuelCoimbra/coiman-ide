@@ -1,7 +1,6 @@
 //! Running commands: the command switch, keyboard shortcuts and line edits.
 
 use crate::commands::Command;
-use crate::document::Document;
 use crate::edit_ops::{self, CaseTransform, Edit, Sel};
 use crate::settings;
 use crate::ui::editor_view::{ZoomPart, editor_id};
@@ -404,10 +403,16 @@ impl CodeApp {
             Command::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
 
             Command::ToggleLineComment => {
-                let ext = self.docs.get(self.active).map(Document::extension).unwrap_or_default();
-                match edit_ops::comment_token(&ext) {
-                    Some(token) => self.apply_edit(|t, s| Some(edit_ops::toggle_line_comment(t, s, token))),
-                    None => self.status = Some("No line comment syntax for this language".to_owned()),
+                let (path, ext) =
+                    self.docs.get(self.active).map(|d| (d.path.clone(), d.extension())).unwrap_or_default();
+                if let Some(token) = edit_ops::comment_token_for(path.as_deref(), &ext) {
+                    self.apply_edit(|t, s| Some(edit_ops::toggle_line_comment(t, s, token)));
+                } else if let Some((open, close)) =
+                    coiman_core::extensions::zed::languages::active_block_comment(path.as_deref(), &ext)
+                {
+                    self.apply_edit(|t, s| Some(edit_ops::toggle_block_comment(t, s, &open, &close)));
+                } else {
+                    self.status = Some("No line comment syntax for this language".to_owned());
                 }
             }
             Command::MoveLinesUp => self.apply_edit(|t, s| edit_ops::move_lines(t, s, false)),
@@ -542,7 +547,6 @@ impl CodeApp {
                 }
                 self.palette.show_picker(PickerKind::Theme, labels, &current, "Select Color Theme");
             }
-            Command::BrowseOpenVsxThemes => self.show_open_vsx(),
             Command::SelectIconTheme => {
                 let packs = coiman_core::appearance::file_icons::packs();
                 let current = packs
@@ -567,8 +571,6 @@ impl CodeApp {
             Command::GitResolveConflicts => self.show_merge_conflicts(),
             Command::MarkdownPreview => self.toggle_markdown_preview(),
             Command::ToggleSvgPreview => self.toggle_svg_preview(),
-            Command::ImportFromVsCode => self.import_from_vscode(),
-            Command::VsCodeCompatibility => self.vscode_compatibility(ctx),
             Command::TakeTour => self.start_tour(),
             Command::NewSampleProject => self.new_sample_project(),
             Command::ChooseBackgroundImage => {
@@ -821,7 +823,6 @@ impl CodeApp {
                     self.clear_recent();
                 }
             }
-            PickerKind::VsCodeImport => self.picked_vscode_import(ctx, label),
             PickerKind::MavenGoal => self.picked_maven_goal(ctx, label),
             PickerKind::MavenFound => self.picked_maven_found(label),
             PickerKind::MavenScope => self.picked_maven_scope(label),

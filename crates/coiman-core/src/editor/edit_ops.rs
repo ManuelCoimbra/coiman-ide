@@ -153,11 +153,62 @@ pub fn indent_lines(text: &str, sel: Sel, outdent: bool, tab: &str) -> Edit {
 
 /// Line comment token for a file extension, if the language has one.
 pub fn comment_token(ext: &str) -> Option<&'static str> {
+    comment_token_for(None, ext)
+}
+
+/// Line comment token for a file path/extension, checking built-in languages and Zed extensions.
+pub fn comment_token_for(path: Option<&std::path::Path>, ext: &str) -> Option<&'static str> {
     use crate::language::lsp::registry::by_extension;
     if let Some(token) = by_extension(ext, true).and_then(|l| l.comment) {
         return Some(token);
     }
-    built_in_comment_token(ext).or_else(|| by_extension(ext, false).and_then(|l| l.comment))
+    built_in_comment_token(ext)
+        .or_else(|| {
+            crate::extensions::zed::languages::active_line_comment(path, ext)
+                .map(|s| crate::language::syntax::intern_language_name(&s))
+        })
+        .or_else(|| by_extension(ext, false).and_then(|l| l.comment))
+}
+
+/// Toggles a block comment `(open, close)` around the selection (or the current line if empty).
+pub fn toggle_block_comment(text: &str, sel: Sel, open: &str, close: &str) -> Edit {
+    let (lo, hi) = (sel.0.min(sel.1), sel.0.max(sel.1));
+    let (a, b) = if lo == hi {
+        let starts = line_starts(text);
+        let line = line_of(&starts, lo);
+        let s = starts[line];
+        let e = starts.get(line + 1).map(|&n| n - 1).unwrap_or_else(|| char_len(text));
+        (s, e)
+    } else {
+        (lo, hi)
+    };
+    let byte_at = |ci: usize| text.char_indices().nth(ci).map_or(text.len(), |(b, _)| b);
+    let (ba, bb) = (byte_at(a), byte_at(b));
+    let slice = &text[ba..bb];
+    let trimmed = slice.trim();
+    if trimmed.starts_with(open.trim_end()) && trimmed.ends_with(close.trim_start()) {
+        let inner = trimmed
+            .strip_prefix(open)
+            .or_else(|| trimmed.strip_prefix(open.trim_end()))
+            .unwrap_or(trimmed);
+        let inner = inner
+            .strip_suffix(close)
+            .or_else(|| inner.strip_suffix(close.trim_start()))
+            .unwrap_or(inner);
+        let lead = &slice[..slice.len() - slice.trim_start().len()];
+        let trail = &slice[slice.trim_end().len()..];
+        let replacement = format!("{lead}{inner}{trail}");
+        let mut out = text.to_owned();
+        out.replace_range(ba..bb, &replacement);
+        let new_end = a + char_len(&replacement);
+        Edit { sel: if sel.0 == sel.1 { (new_end, new_end) } else { (a, new_end) }, text: out }
+    } else {
+        let mut out = text.to_owned();
+        let replacement = format!("{open}{slice}{close}");
+        out.replace_range(ba..bb, &replacement);
+        let new_end = a + char_len(&replacement);
+        Edit { sel: if sel.0 == sel.1 { (new_end, new_end) } else { (a, new_end) }, text: out }
+    }
 }
 
 fn built_in_comment_token(ext: &str) -> Option<&'static str> {

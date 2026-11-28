@@ -154,8 +154,6 @@ pub(crate) struct CompletionEntry {
     item: lt::CompletionItem,
     /// Filled in by the server (`completionItem/resolve`).
     resolved: bool,
-    /// From a companion server (ESLint, Tailwind CSS), not the file's own.
-    companion: bool,
 }
 
 pub(crate) struct Completion {
@@ -244,10 +242,9 @@ pub(crate) struct LspState {
     code_actions: Vec<lt::CodeActionOrCommand>,
     /// Actions made here (getters, NULL checks), shown with the server's when it answers.
     local_actions: Vec<lt::CodeActionOrCommand>,
-    /// Code actions asked for: whether the main server's answer is still to come, how
-    /// many companions' are, and whether the list has been shown.
+    /// Code actions asked for: whether the main server's answer is still to come,
+    /// and whether the list has been shown.
     actions_main_waiting: bool,
-    actions_companions_waiting: usize,
     actions_shown: bool,
     /// A line known to offer actions, and whether any is a fix.
     bulb: Option<(BulbKey, bool)>,
@@ -612,9 +609,6 @@ impl CodeApp {
     }
 
     pub(crate) fn lsp_did_save(&mut self, i: usize) {
-        if let Some(path) = self.docs.get(i).and_then(|d| d.path.clone()) {
-            self.companion_saved(&path);
-        }
         if let Some((ci, uri)) = self.sync_doc(i) {
             self.lsp.clients[ci].did_save(&uri);
         }
@@ -943,10 +937,7 @@ impl CodeApp {
             .map(|d| (d.range.start.line, d.code.clone()))
             .collect();
         all.retain(|d| d.source.as_deref() != Some("rustc") || !own.contains(&(d.range.start.line, d.code.clone())));
-        all.extend(self.companion_problems(&k));
-        if self.settings.vscode_extensions_enabled() {
-            all.extend(self.ext_diagnostics.get(path).into_iter().flatten().cloned());
-        }
+        all.extend(self.zed_diagnostics_for(&k));
         all.extend(self.plugin_problems(&k));
         all.extend(self.run_problems(&k));
         all.extend(self.constant_problems(&k));
@@ -975,6 +966,7 @@ impl CodeApp {
     /// Every file with diagnostics, from both sources.
     fn all_diagnostics(&self) -> Vec<(PathBuf, Vec<lt::Diagnostic>)> {
         let mut plugin_paths = self.plugin_problem_paths();
+        plugin_paths.extend(self.zed_diagnostic_paths());
         plugin_paths.extend(self.run_problem_paths());
         plugin_paths.extend(self.constant_problem_paths());
         plugin_paths.extend(self.likely_problem_paths());
@@ -1263,29 +1255,6 @@ impl CodeApp {
             Some(c) => json!({ "triggerKind": 2, "triggerCharacter": c.to_string() }),
             None => json!({ "triggerKind": 1 }),
         };
-        let ext_params = if self.ext_host.running() {
-            doc.path
-                .as_deref()
-                .and_then(coiman_core::language::lsp::convert::uri_from_path)
-                .zip(coiman_core::language::lsp::language_id(&doc.extension()))
-                .map(|(uri, language)| {
-                    let line = doc.buffer.char_to_line(head);
-                    let line_start = doc.buffer.line_start(line);
-                    let character = doc.buffer.slice_string(line_start, head).encode_utf16().count();
-                    json!({
-                        "kind": "completion", "uri": uri.to_string(), "languageId": language,
-                        "text": doc.text(), "position": { "line": line, "character": character },
-                    })
-                })
-        } else {
-            None
-        };
-        let asked = self.companion_completion(i, head, &context);
-        if let Some(params) = ext_params
-            && let Some(id) = self.ext_host.request("invoke", params)
-        {
-            self.ext_requests.insert(id, crate::app::extensions::host::Request::Completion { uid });
-        }
         self.lsp.next_completion = self.lsp.next_completion.wrapping_add(1);
         let id = self.lsp.next_completion;
         let request = CompletionRequest { id, version, head, trigger };
@@ -1299,7 +1268,7 @@ impl CodeApp {
                 p
             },
         );
-        if !sent && asked == 0 {
+        if !sent {
             return;
         }
         match &mut self.lsp.completion {
@@ -1391,7 +1360,7 @@ impl CodeApp {
                     sort_text: Some(format!("{n:05}")),
                     ..Default::default()
                 };
-                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item, resolved: true, companion: false }
+                CompletionEntry { label: s.label, detail: s.detail.to_owned(), item, resolved: true }
             })
             .collect();
         self.lsp.completion = Some(Completion {
@@ -1423,7 +1392,6 @@ impl CodeApp {
             _ => (false, Vec::new()),
         };
         let resolved = &c.resolved;
-        let from_companions: Vec<CompletionEntry> = c.entries.drain(..).filter(|e| e.companion).collect();
         c.entries = items
             .into_iter()
             .map(|item| {
@@ -1440,69 +1408,13 @@ impl CodeApp {
                         detail,
                         item: done.clone(),
                         resolved: true,
-                        companion: false,
                     },
-                    None => {
-                        CompletionEntry { label: item.label.clone(), detail, item, resolved: false, companion: false }
-                    }
+                    None => CompletionEntry { label: item.label.clone(), detail, item, resolved: false },
                 }
             })
             .collect();
-        c.entries.extend(from_companions);
         c.incomplete = incomplete;
         c.waiting = false;
-        c.filtered_for = (u64::MAX, 0);
-        self.refilter_completion();
-    }
-
-    /// A companion server's completions joined to the list (replacing its earlier ones).
-    pub(crate) fn add_companion_completions(&mut self, uid: u64, items: Vec<lt::CompletionItem>) {
-        if items.is_empty() {
-            return;
-        }
-        // The file's own server may have answered first, with nothing, and closed the
-        // list: it opens again, from where the companion's edits start.
-        if self.lsp.completion.as_ref().is_none_or(|c| c.uid != uid) {
-            let Some(doc) = self.docs.get(self.active).filter(|d| d.uid == uid) else { return };
-            let head = doc.buffer.primary().head;
-            let start = items
-                .iter()
-                .find_map(|i| match &i.text_edit {
-                    Some(lt::CompletionTextEdit::Edit(e)) => Some(e.range.start),
-                    Some(lt::CompletionTextEdit::InsertAndReplace(e)) => Some(e.insert.start),
-                    None => None,
-                })
-                .map(|p| convert::chars_of(doc.buffer.rope(), lt::Range { start: p, end: p }).0)
-                .filter(|s| *s <= head)
-                .unwrap_or_else(|| word_start(doc, head));
-            self.lsp.completion = Some(Completion {
-                uid,
-                start,
-                entries: Vec::new(),
-                shown: Vec::new(),
-                selected: 0,
-                incomplete: true,
-                waiting: false,
-                filtered_for: (u64::MAX, 0),
-                scroll_to_selected: true,
-                docs_asked: None,
-                selected_label: None,
-                requested: None,
-                triggered: false,
-                resolved: HashMap::new(),
-            });
-        }
-        let Some(c) = self.lsp.completion.as_mut().filter(|c| c.uid == uid) else { return };
-        c.entries.retain(|e| !e.companion);
-        let known: HashSet<String> = c.entries.iter().map(|e| e.label.clone()).collect();
-        c.entries.extend(items.into_iter().filter(|i| !known.contains(&i.label)).map(|item| {
-            let detail = item.detail.clone().unwrap_or_default();
-            // Asked of no one for more: the file's own server doesn't know it.
-            CompletionEntry { label: item.label.clone(), detail, item, resolved: true, companion: true }
-        }));
-        if !c.entries.iter().any(|e| !e.companion) {
-            c.waiting = false;
-        }
         c.filtered_for = (u64::MAX, 0);
         self.refilter_completion();
     }
@@ -1686,8 +1598,7 @@ impl CodeApp {
             && self.resolves_completions(i))
         .then(|| (c.uid, item.clone(), self.docs[i].buffer.line_start(self.docs[i].buffer.char_to_line(c.start))));
         // A folder in a path: what's in it comes next.
-        let into_folder = c.entries[idx].companion
-            && item.kind == Some(lt::CompletionItemKind::FOLDER)
+        let into_folder = item.kind == Some(lt::CompletionItemKind::FOLDER)
             && item.insert_text.as_deref().is_some_and(|t| t.ends_with('/'));
         let doc = &mut self.docs[i];
         let rope = doc.buffer.rope();
@@ -1758,7 +1669,7 @@ impl CodeApp {
         if let Some((uid, item, line_start)) = resolve_later {
             self.resolve_completion(i, uid, idx, &item, Some(line_start));
         }
-        if let Some(command) = item.command.filter(|_| !c.entries[idx].companion) {
+        if let Some(command) = item.command {
             let args = command.arguments.unwrap_or_default();
             self.request_for(
                 i,
@@ -1886,7 +1797,7 @@ impl CodeApp {
                     ..Default::default()
                 };
                 let detail = if folder { "folder" } else { "file" }.to_owned();
-                CompletionEntry { label: name, detail, item, resolved: true, companion: true }
+                CompletionEntry { label: name, detail, item, resolved: true }
             })
             .collect();
         if entries.is_empty() {
@@ -1944,16 +1855,12 @@ impl CodeApp {
             }
             return;
         }
-        let main = lsp_target(doc).and_then(|(p, _, k)| {
+        let Some((ci, _)) = lsp_target(doc).and_then(|(p, _, k)| {
             self.lsp.clients.iter().position(|c| serves(c, k, &p) && c.is_ready()).map(|ci| (ci, p))
-        });
-        // Servers from VS Code extensions complete too (Tailwind's class names).
-        let companion = self.companion_triggers(self.active);
-        if main.is_none() && companion.is_none() {
+        }) else {
             return;
-        }
-        let mut triggers = main.map(|(ci, _)| self.lsp.clients[ci].completion_triggers()).unwrap_or_default();
-        triggers.extend(companion.unwrap_or_default());
+        };
+        let triggers = self.lsp.clients[ci].completion_triggers();
         let open = self.lsp.completion.is_some();
         if let Some(ch) = typed.chars().last() {
             if triggers.contains(&ch) && self.settings.lsp.completion_trigger_characters {
@@ -2080,23 +1987,6 @@ impl CodeApp {
                     return;
                 }
                 self.lsp.hover_rest = Some((uid, pos, since, true));
-                if self.ext_host.running()
-                    && let Some(doc) = self.docs.get(self.active)
-                    && let Some(path) = doc.path.as_deref()
-                    && let Some(uri) = coiman_core::language::lsp::convert::uri_from_path(path)
-                    && let Some(language) = coiman_core::language::lsp::language_id(&doc.extension())
-                {
-                    let line = doc.buffer.char_to_line(pos);
-                    let line_start = doc.buffer.line_start(line);
-                    let character = doc.buffer.slice_string(line_start, pos).encode_utf16().count();
-                    let params = json!({
-                        "kind": "hover", "uri": uri.to_string(), "languageId": language,
-                        "text": doc.text(), "position": { "line": line, "character": character },
-                    });
-                    if let Some(id) = self.ext_host.request("invoke", params) {
-                        self.ext_requests.insert(id, crate::app::extensions::host::Request::Hover { uid, pos });
-                    }
-                }
                 let i = self.active;
                 if self.doc_client(i).is_some() {
                     let anchor = Some(pointer);
@@ -2121,36 +2011,6 @@ impl CodeApp {
                 }
             }
             _ => {}
-        }
-    }
-
-    /// Adds hover text from an extension host, without a pointer anchor.
-    pub(crate) fn add_host_hover(&mut self, uid: u64, pos: usize, markdown: String) {
-        if markdown.is_empty() {
-            return;
-        }
-        let anchor = self.lsp.cursor_rect.map(|r| r.left_bottom()).unwrap_or(Pos2::ZERO);
-        if let Some(hover) = self.lsp.hover.as_mut().filter(|h| h.uid == uid && h.pos == pos) {
-            if !hover.markdown.is_empty() {
-                hover.markdown.push_str("\n\n");
-            }
-            hover.markdown.push_str(&markdown);
-        } else {
-            self.lsp.hover =
-                Some(Hover { uid, version: 0, pos, anchor, markdown, problems: Vec::new(), sticky: None, rect: None });
-        }
-    }
-
-    /// Applies formatting edits from an extension host.
-    pub(crate) fn apply_host_format(&mut self, uid: u64, edits: Vec<lt::TextEdit>, save: bool) {
-        if edits.is_empty() {
-            return;
-        }
-        if let Some(i) = self.doc_index(uid) {
-            self.apply_text_edits(i, edits);
-            if save {
-                self.save_doc(i);
-            }
         }
     }
 
@@ -2188,24 +2048,6 @@ impl CodeApp {
         let pos = pos.unwrap_or(doc.buffer.primary().head);
         let word = doc.buffer.word_at(pos).map(|(a, b)| doc.buffer.slice_string(a, b)).unwrap_or_default();
         let references = title == "References";
-        if self.ext_host.running()
-            && let Some(uri) = doc.path.as_deref().and_then(convert::uri_from_path)
-        {
-            let position = convert::position_of(doc.buffer.rope(), pos);
-            let kind = if references { "reference" } else { "definition" };
-            let mut p = json!({
-                "kind": kind,
-                "uri": uri.as_str(),
-                "position": position,
-            });
-            if references {
-                p["context"] = json!({ "includeDeclaration": true });
-            }
-            if let Some(id) = self.ext_host.request("invoke", p) {
-                self.ext_requests
-                    .insert(id, crate::app::extensions::host::Request::Locations { title, word: word.clone() });
-            }
-        }
         self.request_for(i, method, Pending::Locations { title, word }, |doc, td| {
             let mut p = Self::position_params(doc, td, pos);
             if references {
@@ -2324,19 +2166,11 @@ impl CodeApp {
         let Some((range, diagnostics)) = self.code_action_target(i) else { return };
         self.lsp.local_actions = self.local_code_actions(i);
         self.lsp.actions_shown = false;
-        self.companions.owners.clear();
-        self.lsp.actions_companions_waiting = self.companion_code_actions(i, range);
-        // The companions' problems aren't the main server's to fix.
-        let diagnostics: Vec<lt::Diagnostic> = diagnostics
-            .into_iter()
-            .filter(|d| !matches!(d.source.as_deref(), Some("ESLint" | "eslint" | "Tailwind CSS" | "tailwindcss")))
-            .collect();
         let sent = self.request_for(i, "textDocument/codeAction", Pending::CodeActions, |_, td| {
             json!({ "textDocument": td, "range": range, "context": { "diagnostics": diagnostics, "triggerKind": 1 } })
         });
         self.lsp.actions_main_waiting = sent;
-        // No server to ask: what's made here (and the companions') is all there is.
-        if !sent && self.lsp.actions_companions_waiting == 0 {
+        if !sent {
             self.on_code_actions(Value::Null);
         }
     }
@@ -2425,11 +2259,7 @@ impl CodeApp {
         self.lsp.bulb_asked = Some(key);
         // Actions made here light it too, a fix in yellow.
         let local = self.local_code_actions(i);
-        let line = self.docs.get(i).map_or(0, |d| d.buffer.char_to_line(d.buffer.primary().head)) as u32;
-        // A companion's problem on the line: it offers fixes for it.
-        let companion_fix = self.companion_problem_on(i, line);
-        self.lsp.bulb_local = (!local.is_empty() || companion_fix).then(|| {
-            companion_fix ||
+        self.lsp.bulb_local = (!local.is_empty()).then(|| {
             local.iter().any(
                 |a| matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.kind == Some(lt::CodeActionKind::QUICKFIX)),
             )
@@ -2484,31 +2314,6 @@ impl CodeApp {
         self.lsp.bulb = Some((key, fix || self.lsp.bulb_local == Some(true)));
     }
 
-    /// A companion's code actions: added to the list showing, or kept for it.
-    pub(crate) fn add_companion_actions(&mut self, actions: Vec<lt::CodeActionOrCommand>) {
-        self.lsp.actions_companions_waiting = self.lsp.actions_companions_waiting.saturating_sub(1);
-        let usable = actions
-            .into_iter()
-            .filter(|a| !matches!(a, lt::CodeActionOrCommand::CodeAction(c) if c.disabled.is_some()));
-        if self.lsp.actions_shown {
-            let before = self.lsp.code_actions.len();
-            self.lsp.code_actions.extend(usable);
-            if self.lsp.code_actions.len() > before {
-                let titles: Vec<String> = self.lsp.code_actions.iter().map(action_title).collect();
-                if self.palette.picker_kind() == Some(PickerKind::CodeAction) {
-                    self.palette.replace_picker_items(titles, Vec::new());
-                } else {
-                    self.palette.show_picker(PickerKind::CodeAction, titles, "", "Select a code action");
-                }
-            }
-            return;
-        }
-        self.lsp.local_actions.extend(usable);
-        if !self.lsp.actions_main_waiting && self.lsp.actions_companions_waiting == 0 {
-            self.on_code_actions(Value::Null);
-        }
-    }
-
     fn on_code_actions(&mut self, value: Value) {
         self.lsp.actions_main_waiting = false;
         self.lsp.actions_shown = true;
@@ -2557,25 +2362,6 @@ impl CodeApp {
         }) else {
             return;
         };
-        // A companion's: its edit applies here, its command goes back to it.
-        if let Some(owner) = self.companions.owners.get(title).copied() {
-            let command = match action {
-                lt::CodeActionOrCommand::Command(c) => Some(c),
-                lt::CodeActionOrCommand::CodeAction(a) => {
-                    if let Some(edit) = &a.edit
-                        && let Err(e) = self.apply_workspace_edit(edit)
-                    {
-                        self.status = Some(format!("Code action failed: {e}"));
-                        return;
-                    }
-                    a.command
-                }
-            };
-            if let Some(cmd) = command {
-                self.companion_execute(owner, cmd);
-            }
-            return;
-        }
         let command = match action {
             lt::CodeActionOrCommand::Command(c) => Some(c),
             lt::CodeActionOrCommand::CodeAction(a) => {
@@ -2612,40 +2398,17 @@ impl CodeApp {
                         .is_some_and(|f| !matches!(f, lt::OneOf::Left(false)))
             })
         });
-        if !can_format && !self.ext_host.running() {
+        if !can_format {
             return false;
         }
-        let host_params = if self.ext_host.running() {
-            doc.path
-                .as_deref()
-                .and_then(coiman_core::language::lsp::convert::uri_from_path)
-                .zip(coiman_core::language::lsp::language_id(&doc.extension()))
-                .map(|(uri, language)| {
-                    let indent = doc.buffer.indent;
-                    json!({
-                        "kind": "formatting", "uri": uri.to_string(), "languageId": language,
-                        "text": doc.text(),
-                        "options": { "tabSize": indent.size, "insertSpaces": !indent.use_tabs },
-                    })
-                })
-        } else {
-            None
-        };
         let sent = self.request_for(i, "textDocument/formatting", Pending::Format { uid, version, save }, |doc, td| {
             let indent = doc.buffer.indent;
             json!({ "textDocument": td, "options": { "tabSize": indent.size, "insertSpaces": !indent.use_tabs } })
         });
-        let mut host_sent = false;
-        if let Some(params) = host_params
-            && let Some(id) = self.ext_host.request("invoke", params)
-        {
-            self.ext_requests.insert(id, crate::app::extensions::host::Request::Format { uid, save });
-            host_sent = true;
-        }
         if sent && save {
             self.lsp.format_save = Some((uid, ctx.input(|inp| inp.time)));
         }
-        sent || host_sent
+        sent
     }
 
     /// Format-on-save finished (or failed): apply the edits, then save.
@@ -3176,13 +2939,6 @@ fn csharp_nullable(path: &Path, source: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn action_title(a: &lt::CodeActionOrCommand) -> String {
-    match a {
-        lt::CodeActionOrCommand::Command(c) => c.title.clone(),
-        lt::CodeActionOrCommand::CodeAction(c) => c.title.clone(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3214,7 +2970,6 @@ mod tests {
                     detail: String::new(),
                     item: lt::CompletionItem::new_simple(label, String::new()),
                     resolved: false,
-                    companion: false,
                 }
             })
             .collect();
@@ -3350,7 +3105,6 @@ mod tests {
                 detail: String::new(),
                 item,
                 resolved: false,
-                companion: false,
             }],
             shown: vec![0],
             selected: 0,

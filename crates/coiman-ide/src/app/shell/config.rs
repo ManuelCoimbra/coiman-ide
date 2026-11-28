@@ -190,6 +190,7 @@ impl CodeApp {
         let first = !self.settings_applied;
         let old = std::mem::replace(&mut self.settings, loaded.settings);
         let new = self.settings.clone();
+        coiman_core::extensions::zed::set_enabled_global(new.plugins.zed_extensions);
         // The workspace's other folders: shown, indexed and searched beside the project.
         let extra = self.explorer.root.as_deref().map(|r| new.workspace.resolved(r)).unwrap_or_default();
         self.explorer.set_extra_roots(extra.clone());
@@ -238,6 +239,9 @@ impl CodeApp {
             theme::set_dock(new.workbench.ui == "dock");
             theme::set_islands(ctx, new.workbench.ui != "classic");
         }
+        if first || new.plugins.zed_extensions != old.plugins.zed_extensions {
+            coiman_core::extensions::zed::set_enabled_global(new.plugins.zed_extensions);
+        }
         if first || new.workbench.color_theme != old.workbench.color_theme {
             let name = self.theme_setting(ctx);
             // The built-in theme needs no scan of installed VS Code themes.
@@ -280,6 +284,12 @@ impl CodeApp {
         }
         self.keymap = keymap;
         self.settings_applied = true;
+        if !first && old.workbench.agents_enabled != new.workbench.agents_enabled {
+            self.sync_agents_extension(ctx);
+        }
+        if first || old.plugins.zed_extensions != new.plugins.zed_extensions {
+            self.reload_zed_extensions(ctx);
+        }
         if !problems.is_empty() {
             self.status = Some(format!("Settings: {}", problems.join("; ")));
         }
@@ -333,18 +343,6 @@ impl CodeApp {
             self.docs[i].uid = uid;
         }
         self.reload_settings(ctx);
-        if !self.settings.vscode_extensions_enabled() {
-            let _ = self.ext_host.shutdown();
-            self.ext_views.clear();
-            self.active_ext_view = None;
-            if matches!(&self.active_view, Some(crate::app::views::view_tabs::ActiveView::Webview(_))) {
-                self.active_view = None;
-            }
-            self.ext_webviews.clear();
-            self.ext_decorations.clear();
-            self.ext_diagnostics.clear();
-            self.ext_host_at = None;
-        }
         Ok(())
     }
 

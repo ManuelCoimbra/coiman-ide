@@ -8,7 +8,7 @@ use crate::editor::buffer::{Buffer, Change, Selection};
 use crate::editor::encoding;
 use crate::editor::structure::{self, FoldRange, Symbol};
 use crate::language::highlight::Highlighter;
-use crate::language::syntax::{Lang, TsState};
+use crate::language::syntax::{self, Lang, TsState};
 
 /// Files above either limit open in large-file mode: no syntax highlighting.
 const LARGE_FILE_BYTES: usize = 16 * 1024 * 1024;
@@ -129,13 +129,29 @@ impl Document {
         doc
     }
 
-    /// Picks tree-sitter for supported languages, syntect otherwise; nothing in large-file mode.
+    /// Re-evaluates language grammar and highlighting after Zed/plugin changes.
+    pub fn refresh_language(&mut self) {
+        let ext = extension_of(self.path.as_deref());
+        self.set_language(&ext);
+    }
+
+    /// Picks tree-sitter for built-in or Zed extension languages, syntect otherwise;
+    /// nothing in large-file mode.
     fn set_language(&mut self, ext: &str) {
-        self.ts = Lang::from_extension(ext).filter(|_| !self.large).and_then(TsState::new);
+        let first_line = (self.buffer.len_lines() > 0).then(|| self.buffer.line_text(0));
+        self.ts = if self.large {
+            None
+        } else if let Some(builtin) = Lang::from_extension(ext) {
+            TsState::new(builtin)
+        } else {
+            syntax::zed_syntax_for_document(self.path.as_deref(), ext, first_line.as_deref())
+                .map(TsState::new_zed)
+        };
         if self.ts.is_some() {
             self.buffer.track_syntax_edits();
         }
         self.highlighter = Highlighter::new(ext, !self.large && self.ts.is_none());
+        self.structure = Structure::default();
     }
 
     pub fn untitled(index: usize) -> Self {
@@ -329,7 +345,15 @@ impl Document {
             let (folds, symbols) = match &self.ts {
                 Some(ts) => match ts.current_tree(&self.buffer) {
                     Some(tree) => {
-                        (structure::folds_from_tree(&tree, ts.lang), structure::symbols(&tree, &self.text(), ts.lang))
+                        let folds = structure::folds_from_syntax_tree(&tree, ts.builtin_lang());
+                        let syms = if let Some(lang) = ts.builtin_lang() {
+                            structure::symbols(&tree, &self.text(), lang)
+                        } else if let Some(outline) = ts.zed_outline() {
+                            structure::zed_symbols(&tree, &self.text(), outline)
+                        } else {
+                            Vec::new()
+                        };
+                        (folds, syms)
                     }
                     None => (Vec::new(), Vec::new()),
                 },
@@ -367,7 +391,19 @@ impl Document {
     }
 
     pub fn language_name(&self) -> &'static str {
-        language_name(&self.extension())
+        let ext = self.extension();
+        let name = language_name(&ext);
+        if name != "Plain Text" {
+            return name;
+        }
+        let first_line = (self.buffer.len_lines() > 0).then(|| self.buffer.line_text(0));
+        crate::extensions::zed::languages::active_language_name(
+            self.path.as_deref(),
+            &ext,
+            first_line.as_deref(),
+        )
+        .map(|n| syntax::intern_language_name(&n))
+        .unwrap_or(name)
     }
 
     pub fn line_ending(&self) -> &'static str {

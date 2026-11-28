@@ -1,8 +1,5 @@
-//! Plugins, and what is imported from VS Code.
+//! Coiman plugins and Zed extensions.
 
-pub(crate) mod host;
-pub(crate) mod marketplace;
 pub(crate) mod mcp_ui;
-pub(crate) mod open_vsx;
 pub(crate) mod plugins;
-pub(crate) mod vscode_import;
+pub(crate) mod zed;

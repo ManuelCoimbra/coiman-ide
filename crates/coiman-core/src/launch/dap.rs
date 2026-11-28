@@ -594,16 +594,7 @@ pub fn find_codelldb(configured: &str) -> Option<Adapter> {
     if let Some(a) = install_dir().and_then(|d| adapter_in(&d.join("extension"))) {
         return Some(a);
     }
-    let home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"))?;
-    let extensions = Path::new(&home).join(".vscode").join("extensions");
-    let mut found: Vec<PathBuf> = std::fs::read_dir(extensions)
-        .ok()?
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("vadimcn.vscode-lldb-")))
-        .collect();
-    found.sort();
-    found.iter().rev().find_map(|p| adapter_in(p))
+    None
 }
 
 /// The CodeLLDB release package for this platform.

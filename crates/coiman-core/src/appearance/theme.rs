@@ -549,38 +549,47 @@ pub fn set_current(theme: Theme) {
 fn scopes_for_capture(capture: &str) -> &'static [&'static str] {
     match capture {
         "comment" => &["comment"],
-        "comment.documentation" => &["comment.block.documentation", "comment"],
+        "comment.documentation" | "comment.doc" => &["comment.block.documentation", "comment"],
         "string.special.key" => {
             &["support.type.property-name.json", "support.type.property-name", "variable.other.property"]
         }
+        "string.regex" => &["string.regexp", "string"],
         "string.escape" | "escape" => &["constant.character.escape"],
-        "string" | "string.special" | "character" => &["string"],
+        "string" | "string.special" | "character" | "constant.character" => &["string"],
         "number" => &["constant.numeric"],
         "boolean" => &["constant.language.boolean", "constant.language"],
         "keyword" => &["keyword", "storage.type", "storage"],
+        "preproc" | "keyword.directive" => &["meta.preprocessor", "keyword.control.directive", "keyword"],
         "function" | "function.method" => &["entity.name.function", "support.function"],
         "function.macro" => &["entity.name.function.macro", "support.function", "entity.name.function"],
-        "type" | "type.builtin" => &["entity.name.type", "support.type", "storage.type"],
+        "type" | "type.builtin" | "namespace" => &["entity.name.type", "support.type", "storage.type"],
         // Kinds of type, each falling back to types in general.
         "type.class" => &["entity.name.type.class", "support.class", "entity.name.class"],
         "type.struct" => &["entity.name.type.struct", "storage.type.struct"],
         "type.interface" => &["entity.name.type.interface", "entity.other.inherited-class"],
         "type.enum" => &["entity.name.type.enum"],
         "type.parameter" => &["entity.name.type.parameter"],
-        "constant.enum" => &["variable.other.enummember", "variable.other.constant", "constant"],
-        "constructor" => &["entity.name.type", "entity.name.function"],
-        "variable" => &["variable"],
-        "variable.parameter" => &["variable.parameter", "variable"],
+        "constant.enum" | "variant" | "enum" => &["variable.other.enummember", "variable.other.constant", "constant"],
+        "constructor" | "tag.component" => &["support.class.component", "entity.name.type", "entity.name.function"],
+        "variable" | "embedded" => &["variable"],
+        "variable.parameter" | "lifetime" | "label" => &["variable.parameter", "variable"],
         "variable.builtin" => &["variable.language"],
         "property" => &["variable.other.property", "support.type.property-name", "variable"],
         "constant" => &["variable.other.constant", "constant"],
         "constant.builtin" => &["constant.language"],
-        "attribute" => &["entity.other.attribute-name", "meta.attribute"],
+        "attribute" | "tag.attribute" | "tag.property" => {
+            &["entity.other.attribute-name", "meta.attribute", "variable.other.property"]
+        }
         "operator" => &["keyword.operator"],
         "punctuation.special" => &["punctuation.definition", "punctuation"],
-        "text.title" => &["markup.heading", "entity.name.section"],
+        "punctuation.bracket" | "punctuation.delimiter" | "punctuation" | "tag.punctuation" => {
+            &["punctuation.definition.tag", "punctuation.bracket", "punctuation.delimiter", "punctuation"]
+        }
+        "text.title" | "title" => &["markup.heading", "entity.name.section"],
         "text.literal" => &["markup.inline.raw", "markup.raw"],
-        "text.uri" | "text.reference" => &["markup.underline.link"],
+        "text.uri" | "text.reference" | "link_text" | "link_uri" => &["markup.underline.link"],
+        "text.emphasis" | "emphasis" => &["markup.italic"],
+        "text.strong" | "emphasis.strong" => &["markup.bold"],
         "tag" => &["entity.name.tag"],
         _ => &[],
     }
@@ -732,7 +741,7 @@ pub fn strip_jsonc(src: &str) -> String {
 }
 
 /// "#rgb", "#rgba", "#rrggbb" or "#rrggbbaa".
-fn parse_color(s: &str) -> Option<Color> {
+pub(crate) fn parse_color(s: &str) -> Option<Color> {
     let hex = s.strip_prefix('#')?;
     let digits: Vec<u8> = hex.chars().map(|c| c.to_digit(16).map(|d| d as u8)).collect::<Option<_>>()?;
     let (r, g, b, a) = match digits.len() {
@@ -814,6 +823,15 @@ fn read_theme_file(path: &Path, depth: usize) -> Result<RawTheme, String> {
 /// Loads a VS Code color theme. `ui_theme` is the manifest's "vs"/"vs-dark"/"hc-black"
 /// hint, used when the file has no `type`.
 pub fn load_vscode_theme(path: &Path, ui_theme: Option<&str>) -> Result<Theme, String> {
+    if let Ok(text) = std::fs::read_to_string(path)
+        && let Ok(val) = serde_json::from_str::<Value>(&strip_jsonc(&text))
+        && crate::extensions::zed::themes::looks_like_zed_theme(&val)
+    {
+        return crate::extensions::zed::themes::load_theme(
+            path,
+            ui_theme.and_then(|u| u.strip_prefix("zed:")),
+        );
+    }
     let raw = read_theme_file(path, 0)?;
     let kind = raw.kind.as_deref().or(ui_theme).unwrap_or("dark");
     let dark = !matches!(kind, "light" | "vs" | "hc-light");
@@ -898,34 +916,13 @@ pub struct ThemeEntry {
     pub ui_theme: Option<String>,
 }
 
-/// VS Code's bundled extensions folder (newest install) and the user's extensions.
-fn vscode_extension_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Some(local) = std::env::var_os("LOCALAPPDATA") {
-        let install = PathBuf::from(local).join("Programs").join("Microsoft VS Code");
-        let newest = std::fs::read_dir(&install).ok().and_then(|rd| {
-            rd.filter_map(Result::ok)
-                .map(|e| e.path().join("resources").join("app").join("extensions"))
-                .filter(|p| p.is_dir())
-                .max_by_key(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
-        });
-        dirs.extend(newest.or_else(|| Some(install.join("resources").join("app").join("extensions"))));
-    }
-    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
-        dirs.push(PathBuf::from(home).join(".vscode").join("extensions"));
-    }
-    dirs
-}
-
-/// Themes from installed VS Code (bundled + user extensions) and
-/// `<config dir>/themes/*.json`, deduplicated by label.
+/// Themes from Zed extensions, bundled themes, and `<config dir>/themes/*.json`,
+/// deduplicated by label.
 pub fn discover() -> Vec<ThemeEntry> {
     let mut out: Vec<ThemeEntry> = Vec::new();
-    for ext_root in vscode_extension_dirs() {
-        let Ok(rd) = std::fs::read_dir(&ext_root) else { continue };
-        for ext in rd.filter_map(Result::ok).map(|e| e.path()) {
-            out.extend(themes_in_extension(&ext));
-        }
+    if crate::extensions::zed::is_enabled_global() {
+        let active = crate::extensions::zed::registry::list_active();
+        out.extend(crate::extensions::zed::themes::discover_entries(&active));
     }
     out.extend(BUNDLED.iter().map(|(label, ui, file, _)| ThemeEntry {
         label: (*label).to_owned(),
@@ -947,37 +944,19 @@ pub fn discover() -> Vec<ThemeEntry> {
     out
 }
 
-fn themes_in_extension(ext: &Path) -> Vec<ThemeEntry> {
-    let read_json =
-        |p: PathBuf| std::fs::read_to_string(p).ok().and_then(|t| serde_json::from_str::<Value>(&strip_jsonc(&t)).ok());
-    let Some(pkg) = read_json(ext.join("package.json")) else { return Vec::new() };
-    let Some(themes) = pkg.pointer("/contributes/themes").and_then(Value::as_array) else { return Vec::new() };
-    let nls = read_json(ext.join("package.nls.json"));
-    themes
-        .iter()
-        .filter_map(|t| {
-            let path = ext.join(t.get("path")?.as_str()?);
-            let id = t.get("id").and_then(Value::as_str);
-            let mut label = t.get("label").and_then(Value::as_str).map(str::to_owned);
-            // "%key%" labels are localized through package.nls.json.
-            if let Some(key) = label.as_deref().and_then(|l| l.strip_prefix('%')).and_then(|l| l.strip_suffix('%')) {
-                label = nls
-                    .as_ref()
-                    .and_then(|n| n.get(key))
-                    .and_then(Value::as_str)
-                    .map(str::to_owned)
-                    .or(id.map(str::to_owned));
-            }
-            let label = label.or(id.map(str::to_owned))?;
-            Some(ThemeEntry { label, path, ui_theme: t.get("uiTheme").and_then(Value::as_str).map(str::to_owned) })
-        })
-        .collect()
-}
-
 /// Resolves the `workbench.color_theme` setting: a picker label, or a path to a
 /// theme file. Falls back to the built-in theme with an error message.
 pub fn resolve(name: &str, available: &[ThemeEntry]) -> (Theme, Option<String>) {
     if let Some(e) = available.iter().find(|e| e.label.eq_ignore_ascii_case(name)) {
+        if let Some(variant) = e.ui_theme.as_deref().and_then(|u| u.strip_prefix("zed:")) {
+            return match crate::extensions::zed::themes::load_theme(&e.path, Some(variant)) {
+                Ok(mut t) => {
+                    t.name = e.label.clone();
+                    (t, None)
+                }
+                Err(err) => (builtin(), Some(err)),
+            };
+        }
         return match load_vscode_theme(&e.path, e.ui_theme.as_deref()) {
             Ok(mut t) => {
                 t.name = e.label.clone();
@@ -1165,14 +1144,5 @@ mod tests {
         assert_eq!(capture_style(&t, "keyword"), Some((rgb(0x0000ff), false)));
         assert!(!syntect_theme(&t).scopes.is_empty());
         std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn installed_vscode_themes_load_when_present() {
-        // Only meaningful on a machine with VS Code; passes trivially otherwise.
-        for e in discover().iter().take(30) {
-            let r = load_vscode_theme(&e.path, e.ui_theme.as_deref());
-            assert!(r.is_ok(), "{}: {:?}", e.label, r.err());
-        }
     }
 }

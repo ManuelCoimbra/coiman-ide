@@ -22,7 +22,6 @@ const SNAP: f32 = 28.0;
 #[derive(Default)]
 pub(crate) struct Layout {
     pub(crate) saved: SavedLayout,
-    side: Settle,
     height: Settle,
     width: Settle,
     /// Goes up on Reset Layout: the panels get new ids, so egui forgets the sizes it kept.
@@ -79,12 +78,6 @@ impl Layout {
         }
     }
 
-    /// The side bar's width as drawn this frame (its outer rect, with any margin).
-    pub(crate) fn saw_side(&mut self, ctx: &egui::Context, width: f32) {
-        let released = ctx.input(|i| i.pointer.primary_released());
-        self.side.see(width, released, &mut self.saved.side_size, SIDE_WIDTH);
-    }
-
     /// The docked panel's size as drawn this frame.
     pub(crate) fn saw_panel(&mut self, ctx: &egui::Context, size: egui::Vec2, right: bool) {
         let released = ctx.input(|i| i.pointer.primary_released());
@@ -114,6 +107,8 @@ impl CodeApp {
             Command::ResetLayout => {
                 self.layout.saved = SavedLayout::default();
                 self.layout.generation += 1;
+                self.agents_width = 430.0;
+                self.right_bar_width = 300.0;
                 self.sheet_pinned = false;
                 self.rails.panel_right = false;
                 self.status = Some("Layout reset".to_owned());
