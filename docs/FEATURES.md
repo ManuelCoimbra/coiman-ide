@@ -661,7 +661,7 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture, Code Health, Project Docs and Project Metadata come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
+Architecture, Code Health, Project Docs, Project Metadata and Benchmarks come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
@@ -852,6 +852,8 @@ come with Coiman.
   [Project docs](#project-docs).
 - **Project Metadata** (`workspace-read`, `workspace-write`; no programs): the project's name,
   version and the like, edited in place; see [Project metadata](#project-metadata).
+- **Benchmarks** (`workspace-read`; programs `cargo`, `go`, `git`): each run of the project's
+  benchmarks kept with its commit; see [Benchmarks](#benchmarks).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
@@ -1334,6 +1336,25 @@ The **Project Docs** extension (Code analysis pack) reads the open folder's Mark
 - **Docs: Find Outdated Documents**: documents that name a file (in `inline code`, or by a link)
   that git changed after the document last was, each with both dates, the longest gap first.
   It reads one `git log` of the project, when `git` was approved at install.
+
+## Benchmarks
+
+The **Benchmarks** extension (Code analysis pack) keeps a history of the project's benchmark
+runs, in the **Benchmarks** panel (**Benchmarks: Show History**).
+
+- **Run benchmarks** (**Benchmarks: Run and Record**) runs `cargo bench --workspace` (Criterion's results,
+  or `#[bench]`'s on nightly Rust) or, in a Go module, `go test -bench`, showing what it prints
+  as it goes. A harness of the project's own is read too when it prints a table with a `p50`
+  column (Coiman's own `cargo bench` does): each row's p50 is its time. **Stop** stops it.
+- Each run is kept with the commit it was made at (`abc1234+` when there were changes not
+  committed), at most 100 runs per project, in the extension's own storage.
+- The latest run is shown against the one before: each benchmark's time, what it was, and the
+  change. Slower by more than the **threshold** (10% at first, set in the panel) is a
+  **regression**, in red, and a message says how many there were; faster by as much is green.
+- A plot shows each benchmark over the runs, as a percentage of its first run, so benchmarks of
+  very different lengths fit together.
+- **Compare** picks any two runs (by commit and time) and shows the same table between them.
+- **Forget runs…** clears this project's history, after asking.
 
 ## Project metadata
 

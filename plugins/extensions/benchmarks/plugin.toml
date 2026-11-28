@@ -1,0 +1,18 @@
+id = "coiman.benchmarks"
+name = "Benchmarks"
+version = "1.0.0"
+description = "Runs the project's benchmarks (cargo bench, with Criterion or #[bench], or go test -bench), keeps each run with its commit, and shows how each benchmark changed: against the run before (slower than a threshold you set: a regression), on a plot over the runs, and between any two runs."
+permissions = ["workspace-read"]
+programs = ["cargo", "go", "git"]
+
+[[commands]]
+id = "show"
+title = "Benchmarks: Show History"
+
+[[commands]]
+id = "run"
+title = "Benchmarks: Run and Record"
+
+[[panels]]
+id = "benchmarks"
+title = "Benchmarks"

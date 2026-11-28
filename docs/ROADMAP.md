@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- Benchmarks: history by commit, regressions against a threshold, a plot, any two runs compared.
 - Project Metadata: name, version, description, licence and repository edited in place.
 - Project Snapshots: the whole folder kept, compared (with now, a snapshot, another folder), restored.
 - Technical debt in Code Health: notes by area and age, and the months they were written.

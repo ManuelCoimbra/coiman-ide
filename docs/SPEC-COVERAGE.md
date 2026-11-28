@@ -9,14 +9,14 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 193, partial 132, missing 153,
+**Summary:** 504 items. Done 196, partial 132, missing 150,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
 |---|---|---|---|---|---|
 | 1. Code intelligence and static analysis | 7 | 7 | 2 |  |  |
 | 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
-| 3. Advanced debugging and performance analysis | 14 | 3 | 21 |  |  |
+| 3. Advanced debugging and performance analysis | 17 | 3 | 18 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
 | 5. Build systems and dependency management | 14 | 17 | 7 | 1 | 3 |
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
@@ -172,9 +172,9 @@ network 13, rules that hold 13.
 | Thread performance analysis | Missing |  |
 | I/O performance analysis | Missing |  |
 | Performance comparison between executions | Done | PROFILE panel: Compare with the profile before |
-| Benchmark history | Missing |  |
-| Performance regression detection | Missing |  |
-| Visualise performance changes between commits | Missing |  |
+| Benchmark history | Done | Benchmarks extension: cargo bench (Criterion, #[bench]), go test -bench |
+| Performance regression detection | Done | Benchmarks: slower than a set threshold against the run before |
+| Visualise performance changes between commits | Done | Benchmarks: plot over runs by commit; any two runs compared |
 
 ## 4. Git and collaboration
 

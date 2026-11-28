@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Benchmarks (Code analysis pack): runs `cargo bench` or `go test -bench`, keeps each run with
+  its commit, flags benchmarks slower than a threshold, plots them over the runs, and compares
+  any two runs.
+
 - Project Metadata (Code analysis pack): the name, version, description, licence and repository
   in `Cargo.toml`, `package.json` and `pyproject.toml`, edited in a form and saved in place.
 

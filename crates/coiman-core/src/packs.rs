@@ -96,6 +96,7 @@ pub const PACKS: [Pack; 10] = [
             "Rules, and search by syntax tree",
             "Project docs: an index, the links between documents, outdated documents",
             "Project metadata: name, version, description, licence, edited in place",
+            "Benchmarks: history by commit, regressions, any two runs compared",
         ],
         extensions: &[
             "coiman.class-diagram",
@@ -103,6 +104,7 @@ pub const PACKS: [Pack; 10] = [
             "coiman.code-health",
             "coiman.docs",
             "coiman.metadata",
+            "coiman.benchmarks",
         ],
     },
     Pack {

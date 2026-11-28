@@ -43,6 +43,12 @@ impl CodeApp {
         shipped.iter().find(|(_, m)| m.id == id).map(|(folder, _)| folder.clone())
     }
 
+    /// An extension's name as its `plugin.toml` gives it (its id if it isn't beside Coiman).
+    fn shipped_name(&mut self, id: &str) -> String {
+        let shipped = self.plugins.shipped.get_or_insert_with(super::shipped_extensions);
+        shipped.iter().find(|(_, m)| m.id == id).map_or_else(|| id.to_owned(), |(_, m)| m.name.clone())
+    }
+
     /// Installed from the copy that comes with Coiman, which has changed since: rebuilt for
     /// a newer plugin API, or a new version (same version number or not).
     pub(super) fn shipped_differs(&mut self, id: &str) -> bool {
@@ -154,8 +160,9 @@ impl CodeApp {
             if on {
                 for ext in pack.extensions {
                     if self.plugins.lock.get(ext).is_none() {
+                        let name = self.shipped_name(ext);
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("Its extension {ext} isn't installed")).small());
+                            ui.label(RichText::new(format!("Its extension {name} isn't installed")).small());
                             if ui.small_button("Install…").clicked() {
                                 offer = Some(*ext);
                             }
