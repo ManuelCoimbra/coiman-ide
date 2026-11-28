@@ -341,7 +341,8 @@ fn doc_done(t: Tool, job: JobResult) {
     with(|s| s.out = Some(path.clone()));
     match host::open_url(&file_url(&path)) {
         Ok(()) => note(format!("Done: opened {path} in the browser"), GREEN),
-        Err(_) => note("Done. The editor opens only web addresses in the browser: copy the path below into it.", GREEN),
+        // The editor opens web addresses only, not files.
+        Err(_) => note("Done: copy the path below into your browser's address bar to read them.", GREEN),
     }
 }
 
@@ -650,10 +651,7 @@ fn render() {
         }
         if let Some(out) = &s.out {
             b.push(Block::Spans(vec![Span { text: out.clone(), color: None, bold: false, monospace: true }]));
-            b.push(Block::Rows(vec![Row {
-                cells: vec![],
-                buttons: vec![button("Open in the browser", "open", ""), button("Copy path", "copy", "")],
-            }]));
+            b.push(Block::Rows(vec![Row { cells: vec![], buttons: vec![button("Copy path", "copy", "")] }]));
         }
         if let Some((file, _, _)) = &s.page {
             b.push(Block::Rows(vec![Row {
