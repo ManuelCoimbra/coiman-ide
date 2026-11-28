@@ -1627,7 +1627,7 @@ impl CodeApp {
                 }
             })
             .collect();
-        self.set_local_lenses(uid, lenses);
+        self.set_local_lenses(uid, plugin, lenses);
     }
 
     /// An event for one running plugin.

@@ -180,7 +180,9 @@ fn in_ignored_dir(path: &Path) -> bool {
 /// Path equality that ignores case on Windows, where the file system does.
 pub fn same_path(a: &Path, b: &Path) -> bool {
     if cfg!(windows) {
-        a.as_os_str().to_string_lossy().to_lowercase() == b.as_os_str().to_string_lossy().to_lowercase()
+        // Case doesn't count, and `/` is `\` (a folder given as `C:/x` on the command line).
+        let norm = |p: &Path| p.as_os_str().to_string_lossy().to_lowercase().replace('/', "\\");
+        norm(a) == norm(b)
     } else {
         a == b
     }
@@ -189,6 +191,13 @@ pub fn same_path(a: &Path, b: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg(windows)]
+    fn same_path_ignores_case_and_slashes() {
+        assert!(same_path(Path::new("C:/Users/x\\Proj/src/main.rs"), Path::new("c:\\users\\X\\proj\\src\\main.rs")));
+        assert!(!same_path(Path::new("C:/a/b.rs"), Path::new("C:/a/c.rs")));
+    }
     use std::time::{Duration, Instant};
 
     fn wait_for(w: &mut FileWatcher, pred: impl Fn(&Changes) -> bool) -> bool {

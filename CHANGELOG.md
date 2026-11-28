@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Code Review (Git pack): the folder's changes against a branch or commit, comments on lines
+  shown above them in the editor (following their line as code moves), replies, resolving,
+  a verdict, and the review as Markdown for a pull request. All on this computer.
+
 - Python Calls and Memory (Code analysis pack): how many times each function of a Python file
   is called (cProfile), and the memory each line holds with its peak (tracemalloc), with
   lines holding too much flagged.
@@ -82,6 +86,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- What plugins put above lines (a review comment, an `.http` request's Send) no longer
+  disappears when the file's language server answers or has nothing to say: the server's lenses
+  and each plugin's are kept apart and shown together.
+- A folder opened from the command line with `/` in its path (`coiman-ide C:/proj`) no longer
+  loses what plugins put on its files' lines (a review comment, a request's Send above it): on
+  Windows `/` and `\` now name the same file.
 - Built-in extensions no longer offer **Roll back**: they come with the editor. The same
   version rebuilt now says "Roll back to the earlier 1.0.1 build", not "Roll back to 1.0.1".
 - Installing a pack offers its extensions one after the other; **Cancel** on one now goes on

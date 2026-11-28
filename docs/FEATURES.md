@@ -650,7 +650,7 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture, Code Health, Project Docs, Project Metadata, Benchmarks and Python Calls and Memory come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
+Architecture, Code Health, Project Docs, Project Metadata, Benchmarks and Python Calls and Memory come with Code analysis, Git Graph, Git Tools, Project Snapshots and Code Review with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
@@ -881,6 +881,8 @@ to the earlier <version> build**.
   submodules, hooks and `.gitignore` rules; see Git Tools under Git.
 - **Project Snapshots** (`workspace-read`, `workspace-write`; program `git`): the whole open
   folder kept under a name, compared and restored; see [Project snapshots](#project-snapshots).
+- **Code Review** (`workspace-read`, `editor-read`; program `git`): the folder's changes
+  reviewed on this computer, with comments on lines; see [Code review](#code-review).
 - **Class Diagram** (`workspace-read`, `editor-read`): the project's classes, interfaces,
   enums, structs, records and traits as a UML class diagram, read from the code without a
   compiler: Java, Kotlin, C#, TypeScript and JavaScript, C and C++, Swift, Dart, Scala, PHP,
@@ -1065,6 +1067,26 @@ default; `history.enabled`, `history.max_entries`, `history.max_days`, `history.
 - **Local History: Find Entry to Restore...** picks a version from the palette.
 - Restoring is an unsaved, undoable edit, and the text it replaces is kept as a "Before
   restore" version.
+
+## Code review
+
+The **Code Review** extension (Git pack) reviews the open folder's changes on this computer,
+in the **Code Review** panel (**Review: Show**). Nothing is sent anywhere.
+
+- **Compare with** a branch or a commit (`main` or `master` at first, when there is one; empty
+  is the last commit): the files changed with the lines added and removed, and files Git
+  doesn't track yet. **Diff** shows a file's changes, **Open** opens it.
+- **Review: Comment on This Line** comments on the line the cursor is on. The comment shows
+  above that line in the editor (click it to find it in the panel), and follows its line
+  when lines are added or removed above it. When the line itself changes, the comment says
+  it's outdated.
+- Each comment can be **replied** to, **resolved** (its mark leaves the editor), reopened,
+  or deleted (after asking).
+- The **verdict** (comment, approve or request changes) and a summary for the author.
+- **Export as Markdown** (or **Review: Export as Markdown**) opens the review as Markdown,
+  ready to paste into a pull request: the verdict, the summary, the files changed and the open
+  comments with the code they're on and their replies.
+- The review is kept per folder in the extension's own storage, across restarts.
 
 ## Project snapshots
 

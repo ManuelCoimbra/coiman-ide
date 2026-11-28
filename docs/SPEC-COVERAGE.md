@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 196, partial 133, missing 149,
+**Summary:** 504 items. Done 198, partial 133, missing 147,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -17,7 +17,7 @@ network 13, rules that hold 13.
 | 1. Code intelligence and static analysis | 7 | 7 | 2 |  |  |
 | 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
 | 3. Advanced debugging and performance analysis | 17 | 6 | 15 |  |  |
-| 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
+| 4. Git and collaboration | 15 | 2 | 1 | 9 | 3 |
 | 5. Build systems and dependency management | 14 | 17 | 7 | 1 | 3 |
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
 | 7. Documentation and developer knowledge | 7 | 7 | 5 |  |  |
@@ -212,8 +212,8 @@ network 13, rules that hold 13.
 | Collaborative debugging | Network |  |
 | Shared terminals | Network |  |
 | Shared development sessions | Network |  |
-| Inline comments on code | Missing |  |
-| Code review interface | Missing |  |
+| Inline comments on code | Done | Code Review: comments on lines, shown above them in the editor, following the code |
+| Code review interface | Done | Code Review panel: changes against a base, diffs, comments, replies, verdict, Markdown export |
 | Review requests and approvals | Network | Possible through `gh` |
 | Integration with GitHub and GitLab | Partial | GitHub through `gh`: publish, Actions runs, logs and re-runs; no GitLab |
 | Conflict detection during collaborative editing | Network |  |

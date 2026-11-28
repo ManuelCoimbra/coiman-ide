@@ -1,0 +1,23 @@
+id = "coiman.review"
+name = "Code Review"
+version = "1.0.0"
+description = "Review the folder's changes against a branch or commit, on this computer: the files changed with their diffs, comments on lines shown above them in the editor (they follow their line as the code moves), replies, resolving, and a verdict with a summary, exported as Markdown for a pull request."
+permissions = ["workspace-read", "editor-read"]
+programs = ["git"]
+events = ["opened", "saved", "active-changed"]
+
+[[commands]]
+id = "show"
+title = "Review: Show"
+
+[[commands]]
+id = "comment"
+title = "Review: Comment on This Line"
+
+[[commands]]
+id = "export"
+title = "Review: Export as Markdown"
+
+[[panels]]
+id = "review"
+title = "Code Review"

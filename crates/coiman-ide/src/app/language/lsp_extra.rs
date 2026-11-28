@@ -126,12 +126,26 @@ impl HierTree {
     }
 }
 
+impl LspExtra {
+    /// A document's lenses, the server's and those made here; with `lines`, only those made
+    /// for that many lines (the text has moved since otherwise).
+    fn lenses_of(&self, uid: u64, lines: Option<usize>) -> impl Iterator<Item = &lt::CodeLens> {
+        let fits = move |n: &usize| lines.is_none_or(|l| l == *n);
+        let server = self.lenses.get(&uid).filter(|(n, _)| fits(n)).into_iter().flat_map(|(_, l)| l);
+        let local = self.local_lenses.get(&uid).into_iter().flat_map(|m| m.values());
+        server.chain(local.filter(move |(n, _)| fits(n)).flat_map(|(_, l)| l))
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct LspExtra {
     pub(crate) tree: Option<HierTree>,
     next_tree: u64,
-    /// Code lenses per document: (line count they were made for, lenses).
+    /// The server's code lenses per document: (line count they were made for, lenses).
     lenses: HashMap<u64, (usize, Vec<lt::CodeLens>)>,
+    /// Lenses made here (plugins, `.http` files' Send), per document and by who made them:
+    /// kept apart from the server's, which replaces its own whenever it answers.
+    local_lenses: HashMap<u64, std::collections::BTreeMap<String, (usize, Vec<lt::CodeLens>)>>,
     /// Inlay hints and lens titles together, as drawn.
     shown_inlays: HashMap<u64, (usize, Inlays)>,
     picked_lenses: Vec<lt::Command>,
@@ -414,11 +428,16 @@ impl CodeApp {
         self.rebuild_inlays(uid);
     }
 
-    /// Lenses made here, not by a server (`.http` files' Send).
-    pub(crate) fn set_local_lenses(&mut self, uid: u64, lenses: Vec<lt::CodeLens>) {
+    /// Lenses made here, not by a server (a plugin's), replacing `source`'s earlier ones.
+    pub(crate) fn set_local_lenses(&mut self, uid: u64, source: &str, lenses: Vec<lt::CodeLens>) {
         let Some(i) = self.doc_index(uid) else { return };
         let lines = self.docs[i].buffer.len_lines();
-        self.lsp.extra.lenses.insert(uid, (lines, lenses));
+        let own = self.lsp.extra.local_lenses.entry(uid).or_default();
+        if lenses.is_empty() {
+            own.remove(source);
+        } else {
+            own.insert(source.to_owned(), (lines, lenses));
+        }
         self.rebuild_inlays(uid);
     }
 
@@ -434,7 +453,7 @@ impl CodeApp {
             .filter(|(n, _)| *n == lines)
             .map_or_else(HashMap::new, |(_, hints)| (**hints).clone());
         let mut titles: HashMap<usize, Vec<String>> = HashMap::new();
-        for lens in extra.lenses.get(&uid).filter(|(n, _)| *n == lines).into_iter().flat_map(|(_, l)| l) {
+        for lens in extra.lenses_of(uid, Some(lines)) {
             if let Some(command) = &lens.command {
                 titles.entry(lens.range.start.line as usize).or_default().push(lens_title(&command.title));
             }
@@ -455,10 +474,7 @@ impl CodeApp {
         let commands: Vec<lt::Command> = self
             .lsp
             .extra
-            .lenses
-            .get(&doc.uid)
-            .into_iter()
-            .flat_map(|(_, lenses)| lenses)
+            .lenses_of(doc.uid, None)
             .filter(|l| l.range.start.line as usize == line)
             .filter_map(|l| l.command.clone())
             .collect();
@@ -474,7 +490,7 @@ impl CodeApp {
     /// A title beside the code was clicked. They're drawn joined, so `into` says which.
     pub(crate) fn click_code_lens(&mut self, ctx: &egui::Context, line: usize, into: usize) {
         let Some(doc) = self.docs.get(self.active) else { return };
-        let lenses = self.lsp.extra.lenses.get(&doc.uid).into_iter().flat_map(|(_, lenses)| lenses);
+        let lenses = self.lsp.extra.lenses_of(doc.uid, None);
         let commands: Vec<lt::Command> =
             lenses.filter(|l| l.range.start.line as usize == line).filter_map(|l| l.command.clone()).collect();
         let mut end = 2;
