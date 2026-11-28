@@ -1,0 +1,23 @@
+id = "coiman.infra"
+name = "Infrastructure Files"
+version = "1.0.0"
+description = "Kubernetes manifests, Helm charts, Terraform and Ansible checked offline while you type (kinds and apiVersions, image tags, limits, Service selectors, duplicate keys; chart values used but missing or set but unused; undeclared references, unused variables, unclosed blocks; unnamed tasks, unknown play keys, missing includes), a panel of the files and their problems, a dependency graph, and helm lint, terraform validate and ansible-lint when approved. No cluster, cloud or download."
+permissions = ["workspace-read", "editor-read"]
+programs = ["helm", "terraform", "ansible-lint"]
+events = ["opened", "saved", "edited", "active-changed", "deleted", "renamed"]
+
+[[commands]]
+id = "show"
+title = "Infrastructure: Show Files"
+
+[[commands]]
+id = "graph"
+title = "Infrastructure: Show Dependency Graph"
+
+[[commands]]
+id = "tools"
+title = "Infrastructure: Run helm, terraform and ansible-lint"
+
+[[panels]]
+id = "infra"
+title = "Infrastructure Files"

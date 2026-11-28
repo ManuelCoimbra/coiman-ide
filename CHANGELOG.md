@@ -10,6 +10,12 @@ and versions follow [Semantic Versioning](https://semver.org/).
 - Code Review (Git pack): the folder's changes against a branch or commit, comments on lines
   shown above them in the editor (following their line as code moves), replies, resolving,
   a verdict, and the review as Markdown for a pull request. All on this computer.
+- Infrastructure Files (Containers, remote and CI pack): Kubernetes manifests, Helm charts,
+  Terraform and Ansible checked offline while typing (kinds and apiVersions, image tags, limits,
+  Service selectors, duplicate keys and bad YAML; chart values used but not set and set but
+  unused; undeclared references, unused variables and unclosed blocks; unnamed tasks, unknown
+  play keys and missing includes and roles), a panel of the files and their problems, a
+  dependency graph, and `helm lint`, `terraform validate` and `ansible-lint` when approved.
 
 - Python Calls and Memory (Code analysis pack): how many times each function of a Python file
   is called (cProfile), and the memory each line holds with its peak (tracemalloc), with

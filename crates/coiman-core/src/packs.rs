@@ -50,14 +50,15 @@ pub const PACKS: [Pack; 10] = [
     Pack {
         id: DEVOPS,
         name: "Containers, remote and CI",
-        description: "Docker, GitHub Actions, and working on other machines over SSH.",
+        description: "Docker, GitHub Actions, infrastructure files, and working on other machines over SSH.",
         features: &[
             "Docker: containers, images, logs, a shell inside",
             "GitHub Actions: runs, failed logs, re-runs",
             "Remote folders over SSH, SSH terminals, remote commands",
             "Remote debugging through gdbserver",
+            "Kubernetes, Helm, Terraform and Ansible files checked offline, with a dependency graph",
         ],
-        extensions: &["coiman.docker", "coiman.github-actions", "coiman.remote", "coiman.remote-debug"],
+        extensions: &["coiman.docker", "coiman.github-actions", "coiman.remote", "coiman.remote-debug", "coiman.infra"],
     },
     Pack {
         id: SYSTEMS,
