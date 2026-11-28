@@ -7,6 +7,10 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Python Calls and Memory (Code analysis pack): how many times each function of a Python file
+  is called (cProfile), and the memory each line holds with its peak (tracemalloc), with
+  lines holding too much flagged.
+
 - Benchmarks (Code analysis pack): runs `cargo bench` or `go test -bench`, keeps each run with
   its commit, flags benchmarks slower than a threshold, plots them over the runs, and compares
   any two runs.

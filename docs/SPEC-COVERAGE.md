@@ -9,14 +9,14 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 196, partial 132, missing 150,
+**Summary:** 504 items. Done 196, partial 135, missing 147,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
 |---|---|---|---|---|---|
 | 1. Code intelligence and static analysis | 7 | 7 | 2 |  |  |
 | 2. Architecture and dependency analysis | 19 | 5 | 5 |  |  |
-| 3. Advanced debugging and performance analysis | 17 | 3 | 18 |  |  |
+| 3. Advanced debugging and performance analysis | 17 | 6 | 15 |  |  |
 | 4. Git and collaboration | 13 | 2 | 3 | 9 | 3 |
 | 5. Build systems and dependency management | 14 | 17 | 7 | 1 | 3 |
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
@@ -158,7 +158,7 @@ network 13, rules that hold 13.
 | Compare memory snapshots | Missing |  |
 | Memory ownership analysis | Missing |  |
 | Reference cycle detection | Missing |  |
-| Detect excessive allocations | Missing |  |
+| Detect excessive allocations | Partial | Python: lines holding 100,000 objects or a tenth of the peak, flagged |
 
 ### Performance analysis
 
@@ -167,8 +167,8 @@ network 13, rules that hold 13.
 | CPU profiler | Done | py-spy (Python), perf (Linux); profiles from elsewhere too |
 | Flame graphs | Done | PROFILE panel: zoom, hottest functions, jump to code |
 | Function execution times | Done | The profiler: share and time per function, sampled |
-| Function call frequency | Missing | The profiler samples time; it doesn't count calls |
-| Allocation profiling | Missing |  |
+| Function call frequency | Partial | Python (cProfile, exact counts); C, C++ and Rust not yet |
+| Allocation profiling | Partial | Python (tracemalloc): memory held per line, and the peak |
 | Thread performance analysis | Missing |  |
 | I/O performance analysis | Missing |  |
 | Performance comparison between executions | Done | PROFILE panel: Compare with the profile before |

@@ -1,0 +1,18 @@
+id = "coiman.pycalls"
+name = "Python Calls and Memory"
+version = "1.0.0"
+description = "Runs the Python file in front under Python's own cProfile (how many times each function was called, and its time) or tracemalloc (the memory each line still holds at the end, and the peak), with links to the code. Nothing to install: both come with Python."
+permissions = ["workspace-read", "editor-read"]
+programs = ["python"]
+
+[[commands]]
+id = "calls"
+title = "Python: Count Calls (cProfile)"
+
+[[commands]]
+id = "memory"
+title = "Python: Memory by Line (tracemalloc)"
+
+[[panels]]
+id = "pycalls"
+title = "Python Calls and Memory"

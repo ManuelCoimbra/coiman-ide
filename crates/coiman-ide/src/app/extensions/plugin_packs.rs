@@ -161,7 +161,8 @@ impl CodeApp {
                 for ext in pack.extensions {
                     if self.plugins.lock.get(ext).is_none() {
                         let name = self.shipped_name(ext);
-                        ui.horizontal(|ui| {
+                        // Wraps, so a long name can't push the buttons past the panel's edge.
+                        ui.horizontal_wrapped(|ui| {
                             ui.label(RichText::new(format!("Its extension {name} isn't installed")).small());
                             if ui.small_button("Install…").clicked() {
                                 offer = Some(*ext);

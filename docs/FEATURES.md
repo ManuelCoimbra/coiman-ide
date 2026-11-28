@@ -661,7 +661,7 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture, Code Health, Project Docs, Project Metadata and Benchmarks come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
+Architecture, Code Health, Project Docs, Project Metadata, Benchmarks and Python Calls and Memory come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
@@ -854,6 +854,8 @@ come with Coiman.
   version and the like, edited in place; see [Project metadata](#project-metadata).
 - **Benchmarks** (`workspace-read`; programs `cargo`, `go`, `git`): each run of the project's
   benchmarks kept with its commit; see [Benchmarks](#benchmarks).
+- **Python Calls and Memory** (`workspace-read`, `editor-read`; program `python`): how often
+  each function is called and what holds memory; see the end of [Profiling](#profiling).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
@@ -1299,6 +1301,22 @@ it got.
 - **Profile: Open Profile File...** reads a profile made elsewhere: collapsed stacks
   (`main;work;fib 12`, what py-spy's `raw` format and flame graph tools write) or `perf script`
   output.
+
+### Calls and memory (Python)
+
+The **Python Calls and Memory** extension (Code analysis pack) runs the Python file in front to
+its end under what comes with Python, nothing to install, and shows the results in its panel:
+
+- **Python: Count Calls (cProfile)**: how many times each function was called (a recursive one
+  says how many calls came from outside), its own time, its time with what it calls, and the
+  time a call. Most called first.
+- **Python: Memory by Line (tracemalloc)**: the peak, and the memory each line still holds at
+  the end, with how many objects and the line's code. A line holding 100,000 objects or more, or
+  over 1 MB and a tenth of the peak, is in red.
+- **Only the project's own code** (on at first) hides Python's and libraries' functions and
+  lines; **Open** goes to the code. What the program printed is shown below, apart. An
+  exception says where the results stop; `input()` gets nothing.
+- C, C++ and Rust aren't counted yet: the sampling profiler above shows their time.
 
 ## Run history
 

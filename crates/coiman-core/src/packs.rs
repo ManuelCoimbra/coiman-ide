@@ -97,6 +97,7 @@ pub const PACKS: [Pack; 10] = [
             "Project docs: an index, the links between documents, outdated documents",
             "Project metadata: name, version, description, licence, edited in place",
             "Benchmarks: history by commit, regressions, any two runs compared",
+            "Python: calls per function (cProfile), memory per line (tracemalloc)",
         ],
         extensions: &[
             "coiman.class-diagram",
@@ -105,6 +106,7 @@ pub const PACKS: [Pack; 10] = [
             "coiman.docs",
             "coiman.metadata",
             "coiman.benchmarks",
+            "coiman.pycalls",
         ],
     },
     Pack {
