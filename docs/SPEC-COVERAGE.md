@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 198, partial 133, missing 147,
+**Summary:** 504 items. Done 203, partial 137, missing 138,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -20,14 +20,14 @@ network 13, rules that hold 13.
 | 4. Git and collaboration | 15 | 2 | 1 | 9 | 3 |
 | 5. Build systems and dependency management | 14 | 17 | 7 | 1 | 3 |
 | 6. Terminal and command-line environment | 12 | 4 | 2 |  |  |
-| 7. Documentation and developer knowledge | 7 | 7 | 5 |  |  |
-| 8. Web development | 9 | 4 | 13 |  |  |
+| 7. Documentation and developer knowledge | 10 | 7 | 2 |  |  |
+| 8. Web development | 9 | 5 | 12 |  |  |
 | 9. Database development | 18 | 5 |  |  |  |
 | 10. Data science and machine learning | 5 | 3 | 14 |  |  |
 | 11. Systems programming and embedded development | 5 | 5 | 14 |  |  |
 | 12. Game development | 1 | 6 | 14 |  |  |
 | 13. Mobile development | 4 | 5 | 6 |  |  |
-| 14. DevOps, containers and cloud development | 5 | 4 | 13 | 2 | 1 |
+| 14. DevOps, containers and cloud development | 7 | 7 | 8 | 2 | 1 |
 | 15. Testing and quality assurance | 6 | 6 | 9 |  |  |
 | 16. Security and code quality | 10 | 7 | 2 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
