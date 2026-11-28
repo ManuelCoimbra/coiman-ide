@@ -190,8 +190,6 @@ pub(crate) struct PluginState {
     /// A plugin whose command just ran: its next panel comes to the front. Other panel updates
     /// (a log that streams) leave the tab shown alone.
     reveal: Option<String>,
-    /// The Extensions view shows the Open VSX marketplace rather than Coiman's own.
-    open_vsx: bool,
 }
 
 /// The lens command of a plugin's code lens: its arguments are (plugin, command, argument).
@@ -827,19 +825,6 @@ impl CodeApp {
     /// Runs a palette entry from [`plugin_commands`](Self::plugin_commands).
     pub(crate) fn run_plugin_command(&mut self, key: &str) {
         if let Some((plugin, command)) = key.split_once('\n') {
-            if plugin == "ext" {
-                if !self.settings.vscode_extensions_enabled() {
-                    self.status = Some("VS Code extensions are disabled in settings".to_owned());
-                    return;
-                }
-                if self.ext_host.request("command/execute", serde_json::json!({ "id": command, "args": [] })).is_some()
-                {
-                    self.status = Some(format!("Ran extension command {command}"));
-                } else {
-                    self.status = Some("The VS Code extension host isn't running".to_owned());
-                }
-                return;
-            }
             self.run_plugin(plugin, command, "");
         }
     }
@@ -886,20 +871,13 @@ impl CodeApp {
 
     /// Palette entries for running plugins' commands: (title, key).
     pub(crate) fn plugin_commands(&self) -> Vec<(String, String)> {
-        let mut out: Vec<(String, String)> = self
-            .plugins
+        self.plugins
             .infos
             .iter()
             .filter(|i| i.running)
             .filter_map(|i| i.manifest.as_ref())
             .flat_map(|m| m.commands.iter().map(|c| (c.title.clone(), command_key(&m.id, &c.id))))
-            .collect();
-        if self.settings.vscode_extensions_enabled() {
-            for (title, id) in self.ext_host.commands() {
-                out.push((title, format!("ext\n{id}")));
-            }
-        }
-        out
+            .collect()
     }
 
     // ----- registry and installs ----------------------------------------------------
@@ -955,11 +933,8 @@ impl CodeApp {
     }
 
     pub(crate) fn show_extensions(&mut self) {
-        // Coiman's own extensions and packs are always here; VS Code's are a tab of it.
         self.sidebar_visible = true;
         self.sidebar_view = SidebarView::Extensions;
-        self.active_ext_view = None;
-        self.show_marketplace();
     }
 
     /// Plugins: Check for Updates — reads the registry (only when asked).
@@ -1152,81 +1127,10 @@ impl CodeApp {
 
     // ----- views ------------------------------------------------------------------------
 
-    /// Said once, before the Open VSX tab first connects: what it contacts and what it sends.
-    fn open_vsx_notice(&mut self, ui: &mut egui::Ui) {
-        let ctx = ui.ctx().clone();
-        let mut answer = None;
-        ui.add_space(8.0);
-        ui.horizontal(|ui| {
-            ui.add_space(12.0);
-            ui.vertical(|ui| {
-                ui.set_max_width(ui.available_width() - 12.0);
-                ui.label(RichText::new("This tab connects to open-vsx.org").strong());
-                ui.add_space(4.0);
-                ui.label(
-                    "It lists popular extensions from there, and asks open-vsx.org again \
-                     when you search (sending what you typed), open an extension or install \
-                     one. It goes through curl, over HTTPS. Pictures of the extensions in view \
-                     come the same way and are kept in Coiman's config folder (cache/open-vsx). \
-                     Nothing is sent until you choose to use the tab.",
-                );
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    if ui.button("Use Open VSX").clicked() {
-                        answer = Some(true);
-                    }
-                    if ui.button("Hide this tab").clicked() {
-                        answer = Some(false);
-                    }
-                });
-            });
-        });
-        let result = match answer {
-            Some(true) => self.change_setting(&ctx, false, "plugins", "marketplace_ok", Some("true")),
-            Some(false) => {
-                self.plugins.open_vsx = false;
-                self.change_setting(&ctx, false, "plugins", "marketplace", Some("false"))
-            }
-            None => Ok(()),
-        };
-        if let Err(e) = result {
-            self.status = Some(e);
-        }
-    }
-
     /// The Extensions view: consent prompt, installed plugins, updates, registry.
     pub(crate) fn extensions_view(&mut self, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         let pal = theme::colors();
-        // Coiman's own extensions and packs, or VS Code's from Open VSX (reached only when that
-        // tab is used).
-        if self.settings.plugins.marketplace {
-            ui.horizontal(|ui| {
-                ui.selectable_value(&mut self.plugins.open_vsx, false, "Coiman");
-                ui.selectable_value(&mut self.plugins.open_vsx, true, "Open VSX");
-                if self.plugins.open_vsx {
-                    ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                        let more = ui.button("⋯").on_hover_text("Filter");
-                        egui::Popup::menu(&more).show(|ui| {
-                            for (label, query) in [("Installed Extensions", "@installed"), ("Updates", "@updates")] {
-                                if ui.button(label).clicked() {
-                                    self.set_marketplace_query(query.to_owned());
-                                    ui.close();
-                                }
-                            }
-                        });
-                    });
-                }
-            });
-            if self.plugins.open_vsx {
-                if self.settings.plugins.marketplace_ok {
-                    self.marketplace_sidebar(ui);
-                } else {
-                    self.open_vsx_notice(ui);
-                }
-                return;
-            }
-        }
         ui.horizontal(|ui| {
             ui.label(RichText::new("EXTENSIONS").small().strong());
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {

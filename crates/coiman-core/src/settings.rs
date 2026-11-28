@@ -65,13 +65,6 @@ impl Default for PackSettings {
     }
 }
 
-impl Settings {
-    /// Whether VS Code extensions are enabled. Off by default.
-    pub fn vscode_extensions_enabled(&self) -> bool {
-        self.plugins.vscode_extensions || self.lsp.extension_host
-    }
-}
-
 /// More than one folder in a window (a project's own setting, in `.coiman/settings.toml`).
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
 #[serde(default)]
@@ -387,12 +380,6 @@ pub struct LspSettings {
     /// `clangd`, `java`, `csharp`, `go` (and `rust`). A program path,
     /// optionally followed by arguments; empty finds the server itself.
     pub paths: std::collections::BTreeMap<String, String>,
-    /// Run the language servers that come in VS Code extensions (ESLint, Tailwind CSS)
-    /// beside a file's own server, when the extension is installed and the project uses
-    /// the tool.
-    pub extension_servers: bool,
-    /// Run installed VS Code extensions in a Node host, started after the first frame.
-    pub extension_host: bool,
     /// Offer completions as you type, like VS Code's IntelliSense.
     pub completion: bool,
     /// Apply a completion's `additionalTextEdits` (normally an auto-import).
@@ -478,32 +465,14 @@ pub struct DebugSettings {
 pub struct PluginSettings {
     /// Load installed plugins.
     pub enabled: bool,
-    /// Enable VS Code extension support (activity bar views, custom webviews, language servers, and commands).
-    pub vscode_extensions: bool,
-    /// You were told what running VS Code extensions means (their JavaScript runs with your
-    /// rights) and let them run. Asked the first time the extension host would start.
-    pub vscode_extensions_ok: bool,
     /// Plugin registry: a folder or an http(s)/file URL with a `registry.json`.
     /// Only read when you check it from the Extensions view.
     pub registry: String,
-    /// The Open VSX tab in the Extensions view: open-vsx.org is reached (through `curl`) only
-    /// when you search or browse there.
-    pub marketplace: bool,
-    /// You were told what the Open VSX tab contacts and chose to use it. Asked the first time
-    /// the tab is opened, before anything is sent.
-    pub marketplace_ok: bool,
 }
 
 impl Default for PluginSettings {
     fn default() -> Self {
-        Self {
-            enabled: true,
-            vscode_extensions: false,
-            vscode_extensions_ok: false,
-            registry: String::new(),
-            marketplace: true,
-            marketplace_ok: false,
-        }
+        Self { enabled: true, registry: String::new() }
     }
 }
 
@@ -541,8 +510,6 @@ impl Default for LspSettings {
             rust_analyzer_memory: "default".to_owned(),
             rust_analyzer_separate_target: false,
             paths: std::collections::BTreeMap::new(),
-            extension_servers: false,
-            extension_host: false,
             completion: true,
             completion_auto_import: true,
             completion_snippets: true,
@@ -808,6 +775,17 @@ fn from_table(table: Table) -> (Settings, Vec<String>) {
     }
 }
 
+/// Settings that running VS Code extensions had: kept by the `vscode-extensions` branch, so a
+/// settings file that still has them isn't told they are unknown.
+const RETIRED: [&str; 6] = [
+    "plugins.vscode_extensions",
+    "plugins.vscode_extensions_ok",
+    "plugins.marketplace",
+    "plugins.marketplace_ok",
+    "lsp.extension_servers",
+    "lsp.extension_host",
+];
+
 fn unknown_keys(value: &Value, known: &Value, prefix: &str, out: &mut Vec<String>) {
     let (Value::Table(t), Value::Table(k)) = (value, known) else { return };
     for (key, v) in t {
@@ -816,6 +794,7 @@ fn unknown_keys(value: &Value, known: &Value, prefix: &str, out: &mut Vec<String
             // Named by the user: one entry per language server, per variable.
             Some(_) if matches!(path.as_str(), "lsp.paths" | "env" | "symbols") => {}
             Some(kv) => unknown_keys(v, kv, &path, out),
+            None if RETIRED.contains(&path.as_str()) => {}
             None => out.push(format!("Unknown setting `{path}`")),
         }
     }
@@ -1127,25 +1106,22 @@ color_theme = \"Nord\"
     }
 
     #[test]
-    fn vscode_extensions_disabled_by_default() {
-        let s = Settings::default();
-        assert!(!s.vscode_extensions_enabled());
-        assert!(!s.plugins.vscode_extensions);
-        assert!(!s.lsp.extension_host);
-        assert!(!s.lsp.extension_servers);
-    }
-
-    #[test]
-    fn vscode_extensions_can_be_enabled() {
-        let (s, problems) = from_table(table("[plugins]\nvscode_extensions = true"));
+    fn retired_vscode_settings_are_not_unknown() {
+        let (s, problems) = from_table(table(
+            "[plugins]
+vscode_extensions = true
+marketplace = true
+[lsp]
+extension_host = true
+extension_servers = true",
+        ));
         assert!(problems.is_empty(), "{problems:?}");
-        assert!(s.vscode_extensions_enabled());
-        assert!(s.plugins.vscode_extensions);
-
-        let (s2, problems2) = from_table(table("[lsp]\nextension_host = true"));
-        assert!(problems2.is_empty(), "{problems2:?}");
-        assert!(s2.vscode_extensions_enabled());
-        assert!(s2.lsp.extension_host);
+        assert!(s.plugins.enabled);
+        let (_, problems) = from_table(table(
+            "[plugins]
+vscode_extension = true",
+        ));
+        assert_eq!(problems, vec!["Unknown setting `plugins.vscode_extension`".to_owned()]);
     }
 
     #[test]

@@ -133,8 +133,6 @@ const BUILT_IN: &[(&str, &str)] = &[
     ("ms-python.debugpy", "debugpy, run directly"),
     ("golang.go", "gopls and Delve, run directly"),
     ("vadimcn.vscode-lldb", "CodeLLDB, run directly"),
-    ("dbaeumer.vscode-eslint", "its ESLint server runs here, from this extension: problems and fixes"),
-    ("bradlc.vscode-tailwindcss", "its Tailwind server runs here, from this extension: class names, problems, fixes"),
     ("christian-kohler.path-intellisense", "paths complete in strings (editor.path_completion)"),
     ("ionutvmi.path-autocomplete", "paths complete in strings (editor.path_completion)"),
     ("formulahendry.auto-rename-tag", "tags rename in pairs (editor.rename_tags)"),

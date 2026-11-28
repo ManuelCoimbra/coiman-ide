@@ -172,14 +172,7 @@ impl CodeApp {
                 _ => true,
             })
             .collect();
-        if self.settings.vscode_extensions_enabled() {
-            if self.ext_views.is_empty() {
-                self.ext_views = self.ext_host.all_view_containers();
-            }
-        } else {
-            self.ext_views.clear();
-        }
-        let count = side.len() + self.ext_views.len() + PANELS.len();
+        let count = side.len() + PANELS.len();
         let width = count as f32 * BUTTON.x + 12.0 + 16.0;
         let pill = egui::Rect::from_center_size(
             egui::pos2(strip.center().x.max(strip.left() + width / 2.0 + 8.0), strip.center().y),
@@ -217,40 +210,6 @@ impl CodeApp {
                 self.tour_spot(spot, rect);
             }
             x += BUTTON.x;
-        }
-        if self.settings.vscode_extensions_enabled() {
-            for container in self.ext_views.clone() {
-                let open = self.sidebar_shown()
-                    && self.sidebar_view == SidebarView::Extensions
-                    && self.active_ext_view.as_deref() == Some(container.id.as_str());
-                let rect = egui::Rect::from_min_size(egui::pos2(x, pill.top() + 3.0), BUTTON);
-                if open {
-                    open_at = Some(x + BUTTON.x / 2.0);
-                }
-                let color = if open { pal.accent } else { pal.text_dim };
-                let icon = self.ext_icon(ui.ctx(), &container, color);
-                if let Some(texture) = icon {
-                    let (icon_rect, resp) = ui.allocate_exact_size(BUTTON, egui::Sense::click());
-                    egui::Image::from_texture(&texture).paint_at(ui, icon_rect);
-                    if resp.clicked() {
-                        self.sidebar_visible = true;
-                        self.welcome_sidebar = false;
-                        self.sidebar_view = SidebarView::Extensions;
-                        self.active_ext_view = Some(container.id.clone());
-                        self.request_ext_tree(ui.ctx(), &container);
-                    }
-                    x += BUTTON.x;
-                    continue;
-                }
-                if self.dock_button(ui, rect, Icon::Extensions, &container.title, open) {
-                    self.sidebar_visible = true;
-                    self.welcome_sidebar = false;
-                    self.sidebar_view = SidebarView::Extensions;
-                    self.active_ext_view = Some(container.id.clone());
-                    self.request_ext_tree(ui.ctx(), &container);
-                }
-                x += BUTTON.x;
-            }
         }
         // Between the sheets and the panels.
         let sep = egui::pos2(x + 6.0, pill.center().y);

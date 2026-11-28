@@ -735,41 +735,6 @@ impl CodeApp {
             let debugging = side == Some(SidebarView::Debug);
             icon(ui, Icon::Bug, "Run and Debug (Ctrl+Shift+D)", debugging, Command::ShowDebug);
         }
-        if self.settings.vscode_extensions_enabled() {
-            let extensions = side == Some(SidebarView::Extensions) && self.active_ext_view.is_none();
-            icon(ui, Icon::Extensions, "Extensions (Ctrl+Shift+X)", extensions, Command::ShowExtensions);
-            if self.ext_views.is_empty() {
-                self.ext_views = self.ext_host.all_view_containers();
-            }
-            for container in self.ext_views.clone() {
-                let active = side == Some(SidebarView::Extensions)
-                    && self.active_ext_view.as_deref() == Some(container.id.as_str());
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(48.0, 44.0), Sense::click());
-                let color = if active { theme::colors().tab_active_fg } else { theme::colors().text_dim };
-                if active {
-                    ui.painter().rect_filled(
-                        egui::Rect::from_min_size(rect.min, egui::vec2(2.0, rect.height())),
-                        0.0,
-                        theme::colors().accent,
-                    );
-                }
-                let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(22.0, 22.0));
-                if let Some(texture) = self.ext_icon(ui.ctx(), &container, color) {
-                    egui::Image::from_texture(&texture).paint_at(ui, icon_rect);
-                } else {
-                    icons::paint(ui.painter(), icon_rect, Icon::Extensions, color);
-                }
-                if resp.clicked() {
-                    self.sidebar_visible = true;
-                    self.sidebar_view = SidebarView::Extensions;
-                    self.active_ext_view = Some(container.id.clone());
-                    self.request_ext_tree(ui.ctx(), &container);
-                }
-                resp.on_hover_text(format!("{} (extension view)", container.title));
-            }
-        } else {
-            self.ext_views.clear();
-        }
         if self.settings.workbench.agents_enabled {
             let agents = self.agents.is_open();
             icon(ui, Icon::Agent, "Agents", agents, Command::ShowAgents);
@@ -1200,15 +1165,7 @@ impl CodeApp {
             SidebarView::Git => self.source_control_view(ui),
             SidebarView::Testing => self.testing_view(ui),
             SidebarView::Debug => self.debug_view(ui),
-            SidebarView::Extensions => {
-                if self.settings.vscode_extensions_enabled()
-                    && let Some(view) = self.active_ext_view.clone()
-                {
-                    self.extension_tree_view(ui, &view);
-                } else {
-                    self.extensions_view(ui);
-                }
-            }
+            SidebarView::Extensions => self.extensions_view(ui),
             SidebarView::Agents => {}
             SidebarView::Search => {
                 ui.label(RichText::new("SEARCH").small().strong());
@@ -1507,7 +1464,7 @@ impl CodeApp {
         if let Some(tab) = view_close {
             self.close_view_tab(tab);
         } else if let Some(tab) = view_select {
-            self.show_view_tab(ui.ctx(), tab);
+            self.show_view_tab(tab);
         }
         if let Some(i) = close {
             self.request_close_tab(i);
@@ -1822,23 +1779,6 @@ impl CodeApp {
                 }
             }
             self.plugin_status_items(ui, coiman_core::extensions::plugin::manifest::Alignment::Left, size);
-            let mut ext_cmd = None;
-            for (text, tip, cmd) in self.ext_status_bar.values() {
-                if !text.is_empty() {
-                    let mut label = egui::Label::new(white(text.clone())).selectable(false);
-                    if !cmd.is_empty() {
-                        label = label.sense(Sense::click());
-                    }
-                    let resp = ui.add(label);
-                    let resp = if !tip.is_empty() { resp.on_hover_text(tip) } else { resp };
-                    if resp.clicked() && !cmd.is_empty() {
-                        ext_cmd = Some(format!("ext\n{cmd}"));
-                    }
-                }
-            }
-            if let Some(cmd) = ext_cmd {
-                self.run_plugin_command(&cmd);
-            }
             if let Some(vim) = &self.vim {
                 ui.label(white(vim.status()));
             }

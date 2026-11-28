@@ -7,8 +7,6 @@ use crate::app::CodeApp;
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) enum ActiveView {
     Settings,
-    Extension(String),
-    Webview(String),
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -18,10 +16,6 @@ pub(crate) enum ViewTab {
     Image,
     Files,
     Settings,
-    /// An extension's detail page, open as an editor tab.
-    Extension(String),
-    /// A webview panel opened by an extension.
-    Webview(String),
 }
 
 impl CodeApp {
@@ -35,14 +29,6 @@ impl CodeApp {
         if self.settings_tab_open() {
             tabs.push((ViewTab::Settings, "Settings".to_owned(), self.showing_settings_tab()));
         }
-        if let Some(found) = &self.marketplace.detail_tab {
-            let title = if found.display_name.is_empty() { found.id() } else { found.display_name.clone() };
-            tabs.push((ViewTab::Extension(found.id()), format!("Extension: {title}"), self.showing_extension_tab()));
-        }
-        for (id, (title, _)) in &self.ext_webviews {
-            let shown = matches!(&self.active_view, Some(ActiveView::Webview(open)) if open == id);
-            tabs.push((ViewTab::Webview(id.clone()), title.clone(), shown));
-        }
         tabs
     }
 
@@ -51,13 +37,13 @@ impl CodeApp {
         self.hide_bytes();
         self.hide_image();
         self.hide_file_manager();
-        // Settings, extension, and webview tabs stay open. Only what is in front changes,
+        // The Settings tab stays open. Only what is in front changes,
         // so switching back to a file gives the editor its space back without
         // losing those tabs.
         self.active_view = None;
     }
 
-    pub(crate) fn show_view_tab(&mut self, ctx: &egui::Context, tab: ViewTab) {
+    pub(crate) fn show_view_tab(&mut self, tab: ViewTab) {
         self.hide_view_tabs();
         match tab {
             ViewTab::Log(i) => self.show_log_tab(i),
@@ -65,14 +51,6 @@ impl CodeApp {
             ViewTab::Image => self.show_image_tab(),
             ViewTab::Files => self.show_file_manager_tab(),
             ViewTab::Settings => self.open_settings_tab(),
-            ViewTab::Extension(id) => {
-                if let Some(found) = self.marketplace.detail_tab.clone().filter(|f| f.id() == id) {
-                    self.show_extension_tab(ctx, found);
-                }
-            }
-            ViewTab::Webview(id) => {
-                self.active_view = Some(ActiveView::Webview(id));
-            }
         }
     }
 
@@ -83,24 +61,6 @@ impl CodeApp {
             ViewTab::Image => self.close_image_tab(),
             ViewTab::Files => self.close_file_manager_tab(),
             ViewTab::Settings => self.close_settings_tab(),
-            ViewTab::Extension(id) => {
-                self.marketplace.detail_tab = None;
-                if matches!(&self.active_view, Some(ActiveView::Extension(open)) if open.as_str() == id.as_str()) {
-                    self.active_view = None;
-                }
-            }
-            ViewTab::Webview(id) => {
-                self.ext_webviews.remove(&id);
-                // Closed here: the extension hears so, and the server stops with the last one.
-                if let Some(server) = self.ext_host.webview_server().cloned() {
-                    server.remove_panel(&id);
-                }
-                self.ext_host.close_idle_webview_server();
-                self.ext_host.notify("webview/closed", serde_json::json!({ "id": id }));
-                if matches!(&self.active_view, Some(ActiveView::Webview(open)) if open.as_str() == id.as_str()) {
-                    self.active_view = None;
-                }
-            }
         }
     }
 

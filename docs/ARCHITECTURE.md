@@ -18,7 +18,7 @@ The editor's model and services. No UI dependencies. Modules are grouped by area
 | `project` | Quick Open, search, file watching, file operations, the project tree, recent items, sessions, workspace trust, local history, Git |
 | `appearance` | themes and their schedule, fonts, file icons |
 | `terminal` | pseudo-terminals and search in their text |
-| `extensions` | the WebAssembly plugin host (`plugin`): the sandbox, permissions, approved programs and the services it offers plugins; VS Code import and compatibility; Open VSX (through `curl`); the Node.js host for VS Code extensions (`host`, `host.js`) and the loopback server for their webviews (`webview`) |
+| `extensions` | the WebAssembly plugin host (`plugin`): the sandbox, permissions, approved programs and the services it offers plugins; VS Code import and compatibility; themes from Open VSX (through `curl`). Running VS Code extensions (a Node.js host and a webview server) is on the `vscode-extensions` branch |
 | `data` | large logs, CSV and TSV tables, JSON, YAML and TOML trees, bytes, and where client programs are off `PATH` (`clients`: database clients, `adb`) |
 
 `settings`, `packs` (the packs and which commands and extensions each has) and `applog` sit at
@@ -40,7 +40,7 @@ frame loop. Each file under `app/` adds methods to `CodeApp` for one feature, gr
 | `language` | language servers and their features, C and C++, Python environments, the Doctor |
 | `launch` | Cargo, Maven, the debugger, the Testing view, coverage, live sessions, REPLs, prints, stack traces |
 | `project` | Git, and getting it set up |
-| `extensions` | plugins and their panels, packs, the Open VSX marketplace, the VS Code extension host and its webviews, VS Code import, MCP servers for opencode |
+| `extensions` | plugins and their panels, packs, themes from Open VSX, VS Code import, MCP servers for opencode |
 
 Each file is also reachable as `crate::app::<file>`, so moving one between areas changes no
 callers. `ui/` holds the widgets the workbench is built from: the editor view, the Explorer, the
@@ -84,6 +84,6 @@ settings in the home folder).
 
 No networking crates may enter the dependency tree; `scripts/check.ps1` fails if one does. The
 network goes through programs on the computer (`git`, `curl`, `ssh`, database clients), only
-when the user asks. Two sockets are opened on this computer alone (127.0.0.1): the live preview,
-and the webview server for VS Code extensions, which runs only while a webview is open. What the
+when the user asks. One socket is opened on this computer alone (127.0.0.1): the live preview.
+What the
 app reads and writes is in [PRIVACY.md](../PRIVACY.md).

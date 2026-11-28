@@ -39,20 +39,6 @@ from where:
 
   Nothing runs until you click **Install**. npm, pip, dotnet and go tools install
   into those tools' own global folders.
-- **The Open VSX marketplace** (the Open VSX tab of the Extensions view). Opening the tab
-  lists popular extensions, and a search or an extension's page asks open-vsx.org, through
-  your system's `curl`, over HTTPS only; an extension's icon and README pictures come the
-  same way and are kept in `<config>/cache/open-vsx`, so each is fetched once. Nothing is
-  fetched until you open the tab and, the first time, choose **Use Open VSX** after it says
-  what it contacts; **Hide this tab** (or `plugins.marketplace = false`) removes it. An extension
-  is downloaded only when you click **Install**, and checked against the SHA-256 Open VSX
-  publishes.
-- **VS Code extensions' own code** (`plugins.vscode_extensions = true`, off by default). It
-  is JavaScript, run by Node.js outside Coiman's sandbox with your rights: it can read and
-  change your files, start programs and use the network, as it can in VS Code. The first
-  time, Coiman says so and asks; it runs only for folders you trust. A webview an extension
-  opens is served to your browser by Coiman from 127.0.0.1 alone, on a random port, under a
-  secret path, only while the webview is open, and only the extensions' own files.
 - **Themes from Open VSX** (Preferences: Get Themes from Open VSX). A search, and
   then the extension you click **Install** on, are fetched from open-vsx.org with your
   system's `curl`, over HTTPS only; the package is checked against the SHA-256 Open VSX

@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 196, partial 135, missing 147,
+**Summary:** 504 items. Done 196, partial 133, missing 149,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -32,7 +32,7 @@ network 13, rules that hold 13.
 | 16. Security and code quality | 10 | 7 | 2 |  |  |
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
-| 19. Plugin ecosystem | 12 | 9 |  |  | 2 |
+| 19. Plugin ecosystem | 12 | 7 | 2 |  | 2 |
 | 20. Workspace and project management | 7 | 10 |  |  |  |
 | 21. Experimental and differentiating features | 12 | 12 | 13 |  |  |
 
@@ -42,7 +42,7 @@ network 13, rules that hold 13.
 |---|---|---|
 | 0.1 Privacy by default | Holds | No telemetry, account or crash reports sent; logs stay in the config folder; nothing connects at start |
 | 0.2 Local-first operation | Holds | Editing, navigation, Git, run, debug and tests work offline |
-| 0.3 Explicit network consent | Holds | Installs, downloads and Git say what they contact and run on a click; the Open VSX tab says what it contacts and asks the first time, before anything is sent |
+| 0.3 Explicit network consent | Holds | Installs, downloads and Git say what they contact and run on a click; Open VSX themes are fetched only when asked for |
 | 0.4 Transparency and control | Holds | Permissions shown and revocable; programs approved and logged; agent edits reviewable; PRIVACY.md says what is kept |
 | 0.5 Security boundaries | Holds | Plugins sandboxed apart from the programs they may start; trusted folders; downloads checked against hashes; VS Code extensions said to run with your rights |
 | 0.6 Feature review checklist | Partial | FEATURES and PRIVACY say what each feature contacts and starts; not as a checklist per feature |
@@ -653,14 +653,14 @@ network 13, rules that hold 13.
 | Plugin profiling | Done | Extensions view: each plugin's calls, average and slowest time |
 | Plugin sandbox inspection | Partial | Permissions shown |
 | Plugin test framework | Done | `coiman-plugin test`: tests.toml run in a plugin host with no window |
-| Plugin marketplace interface | Done | Extensions view: Coiman's extensions and packs, registries, and the Open VSX tab (search, filters, a page per extension) |
-| Marketplace access only on explicit user action, with no automatic refresh or update checks | Holds | The Open VSX tab and registries are reached only when used; nothing checks by itself (see 0.3) |
-| Show publisher, requested permissions and external processes before installation | Partial | Coiman's extensions: publisher, signature, permissions and programs before installing; a VS Code extension shows its publisher |
-| Do not grant plugins network access by default | Holds | WebAssembly plugins have no network; programs are approved one by one; VS Code extensions run only when turned on, saying so |
-| Plugin ratings and reviews | Partial | Open VSX ratings and downloads shown, read only |
-| Plugin categories and tags | Partial | Open VSX categories and sort orders; Coiman's own extensions grouped by pack |
+| Plugin marketplace interface | Done | Extensions view: Coiman's extensions and packs, and registries |
+| Marketplace access only on explicit user action, with no automatic refresh or update checks | Holds | Registries are reached only when used; nothing checks by itself (see 0.3) |
+| Show publisher, requested permissions and external processes before installation | Partial | Coiman's extensions: publisher, signature, permissions and programs before installing |
+| Do not grant plugins network access by default | Holds | WebAssembly plugins have no network; programs are approved one by one; VS Code extensions' code doesn't run |
+| Plugin ratings and reviews | Missing | Open VSX ratings were shown by the marketplace, now on the `vscode-extensions` branch |
+| Plugin categories and tags | Partial | Coiman's own extensions grouped by pack |
 | Plugin update notifications | Done | Check for plugin updates |
-| Plugin changelogs | Partial | Open VSX extensions: their Changelog page |
+| Plugin changelogs | Missing | Open VSX changelogs were in the marketplace, now on the `vscode-extensions` branch |
 | Plugin rollback | Done | Extensions view, Roll back: the version an update replaced, with its grants, checked against its hashes |
 | Plugin installation profiles | Done | Packs install a kind of work's extensions together |
 | Workspace-specific plugin configurations | Partial | A project's `.coiman/settings.toml` sets its own packs |

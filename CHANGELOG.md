@@ -63,6 +63,17 @@ and versions follow [Semantic Versioning](https://semver.org/).
   comments, by area and by age (from `git blame`), the months the ones still here were
   written, and each note, oldest first.
 
+### Removed
+
+- Running VS Code extensions left the releases until it works well: the Open VSX marketplace
+  tab, the Node.js extension host with its webviews, and language servers taken from VS Code
+  extensions (ESLint, Tailwind CSS, Stylelint, YAML, Pylance). They go on in the
+  `vscode-extensions` branch. What only reads VS Code's files stays: themes from Open VSX,
+  Import from VS Code (themes, snippets, languages), the compatibility report, the
+  vscode-icons pack, `.vscode/launch.json` and VS Code's keys. The settings that turned them
+  on (`plugins.vscode_extensions`, `plugins.marketplace`, `lsp.extension_host`,
+  `lsp.extension_servers`) are ignored without a warning.
+
 ### Changed
 
 - Coiman won't be submitted to Flathub for now: its policy rules out AI-written manifests and

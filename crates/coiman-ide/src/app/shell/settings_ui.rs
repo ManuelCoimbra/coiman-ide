@@ -481,20 +481,6 @@ const SECTIONS: &[(&str, &[Row])] = &[
                 "Offer to install a missing language server.",
                 Kind::Toggle,
             ),
-            row(
-                "lsp",
-                "extension_servers",
-                "Servers from VS Code extensions",
-                "ESLint and Tailwind CSS, from their installed VS Code extensions, beside a file's own server. Requires VS Code extensions to be enabled.",
-                Kind::Toggle,
-            ),
-            row(
-                "lsp",
-                "extension_host",
-                "VS Code extension host",
-                "Run installed extensions' JavaScript with a vscode API shim, started after the window is up. Off by default.",
-                Kind::Toggle,
-            ),
             row("lsp", "completion", "IntelliSense", "Offer completions as you type, like VS Code.", Kind::Toggle),
             row(
                 "lsp",
@@ -651,13 +637,6 @@ const SECTIONS: &[(&str, &[Row])] = &[
         "Plugins",
         &[
             row("plugins", "enabled", "Load plugins", "Load installed native plugins.", Kind::Toggle),
-            row(
-                "plugins",
-                "vscode_extensions",
-                "VS Code extensions",
-                "Enable VS Code extension support (activity bar views, custom webviews, language servers, and commands). Off by default.",
-                Kind::Toggle,
-            ),
             row(
                 "plugins",
                 "registry",

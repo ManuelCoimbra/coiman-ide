@@ -161,24 +161,10 @@ impl CodeApp {
         self.hidden_decorate(i, &mut deco);
         self.profile_decorate(i, &mut deco);
         self.coverage_decorate(i, &mut deco);
-        self.ext_decorations_decorate(i, &mut deco);
         if let Some(doc) = self.docs.get_mut(i) {
             deco.folds = doc.structure().folds.clone();
         }
         deco
-    }
-
-    pub(crate) fn ext_decorations_decorate(&self, i: usize, deco: &mut Decorations) {
-        if !self.settings.vscode_extensions_enabled() {
-            return;
-        }
-        if let Some(path) = self.docs.get(i).and_then(|d| d.path.as_deref()) {
-            for ((_, p), layer) in &self.ext_decorations {
-                if p == path {
-                    deco.highlights.push(layer.clone());
-                }
-            }
-        }
     }
 
     /// Draws the pane without the focus. Pressing a button in it moves the focus there.
