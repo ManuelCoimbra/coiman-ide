@@ -9,7 +9,7 @@ Each item of the revised `Coiman IDE Feature Specification`, checked against the
 - **Network**: would need a service on the network.
 - **Holds**: a rule the specification sets for a kind of feature, and Coiman keeps it today.
 
-**Summary:** 504 items. Done 192, partial 132, missing 154,
+**Summary:** 504 items. Done 193, partial 132, missing 153,
 network 13, rules that hold 13.
 
 | Area | Done | Partial | Missing | Network | Holds |
@@ -33,7 +33,7 @@ network 13, rules that hold 13.
 | 17. Accessibility and user experience | 9 | 7 | 4 |  |  |
 | 18. Remote development and distributed workflows | 4 | 4 | 6 | 1 | 4 |
 | 19. Plugin ecosystem | 12 | 9 |  |  | 2 |
-| 20. Workspace and project management | 6 | 10 | 1 |  |  |
+| 20. Workspace and project management | 7 | 10 |  |  |  |
 | 21. Experimental and differentiating features | 12 | 12 | 13 |  |  |
 
 ## 0. Principles
@@ -683,7 +683,7 @@ network 13, rules that hold 13.
 | Workspace task management | Partial | Run configurations |
 | Workspace dependency overview | Partial | Code Health, Licences |
 | Workspace health dashboard | Partial | Code Health |
-| Project metadata editor | Missing |  |
+| Project metadata editor | Done | Project Metadata extension: Cargo.toml, package.json, pyproject.toml |
 | Project migration tools | Partial | Database migrations listed with which ran (SQL Databases) |
 | Project backup and restore | Done | Local history (per file); Project Snapshots (the whole folder) |
 | Project snapshots | Done | Project Snapshots extension, kept outside the project |

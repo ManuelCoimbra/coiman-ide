@@ -661,7 +661,7 @@ appear, and its background work doesn't run.
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture and Code Health come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
+Architecture, Code Health, Project Docs and Project Metadata come with Code analysis, Git Graph, Git Tools and Project Snapshots with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH and Remote Debugging with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
@@ -850,6 +850,8 @@ come with Coiman.
   what a change reaches; see [Architecture](#architecture).
 - **Project Docs** (`workspace-read`; program `git`): the project's Markdown documents; see
   [Project docs](#project-docs).
+- **Project Metadata** (`workspace-read`, `workspace-write`; no programs): the project's name,
+  version and the like, edited in place; see [Project metadata](#project-metadata).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
@@ -1332,6 +1334,21 @@ The **Project Docs** extension (Code analysis pack) reads the open folder's Mark
 - **Docs: Find Outdated Documents**: documents that name a file (in `inline code`, or by a link)
   that git changed after the document last was, each with both dates, the longest gap first.
   It reads one `git log` of the project, when `git` was approved at install.
+
+## Project metadata
+
+The **Project Metadata** extension (Code analysis pack) shows, for each of `Cargo.toml`,
+`package.json` and `pyproject.toml` at the top of the open folder, a form with its **name,
+version, description, licence and repository** (**Project: Edit Metadata**).
+
+- **Save** writes only the values changed, in place: comments, the order of keys and the rest of
+  the file stay as they were. A value not there yet is added to `[package]` (`[project]` in
+  `pyproject.toml`) or to the top of `package.json`.
+- A version that isn't three numbers (Cargo, npm), an empty name, or an npm name with capitals or
+  spaces is refused, and the file is left alone.
+- A value that isn't plain text (`version.workspace = true`, say) isn't shown, and is never
+  overwritten.
+- The forms show the file again after it is saved, in the editor too.
 
 ## Code health
 

@@ -1,0 +1,14 @@
+id = "coiman.metadata"
+name = "Project Metadata"
+version = "1.0.0"
+description = "The project's name, version, description, licence and repository as its Cargo.toml, package.json and pyproject.toml say them, edited in a form and written back in place, comments and all."
+permissions = ["workspace-read", "workspace-write"]
+programs = []
+
+[[commands]]
+id = "show"
+title = "Project: Edit Metadata"
+
+[[panels]]
+id = "metadata"
+title = "Project Metadata"

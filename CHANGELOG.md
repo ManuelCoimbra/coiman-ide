@@ -7,6 +7,9 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Project Metadata (Code analysis pack): the name, version, description, licence and repository
+  in `Cargo.toml`, `package.json` and `pyproject.toml`, edited in a form and saved in place.
+
 - Project Snapshots (Git pack): keep the whole open folder under a name, compare it with how it
   is now, with another snapshot or with another folder, and restore it all or a file. Kept by
   git in a repository of its own in Coiman's data folder, never in the project.
