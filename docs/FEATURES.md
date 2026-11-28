@@ -644,13 +644,13 @@ appear, and its background work doesn't run.
 | Embedded and systems | Serial monitor, binary size, memory and disassembly views |
 | Mobile | Android |
 | Graphics | Shader problems while typing, shader preview |
-| Code analysis | Class diagrams, architecture, flow, code health, project docs, overview, session statistics, profiler, coverage, run history, stack traces, rules, search by syntax tree |
+| Code analysis | Class diagrams, architecture, flow, code health, project docs, overview, session statistics, profiler, coverage, run history, stack traces, rules, search by syntax tree, API docs |
 | Git, more of it | Git Graph, history search, submodules, hooks, `.gitignore` rules |
 | Agents | Agents (opencode), MCP servers |
 | Terminal extras | Command history and Ctrl+Space suggestions |
 
 Installing a pack also offers its extensions, one after the other (Class Diagram,
-Architecture, Code Health, Project Docs, Project Metadata, Benchmarks and Python Calls and Memory come with Code analysis, Git Graph, Git Tools, Project Snapshots and Code Review with Git, HTTP Client
+Architecture, Code Health, Project Docs, Project Metadata, Benchmarks, Python Calls and Memory and API Docs come with Code analysis, Git Graph, Git Tools, Project Snapshots and Code Review with Git, HTTP Client
 and OpenAPI with Web and APIs, Docker, GitHub Actions, Remote over SSH, Remote Debugging and Infrastructure Files with Containers,
 SQL Databases, Redis and MongoDB with Databases, Serial Monitor and Binary Size with Embedded
 and systems, Android with Mobile, Shaders with Graphics, Terminal Commands
@@ -850,6 +850,9 @@ to the earlier <version> build**.
 - **Infrastructure Files** (`workspace-read`, `editor-read`; programs `helm`, `terraform`,
   `ansible-lint`): Kubernetes, Helm, Terraform and Ansible files checked offline while typing;
   see [Infrastructure files](#infrastructure-files).
+- **API Docs** (`workspace-read`, `workspace-write`; programs `cargo`, `python`, `javadoc`): the
+  project's API documentation from its own tool or its doc comments, and a page of its
+  dependencies; see [API docs](#api-docs).
 - **Code Health** (`workspace-read`; programs `cargo`, `npm`, `python`, `poetry`, `uv`, `git`):
   secrets, security, complexity, debt, duplicates, docs, dependencies, licences, audits and the
   project overview; see [Code health](#code-health).
@@ -1426,6 +1429,38 @@ and an edit is checked before it is saved.
   validate` in each top Terraform folder, and `ansible-lint`, and shows what each printed, with
   the places it names as links. `terraform init`, `plan` and `helm dependency` are never run:
   they reach the network. `validate` needs a folder initialised once by you.
+## API docs
+
+The **API Docs** extension (Code analysis pack) makes the project's API documentation on this
+computer, in the **API Docs** panel (**API Docs: Show**). Nothing is fetched from the network.
+
+- **Generate** (**API Docs: Generate with the Project's Tool**) runs the project's own tool,
+  picked from its files or in the panel: `cargo doc --no-deps` for Rust (with
+  `--document-private-items` when **private items too** is ticked), pydoc for Python (each of
+  the project's modules, with an index page, into the extension's own folder), or `javadoc -d`
+  over `src/main/java` (or the project's Java files) for Java, into the extension's own folder.
+  The panel then shows where the front page went, with **Copy path**: the editor opens only web
+  addresses in the browser, so paste the path into it. When the tool fails, its output is shown.
+- **Page from doc comments** (**API Docs: Page from Doc Comments**) needs no tool: it reads the
+  doc comments of the project's own files (Rust `///` and `//!`, Python docstrings, `/** */` in
+  JavaScript, TypeScript and Java, `///` and `/** */` in C and C++; tests, bundles and `vendor`
+  left out) and opens one Markdown page: each file's own comment, then each documented item with
+  its signature, its comment (Javadoc's `@param`, `@return` and `@throws` as a list) and a link
+  to its line. Function names come from the editor's parser where it knows them.
+- **Dependencies** (**API Docs: Dependency Documentation**) opens a page of the project's
+  dependencies, a table for each kind of project, with each one's version, licence, whether it
+  is direct, and its documentation on disk when there is some:
+  - Rust: the crates in `Cargo.lock`, direct or pulled in by others, with their licences from
+    `cargo metadata --offline` (only crates already downloaded) and a link to
+    `target/doc/<crate>` where `cargo doc` made it;
+  - JavaScript: `package.json`'s dependencies, with the version and licence installed in
+    `node_modules` and the package's README;
+  - Python: `requirements.txt` and `pyproject.toml` (PEP 621 and Poetry), with the version and
+    licence installed in the project's virtual environment (`.venv`, `venv` or `env`).
+  What isn't installed shows the version wanted, and a note says so.
+- Either page can be shown again, and saved as `docs/API.md` or `docs/DEPENDENCIES.md`; an
+  existing file is replaced only after asking. Their links start at the open folder, so they
+  still lead to the code from `docs/`.
 
 ## Project metadata
 

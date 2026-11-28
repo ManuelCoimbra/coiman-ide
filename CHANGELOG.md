@@ -16,6 +16,11 @@ and versions follow [Semantic Versioning](https://semver.org/).
   unused; undeclared references, unused variables and unclosed blocks; unnamed tasks, unknown
   play keys and missing includes and roles), a panel of the files and their problems, a
   dependency graph, and `helm lint`, `terraform validate` and `ansible-lint` when approved.
+- API Docs (Code analysis pack): the project's API documentation with its own tool
+  (`cargo doc`, pydoc or javadoc), one Markdown page from the doc comments in its files with
+  links to the code, and a page of its dependencies with their versions and licences, read from
+  `Cargo.lock`, `package.json`, `requirements.txt` and `pyproject.toml`. Both pages can be saved
+  in `docs/`. Nothing is fetched from the network.
 
 - Python Calls and Memory (Code analysis pack): how many times each function of a Python file
   is called (cProfile), and the memory each line holds with its peak (tracemalloc), with

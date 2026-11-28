@@ -1,0 +1,26 @@
+id = "coiman.apidocs"
+name = "API Docs"
+version = "1.0.0"
+description = "The project's API documentation, made on this computer: with its own tool (cargo doc, pydoc or javadoc), as one Markdown page from the doc comments in its files with links back to the code, and a page of its dependencies with their versions and licences, read from Cargo.lock, package.json, requirements.txt and pyproject.toml. Nothing is fetched from the network."
+permissions = ["workspace-read", "workspace-write"]
+programs = ["cargo", "python", "javadoc"]
+
+[[commands]]
+id = "show"
+title = "API Docs: Show"
+
+[[commands]]
+id = "generate"
+title = "API Docs: Generate with the Project's Tool"
+
+[[commands]]
+id = "comments"
+title = "API Docs: Page from Doc Comments"
+
+[[commands]]
+id = "deps"
+title = "API Docs: Dependency Documentation"
+
+[[panels]]
+id = "apidocs"
+title = "API Docs"
