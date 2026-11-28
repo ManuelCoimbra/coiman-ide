@@ -1485,10 +1485,15 @@ impl CodeApp {
                 format!("unsigned, {}", locked.source)
             };
             ui.label(RichText::new(origin).small().color(pal.text_dim));
-            // On a line of its own: beside Update… the row has no room for the name.
-            if let Some(prev) = &locked.previous
+            // On a line of its own: beside Update… the row has no room for the name. A built-in
+            // extension comes with the editor: an earlier build of it may not load in this one.
+            if let Some(prev) = locked.previous.as_ref().filter(|_| locked.source != BUILT_IN_SOURCE)
                 && ui
-                    .small_button(format!("Roll back to {}", prev.version))
+                    .small_button(if prev.version == locked.version {
+                        format!("Roll back to the earlier {} build", prev.version)
+                    } else {
+                        format!("Roll back to {}", prev.version)
+                    })
                     .on_hover_text("Put back the version this update replaced, with what was granted to it")
                     .clicked()
             {

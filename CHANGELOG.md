@@ -82,6 +82,8 @@ and versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Built-in extensions no longer offer **Roll back**: they come with the editor. The same
+  version rebuilt now says "Roll back to the earlier 1.0.1 build", not "Roll back to 1.0.1".
 - Installing a pack offers its extensions one after the other; **Cancel** on one now goes on
   to the next instead of skipping the rest. Updating an extension no longer offers the ones
   of its pack you left out.

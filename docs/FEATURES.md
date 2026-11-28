@@ -798,7 +798,9 @@ An update keeps the version it replaced (in the plugin's `previous` folder): **R
 <version>** puts it back, with what was granted to it, and keeps the newer one so that can be
 put back the same way. Its files are checked against the hashes recorded when it was
 installed; changed ones aren't put back. Any plugin can be rolled back, not only those that
-come with Coiman.
+come with Coiman, except the built-in ones (Comment Highlights, Trailing Spaces): they come with
+the editor, and an earlier build may not load in it. The same version rebuilt says **Roll back
+to the earlier <version> build**.
 
 - **Terminal Commands** (`terminal`, `workspace-read`; programs `pwsh`, `powershell`, `sh` for
   routines): keeps each command sent with Enter in
