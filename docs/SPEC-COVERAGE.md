@@ -309,7 +309,7 @@ network 13, rules that hold 13.
 | Documentation browser | Partial | Project Docs: the project's own documents, with their headings; not library docs |
 | Documentation search | Done | Find in Files' Doc switch: doc files and doc comments |
 | Documentation generation | Partial | Doc comment templates |
-| API documentation generation | Missing |  |
+| API documentation generation | Done | API Docs: cargo doc, pydoc or javadoc through approved programs, or a page from doc comments with no tool |
 | Automatic documentation updates | Missing |  |
 | Project documentation index | Done | Project Docs: Show Index |
 | Documentation relationship graphs | Done | Project Docs: Show Link Graph, broken links, documents nothing links to |
@@ -322,8 +322,8 @@ network 13, rules that hold 13.
 | PlantUML integration | Done | Markdown blocks and .puml files, drawn by the user's PlantUML |
 | LaTeX preview and editing | Missing |  |
 | Documentation templates | Partial | Doc comment templates |
-| Generate documentation from code comments | Missing |  |
-| Generate dependency documentation | Missing |  |
+| Generate documentation from code comments | Done | API Docs: one Markdown page from Rust, Python, JavaScript, TypeScript, Java, C and C++ doc comments, linking to the code; saved as docs/API.md |
+| Generate dependency documentation | Done | API Docs: Cargo.lock, package.json, requirements.txt, pyproject.toml, with versions and licences from what is installed (offline); not Go, Maven or Gradle |
 | Generate architecture reports | Partial | SVG and Mermaid export |
 
 ## 8. Web development
@@ -358,7 +358,7 @@ network 13, rules that hold 13.
 | WebSocket client | Missing |  |
 | API endpoint explorer | Done | Endpoints by tag, each opening as a `.http` request |
 | OpenAPI specification viewer | Done | OpenAPI extension: endpoints, models, examples |
-| API documentation generation | Missing |  |
+| API documentation generation | Partial | API Docs documents the code (cargo doc, pydoc, javadoc, doc comments); no page of HTTP endpoints from the routes in the code |
 | Request history | Done | The last 30 responses of each `.http` file |
 | Environment-based API configurations | Done | http-client.env.json and private, VS Code's settings |
 | Authentication token management | Done | Named responses' values (`{{login.response.body.$.token}}`) |

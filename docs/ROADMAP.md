@@ -13,6 +13,7 @@ panel drives the `opencode` program, if it is installed, and asks before the age
 
 ## Done lately
 
+- API Docs: cargo doc, pydoc or javadoc; a page from doc comments; dependencies with versions and licences.
 - Running VS Code extensions (marketplace, extension host, webviews, servers from extensions) moved to the `vscode-extensions` branch until ready; reading VS Code's files stays.
 - Python Calls and Memory: calls per function (cProfile), memory per line (tracemalloc).
 - Benchmarks: history by commit, regressions against a threshold, a plot, any two runs compared.
